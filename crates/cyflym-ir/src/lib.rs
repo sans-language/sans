@@ -94,6 +94,8 @@ impl IrBuilder {
                     BinOp::Sub => IrBinOp::Sub,
                     BinOp::Mul => IrBinOp::Mul,
                     BinOp::Div => IrBinOp::Div,
+                    // TODO(Task 5): handle comparison and boolean operators
+                    _ => todo!("IR lowering for {:?} not yet implemented", op),
                 };
                 self.instructions.push(Instruction::BinOp {
                     dest: dest.clone(),
@@ -103,6 +105,11 @@ impl IrBuilder {
                 });
                 dest
             }
+            // TODO(Task 5): handle bool literals, if/else, and unary ops in IR lowering
+            Expr::BoolLiteral { .. } => todo!("IR lowering for BoolLiteral not yet implemented"),
+            Expr::If { .. } => todo!("IR lowering for If not yet implemented"),
+            Expr::UnaryOp { .. } => todo!("IR lowering for UnaryOp not yet implemented"),
+
             Expr::Call { function, args, .. } => {
                 let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
                 let dest = self.fresh_reg();

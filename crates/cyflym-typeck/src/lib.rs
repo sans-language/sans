@@ -142,6 +142,11 @@ fn check_expr(
             Ok(Type::Int)
         }
 
+        // TODO(Task 4): properly type-check these new expression forms
+        Expr::BoolLiteral { .. } => Ok(Type::Int), // placeholder
+        Expr::If { .. } => Ok(Type::Int),           // placeholder
+        Expr::UnaryOp { .. } => Ok(Type::Int),      // placeholder
+
         Expr::Call { function, args, .. } => {
             let (param_types, ret_type) = fn_env
                 .get(function)

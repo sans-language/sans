@@ -41,10 +41,23 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     IntLiteral { value: i64, span: Span },
+    BoolLiteral { value: bool, span: Span },
     Identifier { name: String, span: Span },
     BinaryOp { left: Box<Expr>, op: BinOp, right: Box<Expr>, span: Span },
     Call { function: String, args: Vec<Expr>, span: Span },
+    If {
+        condition: Box<Expr>,
+        then_body: Vec<Stmt>,
+        then_expr: Box<Expr>,
+        else_body: Vec<Stmt>,
+        else_expr: Box<Expr>,
+        span: Span,
+    },
+    UnaryOp { op: UnaryOp, operand: Box<Expr>, span: Span },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BinOp { Add, Sub, Mul, Div }
+pub enum BinOp { Add, Sub, Mul, Div, Eq, NotEq, Lt, Gt, LtEq, GtEq, And, Or }
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnaryOp { Not }

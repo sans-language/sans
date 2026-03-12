@@ -230,6 +230,30 @@ impl Parser {
                     Ok(Expr::Identifier { name, span: name_span })
                 }
             }
+            TokenKind::True => {
+                let span = tok.span.clone();
+                self.pos += 1;
+                Ok(Expr::BoolLiteral { value: true, span })
+            }
+            TokenKind::False => {
+                let span = tok.span.clone();
+                self.pos += 1;
+                Ok(Expr::BoolLiteral { value: false, span })
+            }
+            TokenKind::If => {
+                self.parse_if_expr()
+            }
+            TokenKind::Bang => {
+                let start = tok.span.start;
+                self.pos += 1; // consume !
+                let operand = self.parse_expr(13)?; // prefix binding power 13 (tightest)
+                let end = expr_span(&operand).end;
+                Ok(Expr::UnaryOp {
+                    op: ast::UnaryOp::Not,
+                    operand: Box::new(operand),
+                    span: start..end,
+                })
+            }
             TokenKind::LParen => {
                 self.pos += 1;
                 let expr = self.parse_expr(0)?;
@@ -240,6 +264,64 @@ impl Parser {
                 format!("unexpected token in expression: {:?}", tok.kind),
                 tok.span,
             )),
+        }
+    }
+
+    fn parse_if_expr(&mut self) -> Result<Expr, ParseError> {
+        let if_tok = self.expect(&TokenKind::If)?;
+        let start = if_tok.span.start;
+
+        // Parse condition (no braces around it)
+        let condition = self.parse_expr(0)?;
+
+        // Parse then branch: { body... expr }
+        self.expect(&TokenKind::LBrace)?;
+        let (then_body, then_expr) = self.parse_block_body()?;
+        self.expect(&TokenKind::RBrace)?;
+
+        // Parse else branch (required)
+        self.expect(&TokenKind::Else)?;
+        self.expect(&TokenKind::LBrace)?;
+        let (else_body, else_expr) = self.parse_block_body()?;
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        let end = rbrace.span.end;
+
+        Ok(Expr::If {
+            condition: Box::new(condition),
+            then_body,
+            then_expr: Box::new(then_expr),
+            else_body,
+            else_expr: Box::new(else_expr),
+            span: start..end,
+        })
+    }
+
+    /// Parse the inside of a `{ ... }` block: zero or more statements followed
+    /// by a final expression.
+    fn parse_block_body(&mut self) -> Result<(Vec<Stmt>, Expr), ParseError> {
+        let mut stmts = Vec::new();
+        loop {
+            if self.peek().kind == TokenKind::RBrace || self.peek().kind == TokenKind::Eof {
+                // No more tokens — error: empty block
+                return Err(ParseError::new(
+                    "expected expression in block",
+                    self.peek().span.clone(),
+                ));
+            }
+            let stmt = self.parse_stmt()?;
+            // If next token is `}`, this stmt should be the final expression
+            if self.peek().kind == TokenKind::RBrace {
+                match stmt {
+                    Stmt::Expr(expr) => return Ok((stmts, expr)),
+                    Stmt::Let { span, .. } => {
+                        return Err(ParseError::new(
+                            "block must end with an expression, not a let binding",
+                            span,
+                        ));
+                    }
+                }
+            }
+            stmts.push(stmt);
         }
     }
 
@@ -265,10 +347,18 @@ impl Parser {
 /// Returns `(left_bp, right_bp, op)` for infix operators, or `None`.
 fn infix_binding_power(kind: &TokenKind) -> Option<(u8, u8, BinOp)> {
     match kind {
-        TokenKind::Plus  => Some((1, 2, BinOp::Add)),
-        TokenKind::Minus => Some((1, 2, BinOp::Sub)),
-        TokenKind::Star  => Some((3, 4, BinOp::Mul)),
-        TokenKind::Slash => Some((3, 4, BinOp::Div)),
+        TokenKind::Or     => Some((1, 2, BinOp::Or)),
+        TokenKind::And    => Some((3, 4, BinOp::And)),
+        TokenKind::EqEq   => Some((5, 6, BinOp::Eq)),
+        TokenKind::NotEq  => Some((5, 6, BinOp::NotEq)),
+        TokenKind::Lt     => Some((7, 8, BinOp::Lt)),
+        TokenKind::Gt     => Some((7, 8, BinOp::Gt)),
+        TokenKind::LtEq   => Some((7, 8, BinOp::LtEq)),
+        TokenKind::GtEq   => Some((7, 8, BinOp::GtEq)),
+        TokenKind::Plus   => Some((9, 10, BinOp::Add)),
+        TokenKind::Minus  => Some((9, 10, BinOp::Sub)),
+        TokenKind::Star   => Some((11, 12, BinOp::Mul)),
+        TokenKind::Slash  => Some((11, 12, BinOp::Div)),
         _ => None,
     }
 }
@@ -276,9 +366,12 @@ fn infix_binding_power(kind: &TokenKind) -> Option<(u8, u8, BinOp)> {
 fn expr_span(expr: &Expr) -> &Span {
     match expr {
         Expr::IntLiteral { span, .. } => span,
+        Expr::BoolLiteral { span, .. } => span,
         Expr::Identifier { span, .. } => span,
         Expr::BinaryOp { span, .. } => span,
         Expr::Call { span, .. } => span,
+        Expr::If { span, .. } => span,
+        Expr::UnaryOp { span, .. } => span,
     }
 }
 
@@ -382,5 +475,82 @@ mod tests {
         assert_eq!(prog.functions.len(), 2);
         assert_eq!(prog.functions[0].name, "foo");
         assert_eq!(prog.functions[1].name, "bar");
+    }
+
+    #[test]
+    fn parse_bool_literal() {
+        let prog = parse("fn main() Bool { true }").unwrap();
+        if let Stmt::Expr(Expr::BoolLiteral { value, .. }) = &prog.functions[0].body[0] {
+            assert_eq!(*value, true);
+        } else {
+            panic!("expected BoolLiteral(true)");
+        }
+    }
+
+    #[test]
+    fn parse_comparison() {
+        let prog = parse("fn main() Bool { 1 == 2 }").unwrap();
+        if let Stmt::Expr(Expr::BinaryOp { op, .. }) = &prog.functions[0].body[0] {
+            assert_eq!(*op, BinOp::Eq);
+        } else {
+            panic!("expected BinaryOp(Eq)");
+        }
+    }
+
+    #[test]
+    fn parse_if_else_expr() {
+        let prog = parse("fn main() Int { if true { 1 } else { 2 } }").unwrap();
+        if let Stmt::Expr(Expr::If { then_expr, else_expr, .. }) = &prog.functions[0].body[0] {
+            assert!(matches!(then_expr.as_ref(), Expr::IntLiteral { value: 1, .. }));
+            assert!(matches!(else_expr.as_ref(), Expr::IntLiteral { value: 2, .. }));
+        } else {
+            panic!("expected If expression");
+        }
+    }
+
+    #[test]
+    fn parse_unary_not() {
+        let prog = parse("fn main() Bool { !true }").unwrap();
+        if let Stmt::Expr(Expr::UnaryOp { op, operand, .. }) = &prog.functions[0].body[0] {
+            assert_eq!(*op, ast::UnaryOp::Not);
+            assert!(matches!(operand.as_ref(), Expr::BoolLiteral { value: true, .. }));
+        } else {
+            panic!("expected UnaryOp(Not)");
+        }
+    }
+
+    #[test]
+    fn parse_precedence_comparison_vs_arithmetic() {
+        // 1 + 2 == 3 should parse as (1 + 2) == 3
+        let prog = parse("fn main() Bool { 1 + 2 == 3 }").unwrap();
+        if let Stmt::Expr(Expr::BinaryOp { op, left, .. }) = &prog.functions[0].body[0] {
+            assert_eq!(*op, BinOp::Eq);
+            assert!(matches!(left.as_ref(), Expr::BinaryOp { op: BinOp::Add, .. }));
+        } else {
+            panic!("expected BinaryOp(Eq) at top level");
+        }
+    }
+
+    #[test]
+    fn parse_boolean_operators() {
+        // true && false || true should parse as (true && false) || true
+        let prog = parse("fn main() Bool { true && false || true }").unwrap();
+        if let Stmt::Expr(Expr::BinaryOp { op, left, .. }) = &prog.functions[0].body[0] {
+            assert_eq!(*op, BinOp::Or);
+            assert!(matches!(left.as_ref(), Expr::BinaryOp { op: BinOp::And, .. }));
+        } else {
+            panic!("expected BinaryOp(Or) at top level");
+        }
+    }
+
+    #[test]
+    fn parse_if_else_with_let() {
+        let prog = parse("fn main() Int { if true { let x Int = 1 x } else { 2 } }").unwrap();
+        if let Stmt::Expr(Expr::If { then_body, then_expr, .. }) = &prog.functions[0].body[0] {
+            assert_eq!(then_body.len(), 1); // let x = 1
+            assert!(matches!(then_expr.as_ref(), Expr::Identifier { name, .. } if name == "x"));
+        } else {
+            panic!("expected If expression");
+        }
     }
 }
