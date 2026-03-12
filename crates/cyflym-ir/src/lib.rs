@@ -3,7 +3,7 @@ pub mod ir;
 use std::collections::HashMap;
 
 use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
-use ir::{Instruction, IrBinOp, IrFunction, Module, Reg};
+use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 /// Lower a parsed `Program` into an IR `Module`.
 pub fn lower(program: &Program) -> Module {
@@ -53,6 +53,7 @@ fn lower_function(func: &cyflym_parser::ast::Function) -> IrFunction {
 
 struct IrBuilder {
     counter: usize,
+    label_counter: usize,
     locals: HashMap<String, Reg>,
     instructions: Vec<Instruction>,
 }
@@ -61,6 +62,7 @@ impl IrBuilder {
     fn new() -> Self {
         IrBuilder {
             counter: 0,
+            label_counter: 0,
             locals: HashMap::new(),
             instructions: Vec::new(),
         }
@@ -72,11 +74,22 @@ impl IrBuilder {
         reg
     }
 
+    fn fresh_label(&mut self, prefix: &str) -> String {
+        let label = format!("{}_{}", prefix, self.label_counter);
+        self.label_counter += 1;
+        label
+    }
+
     fn lower_expr(&mut self, expr: &Expr) -> Reg {
         match expr {
             Expr::IntLiteral { value, .. } => {
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::Const { dest: dest.clone(), value: *value });
+                dest
+            }
+            Expr::BoolLiteral { value, .. } => {
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::BoolConst { dest: dest.clone(), value: *value });
                 dest
             }
             Expr::Identifier { name, .. } => {
@@ -86,30 +99,181 @@ impl IrBuilder {
                     .unwrap_or_else(|| panic!("undefined variable: {}", name))
             }
             Expr::BinaryOp { left, op, right, .. } => {
+                // Short-circuit operators: must handle BEFORE evaluating both sides
+                match op {
+                    BinOp::And => {
+                        let left_reg = self.lower_expr(left);
+                        let rhs_label = self.fresh_label("and_rhs");
+                        let false_label = self.fresh_label("and_false");
+                        let merge_label = self.fresh_label("and_merge");
+
+                        self.instructions.push(Instruction::Branch {
+                            cond: left_reg,
+                            then_label: rhs_label.clone(),
+                            else_label: false_label.clone(),
+                        });
+
+                        self.instructions.push(Instruction::Label { name: rhs_label.clone() });
+                        let right_reg = self.lower_expr(right);
+                        self.instructions.push(Instruction::Jump { target: merge_label.clone() });
+
+                        self.instructions.push(Instruction::Label { name: false_label.clone() });
+                        let false_reg = self.fresh_reg();
+                        self.instructions.push(Instruction::BoolConst { dest: false_reg.clone(), value: false });
+                        self.instructions.push(Instruction::Jump { target: merge_label.clone() });
+
+                        self.instructions.push(Instruction::Label { name: merge_label.clone() });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Phi {
+                            dest: dest.clone(),
+                            a_val: right_reg,
+                            a_label: rhs_label,
+                            b_val: false_reg,
+                            b_label: false_label,
+                        });
+                        return dest;
+                    }
+                    BinOp::Or => {
+                        let left_reg = self.lower_expr(left);
+                        let true_label = self.fresh_label("or_true");
+                        let rhs_label = self.fresh_label("or_rhs");
+                        let merge_label = self.fresh_label("or_merge");
+
+                        self.instructions.push(Instruction::Branch {
+                            cond: left_reg,
+                            then_label: true_label.clone(),
+                            else_label: rhs_label.clone(),
+                        });
+
+                        self.instructions.push(Instruction::Label { name: true_label.clone() });
+                        let true_reg = self.fresh_reg();
+                        self.instructions.push(Instruction::BoolConst { dest: true_reg.clone(), value: true });
+                        self.instructions.push(Instruction::Jump { target: merge_label.clone() });
+
+                        self.instructions.push(Instruction::Label { name: rhs_label.clone() });
+                        let right_reg = self.lower_expr(right);
+                        self.instructions.push(Instruction::Jump { target: merge_label.clone() });
+
+                        self.instructions.push(Instruction::Label { name: merge_label.clone() });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Phi {
+                            dest: dest.clone(),
+                            a_val: true_reg,
+                            a_label: true_label,
+                            b_val: right_reg,
+                            b_label: rhs_label,
+                        });
+                        return dest;
+                    }
+                    _ => {} // fall through to normal handling
+                }
+
+                // Non-short-circuit: evaluate both sides
                 let left_reg = self.lower_expr(left);
                 let right_reg = self.lower_expr(right);
+
+                match op {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                        let dest = self.fresh_reg();
+                        let ir_op = match op {
+                            BinOp::Add => IrBinOp::Add,
+                            BinOp::Sub => IrBinOp::Sub,
+                            BinOp::Mul => IrBinOp::Mul,
+                            BinOp::Div => IrBinOp::Div,
+                            _ => unreachable!(),
+                        };
+                        self.instructions.push(Instruction::BinOp {
+                            dest: dest.clone(),
+                            op: ir_op,
+                            left: left_reg,
+                            right: right_reg,
+                        });
+                        dest
+                    }
+                    BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+                        let dest = self.fresh_reg();
+                        let cmp_op = match op {
+                            BinOp::Eq => IrCmpOp::Eq,
+                            BinOp::NotEq => IrCmpOp::NotEq,
+                            BinOp::Lt => IrCmpOp::Lt,
+                            BinOp::Gt => IrCmpOp::Gt,
+                            BinOp::LtEq => IrCmpOp::LtEq,
+                            BinOp::GtEq => IrCmpOp::GtEq,
+                            _ => unreachable!(),
+                        };
+                        self.instructions.push(Instruction::CmpOp {
+                            dest: dest.clone(),
+                            op: cmp_op,
+                            left: left_reg,
+                            right: right_reg,
+                        });
+                        dest
+                    }
+                    BinOp::And | BinOp::Or => unreachable!("handled above"),
+                }
+            }
+            Expr::UnaryOp { op, operand, .. } => {
+                match op {
+                    cyflym_parser::ast::UnaryOp::Not => {
+                        let src_reg = self.lower_expr(operand);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Not { dest: dest.clone(), src: src_reg });
+                        dest
+                    }
+                }
+            }
+            Expr::If { condition, then_body, then_expr, else_body, else_expr, .. } => {
+                let cond_reg = self.lower_expr(condition);
+                let then_label = self.fresh_label("then");
+                let else_label = self.fresh_label("else");
+                let merge_label = self.fresh_label("merge");
+
+                self.instructions.push(Instruction::Branch {
+                    cond: cond_reg,
+                    then_label: then_label.clone(),
+                    else_label: else_label.clone(),
+                });
+
+                // Then branch
+                self.instructions.push(Instruction::Label { name: then_label.clone() });
+                for stmt in then_body {
+                    match stmt {
+                        Stmt::Let { name, value, .. } => {
+                            let reg = self.lower_expr(value);
+                            self.locals.insert(name.clone(), reg);
+                        }
+                        Stmt::Expr(expr) => { self.lower_expr(expr); }
+                    }
+                }
+                let then_reg = self.lower_expr(then_expr);
+                self.instructions.push(Instruction::Jump { target: merge_label.clone() });
+
+                // Else branch
+                self.instructions.push(Instruction::Label { name: else_label.clone() });
+                for stmt in else_body {
+                    match stmt {
+                        Stmt::Let { name, value, .. } => {
+                            let reg = self.lower_expr(value);
+                            self.locals.insert(name.clone(), reg);
+                        }
+                        Stmt::Expr(expr) => { self.lower_expr(expr); }
+                    }
+                }
+                let else_reg = self.lower_expr(else_expr);
+                self.instructions.push(Instruction::Jump { target: merge_label.clone() });
+
+                // Merge
+                self.instructions.push(Instruction::Label { name: merge_label.clone() });
                 let dest = self.fresh_reg();
-                let ir_op = match op {
-                    BinOp::Add => IrBinOp::Add,
-                    BinOp::Sub => IrBinOp::Sub,
-                    BinOp::Mul => IrBinOp::Mul,
-                    BinOp::Div => IrBinOp::Div,
-                    // TODO(Task 5): handle comparison and boolean operators
-                    _ => todo!("IR lowering for {:?} not yet implemented", op),
-                };
-                self.instructions.push(Instruction::BinOp {
+                self.instructions.push(Instruction::Phi {
                     dest: dest.clone(),
-                    op: ir_op,
-                    left: left_reg,
-                    right: right_reg,
+                    a_val: then_reg,
+                    a_label: then_label,
+                    b_val: else_reg,
+                    b_label: else_label,
                 });
                 dest
             }
-            // TODO(Task 5): handle bool literals, if/else, and unary ops in IR lowering
-            Expr::BoolLiteral { .. } => todo!("IR lowering for BoolLiteral not yet implemented"),
-            Expr::If { .. } => todo!("IR lowering for If not yet implemented"),
-            Expr::UnaryOp { .. } => todo!("IR lowering for UnaryOp not yet implemented"),
-
             Expr::Call { function, args, .. } => {
                 let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
                 let dest = self.fresh_reg();
@@ -183,5 +347,43 @@ mod tests {
             matches!(i, Instruction::Call { function, .. } if function == "add")
         });
         assert!(has_call, "expected Call(add) instruction in main");
+    }
+
+    #[test]
+    fn lower_bool_literal() {
+        let program = parse("fn main() Bool { true }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_bool_const = func.body.iter().any(|i| matches!(i, Instruction::BoolConst { value: true, .. }));
+        assert!(has_bool_const, "expected BoolConst(true)");
+    }
+
+    #[test]
+    fn lower_comparison() {
+        let program = parse("fn main() Bool { 1 == 2 }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_cmp = func.body.iter().any(|i| matches!(i, Instruction::CmpOp { .. }));
+        assert!(has_cmp, "expected CmpOp instruction");
+    }
+
+    #[test]
+    fn lower_if_else() {
+        let program = parse("fn main() Int { if true { 1 } else { 2 } }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_branch = func.body.iter().any(|i| matches!(i, Instruction::Branch { .. }));
+        let has_phi = func.body.iter().any(|i| matches!(i, Instruction::Phi { .. }));
+        assert!(has_branch, "expected Branch instruction");
+        assert!(has_phi, "expected Phi instruction");
+    }
+
+    #[test]
+    fn lower_not() {
+        let program = parse("fn main() Bool { !true }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_not = func.body.iter().any(|i| matches!(i, Instruction::Not { .. }));
+        assert!(has_not, "expected Not instruction");
     }
 }

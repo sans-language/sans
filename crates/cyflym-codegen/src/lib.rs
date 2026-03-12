@@ -166,6 +166,27 @@ fn generate_llvm<'ctx>(
                         .build_return(Some(&val))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
+                Instruction::BoolConst { .. } => {
+                    todo!("Task 6: codegen for BoolConst")
+                }
+                Instruction::CmpOp { .. } => {
+                    todo!("Task 6: codegen for CmpOp")
+                }
+                Instruction::Not { .. } => {
+                    todo!("Task 6: codegen for Not")
+                }
+                Instruction::Label { .. } => {
+                    todo!("Task 6: codegen for Label")
+                }
+                Instruction::Branch { .. } => {
+                    todo!("Task 6: codegen for Branch")
+                }
+                Instruction::Jump { .. } => {
+                    todo!("Task 6: codegen for Jump")
+                }
+                Instruction::Phi { .. } => {
+                    todo!("Task 6: codegen for Phi")
+                }
             }
         }
     }
