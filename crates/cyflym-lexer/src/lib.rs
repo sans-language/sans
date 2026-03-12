@@ -68,6 +68,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "false" => TokenKind::False,
                     "if" => TokenKind::If,
                     "else" => TokenKind::Else,
+                    "while" => TokenKind::While,
+                    "return" => TokenKind::Return,
+                    "mut" => TokenKind::Mut,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -298,6 +301,12 @@ mod tests {
     fn lex_eq_vs_eqeq() {
         let tokens = lex("= ==").unwrap();
         assert_eq!(kinds(&tokens), vec![Eq, EqEq, Eof]);
+    }
+
+    #[test]
+    fn lex_while_return_mut_keywords() {
+        let tokens = lex("while return mut").unwrap();
+        assert_eq!(kinds(&tokens), vec![While, Return, Mut, Eof]);
     }
 
     #[test]

@@ -41,6 +41,9 @@ pub enum TokenKind {
     // Control flow
     If,
     Else,
+    While,
+    Return,
+    Mut,
 
     // Comparison operators
     EqEq,    // ==
