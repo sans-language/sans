@@ -13,6 +13,10 @@ version = "0.1.0"
 [[package]]
 name = "cyflym-ir"
 version = "0.1.0"
+dependencies = [
+ "cyflym-lexer",
+ "cyflym-parser",
+]
 
 [[package]]
 name = "cyflym-lexer"

@@ -2,3 +2,7 @@
 name = "cyflym-ir"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+cyflym-parser = { path = "../cyflym-parser" }
+cyflym-lexer = { path = "../cyflym-lexer" }
