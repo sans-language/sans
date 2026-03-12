@@ -34,6 +34,27 @@ pub enum TokenKind {
     Comma,
     Colon,
 
+    // Boolean literals
+    True,
+    False,
+
+    // Control flow
+    If,
+    Else,
+
+    // Comparison operators
+    EqEq,    // ==
+    NotEq,   // !=
+    Lt,      // <
+    Gt,      // >
+    LtEq,    // <=
+    GtEq,    // >=
+
+    // Boolean operators
+    And,     // &&
+    Or,      // ||
+    Bang,    // !
+
     // Special
     Eof,
 }

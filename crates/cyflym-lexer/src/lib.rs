@@ -64,6 +64,10 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 let kind = match text {
                     "fn" => TokenKind::Fn,
                     "let" => TokenKind::Let,
+                    "true" => TokenKind::True,
+                    "false" => TokenKind::False,
+                    "if" => TokenKind::If,
+                    "else" => TokenKind::Else,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -91,8 +95,62 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 tokens.push(Token { kind: TokenKind::Slash, span: start..pos });
             }
             '=' => {
-                pos += 1;
-                tokens.push(Token { kind: TokenKind::Eq, span: start..pos });
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::EqEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Eq, span: start..pos });
+                }
+            }
+            '!' => {
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::NotEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Bang, span: start..pos });
+                }
+            }
+            '<' => {
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::LtEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Lt, span: start..pos });
+                }
+            }
+            '>' => {
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::GtEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Gt, span: start..pos });
+                }
+            }
+            '&' => {
+                if pos + 1 < len && bytes[pos + 1] == b'&' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::And, span: start..pos });
+                } else {
+                    return Err(LexError {
+                        message: "unexpected character '&'".to_string(),
+                        span: start..start + 1,
+                    });
+                }
+            }
+            '|' => {
+                if pos + 1 < len && bytes[pos + 1] == b'|' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::Or, span: start..pos });
+                } else {
+                    return Err(LexError {
+                        message: "unexpected character '|'".to_string(),
+                        span: start..start + 1,
+                    });
+                }
             }
             '(' => {
                 pos += 1;
@@ -210,6 +268,36 @@ mod tests {
             kinds(&tokens),
             vec![Fn, Identifier("main".to_string()), Eof]
         );
+    }
+
+    #[test]
+    fn lex_bool_keywords() {
+        let tokens = lex("true false").unwrap();
+        assert_eq!(kinds(&tokens), vec![True, False, Eof]);
+    }
+
+    #[test]
+    fn lex_comparison_operators() {
+        let tokens = lex("== != < > <= >=").unwrap();
+        assert_eq!(kinds(&tokens), vec![EqEq, NotEq, Lt, Gt, LtEq, GtEq, Eof]);
+    }
+
+    #[test]
+    fn lex_boolean_operators() {
+        let tokens = lex("&& || !").unwrap();
+        assert_eq!(kinds(&tokens), vec![And, Or, Bang, Eof]);
+    }
+
+    #[test]
+    fn lex_if_else_keywords() {
+        let tokens = lex("if else").unwrap();
+        assert_eq!(kinds(&tokens), vec![If, Else, Eof]);
+    }
+
+    #[test]
+    fn lex_eq_vs_eqeq() {
+        let tokens = lex("= ==").unwrap();
+        assert_eq!(kinds(&tokens), vec![Eq, EqEq, Eof]);
     }
 
     #[test]
