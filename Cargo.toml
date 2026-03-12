@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cyflym-lexer",
+    "crates/cyflym-parser",
+    "crates/cyflym-typeck",
+    "crates/cyflym-ir",
+    "crates/cyflym-codegen",
+    "crates/cyflym-driver",
+]
