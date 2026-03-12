@@ -1,0 +1,386 @@
+pub mod ast;
+
+use cyflym_lexer::token::{Span, Token, TokenKind};
+use ast::*;
+
+/// An error produced during parsing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseError {
+    pub message: String,
+    pub span: Span,
+}
+
+impl ParseError {
+    fn new(message: impl Into<String>, span: Span) -> Self {
+        ParseError { message: message.into(), span }
+    }
+}
+
+/// Parse the given source string into a `Program`.
+pub fn parse(source: &str) -> Result<Program, ParseError> {
+    let tokens = cyflym_lexer::lex(source).map_err(|e| ParseError {
+        message: e.message,
+        span: e.span,
+    })?;
+    let mut parser = Parser::new(tokens);
+    parser.parse_program()
+}
+
+struct Parser {
+    tokens: Vec<Token>,
+    pos: usize,
+}
+
+impl Parser {
+    fn new(tokens: Vec<Token>) -> Self {
+        Parser { tokens, pos: 0 }
+    }
+
+    /// Peek at the current token without consuming it.
+    fn peek(&self) -> &Token {
+        &self.tokens[self.pos]
+    }
+
+    /// Expect the current token to match `kind`, consume it, and return it.
+    fn expect(&mut self, kind: &TokenKind) -> Result<Token, ParseError> {
+        let tok = self.peek().clone();
+        if std::mem::discriminant(&tok.kind) == std::mem::discriminant(kind) {
+            self.pos += 1;
+            Ok(tok)
+        } else {
+            Err(ParseError::new(
+                format!("expected {:?}, got {:?}", kind, tok.kind),
+                tok.span,
+            ))
+        }
+    }
+
+    /// Expect an `Identifier` token and return its text.
+    fn expect_ident(&mut self) -> Result<(String, Span), ParseError> {
+        let tok = self.peek().clone();
+        if let TokenKind::Identifier(name) = &tok.kind {
+            let name = name.clone();
+            let span = tok.span.clone();
+            self.pos += 1;
+            Ok((name, span))
+        } else {
+            Err(ParseError::new(
+                format!("expected identifier, got {:?}", tok.kind),
+                tok.span,
+            ))
+        }
+    }
+
+    // ─── Top-level ────────────────────────────────────────────────────────────
+
+    fn parse_program(&mut self) -> Result<Program, ParseError> {
+        let mut functions = Vec::new();
+        while self.peek().kind != TokenKind::Eof {
+            functions.push(self.parse_function()?);
+        }
+        Ok(Program { functions })
+    }
+
+    // ─── Function ─────────────────────────────────────────────────────────────
+
+    fn parse_function(&mut self) -> Result<Function, ParseError> {
+        let fn_tok = self.expect(&TokenKind::Fn)?;
+        let fn_start = fn_tok.span.start;
+
+        let (name, _) = self.expect_ident()?;
+
+        self.expect(&TokenKind::LParen)?;
+        let params = self.parse_params()?;
+        self.expect(&TokenKind::RParen)?;
+
+        let return_type = self.parse_type_name()?;
+
+        self.expect(&TokenKind::LBrace)?;
+        let body = self.parse_body()?;
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        let fn_end = rbrace.span.end;
+
+        Ok(Function {
+            name,
+            params,
+            return_type,
+            body,
+            span: fn_start..fn_end,
+        })
+    }
+
+    fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
+        let mut params = Vec::new();
+        // Empty param list
+        if self.peek().kind == TokenKind::RParen {
+            return Ok(params);
+        }
+        loop {
+            let (name, name_span) = self.expect_ident()?;
+            let type_name = self.parse_type_name()?;
+            let end = type_name.span.end;
+            params.push(Param {
+                name,
+                type_name,
+                span: name_span.start..end,
+            });
+            if self.peek().kind == TokenKind::Comma {
+                self.pos += 1; // consume comma
+            } else {
+                break;
+            }
+        }
+        Ok(params)
+    }
+
+    fn parse_type_name(&mut self) -> Result<TypeName, ParseError> {
+        let (name, span) = self.expect_ident()?;
+        Ok(TypeName { name, span })
+    }
+
+    // ─── Body / Statements ────────────────────────────────────────────────────
+
+    fn parse_body(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        let mut stmts = Vec::new();
+        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+            stmts.push(self.parse_stmt()?);
+        }
+        Ok(stmts)
+    }
+
+    fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
+        if self.peek().kind == TokenKind::Let {
+            self.parse_let()
+        } else {
+            let expr = self.parse_expr(0)?;
+            Ok(Stmt::Expr(expr))
+        }
+    }
+
+    fn parse_let(&mut self) -> Result<Stmt, ParseError> {
+        let let_tok = self.expect(&TokenKind::Let)?;
+        let let_start = let_tok.span.start;
+
+        let (name, _) = self.expect_ident()?;
+        let type_name = self.parse_type_name()?;
+        self.expect(&TokenKind::Eq)?;
+        let value = self.parse_expr(0)?;
+        let end = expr_span(&value).end;
+
+        Ok(Stmt::Let {
+            name,
+            type_name,
+            value,
+            span: let_start..end,
+        })
+    }
+
+    // ─── Expressions (Pratt / precedence climbing) ────────────────────────────
+
+    /// Parse an expression with the given minimum binding power.
+    fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParseError> {
+        // Parse left-hand side (prefix / atom)
+        let mut lhs = self.parse_atom()?;
+
+        loop {
+            let tok = self.peek().clone();
+            let Some((left_bp, right_bp, op)) = infix_binding_power(&tok.kind) else {
+                break;
+            };
+            if left_bp < min_bp {
+                break;
+            }
+            self.pos += 1; // consume operator
+            let rhs = self.parse_expr(right_bp)?;
+            let span_start = expr_span(&lhs).start;
+            let span_end = expr_span(&rhs).end;
+            lhs = Expr::BinaryOp {
+                left: Box::new(lhs),
+                op,
+                right: Box::new(rhs),
+                span: span_start..span_end,
+            };
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_atom(&mut self) -> Result<Expr, ParseError> {
+        let tok = self.peek().clone();
+        match &tok.kind {
+            TokenKind::IntLiteral(v) => {
+                let value = *v;
+                let span = tok.span.clone();
+                self.pos += 1;
+                Ok(Expr::IntLiteral { value, span })
+            }
+            TokenKind::Identifier(_) => {
+                let (name, name_span) = self.expect_ident()?;
+                // Check for function call: identifier followed by `(`
+                if self.peek().kind == TokenKind::LParen {
+                    self.pos += 1; // consume `(`
+                    let args = self.parse_call_args()?;
+                    let rparen = self.expect(&TokenKind::RParen)?;
+                    Ok(Expr::Call {
+                        function: name,
+                        args,
+                        span: name_span.start..rparen.span.end,
+                    })
+                } else {
+                    Ok(Expr::Identifier { name, span: name_span })
+                }
+            }
+            TokenKind::LParen => {
+                self.pos += 1;
+                let expr = self.parse_expr(0)?;
+                self.expect(&TokenKind::RParen)?;
+                Ok(expr)
+            }
+            _ => Err(ParseError::new(
+                format!("unexpected token in expression: {:?}", tok.kind),
+                tok.span,
+            )),
+        }
+    }
+
+    fn parse_call_args(&mut self) -> Result<Vec<Expr>, ParseError> {
+        let mut args = Vec::new();
+        if self.peek().kind == TokenKind::RParen {
+            return Ok(args);
+        }
+        loop {
+            args.push(self.parse_expr(0)?);
+            if self.peek().kind == TokenKind::Comma {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        Ok(args)
+    }
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Returns `(left_bp, right_bp, op)` for infix operators, or `None`.
+fn infix_binding_power(kind: &TokenKind) -> Option<(u8, u8, BinOp)> {
+    match kind {
+        TokenKind::Plus  => Some((1, 2, BinOp::Add)),
+        TokenKind::Minus => Some((1, 2, BinOp::Sub)),
+        TokenKind::Star  => Some((3, 4, BinOp::Mul)),
+        TokenKind::Slash => Some((3, 4, BinOp::Div)),
+        _ => None,
+    }
+}
+
+fn expr_span(expr: &Expr) -> &Span {
+    match expr {
+        Expr::IntLiteral { span, .. } => span,
+        Expr::Identifier { span, .. } => span,
+        Expr::BinaryOp { span, .. } => span,
+        Expr::Call { span, .. } => span,
+    }
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_minimal_function() {
+        let prog = parse("fn main() Int { 42 }").unwrap();
+        assert_eq!(prog.functions.len(), 1);
+        let func = &prog.functions[0];
+        assert_eq!(func.name, "main");
+        assert_eq!(func.params.len(), 0);
+        assert_eq!(func.return_type.name, "Int");
+        assert_eq!(func.body.len(), 1);
+        matches!(&func.body[0], Stmt::Expr(Expr::IntLiteral { value: 42, .. }));
+        if let Stmt::Expr(Expr::IntLiteral { value, .. }) = &func.body[0] {
+            assert_eq!(*value, 42);
+        } else {
+            panic!("expected IntLiteral(42)");
+        }
+    }
+
+    #[test]
+    fn parse_let_binding() {
+        let prog = parse("fn main() Int { let x Int = 42 x }").unwrap();
+        let body = &prog.functions[0].body;
+        assert_eq!(body.len(), 2);
+        assert!(matches!(&body[0], Stmt::Let { name, .. } if name == "x"));
+        assert!(matches!(&body[1], Stmt::Expr(Expr::Identifier { name, .. }) if name == "x"));
+    }
+
+    #[test]
+    fn parse_binary_expression() {
+        let prog = parse("fn main() Int { 1 + 2 }").unwrap();
+        let body = &prog.functions[0].body;
+        assert_eq!(body.len(), 1);
+        if let Stmt::Expr(Expr::BinaryOp { op, left, right, .. }) = &body[0] {
+            assert_eq!(*op, BinOp::Add);
+            assert!(matches!(left.as_ref(), Expr::IntLiteral { value: 1, .. }));
+            assert!(matches!(right.as_ref(), Expr::IntLiteral { value: 2, .. }));
+        } else {
+            panic!("expected BinaryOp");
+        }
+    }
+
+    #[test]
+    fn parse_operator_precedence() {
+        // 1 + 2 * 3 should parse as 1 + (2 * 3)
+        let prog = parse("fn main() Int { 1 + 2 * 3 }").unwrap();
+        let body = &prog.functions[0].body;
+        if let Stmt::Expr(Expr::BinaryOp { op, left, right, .. }) = &body[0] {
+            assert_eq!(*op, BinOp::Add);
+            assert!(matches!(left.as_ref(), Expr::IntLiteral { value: 1, .. }));
+            if let Expr::BinaryOp { op: inner_op, left: il, right: ir, .. } = right.as_ref() {
+                assert_eq!(*inner_op, BinOp::Mul);
+                assert!(matches!(il.as_ref(), Expr::IntLiteral { value: 2, .. }));
+                assert!(matches!(ir.as_ref(), Expr::IntLiteral { value: 3, .. }));
+            } else {
+                panic!("expected inner BinaryOp(Mul)");
+            }
+        } else {
+            panic!("expected outer BinaryOp(Add)");
+        }
+    }
+
+    #[test]
+    fn parse_function_call() {
+        let prog = parse("fn main() Int { add(1, 2) }").unwrap();
+        let body = &prog.functions[0].body;
+        assert_eq!(body.len(), 1);
+        if let Stmt::Expr(Expr::Call { function, args, .. }) = &body[0] {
+            assert_eq!(function, "add");
+            assert_eq!(args.len(), 2);
+            assert!(matches!(&args[0], Expr::IntLiteral { value: 1, .. }));
+            assert!(matches!(&args[1], Expr::IntLiteral { value: 2, .. }));
+        } else {
+            panic!("expected Call");
+        }
+    }
+
+    #[test]
+    fn parse_function_with_params() {
+        let prog = parse("fn add(a Int, b Int) Int { a + b }").unwrap();
+        let func = &prog.functions[0];
+        assert_eq!(func.name, "add");
+        assert_eq!(func.params.len(), 2);
+        assert_eq!(func.params[0].name, "a");
+        assert_eq!(func.params[0].type_name.name, "Int");
+        assert_eq!(func.params[1].name, "b");
+        assert_eq!(func.params[1].type_name.name, "Int");
+    }
+
+    #[test]
+    fn parse_multiple_functions() {
+        let src = "fn foo() Int { 1 } fn bar() Int { 2 }";
+        let prog = parse(src).unwrap();
+        assert_eq!(prog.functions.len(), 2);
+        assert_eq!(prog.functions[0].name, "foo");
+        assert_eq!(prog.functions[1].name, "bar");
+    }
+}

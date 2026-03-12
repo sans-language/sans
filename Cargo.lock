@@ -21,6 +21,9 @@ version = "0.1.0"
 [[package]]
 name = "cyflym-parser"
 version = "0.1.0"
+dependencies = [
+ "cyflym-lexer",
+]
 
 [[package]]
 name = "cyflym-typeck"
