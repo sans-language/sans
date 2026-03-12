@@ -36,6 +36,24 @@ The name "Cyflym" comes from Welsh, meaning "fast."
 
 ## Section 1: Syntax
 
+### Primitive Types
+
+| Type | Description | Size |
+|------|-------------|------|
+| `Bool` | Boolean | 1 byte |
+| `Int8`, `Int16`, `Int32`, `Int64` | Signed integers | 1, 2, 4, 8 bytes |
+| `UInt8`, `UInt16`, `UInt32`, `UInt64` | Unsigned integers | 1, 2, 4, 8 bytes |
+| `Int` | Platform-native signed integer (64-bit on 64-bit platforms) | 8 bytes |
+| `UInt` | Platform-native unsigned integer | 8 bytes |
+| `Float32`, `Float64` | IEEE 754 floating point | 4, 8 bytes |
+| `Float` | Alias for `Float64` | 8 bytes |
+| `Byte` | Alias for `UInt8` | 1 byte |
+| `Rune` | Unicode code point (alias for `Int32`) | 4 bytes |
+| `String` | UTF-8 encoded, immutable, reference type | pointer + length |
+| `()` | Unit type (void equivalent) | 0 bytes |
+
+All primitive types are value types (copied on assignment) except `String`, which is an immutable reference type (cheap to copy — only copies the pointer and length).
+
 ### Variables
 
 Immutable by default. `mut` keyword for mutable bindings.
@@ -92,24 +110,41 @@ fn handle_result(r Result<User, Error>) String {
 
 ### Nullable Types
 
-Non-null by default. `?` suffix marks nullable types. Compiler enforces safe access.
+Non-null by default. `T?` is syntactic sugar for `Option<T>` — they are the same type. `Option<T>` is a built-in enum with variants `Some(T)` and `None`.
 
 ```
+// These are equivalent:
+let email String? = None
+let email Option<String> = None
+
 let name String = "cyflym"       // never null
 let email String? = None         // nullable
 
-let len = email?.len() ?? 0     // nil coalescing
+// Optional chaining and nil coalescing
+let len = email?.len() ?? 0     // returns Int
 let upper = email?.to_upper()   // returns String?
 
+// Pattern matching — works because T? is Option<T>
 match email {
     Some(e) -> send_to(e),
     None -> log("no email")
+}
+
+// if-let shorthand
+if let Some(e) = email {
+    send_to(e)
 }
 ```
 
 ### Error Handling
 
 Result types with `?` propagation. Errors are values, not exceptions.
+
+The `?` operator works in two contexts:
+1. **In functions returning `Result<T, E>`**: propagates the `Err`, unwraps the `Ok`
+2. **In functions returning `T?` / `Option<T>`**: propagates `None`, unwraps the `Some`
+
+For HTTP handlers that return `http.Response`, the `?` operator is **not** used directly. Instead, use explicit `match` or helper methods:
 
 ```
 fn fetch_user(id String) Result<User, Error> {
@@ -122,6 +157,13 @@ fn fetch_user(id String) Result<User, Error> {
 match fetch_user("123") {
     Ok(user) -> respond(json(user)),
     Err(e) -> respond(status(500), e.message)
+}
+
+// main() returns Result<(), Error> to allow ? usage
+fn main() Result<(), Error> {
+    let db = postgres.connect("postgres://localhost/myapp")?
+    http.serve(":8080", router)?
+    Ok(())
 }
 ```
 
@@ -146,8 +188,8 @@ let user = User {
     age: 30,
 }
 
-// Update syntax
-let updated = user { age: 31 }
+// Struct update syntax — uses `..` spread to distinguish from blocks
+let updated = User { ..user, age: 31 }
 ```
 
 ### Enums
@@ -227,6 +269,201 @@ fn log_and_send<T : Serializable + Display>(value T) {
 }
 ```
 
+### Closures
+
+Closures are anonymous functions that capture variables from their enclosing scope. Capture is **by reference** for GC-managed data (the GC keeps captured values alive). Closures that cross thread boundaries (via `spawn` or channel send) capture by **cloning** — the compiler automatically clones captured values into the closure.
+
+```
+// Basic closure
+let double = fn(x Int) Int { x * 2 }
+
+// Closure capturing from environment
+let multiplier = 3
+let times = fn(x Int) Int { x * multiplier }  // captures multiplier by ref
+
+// Type alias for function/closure types
+type Handler = fn(http.Request) http.Response
+type Transform<T> = fn(T) T
+type Predicate<T> = fn(T) Bool
+
+// Closures as arguments
+fn filter<T>(list List<T>, pred fn(T) Bool) List<T> { ... }
+let adults = filter(users, fn(u) { u.age >= 18 })
+
+// Closures crossing thread boundaries — auto-clone
+let config = load_config()
+spawn {
+    // config is cloned into this green thread
+    serve(config)
+}
+```
+
+### Error Types
+
+`Error` is a built-in trait, not a concrete type. Any type implementing `Error` can be used with `Result`.
+
+```
+// The Error trait
+trait Error {
+    fn message(self) String
+}
+
+// Custom error types
+enum AppError {
+    NotFound { resource String },
+    Unauthorized,
+    ValidationFailed { field String, reason String },
+    Internal { cause String },
+}
+
+impl AppError : Error {
+    fn message(self) String {
+        match self {
+            NotFound(r) -> format("not found: {}", r.resource),
+            Unauthorized -> "unauthorized",
+            ValidationFailed(v) -> format("{}: {}", v.field, v.reason),
+            Internal(i) -> i.cause
+        }
+    }
+}
+
+// Pattern matching on error variants
+fn handle(req http.Request) http.Response {
+    match fetch_user(req.param("id")) {
+        Ok(user) -> http.json(200, user),
+        Err(AppError.NotFound(_)) -> http.json(404, { "error": "not found" }),
+        Err(AppError.Unauthorized) -> http.json(401, { "error": "unauthorized" }),
+        Err(e) -> http.json(500, { "error": e.message() })
+    }
+}
+
+// Error conversion — implement From trait for automatic ? conversion
+impl AppError : From<postgres.Error> {
+    fn from(e postgres.Error) AppError {
+        AppError.Internal { cause: e.message() }
+    }
+}
+```
+
+### String Formatting & Interpolation
+
+Cyflym supports both a `format()` function and string interpolation with `${}`.
+
+```
+let name = "world"
+
+// Format function — type-checked at compile time
+let greeting = format("Hello, {}!", name)
+
+// String interpolation — syntactic sugar for format()
+let greeting = "Hello, ${name}!"
+let info = "User ${user.name} is ${user.age} years old"
+let calc = "Result: ${a + b}"
+
+// The Display trait controls how types appear in format/interpolation
+trait Display {
+    fn display(self) String
+}
+```
+
+### Attributes
+
+Attributes annotate declarations with metadata. Built-in attributes are provided; user-defined attributes are not supported in Phase 1.
+
+```
+// Derive — compiler generates trait implementations
+#[derive(Serialize, Deserialize, Display)]
+struct User { ... }
+
+// JSON field mapping
+#[json(name = "created_at")]
+created Timestamp,
+
+// Conditional compilation
+#[cfg(target = "linux")]
+fn linux_specific() { ... }
+
+// Deprecation
+#[deprecated(message = "use new_api() instead")]
+fn old_api() { ... }
+
+// Test attributes
+#[test]
+fn test_something() { ... }
+```
+
+### Control Flow
+
+```
+// if/else — expression-based
+let label = if count > 0 { "some" } else { "none" }
+
+// loop — infinite loop
+loop {
+    let msg = ch.recv()
+    if msg == "quit" { break }
+}
+
+// for — iteration via Iterable trait
+for item in collection { ... }
+for i in 0..10 { ... }         // range: 0 to 9
+for i in 0..=10 { ... }        // inclusive: 0 to 10
+for key, value in map { ... }  // destructured iteration
+
+// while
+while condition {
+    ...
+}
+```
+
+### Iterable Trait
+
+Types implement `Iterable` to support `for` loops.
+
+```
+trait Iterable<T> {
+    fn iter(self) Iterator<T>
+}
+
+trait Iterator<T> {
+    fn next(mut self) Option<T>
+}
+```
+
+### Operator Overloading & Equality
+
+Operators are defined via traits. Types opt in by implementing the relevant trait.
+
+```
+trait Eq {
+    fn eq(self, other Self) Bool
+}
+
+trait Ord : Eq {
+    fn cmp(self, other Self) Ordering
+}
+
+trait Add<Rhs = Self> {
+    type Output
+    fn add(self, rhs Rhs) Output
+}
+
+// Compiler derives Eq for structs with all-Eq fields
+#[derive(Eq)]
+struct Point {
+    x Float,
+    y Float,
+}
+
+// Manual implementation
+impl Point : Add {
+    type Output = Point
+    fn add(self, rhs Point) Point {
+        Point { x: self.x + rhs.x, y: self.y + rhs.y }
+    }
+}
+```
+
 ### Built-in Collections
 
 ```
@@ -236,14 +473,15 @@ let nums [3]Int = [1, 2, 3]
 // Slices — dynamic
 let names []String = ["Alice", "Bob"]
 
-// Maps
-let ages Map<String, Int> = {
-    "Alice": 30,
-    "Bob": 25,
-}
+// Maps — use map() constructor to avoid ambiguity with blocks
+let ages = map(("Alice", 30), ("Bob", 25))
+let ages Map<String, Int> = map(
+    ("Alice", 30),
+    ("Bob", 25),
+)
 
 // Sets
-let tags Set<String> = {"api", "v2", "public"}
+let tags = set("api", "v2", "public")
 ```
 
 ---
@@ -343,10 +581,24 @@ spawn {
 
 ### Concurrency Safety
 
-Compiler-enforced:
-- Mutable data cannot be shared across threads without `Mutex` or `RwLock`
-- Channels enforce ownership transfer — sending a value moves it
+Compiler-enforced via the `Send` trait:
+- Only types implementing `Send` can cross thread boundaries (via `spawn` or channel send)
+- All primitive types, immutable structs, and `Mutex<T>`/`RwLock<T>` are `Send`
+- Mutable references are **not** `Send` — mutable data cannot be shared without synchronization
+- `spawn` blocks auto-clone captured variables (captured values must implement `Send + Clone`)
+- Channels transfer ownership — sending a value moves it; the sender can no longer access it
 - No data races by construction
+
+```
+let mut count = 0
+// spawn { count += 1 }       // compile error: mut variable not Send
+
+let count = Mutex(0)
+spawn {
+    let mut val = count.lock()  // OK: Mutex<Int> is Send
+    *val += 1
+}
+```
 
 ---
 
@@ -384,10 +636,31 @@ fn get_user(req http.Request) http.Response {
 }
 
 fn create_user(req http.Request) http.Response {
+    match req.json<CreateUserInput>() {
+        Ok(body) -> {
+            match insert_user(body) {
+                Ok(user) -> http.json(201, user),
+                Err(e) -> http.json(500, json.obj(("error", e.message())))
+            }
+        },
+        Err(e) -> http.json(400, json.obj(("error", "invalid body")))
+    }
+}
+
+// Alternatively, handlers can return Result<http.Response, http.Error>
+// and the framework converts errors to 500 responses automatically:
+fn create_user_v2(req http.Request) Result<http.Response, http.Error> {
     let body = req.json<CreateUserInput>()?
     let user = insert_user(body)?
-    http.json(201, user)
+    Ok(http.json(201, user))
 }
+```
+
+**Note on inline JSON objects**: Rather than using `{ "key": "value" }` syntax (which is ambiguous with blocks), use `json.obj()` for inline construction:
+
+```
+json.obj(("error", "not found"))                        // {"error": "not found"}
+json.obj(("name", user.name), ("age", user.age))        // {"name": "...", "age": ...}
 ```
 
 ### Middleware
@@ -414,10 +687,10 @@ fn auth(next http.Handler) http.Handler {
             Some(token) -> {
                 match verify_token(token) {
                     Ok(claims) -> next(req.with_context("claims", claims)),
-                    Err(_) -> http.json(401, { "error": "invalid token" })
+                    Err(_) -> http.json(401, json.obj(("error", "invalid token")))
                 }
             },
-            None -> http.json(401, { "error": "missing token" })
+            None -> http.json(401, json.obj(("error", "missing token")))
         }
     }
 }
@@ -456,15 +729,24 @@ Pass data through the request pipeline without global state.
 ```
 fn auth_middleware(next http.Handler) http.Handler {
     fn(req http.Request) http.Response {
-        let claims = verify_token(req.header("Authorization")?)?
-        next(req.with_context("user_id", claims.sub))
+        match req.header("Authorization") {
+            Some(token) -> {
+                match verify_token(token) {
+                    Ok(claims) -> next(req.with_context("user_id", claims.sub)),
+                    Err(_) -> http.json(401, json.obj(("error", "invalid token")))
+                }
+            },
+            None -> http.json(401, json.obj(("error", "missing token")))
+        }
     }
 }
 
 fn get_profile(req http.Request) http.Response {
-    let user_id = req.context<String>("user_id")?
-    let profile = load_profile(user_id)?
-    http.json(200, profile)
+    let user_id = req.context<String>("user_id")
+    match load_profile(user_id) {
+        Ok(profile) -> http.json(200, profile),
+        Err(e) -> http.json(500, json.obj(("error", e.message())))
+    }
 }
 ```
 
@@ -503,16 +785,27 @@ postgres = "0.5.0"
 redis = "1.2.0"
 ```
 
-### Imports
+### Imports & Resolution Order
+
+The compiler resolves imports in this order:
+1. **Local modules** — paths matching `src/` directory structure
+2. **Standard library** — built-in packages (`http`, `json`, `log`, etc.)
+3. **External dependencies** — packages listed in `cyflym.toml` `[dependencies]`
+
+If a name collision occurs between stdlib and an external package, the compiler raises an error and requires an explicit alias.
 
 ```
-import "models/user"
-import "handlers/users"
-import "middleware/auth"
-import "http"
+import "models/user"              // local: src/models/user.cy
+import "handlers/users"           // local: src/handlers/users.cy
+import "http"                     // stdlib
+import "postgres"                 // external (from cyflym.toml)
 
-// External packages
-import "postgres"
+// Aliased imports
+import "models/user" as u
+import "postgres" as pg
+
+// Selective imports
+import { Router, Request, Response } from "http"
 ```
 
 ### Visibility
@@ -611,6 +904,28 @@ test "validate age" with [
 | `encoding` | Base64, hex, URL encoding |
 | `database` | Database trait (drivers are external) |
 
+### Variadic Functions
+
+Functions can accept a variable number of arguments of the same type using `...T` syntax. Variadic args are received as `[]T` (a slice).
+
+```
+fn sum(nums ...Int) Int {
+    let mut total = 0
+    for n in nums {
+        total += n
+    }
+    total
+}
+
+let result = sum(1, 2, 3, 4)   // nums is []Int
+
+// Spread a slice into variadic position
+let numbers = [1, 2, 3]
+let result = sum(numbers...)
+```
+
+**Note on `Any`**: Cyflym does **not** have a top type `Any`. The database trait uses `trait SqlParam` instead of `...Any` to maintain type safety. Types that can be passed as SQL parameters implement `SqlParam`.
+
 ### Database Trait
 
 Defined in stdlib. Drivers are external packages.
@@ -623,8 +938,8 @@ pub trait Database {
 }
 
 pub trait Connection {
-    fn query<T : Deserializable>(self, sql String, params ...Any) Result<List<T>, Error>
-    fn exec(self, sql String, params ...Any) Result<ExecResult, Error>
+    fn query<T : Deserializable>(self, sql String, params ...SqlParam) Result<List<T>, Error>
+    fn exec(self, sql String, params ...SqlParam) Result<ExecResult, Error>
     fn transaction(self, f fn(Tx) Result<(), Error>) Result<(), Error>
 }
 
@@ -643,23 +958,62 @@ fn main() {
 
 ### Memory Safety
 
-Enforced at compile time. No manual memory management, no unsafe pointer arithmetic by default.
+Cyflym is a **GC-managed language**. The garbage collector handles all memory reclamation. There is no borrow checker or lifetime system like Rust.
+
+Move semantics apply in exactly **two** cases:
+1. **Channel sends** — sending a value through a channel transfers ownership to prevent data races
+2. **Explicit `move` keyword** — for rare cases where you want to transfer ownership explicitly
+
+All other value passing is by reference (GC keeps values alive as long as they're reachable). Function parameters are passed by reference; the GC tracks all references.
 
 ```
-let name = "Alice"        // immutable
+let name = "Alice"        // immutable, GC-managed
 let mut count = 0         // explicitly mutable
 
-// Ownership transfer through channels
+// Normal function calls — pass by reference, GC-managed
+fn process(data []Byte) Result<(), Error> {
+    // data is a reference; caller can still use it after this call
+    ...
+}
+
+// Channel sends — move semantics to prevent data races
 let data = build_payload()
 ch.send(data)             // data moves into channel
 // print(data)            // compile error: data was moved
 
-// Borrowing for function calls
-fn process(data []Byte) Result<(), Error> {
-    // data is borrowed, caller retains ownership
-    ...
+// Explicit move (rare)
+let data2 = move data     // transfers ownership
+```
+
+### Unsafe & FFI
+
+For interoperability with C libraries (critical for database drivers, system calls, etc.), Cyflym provides an `unsafe` block and FFI declarations.
+
+```
+// FFI: declare external C functions
+extern "C" {
+    fn malloc(size UInt) *Byte
+    fn free(ptr *Byte)
+    fn strlen(s *Byte) UInt
+}
+
+// Unsafe block — required for raw pointer operations
+unsafe {
+    let ptr = malloc(1024)
+    // ... use raw pointer
+    free(ptr)
+}
+
+// Safe wrapper pattern — expose safe API over unsafe internals
+pub fn allocate_buffer(size UInt) []Byte {
+    unsafe {
+        let ptr = malloc(size)
+        slice_from_raw(ptr, size)   // converts to GC-managed slice
+    }
 }
 ```
+
+Raw pointers (`*T`) and `unsafe` blocks are only available within `unsafe` — the compiler rejects raw pointer operations outside of `unsafe` blocks. This keeps the unsafe surface area explicit and auditable.
 
 ### Bounds Checking
 
@@ -765,7 +1119,7 @@ struct CreateUserInput {
     email String?,
 }
 
-fn main() {
+fn main() Result<(), Error> {
     let db = postgres.connect("postgres://localhost/myapp")?
 
     let router = http.router()
@@ -774,16 +1128,15 @@ fn main() {
     router.post("/users", fn(req) { create_user(req, db) })
 
     log.info("Starting server on :8080")
-    http.serve(":8080", router)
+    http.serve(":8080", router)?
+    Ok(())
 }
 
 fn logging(next http.Handler) http.Handler {
     fn(req http.Request) http.Response {
         let start = time.now()
         let resp = next(req)
-        log.info("{} {} {} {}ms",
-            req.method, req.path, resp.status,
-            time.since(start).ms())
+        log.info("${req.method} ${req.path} ${resp.status} ${time.since(start).ms()}ms")
         resp
     }
 }
@@ -794,22 +1147,30 @@ fn get_user(req http.Request, db postgres.Connection) http.Response {
         Ok(users) -> {
             match users.first() {
                 Some(user) -> http.json(200, user),
-                None -> http.json(404, { "error": "not found" })
+                None -> http.json(404, json.obj(("error", "not found")))
             }
         },
         Err(e) -> {
-            log.error("db error: {}", e)
-            http.json(500, { "error": "internal error" })
+            log.error("db error: ${e}")
+            http.json(500, json.obj(("error", "internal error")))
         }
     }
 }
 
 fn create_user(req http.Request, db postgres.Connection) http.Response {
-    let input = req.json<CreateUserInput>()?
-    let id = generate_id()
-    db.exec("INSERT INTO users (id, name, email) VALUES (?, ?, ?)",
-        id, input.name, input.email)?
-    let user = User { id: id, name: input.name, email: input.email }
-    http.json(201, user)
+    match req.json<CreateUserInput>() {
+        Ok(input) -> {
+            let id = generate_id()
+            match db.exec("INSERT INTO users (id, name, email) VALUES (?, ?, ?)",
+                          id, input.name, input.email) {
+                Ok(_) -> {
+                    let user = User { id: id, name: input.name, email: input.email }
+                    http.json(201, user)
+                },
+                Err(e) -> http.json(500, json.obj(("error", e.message())))
+            }
+        },
+        Err(_) -> http.json(400, json.obj(("error", "invalid request body")))
+    }
 }
 ```
