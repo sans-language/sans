@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
 
-use cyflym_ir::ir::{Instruction, IrBinOp, Module};
+use cyflym_ir::ir::{Instruction, IrBinOp, IrCmpOp, Module};
 use inkwell::context::Context;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::values::IntValue;
+use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
 #[derive(Debug)]
@@ -102,6 +103,16 @@ fn generate_llvm<'ctx>(
             regs.insert(param_name.clone(), param_val);
         }
 
+        // Pre-create basic blocks for all Label instructions
+        let mut label_blocks: HashMap<String, inkwell::basic_block::BasicBlock<'ctx>> =
+            HashMap::new();
+        for instr in &func.body {
+            if let Instruction::Label { name } = instr {
+                let bb = context.append_basic_block(llvm_fn, name);
+                label_blocks.insert(name.clone(), bb);
+            }
+        }
+
         // Generate instructions
         for instr in &func.body {
             match instr {
@@ -162,30 +173,92 @@ fn generate_llvm<'ctx>(
                 }
                 Instruction::Ret { value } => {
                     let val = regs[value];
+                    // If returning an i1 (bool), zext to i64 for the function return type
+                    let ret_val = if val.get_type().get_bit_width() == 1 {
+                        builder
+                            .build_int_z_extend(val, i64_type, "zext_ret")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        val
+                    };
                     builder
-                        .build_return(Some(&val))
+                        .build_return(Some(&ret_val))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
-                Instruction::BoolConst { .. } => {
-                    todo!("Task 6: codegen for BoolConst")
+                Instruction::BoolConst { dest, value } => {
+                    let bool_type = context.bool_type();
+                    let val = bool_type.const_int(*value as u64, false);
+                    regs.insert(dest.clone(), val);
                 }
-                Instruction::CmpOp { .. } => {
-                    todo!("Task 6: codegen for CmpOp")
+                Instruction::CmpOp {
+                    dest,
+                    op,
+                    left,
+                    right,
+                } => {
+                    let lhs = regs[left];
+                    let rhs = regs[right];
+                    let pred = match op {
+                        IrCmpOp::Eq => IntPredicate::EQ,
+                        IrCmpOp::NotEq => IntPredicate::NE,
+                        IrCmpOp::Lt => IntPredicate::SLT,
+                        IrCmpOp::Gt => IntPredicate::SGT,
+                        IrCmpOp::LtEq => IntPredicate::SLE,
+                        IrCmpOp::GtEq => IntPredicate::SGE,
+                    };
+                    let result = builder
+                        .build_int_compare(pred, lhs, rhs, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
                 }
-                Instruction::Not { .. } => {
-                    todo!("Task 6: codegen for Not")
+                Instruction::Not { dest, src } => {
+                    let val = regs[src];
+                    let result = builder
+                        .build_not(val, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
                 }
-                Instruction::Label { .. } => {
-                    todo!("Task 6: codegen for Label")
+                Instruction::Label { name } => {
+                    let bb = label_blocks[name];
+                    builder.position_at_end(bb);
                 }
-                Instruction::Branch { .. } => {
-                    todo!("Task 6: codegen for Branch")
+                Instruction::Branch {
+                    cond,
+                    then_label,
+                    else_label,
+                } => {
+                    let cond_val = regs[cond];
+                    let then_bb = label_blocks[then_label];
+                    let else_bb = label_blocks[else_label];
+                    builder
+                        .build_conditional_branch(cond_val, then_bb, else_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
-                Instruction::Jump { .. } => {
-                    todo!("Task 6: codegen for Jump")
+                Instruction::Jump { target } => {
+                    let target_bb = label_blocks[target];
+                    builder
+                        .build_unconditional_branch(target_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
-                Instruction::Phi { .. } => {
-                    todo!("Task 6: codegen for Phi")
+                Instruction::Phi {
+                    dest,
+                    a_val,
+                    a_label,
+                    b_val,
+                    b_label,
+                } => {
+                    let a = regs[a_val];
+                    let b = regs[b_val];
+                    let a_bb = label_blocks[a_label];
+                    let b_bb = label_blocks[b_label];
+
+                    // Determine the phi type from the incoming values
+                    let phi_type = a.get_type();
+                    let phi = builder
+                        .build_phi(phi_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
+                    regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
                 }
             }
         }
@@ -197,7 +270,7 @@ fn generate_llvm<'ctx>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyflym_ir::ir::{Instruction, IrBinOp, IrFunction, Module};
+    use cyflym_ir::ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module};
 
     #[test]
     fn codegen_produces_llvm_ir() {
@@ -259,5 +332,112 @@ mod tests {
             ir
         );
         assert!(ir.contains("ret i64"), "expected 'ret i64' in:\n{}", ir);
+    }
+
+    #[test]
+    fn codegen_if_else() {
+        // Equivalent to: if true { 1 } else { 2 }
+        let module = Module {
+            functions: vec![IrFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: vec![
+                    Instruction::BoolConst {
+                        dest: "%0".to_string(),
+                        value: true,
+                    },
+                    Instruction::Branch {
+                        cond: "%0".to_string(),
+                        then_label: "then_0".to_string(),
+                        else_label: "else_0".to_string(),
+                    },
+                    Instruction::Label {
+                        name: "then_0".to_string(),
+                    },
+                    Instruction::Const {
+                        dest: "%1".to_string(),
+                        value: 1,
+                    },
+                    Instruction::Jump {
+                        target: "merge_0".to_string(),
+                    },
+                    Instruction::Label {
+                        name: "else_0".to_string(),
+                    },
+                    Instruction::Const {
+                        dest: "%2".to_string(),
+                        value: 2,
+                    },
+                    Instruction::Jump {
+                        target: "merge_0".to_string(),
+                    },
+                    Instruction::Label {
+                        name: "merge_0".to_string(),
+                    },
+                    Instruction::Phi {
+                        dest: "%3".to_string(),
+                        a_val: "%1".to_string(),
+                        a_label: "then_0".to_string(),
+                        b_val: "%2".to_string(),
+                        b_label: "else_0".to_string(),
+                    },
+                    Instruction::Ret {
+                        value: "%3".to_string(),
+                    },
+                ],
+            }],
+        };
+
+        let ir = compile_to_llvm_ir(&module).expect("codegen failed");
+        assert!(
+            ir.contains("br i1"),
+            "expected conditional branch in:\n{}",
+            ir
+        );
+        assert!(ir.contains("phi"), "expected phi node in:\n{}", ir);
+        assert!(ir.contains("ret i64"), "expected ret i64 in:\n{}", ir);
+    }
+
+    #[test]
+    fn codegen_comparison() {
+        // Equivalent to: 1 == 2 (returns bool, zext to i64 for return)
+        let module = Module {
+            functions: vec![IrFunction {
+                name: "main".to_string(),
+                params: vec![],
+                body: vec![
+                    Instruction::Const {
+                        dest: "%0".to_string(),
+                        value: 1,
+                    },
+                    Instruction::Const {
+                        dest: "%1".to_string(),
+                        value: 2,
+                    },
+                    Instruction::CmpOp {
+                        dest: "%2".to_string(),
+                        op: IrCmpOp::Eq,
+                        left: "%0".to_string(),
+                        right: "%1".to_string(),
+                    },
+                    Instruction::Ret {
+                        value: "%2".to_string(),
+                    },
+                ],
+            }],
+        };
+
+        let ir = compile_to_llvm_ir(&module).expect("codegen failed");
+        // LLVM may constant-fold `1 == 2` to `false` (ret i64 0), so accept either
+        assert!(
+            ir.contains("icmp eq") || ir.contains("ret i64 0"),
+            "expected icmp eq or constant-folded 'ret i64 0' in:\n{}",
+            ir
+        );
+        assert!(
+            ir.contains("zext") || ir.contains("ret i64 0"),
+            "expected zext or constant-folded 'ret i64 0' in:\n{}",
+            ir
+        );
     }
 }
