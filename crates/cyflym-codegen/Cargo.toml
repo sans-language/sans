@@ -2,3 +2,7 @@
 name = "cyflym-codegen"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+cyflym-ir = { path = "../cyflym-ir" }
+inkwell = { version = "0.8", features = ["llvm17-0"] }
