@@ -19,16 +19,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyflym"
+version = "0.1.0"
+dependencies = [
+ "cyflym-codegen",
+ "cyflym-ir",
+ "cyflym-lexer",
+ "cyflym-parser",
+ "cyflym-typeck",
+]
+
+[[package]]
 name = "cyflym-codegen"
 version = "0.1.0"
 dependencies = [
  "cyflym-ir",
  "inkwell",
 ]
-
-[[package]]
-name = "cyflym-driver"
-version = "0.1.0"
 
 [[package]]
 name = "cyflym-ir"

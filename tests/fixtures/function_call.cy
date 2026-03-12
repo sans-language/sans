@@ -1,0 +1,7 @@
+fn add(a Int, b Int) Int {
+    a + b
+}
+
+fn main() Int {
+    add(20, 22)
+}
