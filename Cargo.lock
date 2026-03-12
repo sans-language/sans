@@ -28,3 +28,7 @@ dependencies = [
 [[package]]
 name = "cyflym-typeck"
 version = "0.1.0"
+dependencies = [
+ "cyflym-lexer",
+ "cyflym-parser",
+]
