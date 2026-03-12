@@ -337,12 +337,19 @@ fn handle(req http.Request) http.Response {
     }
 }
 
-// Error conversion — implement From trait for automatic ? conversion
+// The From trait — built-in, enables automatic ? conversion between error types
+trait From<T> {
+    fn from(t T) Self
+}
+
+// Implement From to allow ? to auto-convert between error types
 impl AppError : From<postgres.Error> {
     fn from(e postgres.Error) AppError {
         AppError.Internal { cause: e.message() }
     }
 }
+
+// Now ? auto-converts postgres.Error -> AppError in functions returning Result<T, AppError>
 ```
 
 ### String Formatting & Interpolation
@@ -408,7 +415,7 @@ loop {
 for item in collection { ... }
 for i in 0..10 { ... }         // range: 0 to 9
 for i in 0..=10 { ... }        // inclusive: 0 to 10
-for key, value in map { ... }  // destructured iteration
+for (key, value) in map { ... } // maps iterate as (K, V) tuples
 
 // while
 while condition {
@@ -561,8 +568,8 @@ let counter = Mutex(0)
 
 for i in 0..100 {
     spawn {
-        let mut val = counter.lock()
-        *val += 1
+        let mut val = counter.lock()   // val is a MutexGuard<Int>
+        *val += 1                      // * dereferences the guard via Deref trait (not a raw pointer)
     }
 }
 
@@ -742,10 +749,14 @@ fn auth_middleware(next http.Handler) http.Handler {
 }
 
 fn get_profile(req http.Request) http.Response {
+    // context() returns Option<T> — None if key not set
     let user_id = req.context<String>("user_id")
-    match load_profile(user_id) {
-        Ok(profile) -> http.json(200, profile),
-        Err(e) -> http.json(500, json.obj(("error", e.message())))
+    match user_id {
+        None -> http.json(401, json.obj(("error", "not authenticated"))),
+        Some(id) -> match load_profile(id) {
+            Ok(profile) -> http.json(200, profile),
+            Err(e) -> http.json(500, json.obj(("error", e.message())))
+        }
     }
 }
 ```
@@ -983,6 +994,18 @@ ch.send(data)             // data moves into channel
 
 // Explicit move (rare)
 let data2 = move data     // transfers ownership
+
+// move is not needed for closures — spawn auto-clones captured values.
+// move is primarily for transferring ownership to channels or between variables.
+```
+
+### Program Entry Point
+
+`main()` accepts two signatures:
+
+```
+fn main() { ... }                        // no error handling
+fn main() Result<(), Error> { ... }      // allows ? operator, prints error on failure
 ```
 
 ### Unsafe & FFI
