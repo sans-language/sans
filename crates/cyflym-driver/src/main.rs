@@ -46,7 +46,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         std::collections::HashMap::new();
 
     for module in &resolved_modules {
-        let exports = cyflym_typeck::check(&module.program, &module_exports)
+        let exports = cyflym_typeck::check_module(&module.program, &module_exports)
             .map_err(|e| format!("type error in module '{}': {}", module.name, e.message))?;
         module_exports.insert(module.name.clone(), exports);
     }
@@ -65,7 +65,17 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         }
     }
 
-    // Step 5: Lower to IR with name mangling, then merge
+    // Step 5: Build extra struct defs from all module exports (for cross-module field access)
+    let mut extra_struct_defs: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for exports in module_exports.values() {
+        for (struct_name, fields) in &exports.structs {
+            let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+            extra_struct_defs.insert(struct_name.clone(), field_names);
+        }
+    }
+
+    // Step 6: Lower to IR with name mangling, then merge
     let mut all_ir_functions = Vec::new();
 
     for module in &resolved_modules {
@@ -73,14 +83,14 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         all_ir_functions.extend(ir.functions);
     }
 
-    let main_ir = cyflym_ir::lower(&main_program, None, &module_fn_ret_types);
+    let main_ir = cyflym_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
     all_ir_functions.extend(main_ir.functions);
 
     let merged_module = cyflym_ir::ir::Module {
         functions: all_ir_functions,
     };
 
-    // Step 6: Codegen
+    // Step 7: Codegen
     let obj_path = source_path.with_extension("o");
     let obj_path_str = obj_path
         .to_str()
@@ -89,7 +99,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     cyflym_codegen::compile_to_object(&merged_module, obj_path_str)
         .map_err(|e| format!("codegen error: {}", e))?;
 
-    // Step 7: Link
+    // Step 8: Link
     let output_path = source_path.with_extension("");
     let output_path_str = output_path
         .to_str()
@@ -107,7 +117,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         ));
     }
 
-    // Clean up .o file
+    // Step 9: Clean up .o file
     std::fs::remove_file(&obj_path)
         .map_err(|e| format!("could not remove object file '{}': {}", obj_path.display(), e))?;
 

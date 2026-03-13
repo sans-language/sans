@@ -1,5 +1,87 @@
 use std::process::Command;
 
+/// Helper: compile a multi-file fixture directory and run main.cy, returning the exit code.
+fn compile_and_run_dir(fixture_dir: &str) -> i32 {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let dir_path = format!("{}/../../tests/fixtures/{}", manifest_dir, fixture_dir);
+    let main_path = std::path::PathBuf::from(format!("{}/main.cy", dir_path));
+
+    // Resolve imports
+    let resolved_modules = cyflym::imports::resolve_imports(&main_path)
+        .unwrap_or_else(|e| panic!("import resolution error: {}", e));
+
+    // Parse main
+    let main_source = std::fs::read_to_string(&main_path)
+        .unwrap_or_else(|e| panic!("could not read main.cy: {}", e));
+    let main_program = cyflym_parser::parse(&main_source)
+        .unwrap_or_else(|e| panic!("parse error: {:?}", e));
+
+    // Type-check in dependency order
+    let mut module_exports = std::collections::HashMap::new();
+    for module in &resolved_modules {
+        let exports = cyflym_typeck::check_module(&module.program, &module_exports)
+            .unwrap_or_else(|e| panic!("type error in module '{}': {}", module.name, e));
+        module_exports.insert(module.name.clone(), exports);
+    }
+
+    cyflym_typeck::check(&main_program, &module_exports)
+        .unwrap_or_else(|e| panic!("type error: {}", e));
+
+    // Build module_fn_ret_types
+    let mut module_fn_ret_types: std::collections::HashMap<(String, String), cyflym_ir::IrType> =
+        std::collections::HashMap::new();
+    for (mod_name, exports) in &module_exports {
+        for (func_name, sig) in &exports.functions {
+            let ir_type = cyflym_ir::ir_type_for_return(&sig.return_type);
+            module_fn_ret_types.insert((mod_name.clone(), func_name.clone()), ir_type);
+        }
+    }
+
+    // Build extra struct defs from module exports for cross-module field access
+    let mut extra_struct_defs: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for exports in module_exports.values() {
+        for (struct_name, fields) in &exports.structs {
+            let field_names: Vec<String> = fields.iter().map(|(name, _)| name.clone()).collect();
+            extra_struct_defs.insert(struct_name.clone(), field_names);
+        }
+    }
+
+    // Lower + merge
+    let mut all_ir_functions = Vec::new();
+    for module in &resolved_modules {
+        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
+        all_ir_functions.extend(ir.functions);
+    }
+    let main_ir = cyflym_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
+    all_ir_functions.extend(main_ir.functions);
+
+    let merged = cyflym_ir::ir::Module { functions: all_ir_functions };
+
+    // Codegen, link, run
+    let tmp_dir = std::env::temp_dir();
+    let obj_path = tmp_dir.join(format!("{}.o", fixture_dir));
+    let bin_path = tmp_dir.join(fixture_dir);
+
+    cyflym_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
+        .unwrap_or_else(|e| panic!("codegen error: {}", e));
+
+    let link_status = Command::new("cc")
+        .args([obj_path.to_str().unwrap(), "-o", bin_path.to_str().unwrap()])
+        .status()
+        .expect("failed to invoke linker");
+    assert!(link_status.success(), "linker failed");
+
+    let run_status = Command::new(bin_path.to_str().unwrap())
+        .status()
+        .expect("failed to run compiled binary");
+
+    let _ = std::fs::remove_file(&obj_path);
+    let _ = std::fs::remove_file(&bin_path);
+
+    run_status.code().unwrap_or(-1)
+}
+
 /// Helper: compile a .cy fixture file and run it, returning the exit code.
 fn compile_and_run(fixture: &str) -> i32 {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -133,4 +215,24 @@ fn e2e_string_ops() {
 #[test]
 fn e2e_string_conversion() {
     assert_eq!(compile_and_run("string_conversion.cy"), 42);
+}
+
+#[test]
+fn e2e_import_basic() {
+    assert_eq!(compile_and_run_dir("import_basic"), 7);
+}
+
+#[test]
+fn e2e_import_nested() {
+    assert_eq!(compile_and_run_dir("import_nested"), 15);
+}
+
+#[test]
+fn e2e_import_chain() {
+    assert_eq!(compile_and_run_dir("import_chain"), 13);
+}
+
+#[test]
+fn e2e_import_struct() {
+    assert_eq!(compile_and_run_dir("import_struct"), 22);
 }

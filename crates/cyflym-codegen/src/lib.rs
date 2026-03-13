@@ -242,14 +242,21 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), ret_val);
                 }
                 Instruction::Ret { value } => {
-                    let val = regs[value];
-                    // If returning an i1 (bool), zext to i64 for the function return type
-                    let ret_val = if val.get_type().get_bit_width() == 1 {
+                    let ret_val = if let Some(ptr_val) = ptrs.get(value) {
+                        // Returning a struct/enum pointer — convert to i64
                         builder
-                            .build_int_z_extend(val, i64_type, "zext_ret")
+                            .build_ptr_to_int(*ptr_val, i64_type, "ret_ptr2int")
                             .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                     } else {
-                        val
+                        let val = regs[value];
+                        // If returning an i1 (bool), zext to i64 for the function return type
+                        if val.get_type().get_bit_width() == 1 {
+                            builder
+                                .build_int_z_extend(val, i64_type, "zext_ret")
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else {
+                            val
+                        }
                     };
                     builder
                         .build_return(Some(&ret_val))
@@ -424,9 +431,20 @@ fn generate_llvm<'ctx>(
                         .build_store(field_ptr, val)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
-                Instruction::FieldLoad { dest, ptr, field_index } => {
-                    let struct_ptr = ptrs[ptr];
-                    let num_fields = struct_sizes[ptr];
+                Instruction::FieldLoad { dest, ptr, field_index, num_fields } => {
+                    // `ptr` is normally in `ptrs` (alloca). If it's in `regs` instead
+                    // (e.g. returned as i64 from a cross-module call), convert it to a ptr.
+                    let struct_ptr = if let Some(ptr_val) = ptrs.get(ptr) {
+                        *ptr_val
+                    } else {
+                        let int_val = regs[ptr];
+                        builder.build_int_to_ptr(
+                            int_val,
+                            context.ptr_type(inkwell::AddressSpace::default()),
+                            &format!("{}_ptr", ptr),
+                        ).map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let num_fields = *num_fields;
                     let field_types: Vec<inkwell::types::BasicTypeEnum> =
                         (0..num_fields).map(|_| i64_type.into()).collect();
                     let struct_type = context.struct_type(&field_types, false);

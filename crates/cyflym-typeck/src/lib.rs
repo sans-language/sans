@@ -222,6 +222,10 @@ fn check_stmt(
 /// Type-check the given `Program`. Returns `Ok(ModuleExports)` if the program is
 /// well-typed, or a `TypeError` describing the first problem found.
 pub fn check(program: &Program, module_exports: &HashMap<String, ModuleExports>) -> Result<ModuleExports, TypeError> {
+    check_inner(program, module_exports, true)
+}
+
+fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports>, require_main: bool) -> Result<ModuleExports, TypeError> {
     // Pass 0a: collect struct definitions.
     let mut struct_registry: HashMap<String, Vec<(String, Type)>> = HashMap::new();
     let enum_registry: HashMap<String, Vec<(String, Vec<Type>)>> = HashMap::new();
@@ -343,8 +347,8 @@ pub fn check(program: &Program, module_exports: &HashMap<String, ModuleExports>)
         }
     }
 
-    // Require a `main` function.
-    if !fn_env.contains_key("main") {
+    // Require a `main` function (unless checking a library module).
+    if require_main && !fn_env.contains_key("main") {
         return Err(TypeError::new("missing 'main' function"));
     }
 
@@ -459,6 +463,12 @@ pub fn check(program: &Program, module_exports: &HashMap<String, ModuleExports>)
         structs: struct_registry,
         enums: enum_registry,
     })
+}
+
+/// Type-check a library module (no `main` function required).
+/// Otherwise identical to `check`.
+pub fn check_module(program: &Program, module_exports: &HashMap<String, ModuleExports>) -> Result<ModuleExports, TypeError> {
+    check_inner(program, module_exports, false)
 }
 
 /// Type-check a single expression and return its type.

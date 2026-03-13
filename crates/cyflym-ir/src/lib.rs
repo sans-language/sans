@@ -31,8 +31,20 @@ enum LocalVar {
 
 /// Lower a parsed `Program` into an IR `Module`.
 pub fn lower(program: &Program, module_name: Option<&str>, module_fn_ret_types: &HashMap<(String, String), IrType>) -> Module {
+    lower_with_extra_structs(program, module_name, module_fn_ret_types, &HashMap::new())
+}
+
+/// Like `lower`, but merges `extra_struct_defs` (from imported modules) into the struct
+/// definitions available during lowering. This allows the main module to perform field
+/// accesses on structs that are defined in imported modules.
+pub fn lower_with_extra_structs(
+    program: &Program,
+    module_name: Option<&str>,
+    module_fn_ret_types: &HashMap<(String, String), IrType>,
+    extra_struct_defs: &HashMap<String, Vec<String>>,
+) -> Module {
     // Collect struct definitions: name -> field names (ordered)
-    let mut struct_defs: HashMap<String, Vec<String>> = HashMap::new();
+    let mut struct_defs: HashMap<String, Vec<String>> = extra_struct_defs.clone();
     for s in &program.structs {
         let field_names: Vec<String> = s.fields.iter().map(|f| f.name.clone()).collect();
         struct_defs.insert(s.name.clone(), field_names);
@@ -475,6 +487,7 @@ impl IrBuilder {
                 };
                 let struct_fields = self.struct_defs.get(&struct_name)
                     .expect("unknown struct in field access");
+                let num_fields = struct_fields.len();
                 let field_index = struct_fields.iter().position(|n| n == field)
                     .expect("unknown field in field access");
                 let dest = self.fresh_reg();
@@ -482,6 +495,7 @@ impl IrBuilder {
                     dest: dest.clone(),
                     ptr: obj_reg,
                     field_index,
+                    num_fields,
                 });
                 // For now, all struct fields are Int
                 self.reg_types.insert(dest.clone(), IrType::Int);
