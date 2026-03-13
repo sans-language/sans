@@ -93,6 +93,9 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
                     }
                     locals.insert(name.clone(), declared);
                 }
+                Stmt::While { .. } => todo!("typeck: while loops"),
+                Stmt::Return { .. } => todo!("typeck: return statements"),
+                Stmt::Assign { .. } => todo!("typeck: assignment"),
                 Stmt::Expr(expr) => {
                     let ty = check_expr(expr, &locals, &fn_env)?;
                     if is_last && ty != ret_type {
@@ -218,6 +221,9 @@ fn check_expr(
                         }
                         then_locals.insert(name.clone(), declared);
                     }
+                    Stmt::While { .. } => todo!("typeck: while in if branch"),
+                    Stmt::Return { .. } => todo!("typeck: return in if branch"),
+                    Stmt::Assign { .. } => todo!("typeck: assign in if branch"),
                     Stmt::Expr(expr) => {
                         check_expr(expr, &then_locals, fn_env)?;
                     }
@@ -240,6 +246,9 @@ fn check_expr(
                         }
                         else_locals.insert(name.clone(), declared);
                     }
+                    Stmt::While { .. } => todo!("typeck: while in else branch"),
+                    Stmt::Return { .. } => todo!("typeck: return in else branch"),
+                    Stmt::Assign { .. } => todo!("typeck: assign in else branch"),
                     Stmt::Expr(expr) => {
                         check_expr(expr, &else_locals, fn_env)?;
                     }

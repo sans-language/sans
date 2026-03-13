@@ -33,6 +33,9 @@ fn lower_function(func: &cyflym_parser::ast::Function) -> IrFunction {
                 let reg = builder.lower_expr(value);
                 builder.locals.insert(name.clone(), reg);
             }
+            Stmt::While { .. } => todo!("IR: while loops"),
+            Stmt::Return { .. } => todo!("IR: return statements"),
+            Stmt::Assign { .. } => todo!("IR: assignment"),
             Stmt::Expr(expr) => {
                 last_reg = Some(builder.lower_expr(expr));
             }
@@ -242,6 +245,9 @@ impl IrBuilder {
                             let reg = self.lower_expr(value);
                             self.locals.insert(name.clone(), reg);
                         }
+                        Stmt::While { .. } => todo!("IR: while in if branch"),
+                        Stmt::Return { .. } => todo!("IR: return in if branch"),
+                        Stmt::Assign { .. } => todo!("IR: assign in if branch"),
                         Stmt::Expr(expr) => { self.lower_expr(expr); }
                     }
                 }
@@ -256,6 +262,9 @@ impl IrBuilder {
                             let reg = self.lower_expr(value);
                             self.locals.insert(name.clone(), reg);
                         }
+                        Stmt::While { .. } => todo!("IR: while in else branch"),
+                        Stmt::Return { .. } => todo!("IR: return in else branch"),
+                        Stmt::Assign { .. } => todo!("IR: assign in else branch"),
                         Stmt::Expr(expr) => { self.lower_expr(expr); }
                     }
                 }

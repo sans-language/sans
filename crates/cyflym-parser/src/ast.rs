@@ -31,7 +31,22 @@ pub struct TypeName {
 pub enum Stmt {
     Let {
         name: String,
+        mutable: bool,
         type_name: TypeName,
+        value: Expr,
+        span: Span,
+    },
+    While {
+        condition: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
+    Return {
+        value: Expr,
+        span: Span,
+    },
+    Assign {
+        name: String,
         value: Expr,
         span: Span,
     },

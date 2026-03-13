@@ -151,8 +151,31 @@ impl Parser {
     fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
         if self.peek().kind == TokenKind::Let {
             self.parse_let()
+        } else if self.peek().kind == TokenKind::While {
+            self.parse_while()
+        } else if self.peek().kind == TokenKind::Return {
+            self.parse_return()
         } else {
+            // Could be an expression OR an assignment (name = expr)
             let expr = self.parse_expr(0)?;
+            // Check if this is an assignment: identifier followed by =
+            if self.peek().kind == TokenKind::Eq {
+                if let Expr::Identifier { name, span: id_span } = expr {
+                    self.pos += 1; // consume =
+                    let value = self.parse_expr(0)?;
+                    let end = expr_span(&value).end;
+                    return Ok(Stmt::Assign {
+                        name,
+                        value,
+                        span: id_span.start..end,
+                    });
+                } else {
+                    return Err(ParseError::new(
+                        "left side of assignment must be a variable name",
+                        expr_span(&expr).clone(),
+                    ));
+                }
+            }
             Ok(Stmt::Expr(expr))
         }
     }
@@ -160,6 +183,14 @@ impl Parser {
     fn parse_let(&mut self) -> Result<Stmt, ParseError> {
         let let_tok = self.expect(&TokenKind::Let)?;
         let let_start = let_tok.span.start;
+
+        // Check for `mut` keyword
+        let mutable = if self.peek().kind == TokenKind::Mut {
+            self.pos += 1;
+            true
+        } else {
+            false
+        };
 
         let (name, _) = self.expect_ident()?;
         let type_name = self.parse_type_name()?;
@@ -169,9 +200,40 @@ impl Parser {
 
         Ok(Stmt::Let {
             name,
+            mutable,
             type_name,
             value,
             span: let_start..end,
+        })
+    }
+
+    fn parse_while(&mut self) -> Result<Stmt, ParseError> {
+        let while_tok = self.expect(&TokenKind::While)?;
+        let start = while_tok.span.start;
+
+        let condition = self.parse_expr(0)?;
+
+        self.expect(&TokenKind::LBrace)?;
+        let body = self.parse_body()?;
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        let end = rbrace.span.end;
+
+        Ok(Stmt::While {
+            condition,
+            body,
+            span: start..end,
+        })
+    }
+
+    fn parse_return(&mut self) -> Result<Stmt, ParseError> {
+        let ret_tok = self.expect(&TokenKind::Return)?;
+        let start = ret_tok.span.start;
+        let value = self.parse_expr(0)?;
+        let end = expr_span(&value).end;
+
+        Ok(Stmt::Return {
+            value,
+            span: start..end,
         })
     }
 
@@ -313,9 +375,12 @@ impl Parser {
             if self.peek().kind == TokenKind::RBrace {
                 match stmt {
                     Stmt::Expr(expr) => return Ok((stmts, expr)),
-                    Stmt::Let { span, .. } => {
+                    Stmt::Let { span, .. }
+                    | Stmt::While { span, .. }
+                    | Stmt::Return { span, .. }
+                    | Stmt::Assign { span, .. } => {
                         return Err(ParseError::new(
-                            "block must end with an expression, not a let binding",
+                            "block must end with an expression, not a statement",
                             span,
                         ));
                     }
@@ -551,6 +616,59 @@ mod tests {
             assert!(matches!(then_expr.as_ref(), Expr::Identifier { name, .. } if name == "x"));
         } else {
             panic!("expected If expression");
+        }
+    }
+
+    #[test]
+    fn parse_while_loop() {
+        let prog = parse("fn main() Int { while true { 1 } 0 }").unwrap();
+        let body = &prog.functions[0].body;
+        assert_eq!(body.len(), 2);
+        assert!(matches!(&body[0], Stmt::While { .. }));
+    }
+
+    #[test]
+    fn parse_return_stmt() {
+        let prog = parse("fn main() Int { return 42 }").unwrap();
+        let body = &prog.functions[0].body;
+        assert_eq!(body.len(), 1);
+        if let Stmt::Return { value, .. } = &body[0] {
+            assert!(matches!(value, Expr::IntLiteral { value: 42, .. }));
+        } else {
+            panic!("expected Return statement");
+        }
+    }
+
+    #[test]
+    fn parse_mutable_let() {
+        let prog = parse("fn main() Int { let mut x Int = 0 x }").unwrap();
+        if let Stmt::Let { name, mutable, .. } = &prog.functions[0].body[0] {
+            assert_eq!(name, "x");
+            assert!(*mutable);
+        } else {
+            panic!("expected mutable Let");
+        }
+    }
+
+    #[test]
+    fn parse_assignment() {
+        let prog = parse("fn main() Int { let mut x Int = 0 x = 42 x }").unwrap();
+        let body = &prog.functions[0].body;
+        assert_eq!(body.len(), 3);
+        if let Stmt::Assign { name, .. } = &body[1] {
+            assert_eq!(name, "x");
+        } else {
+            panic!("expected Assign statement");
+        }
+    }
+
+    #[test]
+    fn parse_immutable_let() {
+        let prog = parse("fn main() Int { let x Int = 42 x }").unwrap();
+        if let Stmt::Let { mutable, .. } = &prog.functions[0].body[0] {
+            assert!(!*mutable);
+        } else {
+            panic!("expected Let");
         }
     }
 }
