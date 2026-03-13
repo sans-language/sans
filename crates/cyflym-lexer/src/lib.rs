@@ -82,6 +82,8 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "spawn" => TokenKind::Spawn,
                     "channel" => TokenKind::Channel,
                     "mutex" => TokenKind::Mutex,
+                    "array" => TokenKind::Array,
+                    "in" => TokenKind::In,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -424,6 +426,18 @@ mod tests {
     fn lex_mutex_keyword() {
         let tokens = lex("mutex").unwrap();
         assert_eq!(kinds(&tokens), vec![Mutex, Eof]);
+    }
+
+    #[test]
+    fn lex_array_keyword() {
+        let tokens = lex("array").unwrap();
+        assert_eq!(kinds(&tokens), vec![Array, Eof]);
+    }
+
+    #[test]
+    fn lex_in_keyword() {
+        let tokens = lex("in").unwrap();
+        assert_eq!(kinds(&tokens), vec![In, Eof]);
     }
 
     #[test]

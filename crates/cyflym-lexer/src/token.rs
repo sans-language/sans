@@ -62,6 +62,8 @@ pub enum TokenKind {
     Spawn,
     Channel,
     Mutex,
+    Array,
+    In,
 
     // Member access
     Dot,
