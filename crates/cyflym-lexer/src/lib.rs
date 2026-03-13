@@ -84,6 +84,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "mutex" => TokenKind::Mutex,
                     "array" => TokenKind::Array,
                     "in" => TokenKind::In,
+                    "import" => TokenKind::Import,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -446,5 +447,11 @@ mod tests {
         // "fn" is at bytes 0..2, "main" at bytes 3..7
         assert_eq!(tokens[0].span, 0..2);
         assert_eq!(tokens[1].span, 3..7);
+    }
+
+    #[test]
+    fn lex_import_keyword() {
+        let tokens = lex("import").unwrap();
+        assert_eq!(kinds(&tokens), vec![Import, Eof]);
     }
 }

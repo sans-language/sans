@@ -65,6 +65,9 @@ pub enum TokenKind {
     Array,
     In,
 
+    // Modules
+    Import,
+
     // Member access
     Dot,
 
