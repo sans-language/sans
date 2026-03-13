@@ -21,7 +21,7 @@
 | `crates/cyflym-parser/src/ast.rs` | Modify | Add `ArrayCreate` expr, `ForIn` stmt |
 | `crates/cyflym-parser/src/lib.rs` | Modify | Parse `array<T>()`, `for x in expr { }`, update `expr_span`, update `parse_block_body` + 5 tests |
 | `crates/cyflym-typeck/src/types.rs` | Modify | Add `Array` type variant + Display impl |
-| `crates/cyflym-typeck/src/lib.rs` | Modify | Type check array ops, string ops, for-in, String+String, int_to_string/string_to_int + 10 tests |
+| `crates/cyflym-typeck/src/lib.rs` | Modify | Type check array ops, string ops, for-in, String+String, int_to_string/string_to_int + 12 tests |
 | `crates/cyflym-ir/src/ir.rs` | Modify | Add 10 new instructions (5 array + 5 string) |
 | `crates/cyflym-ir/src/lib.rs` | Modify | Add `Array(Box<IrType>)` to IrType, lower all new ops, lower ForIn to counted loop + 4 tests |
 | `crates/cyflym-codegen/src/lib.rs` | Modify | Codegen for array (24-byte struct), string ops (strlen/memcpy/snprintf/strtol), declare C functions + 3 tests |
@@ -225,15 +225,16 @@ In `crates/cyflym-parser/src/lib.rs`, in the `parse_stmt` function (around line 
         } else if self.peek().kind == TokenKind::For {
             let start = self.peek().span.start;
             self.pos += 1;
-            let var_tok = self.peek().clone();
-            if var_tok.kind != TokenKind::Ident {
-                return Err(self.error("expected variable name after 'for'"));
-            }
-            let var = match &var_tok.kind {
-                TokenKind::Ident => var_tok.text.clone(),
-                _ => unreachable!(),
+            let var = if let TokenKind::Identifier(name) = &self.peek().kind {
+                let name = name.clone();
+                self.pos += 1;
+                name
+            } else {
+                return Err(ParseError::new(
+                    "expected variable name after 'for'",
+                    self.peek().span.clone(),
+                ));
             };
-            self.pos += 1;
             self.expect(&TokenKind::In)?;
             let iterable = self.parse_expr(0)?;
             self.expect(&TokenKind::LBrace)?;
@@ -245,7 +246,18 @@ In `crates/cyflym-parser/src/lib.rs`, in the `parse_stmt` function (around line 
 
 - [ ] **Step 7: Update `parse_block_body` for ForIn**
 
-In `crates/cyflym-parser/src/lib.rs`, the `parse_block_body` function (around line 861) checks if the last statement is a non-expression statement (Let, While, etc.) and rejects it. Add `ForIn` to this check alongside `While`. Find the match arm that lists statement variants and add `Stmt::ForIn { .. }`.
+In `crates/cyflym-parser/src/lib.rs`, the `parse_block_body` function (around line 861) checks if the last statement is a non-expression statement (Let, While, etc.) and rejects it. Add `ForIn` to the match arm that lists statement variants. Change:
+
+```rust
+                    | Stmt::LetDestructure { span, .. } => {
+```
+
+To:
+
+```rust
+                    | Stmt::LetDestructure { span, .. }
+                    | Stmt::ForIn { span, .. } => {
+```
 
 - [ ] **Step 8: Run tests to verify they pass**
 
@@ -458,9 +470,14 @@ In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::BinaryOp` match for `BinOp::
                     if op == &BinOp::Add && left_type == Type::String && right_type == Type::String {
                         return Ok(Type::String);
                     }
-                    if left_type != Type::Int || right_type != Type::Int {
+                    if left_type != Type::Int {
                         return Err(TypeError::new(format!(
-                            "arithmetic operator requires Int operands, got {} and {}", left_type, right_type
+                            "arithmetic operator requires Int operands, left operand is {}", left_type
+                        )));
+                    }
+                    if right_type != Type::Int {
+                        return Err(TypeError::new(format!(
+                            "arithmetic operator requires Int operands, right operand is {}", right_type
                         )));
                     }
                     Ok(Type::Int)
@@ -515,21 +532,12 @@ In `crates/cyflym-typeck/src/lib.rs`, in the `check_stmt` function match (around
         }
 ```
 
-- [ ] **Step 10: Update spawn compatibility for Array type**
-
-In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::Spawn` arm (around line 809), update the compatibility check to also allow `Array`:
-
-```rust
-                    let compatible = actual == *expected
-                        || (*expected == Type::Int && matches!(actual, Type::Sender { .. } | Type::Receiver { .. } | Type::JoinHandle | Type::Mutex { .. } | Type::Array { .. }));
-```
-
-- [ ] **Step 11: Run tests to verify they pass**
+- [ ] **Step 10: Run tests to verify they pass**
 
 Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck`
 Expected: All typeck tests PASS (existing + 12 new)
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add crates/cyflym-typeck/src/types.rs crates/cyflym-typeck/src/lib.rs
@@ -617,7 +625,6 @@ In `crates/cyflym-ir/src/ir.rs`, add after `ChannelCreateBounded` (line ~87):
     // Array operations
     ArrayCreate {
         dest: Reg,
-        element_type: IrType,
     },
     ArrayPush {
         array: Reg,
@@ -663,22 +670,7 @@ In `crates/cyflym-ir/src/ir.rs`, add after `ChannelCreateBounded` (line ~87):
     },
 ```
 
-Note: `IrType` must be made `pub` in `crates/cyflym-ir/src/lib.rs` (or moved to `ir.rs`) since `ArrayCreate` references it. The simplest approach: move the `IrType` enum definition from `lib.rs` to `ir.rs` and re-export it, or just make the existing `IrType` pub and import it in `ir.rs`. Check existing visibility — if `IrType` is already in `lib.rs` and `Instruction` is in `ir.rs`, the `ArrayCreate` field needs access. The pragmatic fix: change `ArrayCreate` to store a `String` element type name instead of `IrType`, or define `IrType` in `ir.rs`. Follow whichever pattern is simpler given the existing code.
-
-**Alternative (recommended):** Store the element type as a simple boolean or enum variant flag in the instruction, or better yet, track it only in `reg_types` HashMap (not in the instruction itself). Change `ArrayCreate` to just `{ dest: Reg }` and have the IR lowering set `reg_types[dest] = IrType::Array(element_ir_type)`. This avoids cross-module type references. The `ArrayGet` lowering then looks up the array's `IrType::Array(inner)` to determine the result register's type.
-
-Use this approach:
-
-```rust
-    ArrayCreate {
-        dest: Reg,
-    },
-```
-
-And in the IR lowering, track the element type via `reg_types`:
-```rust
-self.reg_types.insert(dest.clone(), IrType::Array(Box::new(element_ir_type)));
-```
+The element type is tracked via `reg_types` HashMap (not in the instruction itself) to avoid cross-module type references. The IR lowering sets `reg_types[dest] = IrType::Array(Box::new(element_ir_type))`. The `ArrayGet` lowering then looks up the array's `IrType::Array(inner)` to determine the result register's type.
 
 - [ ] **Step 4: Update `IrType`**
 
@@ -714,7 +706,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the `Expr::MutexCreate` arm (around 
 In `crates/cyflym-ir/src/lib.rs`, in the `Expr::MethodCall` match (around line 493), add after the `Mutex`/`unlock` arm:
 
 ```rust
-                    (Some(IrType::Array(inner)), "push") => {
+                    (Some(IrType::Array(_)), "push") => {
                         let val_reg = self.lower_expr(&args[0]);
                         self.instructions.push(Instruction::ArrayPush {
                             array: obj_reg,
@@ -846,44 +838,42 @@ In `crates/cyflym-ir/src/lib.rs`, in the `lower_stmt` function match (around lin
                     array: arr_reg.clone(),
                 });
                 self.reg_types.insert(len_reg.clone(), IrType::Int);
-                // idx = 0
-                let idx_reg = self.fresh_reg();
-                self.instructions.push(Instruction::Const { dest: idx_reg.clone(), value: 0 });
-                self.reg_types.insert(idx_reg.clone(), IrType::Int);
+                // idx = 0 (use Alloca+Store for mutable counter, same as mut vars)
+                let idx_ptr = self.fresh_reg();
+                self.instructions.push(Instruction::Alloca { dest: idx_ptr.clone() });
+                let zero_reg = self.fresh_reg();
+                self.instructions.push(Instruction::Const { dest: zero_reg.clone(), value: 0 });
+                self.instructions.push(Instruction::Store { ptr: idx_ptr.clone(), value: zero_reg });
                 // Determine element IrType from array's IrType
                 let elem_ir_type = match self.reg_types.get(&arr_reg) {
                     Some(IrType::Array(inner)) => inner.as_ref().clone(),
                     _ => IrType::Int, // fallback
                 };
-                // Emit loop structure using existing While-like pattern
-                // We use the same alloca-based loop pattern as ForIn spec:
-                // Store idx to alloca, loop: load, compare, branch, body, increment, branch back
-                // However, IR doesn't have alloca — we use a mutable register approach.
-                // Actually, looking at the existing While lowering pattern, it uses
-                // basic blocks with Branch instructions. Let's follow that pattern.
-                let loop_label = format!("forin_loop_{}", self.fresh_reg().0.replace('%', ""));
-                let body_label = format!("forin_body_{}", self.fresh_reg().0.replace('%', ""));
-                let done_label = format!("forin_done_{}", self.fresh_reg().0.replace('%', ""));
+                // Loop structure — follows the exact While lowering pattern
+                let cond_label = self.fresh_label("forin_cond");
+                let body_label = self.fresh_label("forin_body");
+                let end_label = self.fresh_label("forin_end");
 
-                self.instructions.push(Instruction::Branch { label: loop_label.clone() });
-                self.instructions.push(Instruction::Label { name: loop_label.clone() });
+                self.instructions.push(Instruction::Jump { target: cond_label.clone() });
 
-                // Compare idx < len
+                self.instructions.push(Instruction::Label { name: cond_label.clone() });
+                // Load idx, compare idx < len
+                let idx_reg = self.fresh_reg();
+                self.instructions.push(Instruction::Load { dest: idx_reg.clone(), ptr: idx_ptr.clone() });
                 let cmp_reg = self.fresh_reg();
-                self.instructions.push(Instruction::Compare {
+                self.instructions.push(Instruction::CmpOp {
                     dest: cmp_reg.clone(),
-                    op: CmpOp::Lt,
+                    op: IrCmpOp::Lt,
                     left: idx_reg.clone(),
                     right: len_reg.clone(),
                 });
-
-                self.instructions.push(Instruction::BranchIf {
+                self.instructions.push(Instruction::Branch {
                     cond: cmp_reg,
                     then_label: body_label.clone(),
-                    else_label: done_label.clone(),
+                    else_label: end_label.clone(),
                 });
-                self.instructions.push(Instruction::Label { name: body_label.clone() });
 
+                self.instructions.push(Instruction::Label { name: body_label.clone() });
                 // x = ArrayGet(arr, idx)
                 let elem_reg = self.fresh_reg();
                 self.instructions.push(Instruction::ArrayGet {
@@ -900,32 +890,25 @@ In `crates/cyflym-ir/src/lib.rs`, in the `lower_stmt` function match (around lin
                 }
 
                 // idx = idx + 1
+                let cur_idx = self.fresh_reg();
+                self.instructions.push(Instruction::Load { dest: cur_idx.clone(), ptr: idx_ptr.clone() });
                 let one_reg = self.fresh_reg();
                 self.instructions.push(Instruction::Const { dest: one_reg.clone(), value: 1 });
                 let next_idx = self.fresh_reg();
                 self.instructions.push(Instruction::BinOp {
                     dest: next_idx.clone(),
                     op: IrBinOp::Add,
-                    left: idx_reg.clone(),
+                    left: cur_idx,
                     right: one_reg,
                 });
-                self.reg_types.insert(next_idx.clone(), IrType::Int);
+                self.instructions.push(Instruction::Store { ptr: idx_ptr, value: next_idx });
 
-                // Overwrite idx_reg with next value — but IR is SSA, so we need to
-                // update the register used in the next loop iteration.
-                // Since our IR uses string-named registers and the codegen handles them
-                // via a HashMap, we can reuse the idx_reg name by emitting a Copy.
-                self.instructions.push(Instruction::Copy {
-                    dest: idx_reg.clone(),
-                    src: next_idx,
-                });
-
-                self.instructions.push(Instruction::Branch { label: loop_label });
-                self.instructions.push(Instruction::Label { name: done_label });
+                self.instructions.push(Instruction::Jump { target: cond_label });
+                self.instructions.push(Instruction::Label { name: end_label });
             }
 ```
 
-**IMPORTANT NOTE:** The above ForIn lowering uses `Instruction::Copy`, `Instruction::Label`, `Instruction::Branch`, `Instruction::BranchIf`, and `Instruction::Compare` — these must already exist in the IR from the `While` loop implementation. Check `ir.rs` for these variants. If any are missing or named differently, adapt the code to match existing IR instruction names. Also check how `While` is lowered in `lower_stmt` and follow the exact same pattern for control flow.
+**NOTE:** This follows the exact same control flow pattern as the `Stmt::While` lowering in `lower_stmt` (lines 689–711): `Jump` for unconditional jumps, `Branch` for conditional (cond, then_label, else_label), `CmpOp` for comparisons, `Label` for block labels, and `fresh_label()` for generating label names. The index counter uses `Alloca`/`Store`/`Load` for mutability, same pattern as `let mut` variables.
 
 - [ ] **Step 10: Update `lower_function` last-statement check for ForIn**
 
@@ -1013,19 +996,20 @@ In `crates/cyflym-codegen/src/lib.rs`, after the existing `free` declaration (ar
 ```rust
                 // strlen
                 let strlen_type = i64_type.fn_type(&[ptr_type.into()], false);
-                llvm_module.add_function("strlen", strlen_type, None);
+                llvm_module.add_function("strlen", strlen_type, Some(Linkage::External));
 
                 // memcpy
                 let memcpy_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
-                llvm_module.add_function("memcpy", memcpy_type, None);
+                llvm_module.add_function("memcpy", memcpy_type, Some(Linkage::External));
 
-                // snprintf (variadic)
-                let snprintf_type = i64_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], true);
-                llvm_module.add_function("snprintf", snprintf_type, None);
+                // snprintf (variadic) — returns i32
+                let i32_type = context.i32_type();
+                let snprintf_type = i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], true);
+                llvm_module.add_function("snprintf", snprintf_type, Some(Linkage::External));
 
                 // strtol
                 let strtol_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
-                llvm_module.add_function("strtol", strtol_type, None);
+                llvm_module.add_function("strtol", strtol_type, Some(Linkage::External));
 ```
 
 - [ ] **Step 4: Add ArrayCreate codegen**
@@ -1233,6 +1217,7 @@ Add a new match arm in the instruction codegen (after the MutexUnlock arm):
                     builder.build_store(end, context.i8_type().const_int(0, false)).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = builder.build_ptr_to_int(buf_ptr, i64_type, "ci").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
+                    ptrs.insert(dest.clone(), buf_ptr); // also store as ptr for PrintString
                 }
                 Instruction::StringSubstring { dest, string, start, end } => {
                     let str_int = regs[string];
@@ -1258,6 +1243,7 @@ Add a new match arm in the instruction codegen (after the MutexUnlock arm):
                     builder.build_store(term, context.i8_type().const_int(0, false)).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = builder.build_ptr_to_int(buf_ptr, i64_type, "si").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
+                    ptrs.insert(dest.clone(), buf_ptr); // also store as ptr for PrintString
                 }
 ```
 
@@ -1280,6 +1266,7 @@ Add a new match arm in the instruction codegen (after the MutexUnlock arm):
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = builder.build_ptr_to_int(buf_ptr, i64_type, "its").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
+                    ptrs.insert(dest.clone(), buf_ptr); // also store as ptr for PrintString
                 }
                 Instruction::StringToInt { dest, string } => {
                     let str_int = regs[string];
@@ -1345,7 +1332,7 @@ fn main() Int {
     a.push(2)
     a.push(3)
     a.push(4)
-    let sum = 0
+    let mut sum = 0
     for x in a {
         sum = sum + x
     }
@@ -1354,8 +1341,6 @@ fn main() Int {
 ```
 
 Expected exit code: 10 (1+2+3+4)
-
-Note: `sum` must be declared as `let mut sum = 0` if the language requires `mut` for reassignment. Check whether `sum = sum + x` compiles — the typeck requires `mut` for `Assign`. Update to `let mut sum = 0` if needed.
 
 - [ ] **Step 3: Create `string_ops.cy`**
 
