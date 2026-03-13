@@ -15,8 +15,10 @@ Add mutex primitives and bounded channels to Cyflym's concurrency toolkit — ex
 
 - **Mutex model:** Explicit lock/unlock. `lock()` returns the stored value, `unlock(new_value)` writes and releases. No guard pattern (requires destructors/RAII not yet in the language).
 - **Bounded channel behavior:** `send()` blocks when buffer is full. `recv()` signals blocked senders after consuming. Matches Go's buffered channel semantics.
-- **Channel struct unification:** Unbounded and bounded channels share the same struct layout (224 bytes) with an `is_bounded` flag. This keeps send/recv codegen uniform.
+- **Channel struct unification:** Unbounded and bounded channels share the same struct layout (208 bytes) with an `is_bounded` flag. This keeps send/recv codegen uniform.
+- **Unbounded channel buffer growth:** The Plan 5a `ChannelSend` codegen does not grow the buffer when full (it overwrites). Plan 5b adds the realloc growth path as part of unifying the send logic — this is a bug fix to Plan 5a's incomplete implementation.
 - **Implementation approach:** Dedicated IR instructions that codegen lowers to pthread syscalls and heap-allocated structs, same pattern as Plan 5a.
+- **Mutex value semantics:** Mutex protects the i64 value slot only. For reference types (String, Struct), the stored value is a pointer — the pointed-to heap data is not protected by the lock. Deep-copy semantics or Send trait enforcement (deferred) would be needed for safety with reference types.
 
 ## Syntax
 
@@ -79,6 +81,7 @@ pub enum Type {
 - `m.lock()` with arguments
 - `m.unlock()` with wrong argument count
 - `channel<T>(cap)` where cap is not Int
+- `channel<T>(cap)` where cap is a literal <= 0 (compile-time rejection for obvious invalid capacities; non-literal values are not validated at compile time)
 
 ## AST Changes
 
@@ -185,7 +188,7 @@ Heap-allocated struct (9 i64s = 72 bytes):
 
 ### Channel Data Structure (Updated)
 
-Both unbounded and bounded channels use the same struct layout (28 i64s = 224 bytes):
+Both unbounded and bounded channels use the same struct layout (26 i64s = 208 bytes):
 
 ```
 {
@@ -194,38 +197,42 @@ Both unbounded and bounded channels use the same struct layout (28 i64s = 224 by
     i64 count,              // offset 2
     i64 head,               // offset 3
     i64 tail,               // offset 4
-    pthread_mutex_t,        // offsets 5-12 (64 bytes)
-    pthread_cond_t,         // offsets 13-19 (56 bytes) — recv condvar ("not empty")
-    pthread_cond_t,         // offsets 20-26 (56 bytes) — send condvar ("not full")
-    i64 is_bounded,         // offset 27 (0 = unbounded, 1 = bounded)
+    pthread_mutex_t,        // offsets 5-12 (64 bytes, 8 i64s)
+    pthread_cond_t,         // offsets 13-18 (48 bytes, 6 i64s) — recv condvar ("not empty")
+    pthread_cond_t,         // offsets 19-24 (48 bytes, 6 i64s) — send condvar ("not full")
+    i64 is_bounded,         // offset 25 (0 = unbounded, 1 = bounded)
 }
 ```
 
-This is an expansion of the Plan 5a layout (was 152 bytes / 19 i64s). The existing `ChannelCreate` codegen must be updated to use the new 224-byte layout.
+This is an expansion of the Plan 5a layout (was 152 bytes / 19 i64s). The existing `ChannelCreate` codegen must be updated to use the new 208-byte layout.
 
 ### ChannelCreate (Updated — Unbounded)
 
 Same as before but:
-- Allocates 224 bytes instead of 152
-- Initializes second condvar at offset 20
-- Sets `is_bounded` to 0 at offset 27
+- Allocates 208 bytes instead of 152
+- Initializes second condvar at offset 19
+- Sets `is_bounded` to 0 at offset 25
 
 ### ChannelCreateBounded
 
 Same as unbounded but:
 - Sets capacity to user-provided value (instead of hardcoded 16)
 - Allocates `capacity * 8` bytes for buffer
-- Sets `is_bounded` to 1 at offset 27
+- Sets `is_bounded` to 1 at offset 25
 
 ### ChannelSend (Updated)
 
+This is a **new codegen implementation** replacing Plan 5a's ChannelSend, which did not handle buffer growth for unbounded channels (silent data corruption when >16 items buffered).
+
 - Lock mutex at offset 5
-- If `is_bounded` (load offset 27): while `count == capacity`, wait on send condvar at offset 20
+- If `is_bounded` (load offset 25): while `count == capacity`, wait on send condvar at offset 19
+- If unbounded and `count == capacity`: realloc buffer at 2x capacity, copy elements unwrapping circular layout into contiguous block, free old buffer, reset head=0, tail=count, update capacity
 - Write value at `buffer[tail % capacity]`
 - Increment tail and count
-- If unbounded and `count == capacity`: realloc buffer at 2x capacity, copy elements unwrapping circular layout, reset head=0, tail=count, update capacity
 - Signal recv condvar at offset 13
 - Unlock mutex
+
+Note: For unbounded channels, the realloc check happens **before** the write to ensure space is available.
 
 ### ChannelRecv (Updated)
 
@@ -233,7 +240,7 @@ Same as unbounded but:
 - While `count == 0`, wait on recv condvar at offset 13
 - Read value from `buffer[head % capacity]`
 - Increment head, decrement count
-- If `is_bounded`, signal send condvar at offset 20
+- If `is_bounded`, signal send condvar at offset 19
 - Unlock mutex
 
 ### Memory Management
