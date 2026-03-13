@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use cyflym_parser::ast::Program;
@@ -18,7 +18,7 @@ pub fn resolve_imports(entry_point: &Path) -> Result<Vec<ResolvedModule>, String
         .ok_or_else(|| format!("cannot determine directory of '{}'", entry_point.display()))?;
 
     let mut resolved: Vec<ResolvedModule> = Vec::new();
-    let mut visited: HashMap<PathBuf, String> = HashMap::new();
+    let mut visited: HashSet<PathBuf> = HashSet::new();
     let mut in_progress: HashSet<PathBuf> = HashSet::new();
 
     let entry_source = std::fs::read_to_string(entry_point)
@@ -38,7 +38,6 @@ pub fn resolve_imports(entry_point: &Path) -> Result<Vec<ResolvedModule>, String
             &mut resolved,
             &mut visited,
             &mut in_progress,
-            &entry_canonical,
         )?;
     }
 
@@ -50,15 +49,15 @@ fn resolve_import(
     module_name: &str,
     base_dir: &Path,
     resolved: &mut Vec<ResolvedModule>,
-    visited: &mut HashMap<PathBuf, String>,
+    visited: &mut HashSet<PathBuf>,
     in_progress: &mut HashSet<PathBuf>,
-    _from_file: &Path,
 ) -> Result<(), String> {
+    // All paths resolve relative to entry point's directory (base_dir), per spec.
     let file_path = base_dir.join(format!("{}.cy", import_path));
     let canonical = file_path.canonicalize()
         .map_err(|_| format!("module not found: {}", import_path))?;
 
-    if visited.contains_key(&canonical) {
+    if visited.contains(&canonical) {
         return Ok(());
     }
 
@@ -84,12 +83,11 @@ fn resolve_import(
             resolved,
             visited,
             in_progress,
-            &canonical,
         )?;
     }
 
     in_progress.remove(&canonical);
-    visited.insert(canonical.clone(), module_name.to_string());
+    visited.insert(canonical.clone());
     resolved.push(ResolvedModule {
         name: module_name.to_string(),
         path: canonical,

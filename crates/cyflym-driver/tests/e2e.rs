@@ -20,12 +20,12 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let mut module_exports = std::collections::HashMap::new();
     for module in &resolved_modules {
         let exports = cyflym_typeck::check_module(&module.program, &module_exports)
-            .unwrap_or_else(|e| panic!("type error in module '{}': {}", module.name, e));
+            .unwrap_or_else(|e| panic!("type error in module '{}': {}", module.name, e.message));
         module_exports.insert(module.name.clone(), exports);
     }
 
     cyflym_typeck::check(&main_program, &module_exports)
-        .unwrap_or_else(|e| panic!("type error: {}", e));
+        .unwrap_or_else(|e| panic!("type error: {}", e.message));
 
     // Build module_fn_ret_types
     let mut module_fn_ret_types: std::collections::HashMap<(String, String), cyflym_ir::IrType> =
@@ -95,7 +95,7 @@ fn compile_and_run(fixture: &str) -> i32 {
 
     // Type check
     cyflym_typeck::check(&program, &std::collections::HashMap::new())
-        .unwrap_or_else(|e| panic!("type error: {}", e));
+        .unwrap_or_else(|e| panic!("type error: {}", e.message));
 
     // Lower to IR
     let ir_module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
