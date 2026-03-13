@@ -1,7 +1,15 @@
 use cyflym_lexer::token::Span;
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Import {
+    pub path: String,
+    pub module_name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Program {
+    pub imports: Vec<Import>,
     pub functions: Vec<Function>,
     pub structs: Vec<StructDef>,
     pub enums: Vec<EnumDef>,

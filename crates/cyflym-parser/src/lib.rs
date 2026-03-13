@@ -92,7 +92,7 @@ impl Parser {
                 functions.push(self.parse_function()?);
             }
         }
-        Ok(Program { functions, structs, enums, traits, impls })
+        Ok(Program { imports: Vec::new(), functions, structs, enums, traits, impls })
     }
 
     // ─── Function ─────────────────────────────────────────────────────────────
