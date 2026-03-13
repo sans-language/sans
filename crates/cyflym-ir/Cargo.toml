@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 cyflym-parser = { path = "../cyflym-parser" }
 cyflym-lexer = { path = "../cyflym-lexer" }
+cyflym-typeck = { path = "../cyflym-typeck" }

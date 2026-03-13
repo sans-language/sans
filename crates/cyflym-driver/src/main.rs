@@ -42,7 +42,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     cyflym_typeck::check(&program, &std::collections::HashMap::new()).map_err(|e| format!("type error: {}", e.message))?;
 
     // Step 4: Lower to IR
-    let ir_module = cyflym_ir::lower(&program);
+    let ir_module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
 
     // Step 5: Codegen to object file — replace .cy with .o
     let obj_path = source_path.with_extension("o");

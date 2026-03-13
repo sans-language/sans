@@ -16,7 +16,7 @@ fn compile_and_run(fixture: &str) -> i32 {
         .unwrap_or_else(|e| panic!("type error: {}", e));
 
     // Lower to IR
-    let ir_module = cyflym_ir::lower(&program);
+    let ir_module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
 
     // Codegen to object file
     let tmp_dir = std::env::temp_dir();

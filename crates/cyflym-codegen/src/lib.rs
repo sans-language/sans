@@ -1456,7 +1456,7 @@ mod tests {
         let program = cyflym_parser::parse(
             "fn main() Int { let mut x Int = 0 while x < 3 { x = x + 1 } x }"
         ).expect("parse failed");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
 
         assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
@@ -1467,7 +1467,7 @@ mod tests {
     #[test]
     fn codegen_print() {
         let program = cyflym_parser::parse(r#"fn main() Int { print("hello") }"#).expect("parse failed");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
         assert!(ir.contains("printf"), "expected printf in:\n{}", ir);
     }
@@ -1606,7 +1606,7 @@ mod tests {
         let program = cyflym_parser::parse(
             "struct Point { x Int, y Int, } fn main() Int { let p = Point { x: 3, y: 4 } p.x + p.y }"
         ).expect("parse failed");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
         assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
         assert!(ir.contains("getelementptr"), "expected GEP in:\n{}", ir);
@@ -1618,7 +1618,7 @@ mod tests {
         let program = cyflym_parser::parse(
             "enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Green match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3, } }"
         ).expect("parse failed");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
         assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
         assert!(ir.contains("getelementptr"), "expected GEP in:\n{}", ir);
@@ -1676,7 +1676,7 @@ mod tests {
             "struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 3, y: 4 } p.sum() }"
         ).expect("parse failed");
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("type error");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
         assert!(ir.contains("define i64 @Point_sum"), "expected Point_sum function in:\n{}", ir);
         assert!(ir.contains("call i64 @Point_sum"), "expected call to Point_sum in:\n{}", ir);
@@ -1686,7 +1686,7 @@ mod tests {
     fn codegen_channel_create() {
         let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() 0 }").expect("parse");
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("typeck");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen");
         assert!(ir.contains("malloc"), "expected malloc in:\n{}", ir);
         assert!(ir.contains("pthread_mutex_init"), "expected mutex_init in:\n{}", ir);
@@ -1696,7 +1696,7 @@ mod tests {
     fn codegen_spawn() {
         let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").expect("parse");
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("typeck");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen");
         assert!(ir.contains("pthread_create"), "expected pthread_create in:\n{}", ir);
         assert!(ir.contains("pthread_join"), "expected pthread_join in:\n{}", ir);
@@ -1707,7 +1707,7 @@ mod tests {
     fn codegen_send_recv() {
         let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").expect("parse");
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("typeck");
-        let module = cyflym_ir::lower(&program);
+        let module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen");
         assert!(ir.contains("pthread_mutex_lock"), "expected lock in:\n{}", ir);
         assert!(ir.contains("pthread_cond_signal"), "expected signal in:\n{}", ir);
@@ -1720,7 +1720,7 @@ mod tests {
             "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
         ).unwrap();
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        let ir = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -1732,7 +1732,7 @@ mod tests {
             "fn main() Int { let (tx, rx) = channel<Int>(4) tx.send(1) rx.recv() }"
         ).unwrap();
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        let ir = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -1744,7 +1744,7 @@ mod tests {
             "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
         ).unwrap();
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        let ir = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -1756,7 +1756,7 @@ mod tests {
             r#"fn main() Int { let s = "hello" + " world" 0 }"#
         ).unwrap();
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        let ir = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -1768,7 +1768,7 @@ mod tests {
             r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
         ).unwrap();
         cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        let ir = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());

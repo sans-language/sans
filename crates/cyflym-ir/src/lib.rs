@@ -5,8 +5,21 @@ use std::collections::HashMap;
 use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
-#[derive(Clone, PartialEq)]
-enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>) }
+#[derive(Clone, PartialEq, Debug)]
+pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>) }
+
+pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
+    use cyflym_typeck::types::Type;
+    match ty {
+        Type::Int => IrType::Int,
+        Type::Bool => IrType::Bool,
+        Type::String => IrType::Str,
+        Type::Struct { name, .. } => IrType::Struct(name.clone()),
+        Type::Enum { name, .. } => IrType::Enum(name.clone()),
+        Type::Array { inner } => IrType::Array(Box::new(ir_type_for_return(inner))),
+        _ => IrType::Int, // Fallback
+    }
+}
 
 #[derive(Clone)]
 enum LocalVar {
@@ -17,7 +30,7 @@ enum LocalVar {
 }
 
 /// Lower a parsed `Program` into an IR `Module`.
-pub fn lower(program: &Program) -> Module {
+pub fn lower(program: &Program, module_name: Option<&str>, module_fn_ret_types: &HashMap<(String, String), IrType>) -> Module {
     // Collect struct definitions: name -> field names (ordered)
     let mut struct_defs: HashMap<String, Vec<String>> = HashMap::new();
     for s in &program.structs {
@@ -32,24 +45,39 @@ pub fn lower(program: &Program) -> Module {
             .collect();
         enum_defs.insert(e.name.clone(), variants);
     }
+
+    let module_names: Vec<String> = program.imports.iter()
+        .map(|imp| imp.module_name.clone())
+        .collect();
+
     let mut functions: Vec<IrFunction> = program.functions.iter()
-        .map(|f| lower_function(f, &struct_defs, &enum_defs))
+        .map(|f| {
+            let func_name = if let Some(mod_name) = module_name {
+                format!("{}__{}", mod_name, f.name)
+            } else {
+                f.name.clone()
+            };
+            lower_function_named(f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types)
+        })
         .collect();
 
     // Lower impl methods as mangled functions
     for imp in &program.impls {
         for method in &imp.methods {
-            let mut mangled_method = method.clone();
-            mangled_method.name = format!("{}_{}", imp.target_type, method.name);
-            functions.push(lower_function(&mangled_method, &struct_defs, &enum_defs));
+            let mangled = if let Some(mod_name) = module_name {
+                format!("{}__{}__{}", mod_name, imp.target_type, method.name)
+            } else {
+                format!("{}_{}", imp.target_type, method.name)
+            };
+            functions.push(lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types));
         }
     }
 
     Module { functions }
 }
 
-fn lower_function(func: &cyflym_parser::ast::Function, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>) -> IrFunction {
-    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone());
+fn lower_function_named(func: &cyflym_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>) -> IrFunction {
+    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone());
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -105,7 +133,7 @@ fn lower_function(func: &cyflym_parser::ast::Function, struct_defs: &HashMap<Str
     }
 
     IrFunction {
-        name: func.name.clone(),
+        name: func_name.to_string(),
         params,
         param_struct_sizes,
         body: builder.instructions,
@@ -120,10 +148,12 @@ struct IrBuilder {
     reg_types: HashMap<Reg, IrType>,
     struct_defs: HashMap<String, Vec<String>>,
     enum_defs: HashMap<String, Vec<(String, usize, usize)>>,
+    module_names: Vec<String>,
+    module_fn_ret_types: HashMap<(String, String), IrType>,
 }
 
 impl IrBuilder {
-    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>) -> Self {
+    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>, module_names: Vec<String>, module_fn_ret_types: HashMap<(String, String), IrType>) -> Self {
         IrBuilder {
             counter: 0,
             label_counter: 0,
@@ -132,6 +162,8 @@ impl IrBuilder {
             reg_types: HashMap::new(),
             struct_defs,
             enum_defs,
+            module_names,
+            module_fn_ret_types,
         }
     }
 
@@ -483,6 +515,28 @@ impl IrBuilder {
                 dest
             }
             Expr::MethodCall { object, method, args, .. } => {
+                // Check for cross-module function call
+                if let Expr::Identifier { name, .. } = object.as_ref() {
+                    if self.module_names.contains(name) {
+                        let mangled_name = format!("{}__{}", name, method);
+                        let arg_regs: Vec<Reg> = args.iter()
+                            .map(|a| self.lower_expr(a))
+                            .collect();
+                        let dest = self.fresh_reg();
+                        let ret_type = self.module_fn_ret_types
+                            .get(&(name.clone(), method.clone()))
+                            .cloned()
+                            .unwrap_or(IrType::Int);
+                        self.reg_types.insert(dest.clone(), ret_type);
+                        self.instructions.push(Instruction::Call {
+                            dest: dest.clone(),
+                            function: mangled_name,
+                            args: arg_regs,
+                        });
+                        return dest;
+                    }
+                }
+
                 let obj_reg = self.lower_expr(object);
 
                 // Handle concurrency built-in methods FIRST
@@ -970,7 +1024,7 @@ mod tests {
     #[test]
     fn lower_minimal() {
         let program = parse("fn main() Int { 42 }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
 
         assert_eq!(module.functions.len(), 1);
         let func = &module.functions[0];
@@ -986,7 +1040,7 @@ mod tests {
     #[test]
     fn lower_let_and_arithmetic() {
         let program = parse("fn main() Int { let x Int = 1 + 2 x }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
 
         assert_eq!(module.functions.len(), 1);
         let func = &module.functions[0];
@@ -1005,7 +1059,7 @@ mod tests {
         let program = parse(
             "fn add(a Int, b Int) Int { a + b } fn main() Int { add(1, 2) }",
         );
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
 
         assert_eq!(module.functions.len(), 2, "expected 2 functions");
 
@@ -1022,7 +1076,7 @@ mod tests {
     #[test]
     fn lower_bool_literal() {
         let program = parse("fn main() Bool { true }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_bool_const = func.body.iter().any(|i| matches!(i, Instruction::BoolConst { value: true, .. }));
         assert!(has_bool_const, "expected BoolConst(true)");
@@ -1031,7 +1085,7 @@ mod tests {
     #[test]
     fn lower_comparison() {
         let program = parse("fn main() Bool { 1 == 2 }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_cmp = func.body.iter().any(|i| matches!(i, Instruction::CmpOp { .. }));
         assert!(has_cmp, "expected CmpOp instruction");
@@ -1040,7 +1094,7 @@ mod tests {
     #[test]
     fn lower_if_else() {
         let program = parse("fn main() Int { if true { 1 } else { 2 } }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_branch = func.body.iter().any(|i| matches!(i, Instruction::Branch { .. }));
         let has_phi = func.body.iter().any(|i| matches!(i, Instruction::Phi { .. }));
@@ -1051,7 +1105,7 @@ mod tests {
     #[test]
     fn lower_not() {
         let program = parse("fn main() Bool { !true }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_not = func.body.iter().any(|i| matches!(i, Instruction::Not { .. }));
         assert!(has_not, "expected Not instruction");
@@ -1060,7 +1114,7 @@ mod tests {
     #[test]
     fn lower_while_loop() {
         let program = parse("fn main() Int { let mut x Int = 0 while x < 10 { x = x + 1 } x }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
 
         let has_alloca = func.body.iter().any(|i| matches!(i, Instruction::Alloca { .. }));
@@ -1077,7 +1131,7 @@ mod tests {
     #[test]
     fn lower_return() {
         let program = parse("fn main() Int { return 42 }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_ret = func.body.iter().any(|i| matches!(i, Instruction::Ret { .. }));
         assert!(has_ret, "expected Ret instruction");
@@ -1086,7 +1140,7 @@ mod tests {
     #[test]
     fn lower_print_string() {
         let program = parse(r#"fn main() Int { print("hello") }"#);
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_print = func.body.iter().any(|i| matches!(i, Instruction::PrintString { .. }));
         let has_str = func.body.iter().any(|i| matches!(i, Instruction::StringConst { .. }));
@@ -1097,7 +1151,7 @@ mod tests {
     #[test]
     fn lower_print_int() {
         let program = parse("fn main() Int { print(42) }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_print = func.body.iter().any(|i| matches!(i, Instruction::PrintInt { .. }));
         assert!(has_print, "expected PrintInt");
@@ -1106,7 +1160,7 @@ mod tests {
     #[test]
     fn lower_struct_literal() {
         let program = parse("struct Point { x Int, y Int, } fn main() Int { let p = Point { x: 1, y: 2 } 0 }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_alloc = func.body.iter().any(|i| matches!(i, Instruction::StructAlloc { num_fields: 2, .. }));
         let store_count = func.body.iter().filter(|i| matches!(i, Instruction::FieldStore { .. })).count();
@@ -1117,7 +1171,7 @@ mod tests {
     #[test]
     fn lower_field_access() {
         let program = parse("struct Point { x Int, y Int, } fn main() Int { let p = Point { x: 1, y: 2 } p.x }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_load = func.body.iter().any(|i| matches!(i, Instruction::FieldLoad { field_index: 0, .. }));
         assert!(has_load, "expected FieldLoad with field_index 0");
@@ -1126,7 +1180,7 @@ mod tests {
     #[test]
     fn lower_enum_variant() {
         let program = parse("enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Green 0 }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_alloc = func.body.iter().any(|i| matches!(i, Instruction::EnumAlloc { tag: 1, num_data_fields: 0, .. }));
         assert!(has_alloc, "expected EnumAlloc with tag=1, num_data_fields=0");
@@ -1137,7 +1191,7 @@ mod tests {
         let program = parse(
             "enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Green match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3, } }"
         );
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_tag = func.body.iter().any(|i| matches!(i, Instruction::EnumTag { .. }));
         let has_branch = func.body.iter().any(|i| matches!(i, Instruction::Branch { .. }));
@@ -1150,7 +1204,7 @@ mod tests {
     #[test]
     fn lower_method_call() {
         let program = parse("struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 3, y: 4 } p.sum() }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         // Should have 2 functions: main and Point_sum
         assert_eq!(module.functions.len(), 2);
         let point_sum = module.functions.iter().find(|f| f.name == "Point_sum").expect("no Point_sum");
@@ -1163,7 +1217,7 @@ mod tests {
     #[test]
     fn lower_method_with_args() {
         let program = parse("struct Point { x Int, y Int, } impl Point { fn add(self, n Int) Int { self.x + self.y + n } } fn main() Int { let p = Point { x: 1, y: 2 } p.add(10) }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let point_add = module.functions.iter().find(|f| f.name == "Point_add").expect("no Point_add");
         assert_eq!(point_add.params.len(), 2); // self + n
     }
@@ -1171,7 +1225,7 @@ mod tests {
     #[test]
     fn lower_mutable_variable() {
         let program = parse("fn main() Int { let mut x Int = 1 x = 2 x }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let func = &module.functions[0];
         let has_alloca = func.body.iter().any(|i| matches!(i, Instruction::Alloca { .. }));
         let store_count = func.body.iter().filter(|i| matches!(i, Instruction::Store { .. })).count();
@@ -1182,7 +1236,7 @@ mod tests {
     #[test]
     fn lower_generic_function() {
         let program = parse("fn identity<T>(x T) T { x } fn main() Int { identity(42) }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         assert_eq!(module.functions.len(), 2);
         let identity = module.functions.iter().find(|f| f.name == "identity").expect("no identity");
         assert_eq!(identity.params.len(), 1);
@@ -1191,7 +1245,7 @@ mod tests {
     #[test]
     fn lower_spawn() {
         let program = parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() 0 }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_spawn = main_func.body.iter().any(|i| matches!(i, Instruction::ThreadSpawn { .. }));
         assert!(has_spawn, "expected ThreadSpawn instruction");
@@ -1200,7 +1254,7 @@ mod tests {
     #[test]
     fn lower_channel_create() {
         let program = parse("fn main() Int { let (tx, rx) = channel<Int>() 0 }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_create = main_func.body.iter().any(|i| matches!(i, Instruction::ChannelCreate { .. }));
         assert!(has_create, "expected ChannelCreate instruction");
@@ -1209,7 +1263,7 @@ mod tests {
     #[test]
     fn lower_send_recv() {
         let program = parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_send = main_func.body.iter().any(|i| matches!(i, Instruction::ChannelSend { .. }));
         let has_recv = main_func.body.iter().any(|i| matches!(i, Instruction::ChannelRecv { .. }));
@@ -1220,7 +1274,7 @@ mod tests {
     #[test]
     fn lower_join() {
         let program = parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }");
-        let module = lower(&program);
+        let module = lower(&program, None, &HashMap::new());
         let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_join = main_func.body.iter().any(|i| matches!(i, Instruction::ThreadJoin { .. }));
         assert!(has_join, "expected ThreadJoin instruction");
@@ -1231,7 +1285,7 @@ mod tests {
         let prog = cyflym_parser::parse(
             "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
         ).unwrap();
-        let module = lower(&prog);
+        let module = lower(&prog, None, &HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::MutexCreate { .. })),
             "expected MutexCreate instruction");
@@ -1246,7 +1300,7 @@ mod tests {
         let prog = cyflym_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>(10) tx.send(1) rx.recv() }"
         ).unwrap();
-        let module = lower(&prog);
+        let module = lower(&prog, None, &HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ChannelCreateBounded { .. })),
             "expected ChannelCreateBounded instruction");
@@ -1257,7 +1311,7 @@ mod tests {
         let prog = cyflym_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>() tx.send(1) rx.recv() }"
         ).unwrap();
-        let module = lower(&prog);
+        let module = lower(&prog, None, &HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ChannelCreate { .. })),
             "expected ChannelCreate (not bounded) instruction");
@@ -1270,7 +1324,7 @@ mod tests {
         let prog = cyflym_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
         ).unwrap();
-        let module = lower(&prog);
+        let module = lower(&prog, None, &HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ArrayCreate { .. })),
             "expected ArrayCreate instruction");
@@ -1285,7 +1339,7 @@ mod tests {
         let prog = cyflym_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(1) for x in a { print(x) } 0 }"
         ).unwrap();
-        let module = lower(&prog);
+        let module = lower(&prog, None, &HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ArrayLen { .. })),
             "expected ArrayLen for for-in loop");
@@ -1298,7 +1352,7 @@ mod tests {
         let prog = cyflym_parser::parse(
             r#"fn main() Int { let s = "a" + "b" 0 }"#
         ).unwrap();
-        let module = lower(&prog);
+        let module = lower(&prog, None, &HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::StringConcat { .. })),
             "expected StringConcat instruction");
@@ -1309,11 +1363,31 @@ mod tests {
         let prog = cyflym_parser::parse(
             r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
         ).unwrap();
-        let module = lower(&prog);
+        let module = lower(&prog, None, &HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::IntToString { .. })),
             "expected IntToString instruction");
         assert!(instrs.iter().any(|i| matches!(i, Instruction::StringToInt { .. })),
             "expected StringToInt instruction");
+    }
+
+    #[test]
+    fn lower_with_module_name_mangles_functions() {
+        let program = parse("fn add(a Int, b Int) Int { a + b }");
+        let module = lower(&program, Some("utils"), &HashMap::new());
+        let func = module.functions.iter().find(|f| f.name == "utils__add");
+        assert!(func.is_some(), "expected mangled function name 'utils__add'");
+    }
+
+    #[test]
+    fn lower_cross_module_call_uses_mangled_name() {
+        let program = parse("import \"utils\"\nfn main() Int { utils.add(1, 2) }");
+        let module = lower(&program, None, &HashMap::new());
+        let func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_mangled_call = func.body.iter().any(|i| {
+            matches!(i, Instruction::Call { function, .. } if function == "utils__add")
+        });
+        assert!(has_mangled_call, "expected call to 'utils__add', got: {:?}",
+            func.body.iter().filter(|i| matches!(i, Instruction::Call { .. })).collect::<Vec<_>>());
     }
 }
