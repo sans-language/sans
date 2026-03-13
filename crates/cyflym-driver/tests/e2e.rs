@@ -114,3 +114,23 @@ fn e2e_mutex_threaded() {
 fn e2e_channel_bounded() {
     assert_eq!(compile_and_run("channel_bounded.cy"), 30);
 }
+
+#[test]
+fn e2e_array_basic() {
+    assert_eq!(compile_and_run("array_basic.cy"), 28);
+}
+
+#[test]
+fn e2e_array_for_in() {
+    assert_eq!(compile_and_run("array_for_in.cy"), 10);
+}
+
+#[test]
+fn e2e_string_ops() {
+    assert_eq!(compile_and_run("string_ops.cy"), 18);
+}
+
+#[test]
+fn e2e_string_conversion() {
+    assert_eq!(compile_and_run("string_conversion.cy"), 42);
+}
