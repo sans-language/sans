@@ -38,7 +38,11 @@ let val = rx.recv()
 
 ### Destructuring Let
 
-`let (a, b) = expr` is new syntax, initially only supported for `channel<T>()` expressions. No general-purpose tuple type is introduced.
+`let (a, b) = expr` is new syntax, initially only supported for `channel<T>()` expressions. No general-purpose tuple type is introduced. The **type checker** enforces this restriction — the parser accepts any expression in `LetDestructure`, but the type checker rejects it unless the expression produces a channel pair.
+
+### Generic Delimiter Parsing
+
+`channel<T>()` reuses the existing `Lt` (`<`) and `Gt` (`>`) tokens as generic delimiters. Since `channel` is a keyword, there is no ambiguity — `channel<` always begins a generic parameter, never a comparison. The parser handles this specifically in the `channel` keyword branch.
 
 ### Method Calls
 
@@ -63,9 +67,9 @@ pub enum Type {
 |---|---|
 | `spawn f(args)` | `JoinHandle` — `f` must be a known function, args type-checked normally |
 | `channel<T>()` | Produces `(Sender<T>, Receiver<T>)` via destructuring let |
-| `tx.send(val)` | `val` must match the `T` of the `Sender<T>` — returns `Int` (0) |
+| `tx.send(val)` | `val` must match the `T` of the `Sender<T>` — statement only, no return value used |
 | `rx.recv()` | Returns `T` of the `Receiver<T>` |
-| `handle.join()` | Returns `Int` (0) — only valid on `JoinHandle` |
+| `handle.join()` | Returns `Int` (0) — only valid on `JoinHandle`. Spawned function's return value is discarded; use channels to communicate results. |
 
 ### Type Errors
 
@@ -142,6 +146,7 @@ pub enum Instruction {
     ChannelSend {
         tx: Reg,             // Sender register
         value: Reg,          // value to send (i64)
+        // No dest register — send is statement-only, not used in value position
     },
     ChannelRecv {
         dest: Reg,           // destination for received value
@@ -160,7 +165,18 @@ pub enum Instruction {
 | `MethodCall { method: "recv" }` on Receiver | `ChannelRecv { dest, rx }` |
 | `MethodCall { method: "join" }` on JoinHandle | `ThreadJoin { handle }` |
 
-The IR lowering needs type information to distinguish built-in method calls from user-defined ones. The lowering pass will carry forward type checker results (Sender, Receiver, JoinHandle types) to make this distinction.
+The IR lowering needs type information to distinguish built-in method calls from user-defined ones. The lowering pass will track register types — `IrType` gains new variants `Sender`, `Receiver`, and `JoinHandle` so the IR lowering can match on receiver type when encountering `MethodCall` and emit the correct IR instruction instead of a regular `Call`.
+
+### IR Type Changes
+
+```rust
+pub enum IrType {
+    // ... existing: Int, Bool, Str, Struct(String), Enum(String) ...
+    Sender,
+    Receiver,
+    JoinHandle,
+}
+```
 
 ## Codegen (LLVM)
 
@@ -197,8 +213,16 @@ A channel is a heap-allocated struct:
 ```
 
 - `ChannelCreate`: malloc the struct, malloc initial buffer (capacity 16), init mutex and condvar. Both tx_dest and rx_dest point to the same struct (as i64).
-- `ChannelSend`: lock mutex → if count == capacity, realloc buffer to 2x → write value at buffer[tail % capacity] → increment tail and count → signal condvar → unlock mutex.
+- `ChannelSend`: lock mutex → if count == capacity, malloc new buffer at 2x capacity, copy elements in order from head to head+count (unwrapping the circular layout into a contiguous block), free old buffer, reset head=0 and tail=count → write value at buffer[tail % capacity] → increment tail and count → signal condvar → unlock mutex.
 - `ChannelRecv`: lock mutex → while count == 0, wait on condvar → read value at buffer[head % capacity] → increment head, decrement count → unlock mutex → return value.
+
+### Argument Passing for Spawned Threads
+
+All values in the IR are i64. Struct and enum arguments are pointers cast to i64 — they are passed by pointer (shared memory) to the spawned thread. No deep copy is performed. This is intentionally simple; ownership/safety enforcement is deferred to Plan 5b's Send trait.
+
+### Memory Management
+
+Channel structs, buffers, and arg structs are heap-allocated and **not freed** — they are leaked until process exit. Cleanup and resource management are deferred to the GC phase of the project. This is acceptable for the current stage.
 
 ### Thread Spawn
 
