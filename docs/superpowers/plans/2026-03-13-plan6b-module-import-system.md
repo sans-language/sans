@@ -1151,10 +1151,11 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     }
 
     // Step 5: Lower to IR with name mangling, then merge
+    // Each module gets the accumulated module_fn_ret_types from its dependencies
     let mut all_ir_functions = Vec::new();
 
     for module in &resolved_modules {
-        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &std::collections::HashMap::new());
+        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
 
@@ -1251,10 +1252,10 @@ pub mod imports;
 In `crates/cyflym-driver/src/main.rs`, replace `mod imports;` (added in Task 6) with:
 
 ```rust
-use cyflym_driver::imports;
+use cyflym::imports;
 ```
 
-This lets `e2e.rs` tests use `cyflym_driver::imports::resolve_imports`.
+This lets `e2e.rs` tests use `cyflym::imports::resolve_imports`.
 
 - [ ] **Step 2: Add `compile_and_run_dir` helper for multi-file fixtures**
 
@@ -1268,7 +1269,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let main_path = std::path::PathBuf::from(format!("{}/main.cy", dir_path));
 
     // Resolve imports
-    let resolved_modules = cyflym_driver::imports::resolve_imports(&main_path)
+    let resolved_modules = cyflym::imports::resolve_imports(&main_path)
         .unwrap_or_else(|e| panic!("import resolution error: {}", e));
 
     // Parse main
@@ -1299,9 +1300,10 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     }
 
     // Lower to IR with mangling, merge
+    // All modules get the full module_fn_ret_types so transitive calls resolve correctly
     let mut all_ir_functions = Vec::new();
     for module in &resolved_modules {
-        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &std::collections::HashMap::new());
+        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
     let main_ir = cyflym_ir::lower(&main_program, None, &module_fn_ret_types);
@@ -1337,12 +1339,12 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
 No `simple_resolve_type` helper needed — `check()` returns `ModuleExports` directly.
 
 ```rust
-use cyflym_driver::imports;
+use cyflym::imports;
 ```
 
-Then in `e2e.rs`, the test can use `cyflym_driver::imports::resolve_imports`.
+Then in `e2e.rs`, the test can use `cyflym::imports::resolve_imports`.
 
-- [ ] **Step 2: Create E2E fixture: `import_basic`**
+- [ ] **Step 3: Create E2E fixture: `import_basic`**
 
 Create directory `tests/fixtures/import_basic/`.
 
@@ -1364,7 +1366,7 @@ fn main() Int {
 
 Expected exit code: **7**
 
-- [ ] **Step 3: Create E2E fixture: `import_nested`**
+- [ ] **Step 4: Create E2E fixture: `import_nested`**
 
 Create directories `tests/fixtures/import_nested/` and `tests/fixtures/import_nested/models/`.
 
@@ -1391,7 +1393,7 @@ fn main() Int {
 
 Expected exit code: **15**
 
-- [ ] **Step 4: Create E2E fixture: `import_chain`**
+- [ ] **Step 5: Create E2E fixture: `import_chain`**
 
 Create directory `tests/fixtures/import_chain/`.
 
@@ -1422,7 +1424,7 @@ fn main() Int {
 
 Expected exit code: **13**
 
-- [ ] **Step 5: Create E2E fixture: `import_struct`**
+- [ ] **Step 6: Create E2E fixture: `import_struct`**
 
 Create directory `tests/fixtures/import_struct/`.
 
@@ -1450,7 +1452,7 @@ fn main() Int {
 
 Expected exit code: **22**
 
-- [ ] **Step 6: Add E2E tests**
+- [ ] **Step 7: Add E2E tests**
 
 Add to `crates/cyflym-driver/tests/e2e.rs`:
 
@@ -1476,17 +1478,17 @@ fn e2e_import_struct() {
 }
 ```
 
-- [ ] **Step 7: Run all E2E tests**
+- [ ] **Step 8: Run all E2E tests**
 
 Run: `cargo test -p cyflym-driver`
 Expected: All 22 tests pass (18 existing + 4 new)
 
-- [ ] **Step 8: Run full test suite**
+- [ ] **Step 9: Run full test suite**
 
 Run: `cargo test`
 Expected: All ~243 tests pass
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add crates/cyflym-driver/src/lib.rs crates/cyflym-driver/src/imports.rs crates/cyflym-driver/src/main.rs crates/cyflym-driver/tests/e2e.rs tests/fixtures/import_basic/ tests/fixtures/import_nested/ tests/fixtures/import_chain/ tests/fixtures/import_struct/
