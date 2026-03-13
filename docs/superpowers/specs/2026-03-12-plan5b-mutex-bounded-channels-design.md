@@ -226,7 +226,7 @@ This is a **new codegen implementation** replacing Plan 5a's ChannelSend, which 
 
 - Lock mutex at offset 5
 - If `is_bounded` (load offset 25): while `count == capacity`, wait on send condvar at offset 19
-- If unbounded and `count == capacity`: realloc buffer at 2x capacity, copy elements unwrapping circular layout into contiguous block, free old buffer, reset head=0, tail=count, update capacity
+- If unbounded and `count == capacity`: malloc new buffer at 2x capacity, copy elements unwrapping circular layout into contiguous block, free old buffer, reset head=0, tail=count, update capacity
 - Write value at `buffer[tail % capacity]`
 - Increment tail and count
 - Signal recv condvar at offset 13
