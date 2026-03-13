@@ -13,7 +13,7 @@ Add dynamically-sized `Array<T>` with push/get/set/len, `for..in` iteration, str
 - String `+` concatenation
 - Built-in functions: `int_to_string(n)`, `string_to_int(s)`
 
-**Out of scope (deferred):** Array literal syntax (`[1, 2, 3]`), bounds checking, `.remove()`, `.pop()`, `.contains()`, string `.split()`, `.trim()`, `.starts_with()`, `.contains()`, GC/memory cleanup.
+**Out of scope (deferred):** Array literal syntax (`[1, 2, 3]`), bounds checking, `.remove()`, `.pop()`, `.contains()`, string `.split()`, `.trim()`, `.starts_with()`, `.contains()`, GC/memory cleanup, explicit `Array<T>` type annotations (type is always inferred from `array<T>()`), `.substring()` bounds validation.
 
 ## Decisions
 
@@ -24,7 +24,10 @@ Add dynamically-sized `Array<T>` with push/get/set/len, `for..in` iteration, str
 - **String representation:** Unchanged — null-terminated C strings (`char*` stored as i64). Concatenation and substring produce new heap-allocated strings.
 - **For-in implementation:** No dedicated IR instruction. `Stmt::ForIn` lowers to a counted loop using `ArrayLen` + `ArrayGet` + existing branch/compare instructions.
 - **Implementation approach:** Dedicated IR instructions that codegen lowers to heap operations and C stdlib calls, same pattern as Plans 5a/5b.
-- **`+` overloading:** The existing `+` binary operator is extended to handle `String + String`. The IR lowering checks operand types and emits `StringConcat` instead of `Add` for string operands.
+- **`+` overloading:** The existing `+` binary operator is extended to handle `String + String`. Two changes are needed: (1) the type checker's `BinOp::Add` handling must allow `String + String → String` in addition to `Int + Int → Int`; (2) the IR lowering's `BinOp::Add` handling must check `reg_types` for the left operand — if `IrType::Str`, emit `StringConcat` instead of `Add`.
+- **Reserved keywords:** `array` and `in` become reserved keywords. They cannot be used as variable or function names. This is a breaking change for any existing code using these identifiers (acceptable since the language is pre-1.0).
+- **`string_to_int` on invalid input:** `strtol` returns 0 for non-numeric strings or empty strings. No error is raised. Error detection deferred to a future error-handling plan.
+- **`substring` with invalid indices:** `.substring(start, end)` where start > end or indices are out of bounds is undefined behavior, same as array `.get()`/`.set()` bounds checking deferral.
 
 ## Syntax
 
@@ -95,6 +98,17 @@ pub enum Type {
 | `string_to_int(s)` | `s` must be `String`. Returns `Int` |
 | `for x in arr` | `arr` must be `Array<T>`. `x` bound as `T` (immutable) in body |
 
+### Exhaustive Match Updates
+
+Adding `Stmt::ForIn` requires updating all exhaustive `match stmt` arms in the compiler:
+
+1. **`check_stmt()` in typeck** — New arm: type-check `iterable` as `Array<T>`, create a new locals scope with `var` bound as type `T`, then `check_stmts(body)`.
+2. **"Last statement" check in typeck** — `Stmt::ForIn` must be added alongside `While` as a statement that doesn't yield a return value (function cannot end with `for..in`).
+3. **`lower_stmt()` in IR** — New arm implementing the ForIn lowering pseudocode (ArrayLen + counter loop + ArrayGet).
+4. **`lower_function()` "last statement" check in IR** — `Stmt::ForIn` added alongside `While`.
+
+Similarly, `Expr::ArrayCreate` must be added to `expr_span()` in the parser.
+
 ### Type Errors
 
 - `.push(val)` where val type doesn't match array element type
@@ -143,7 +157,7 @@ pub enum Stmt {
 
 - `array<T>()`: `array` keyword, `<`, type name, `>`, `(`, `)` → `Expr::ArrayCreate`
 - `for x in expr { body }`: `for` keyword, identifier, `in`, expression, `{`, block, `}` → `Stmt::ForIn`
-- Disambiguation: `for` after `impl` = trait impl syntax (existing). `for` at statement position = for-in loop (new).
+- Disambiguation: `for` in `impl Trait for Type` is parsed inside `parse_impl_block()` at top level, never inside `parse_stmt()`. At statement position, `TokenKind::For` always means for-in loop. `parse_stmt()` needs a new branch: if `self.peek().kind == TokenKind::For`, parse a for-in loop.
 - `.push(val)`, `.get(idx)`, `.set(idx, val)`, `.len()`, `.substring(start, end)`: existing `Expr::MethodCall` — no new AST nodes needed
 - `int_to_string(n)`, `string_to_int(s)`: existing `Expr::Call` — no new AST nodes needed
 - `String + String`: existing `Expr::BinaryOp` — no new AST nodes needed
@@ -157,7 +171,7 @@ pub enum Instruction {
     // ... existing ...
 
     // Array operations
-    ArrayCreate { dest: Reg },
+    ArrayCreate { dest: Reg, element_type: IrType },
     ArrayPush { array: Reg, value: Reg },
     ArrayGet { dest: Reg, array: Reg, index: Reg },
     ArraySet { array: Reg, index: Reg, value: Reg },
@@ -177,15 +191,17 @@ pub enum Instruction {
 ```rust
 enum IrType {
     // ... existing: Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex ...
-    Array,
+    Array(Box<IrType>),
 }
 ```
+
+The inner type is needed so that `ArrayGet` can assign the correct `IrType` to its result register. For example, `ArrayGet` on an `Array(Box::new(IrType::Str))` assigns `IrType::Str` to the dest register, which ensures `print(x)` dispatches correctly.
 
 ### IR Lowering
 
 | AST | IR |
 |---|---|
-| `Expr::ArrayCreate` | `ArrayCreate { dest }` |
+| `Expr::ArrayCreate` | `ArrayCreate { dest, element_type }` — element_type derived from resolved TypeName |
 | MethodCall `.push(val)` on Array | `ArrayPush { array, value }` |
 | MethodCall `.get(idx)` on Array | `ArrayGet { dest, array, index }` |
 | MethodCall `.set(idx, val)` on Array | `ArraySet { array, index, value }` |
@@ -236,7 +252,7 @@ Heap-allocated struct (3 i64s = 24 bytes):
 ```
 
 - **ArrayCreate:** `malloc(24)`, set data=`malloc(64)` (initial capacity 8, buffer = 8 × 8 bytes), len=0, capacity=8. Return pointer as i64.
-- **ArrayPush:** Load len (offset 1) and capacity (offset 2). If len == capacity: malloc 2× buffer, copy elements via loop, free old buffer, update data and capacity. Store value at `data[len]`, increment len.
+- **ArrayPush:** Load len (offset 1) and capacity (offset 2). If len == capacity: malloc 2× buffer, `memcpy(new_buf, old_buf, len * 8)` to copy elements, free old buffer, update data pointer and capacity. Store value at `data[len]`, increment len.
 - **ArrayGet:** Load data pointer (offset 0), convert to pointer, load `data[index]`. Return value.
 - **ArraySet:** Load data pointer (offset 0), convert to pointer, store value at `data[index]`.
 - **ArrayLen:** Load len from offset 1. Return it.
@@ -255,9 +271,9 @@ Strings are null-terminated C strings (`char*` stored as i64).
 
 Add to codegen preamble (alongside existing malloc, printf, pthread functions):
 - `strlen(ptr) → i64`
-- `memcpy(dest, src, len) → ptr`
-- `snprintf(buf, size, fmt, ...) → i32`
-- `strtol(str, endptr, base) → i64`
+- `memcpy(dest, src, len) → ptr` (return value unused; dest pointer already in register)
+- `snprintf(buf, size, fmt, ...) → i32` (format string `"%ld"` correct for i64 on Darwin/macOS)
+- `strtol(str, endptr, base) → i64` (returns 0 on invalid input; no error detection)
 - `free(ptr)` (if not already declared)
 
 ### Memory Management
