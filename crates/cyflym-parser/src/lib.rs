@@ -713,6 +713,15 @@ impl Parser {
                 let span = start..self.tokens[self.pos - 1].span.end;
                 Ok(Expr::Spawn { function: func_name, args, span })
             }
+            TokenKind::Mutex => {
+                let start = tok.span.start;
+                self.pos += 1;
+                self.expect(&TokenKind::LParen)?;
+                let value = self.parse_expr(0)?;
+                self.expect(&TokenKind::RParen)?;
+                let span = start..self.tokens[self.pos - 1].span.end;
+                Ok(Expr::MutexCreate { value: Box::new(value), span })
+            }
             TokenKind::Channel => {
                 let start = tok.span.start;
                 self.pos += 1;
@@ -720,9 +729,14 @@ impl Parser {
                 let type_name = self.parse_type_name()?;
                 self.expect(&TokenKind::Gt)?;
                 self.expect(&TokenKind::LParen)?;
+                let capacity = if self.peek().kind != TokenKind::RParen {
+                    Some(Box::new(self.parse_expr(0)?))
+                } else {
+                    None
+                };
                 self.expect(&TokenKind::RParen)?;
                 let span = start..self.tokens[self.pos - 1].span.end;
-                Ok(Expr::ChannelCreate { element_type: type_name, span })
+                Ok(Expr::ChannelCreate { element_type: type_name, capacity, span })
             }
             TokenKind::LParen => {
                 self.pos += 1;
@@ -919,6 +933,7 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::MethodCall { span, .. } => span,
         Expr::Spawn { span, .. } => span,
         Expr::ChannelCreate { span, .. } => span,
+        Expr::MutexCreate { span, .. } => span,
     }
 }
 
@@ -1465,6 +1480,51 @@ mod tests {
                 assert_eq!(args.len(), 0);
             }
             other => panic!("expected Spawn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_mutex_create() {
+        let program = parse("fn main() Int { let m = mutex(0) 0 }").unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::MutexCreate { .. }));
+            }
+            other => panic!("expected Let with MutexCreate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_bounded_channel() {
+        let program = parse("fn main() Int { let (tx, rx) = channel<Int>(10) 0 }").unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::LetDestructure { value, .. } => {
+                match value {
+                    Expr::ChannelCreate { capacity: Some(cap), .. } => {
+                        assert!(matches!(**cap, Expr::IntLiteral { value: 10, .. }));
+                    }
+                    other => panic!("expected ChannelCreate with capacity, got {:?}", other),
+                }
+            }
+            other => panic!("expected LetDestructure, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_lock_unlock_method_calls() {
+        let program = parse("fn main() Int { let m = mutex(0) let v = m.lock() m.unlock(v) 0 }").unwrap();
+        match &program.functions[0].body[1] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::MethodCall { method, .. } if method == "lock"));
+            }
+            other => panic!("expected Let with lock() call, got {:?}", other),
+        }
+        match &program.functions[0].body[2] {
+            Stmt::Expr(Expr::MethodCall { method, args, .. }) => {
+                assert_eq!(method, "unlock");
+                assert_eq!(args.len(), 1);
+            }
+            other => panic!("expected unlock() call, got {:?}", other),
         }
     }
 }

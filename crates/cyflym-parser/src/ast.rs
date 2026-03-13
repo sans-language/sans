@@ -180,6 +180,11 @@ pub enum Expr {
     },
     ChannelCreate {
         element_type: TypeName,
+        capacity: Option<Box<Expr>>,
+        span: Span,
+    },
+    MutexCreate {
+        value: Box<Expr>,
         span: Span,
     },
 }
