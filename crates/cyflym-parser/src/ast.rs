@@ -3,6 +3,21 @@ use cyflym_lexer::token::Span;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub functions: Vec<Function>,
+    pub structs: Vec<StructDef>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructDef {
+    pub name: String,
+    pub fields: Vec<StructField>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StructField {
+    pub name: String,
+    pub type_name: TypeName,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +92,16 @@ pub enum Expr {
         span: Span,
     },
     UnaryOp { op: UnaryOp, operand: Box<Expr>, span: Span },
+    StructLiteral {
+        name: String,
+        fields: Vec<(String, Expr)>,
+        span: Span,
+    },
+    FieldAccess {
+        object: Box<Expr>,
+        field: String,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

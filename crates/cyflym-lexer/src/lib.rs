@@ -71,6 +71,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "while" => TokenKind::While,
                     "return" => TokenKind::Return,
                     "mut" => TokenKind::Mut,
+                    "struct" => TokenKind::Struct,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -178,6 +179,11 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
             ':' => {
                 pos += 1;
                 tokens.push(Token { kind: TokenKind::Colon, span: start..pos });
+            }
+
+            '.' => {
+                pos += 1;
+                tokens.push(Token { kind: TokenKind::Dot, span: start..pos });
             }
 
             '"' => {
@@ -337,6 +343,21 @@ mod tests {
     fn lex_string_literal() {
         let tokens = lex(r#""hello""#).unwrap();
         assert_eq!(kinds(&tokens), vec![StringLiteral("hello".to_string()), Eof]);
+    }
+
+    #[test]
+    fn lex_struct_keyword() {
+        let tokens = lex("struct").unwrap();
+        assert_eq!(kinds(&tokens), vec![Struct, Eof]);
+    }
+
+    #[test]
+    fn lex_dot_token() {
+        let tokens = lex("a.b").unwrap();
+        assert_eq!(
+            kinds(&tokens),
+            vec![Identifier("a".to_string()), Dot, Identifier("b".to_string()), Eof]
+        );
     }
 
     #[test]

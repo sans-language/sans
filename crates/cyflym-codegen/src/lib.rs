@@ -100,6 +100,7 @@ fn generate_llvm<'ctx>(
 
         let mut regs: HashMap<String, IntValue<'ctx>> = HashMap::new();
         let mut ptrs: HashMap<String, PointerValue<'ctx>> = HashMap::new();
+        let mut struct_sizes: HashMap<String, usize> = HashMap::new();
 
         // Map parameter names to LLVM parameter values
         for (i, param_name) in func.params.iter().enumerate() {
@@ -337,6 +338,45 @@ fn generate_llvm<'ctx>(
                         .into_int_value();
                     regs.insert(dest.clone(), loaded);
                 }
+                Instruction::StructAlloc { dest, num_fields } => {
+                    let field_types: Vec<inkwell::types::BasicTypeEnum> =
+                        (0..*num_fields).map(|_| i64_type.into()).collect();
+                    let struct_type = context.struct_type(&field_types, false);
+                    let ptr = builder
+                        .build_alloca(struct_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr);
+                    struct_sizes.insert(dest.clone(), *num_fields);
+                }
+                Instruction::FieldStore { ptr, field_index, value } => {
+                    let struct_ptr = ptrs[ptr];
+                    let val = regs[value];
+                    let num_fields = struct_sizes[ptr];
+                    let field_types: Vec<inkwell::types::BasicTypeEnum> =
+                        (0..num_fields).map(|_| i64_type.into()).collect();
+                    let struct_type = context.struct_type(&field_types, false);
+                    let field_ptr = builder
+                        .build_struct_gep(struct_type, struct_ptr, *field_index as u32, "field_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder
+                        .build_store(field_ptr, val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::FieldLoad { dest, ptr, field_index } => {
+                    let struct_ptr = ptrs[ptr];
+                    let num_fields = struct_sizes[ptr];
+                    let field_types: Vec<inkwell::types::BasicTypeEnum> =
+                        (0..num_fields).map(|_| i64_type.into()).collect();
+                    let struct_type = context.struct_type(&field_types, false);
+                    let field_ptr = builder
+                        .build_struct_gep(struct_type, struct_ptr, *field_index as u32, "field_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let loaded = builder
+                        .build_load(i64_type, field_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), loaded);
+                }
             }
         }
     }
@@ -494,6 +534,18 @@ mod tests {
         );
         assert!(ir.contains("phi"), "expected phi node in:\n{}", ir);
         assert!(ir.contains("ret i64"), "expected ret i64 in:\n{}", ir);
+    }
+
+    #[test]
+    fn codegen_struct() {
+        let program = cyflym_parser::parse(
+            "struct Point { x Int, y Int, } fn main() Int { let p = Point { x: 3, y: 4 } p.x + p.y }"
+        ).expect("parse failed");
+        let module = cyflym_ir::lower(&program);
+        let ir = compile_to_llvm_ir(&module).expect("codegen failed");
+        assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
+        assert!(ir.contains("getelementptr"), "expected GEP in:\n{}", ir);
+        assert!(ir.contains("ret i64"), "expected ret in:\n{}", ir);
     }
 
     #[test]

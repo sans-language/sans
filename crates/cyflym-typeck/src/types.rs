@@ -4,6 +4,7 @@ pub enum Type {
     Bool,
     String,
     Fn { params: Vec<Type>, ret: Box<Type> },
+    Struct { name: String, fields: Vec<(String, Type)> },
 }
 
 impl std::fmt::Display for Type {
@@ -12,6 +13,7 @@ impl std::fmt::Display for Type {
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
             Type::String => write!(f, "String"),
+            Type::Struct { name, .. } => write!(f, "{}", name),
             Type::Fn { params, ret } => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {

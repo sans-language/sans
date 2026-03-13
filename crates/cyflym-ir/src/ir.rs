@@ -35,6 +35,10 @@ pub enum Instruction {
     Alloca { dest: Reg },
     Store { ptr: Reg, value: Reg },
     Load { dest: Reg, ptr: Reg },
+    // Struct operations
+    StructAlloc { dest: Reg, num_fields: usize },
+    FieldStore { ptr: Reg, field_index: usize, value: Reg },
+    FieldLoad { dest: Reg, ptr: Reg, field_index: usize },
 }
 
 #[derive(Debug, Clone, Copy)]

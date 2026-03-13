@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
-#[derive(Clone, Copy, PartialEq)]
-enum IrType { Int, Bool, Str }
+#[derive(Clone, PartialEq)]
+enum IrType { Int, Bool, Str, Struct(String) }
 
 #[derive(Clone)]
 enum LocalVar {
@@ -18,12 +18,18 @@ enum LocalVar {
 
 /// Lower a parsed `Program` into an IR `Module`.
 pub fn lower(program: &Program) -> Module {
-    let functions = program.functions.iter().map(lower_function).collect();
+    // Collect struct definitions: name -> field names (ordered)
+    let mut struct_defs: HashMap<String, Vec<String>> = HashMap::new();
+    for s in &program.structs {
+        let field_names: Vec<String> = s.fields.iter().map(|f| f.name.clone()).collect();
+        struct_defs.insert(s.name.clone(), field_names);
+    }
+    let functions = program.functions.iter().map(|f| lower_function(f, &struct_defs)).collect();
     Module { functions }
 }
 
-fn lower_function(func: &cyflym_parser::ast::Function) -> IrFunction {
-    let mut builder = IrBuilder::new();
+fn lower_function(func: &cyflym_parser::ast::Function, struct_defs: &HashMap<String, Vec<String>>) -> IrFunction {
+    let mut builder = IrBuilder::new(struct_defs.clone());
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -72,16 +78,18 @@ struct IrBuilder {
     locals: HashMap<String, LocalVar>,
     instructions: Vec<Instruction>,
     reg_types: HashMap<Reg, IrType>,
+    struct_defs: HashMap<String, Vec<String>>,
 }
 
 impl IrBuilder {
-    fn new() -> Self {
+    fn new(struct_defs: HashMap<String, Vec<String>>) -> Self {
         IrBuilder {
             counter: 0,
             label_counter: 0,
             locals: HashMap::new(),
             instructions: Vec::new(),
             reg_types: HashMap::new(),
+            struct_defs,
         }
     }
 
@@ -123,7 +131,7 @@ impl IrBuilder {
                     LocalVar::Ptr(ptr) => {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Load { dest: dest.clone(), ptr: ptr.clone() });
-                        if let Some(ty) = self.reg_types.get(&ptr).copied() {
+                        if let Some(ty) = self.reg_types.get(&ptr).cloned() {
                             self.reg_types.insert(dest.clone(), ty);
                         }
                         dest
@@ -292,7 +300,7 @@ impl IrBuilder {
                 // Merge
                 self.instructions.push(Instruction::Label { name: merge_label.clone() });
                 let dest = self.fresh_reg();
-                let phi_type = self.reg_types.get(&then_reg).copied().unwrap_or(IrType::Int);
+                let phi_type = self.reg_types.get(&then_reg).cloned().unwrap_or(IrType::Int);
                 self.instructions.push(Instruction::Phi {
                     dest: dest.clone(),
                     a_val: then_reg,
@@ -306,11 +314,12 @@ impl IrBuilder {
             Expr::Call { function, args, .. } => {
                 if function == "print" {
                     let arg_reg = self.lower_expr(&args[0]);
-                    let ty = self.reg_types.get(&arg_reg).copied().unwrap_or(IrType::Int);
+                    let ty = self.reg_types.get(&arg_reg).cloned().unwrap_or(IrType::Int);
                     match ty {
                         IrType::Str => self.instructions.push(Instruction::PrintString { value: arg_reg }),
                         IrType::Bool => self.instructions.push(Instruction::PrintBool { value: arg_reg }),
                         IrType::Int => self.instructions.push(Instruction::PrintInt { value: arg_reg }),
+                        IrType::Struct(_) => panic!("cannot print struct"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -328,6 +337,45 @@ impl IrBuilder {
                 self.reg_types.insert(dest.clone(), IrType::Int);
                 dest
             }
+            Expr::StructLiteral { name, fields, .. } => {
+                let struct_fields = self.struct_defs.get(name).cloned().unwrap_or_default();
+                let num_fields = struct_fields.len();
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::StructAlloc { dest: dest.clone(), num_fields });
+                self.reg_types.insert(dest.clone(), IrType::Struct(name.clone()));
+
+                for (field_name, field_expr) in fields {
+                    let val_reg = self.lower_expr(field_expr);
+                    let field_index = struct_fields.iter().position(|n| n == field_name)
+                        .expect("unknown field in struct literal");
+                    self.instructions.push(Instruction::FieldStore {
+                        ptr: dest.clone(),
+                        field_index,
+                        value: val_reg,
+                    });
+                }
+                dest
+            }
+            Expr::FieldAccess { object, field, .. } => {
+                let obj_reg = self.lower_expr(object);
+                let struct_name = match self.reg_types.get(&obj_reg) {
+                    Some(IrType::Struct(name)) => name.clone(),
+                    _ => panic!("field access on non-struct register"),
+                };
+                let struct_fields = self.struct_defs.get(&struct_name)
+                    .expect("unknown struct in field access");
+                let field_index = struct_fields.iter().position(|n| n == field)
+                    .expect("unknown field in field access");
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::FieldLoad {
+                    dest: dest.clone(),
+                    ptr: obj_reg,
+                    field_index,
+                });
+                // For now, all struct fields are Int
+                self.reg_types.insert(dest.clone(), IrType::Int);
+                dest
+            }
         }
     }
 
@@ -336,7 +384,7 @@ impl IrBuilder {
             Stmt::Let { name, mutable, value, .. } => {
                 let val_reg = self.lower_expr(value);
                 if *mutable {
-                    let val_type = self.reg_types.get(&val_reg).copied().unwrap_or(IrType::Int);
+                    let val_type = self.reg_types.get(&val_reg).cloned().unwrap_or(IrType::Int);
                     let ptr = self.fresh_reg();
                     self.instructions.push(Instruction::Alloca { dest: ptr.clone() });
                     self.instructions.push(Instruction::Store { ptr: ptr.clone(), value: val_reg });
@@ -550,6 +598,26 @@ mod tests {
         let func = &module.functions[0];
         let has_print = func.body.iter().any(|i| matches!(i, Instruction::PrintInt { .. }));
         assert!(has_print, "expected PrintInt");
+    }
+
+    #[test]
+    fn lower_struct_literal() {
+        let program = parse("struct Point { x Int, y Int, } fn main() Int { let p = Point { x: 1, y: 2 } 0 }");
+        let module = lower(&program);
+        let func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_alloc = func.body.iter().any(|i| matches!(i, Instruction::StructAlloc { num_fields: 2, .. }));
+        let store_count = func.body.iter().filter(|i| matches!(i, Instruction::FieldStore { .. })).count();
+        assert!(has_alloc, "expected StructAlloc with 2 fields");
+        assert_eq!(store_count, 2, "expected 2 FieldStore instructions");
+    }
+
+    #[test]
+    fn lower_field_access() {
+        let program = parse("struct Point { x Int, y Int, } fn main() Int { let p = Point { x: 1, y: 2 } p.x }");
+        let module = lower(&program);
+        let func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_load = func.body.iter().any(|i| matches!(i, Instruction::FieldLoad { field_index: 0, .. }));
+        assert!(has_load, "expected FieldLoad with field_index 0");
     }
 
     #[test]

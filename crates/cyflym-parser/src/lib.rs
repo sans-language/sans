@@ -75,10 +75,15 @@ impl Parser {
 
     fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut functions = Vec::new();
+        let mut structs = Vec::new();
         while self.peek().kind != TokenKind::Eof {
-            functions.push(self.parse_function()?);
+            if self.peek().kind == TokenKind::Struct {
+                structs.push(self.parse_struct_def()?);
+            } else {
+                functions.push(self.parse_function()?);
+            }
         }
-        Ok(Program { functions })
+        Ok(Program { functions, structs })
     }
 
     // ─── Function ─────────────────────────────────────────────────────────────
@@ -107,6 +112,29 @@ impl Parser {
             body,
             span: fn_start..fn_end,
         })
+    }
+
+    fn parse_struct_def(&mut self) -> Result<StructDef, ParseError> {
+        let struct_tok = self.expect(&TokenKind::Struct)?;
+        let start = struct_tok.span.start;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut fields = Vec::new();
+        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+            let (field_name, field_span) = self.expect_ident()?;
+            let type_name = self.parse_type_name()?;
+            let end = type_name.span.end;
+            fields.push(StructField {
+                name: field_name,
+                type_name,
+                span: field_span.start..end,
+            });
+            if self.peek().kind == TokenKind::Comma {
+                self.pos += 1;
+            }
+        }
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        Ok(StructDef { name, fields, span: start..rbrace.span.end })
     }
 
     fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
@@ -321,6 +349,19 @@ impl Parser {
         let mut lhs = self.parse_atom()?;
 
         loop {
+            // Check for field access first (highest precedence)
+            if self.peek().kind == TokenKind::Dot {
+                self.pos += 1; // consume .
+                let (field, field_span) = self.expect_ident()?;
+                let start = expr_span(&lhs).start;
+                lhs = Expr::FieldAccess {
+                    object: Box::new(lhs),
+                    field,
+                    span: start..field_span.end,
+                };
+                continue;
+            }
+
             let tok = self.peek().clone();
             let Some((left_bp, right_bp, op)) = infix_binding_power(&tok.kind) else {
                 break;
@@ -363,6 +404,25 @@ impl Parser {
                         function: name,
                         args,
                         span: name_span.start..rparen.span.end,
+                    })
+                } else if self.peek().kind == TokenKind::LBrace && name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    // Struct literal: Name { field: value, ... }
+                    self.pos += 1; // consume {
+                    let mut fields = Vec::new();
+                    while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+                        let (field_name, _) = self.expect_ident()?;
+                        self.expect(&TokenKind::Colon)?;
+                        let value = self.parse_expr(0)?;
+                        fields.push((field_name, value));
+                        if self.peek().kind == TokenKind::Comma {
+                            self.pos += 1;
+                        }
+                    }
+                    let rbrace = self.expect(&TokenKind::RBrace)?;
+                    Ok(Expr::StructLiteral {
+                        name,
+                        fields,
+                        span: name_span.start..rbrace.span.end,
                     })
                 } else {
                     Ok(Expr::Identifier { name, span: name_span })
@@ -521,6 +581,8 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::Call { span, .. } => span,
         Expr::If { span, .. } => span,
         Expr::UnaryOp { span, .. } => span,
+        Expr::StructLiteral { span, .. } => span,
+        Expr::FieldAccess { span, .. } => span,
     }
 }
 
@@ -777,6 +839,50 @@ mod tests {
             assert!(matches!(&args[0], Expr::StringLiteral { value, .. } if value == "hello"));
         } else {
             panic!("expected print call");
+        }
+    }
+
+    #[test]
+    fn parse_struct_def() {
+        let prog = parse("struct Point { x Int, y Int, } fn main() Int { 0 }").unwrap();
+        assert_eq!(prog.structs.len(), 1);
+        let s = &prog.structs[0];
+        assert_eq!(s.name, "Point");
+        assert_eq!(s.fields.len(), 2);
+        assert_eq!(s.fields[0].name, "x");
+        assert_eq!(s.fields[0].type_name.name, "Int");
+        assert_eq!(s.fields[1].name, "y");
+        assert_eq!(s.fields[1].type_name.name, "Int");
+    }
+
+    #[test]
+    fn parse_struct_literal() {
+        let prog = parse("fn main() Int { let p = Point { x: 1, y: 2 } 0 }").unwrap();
+        let body = &prog.functions[0].body;
+        if let Stmt::Let { value, .. } = &body[0] {
+            if let Expr::StructLiteral { name, fields, .. } = value {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0, "x");
+                assert_eq!(fields[1].0, "y");
+            } else {
+                panic!("expected StructLiteral, got {:?}", value);
+            }
+        } else {
+            panic!("expected Let");
+        }
+    }
+
+    #[test]
+    fn parse_field_access() {
+        let prog = parse("fn main() Int { let p = Point { x: 1, y: 2 } p.x }").unwrap();
+        let body = &prog.functions[0].body;
+        assert_eq!(body.len(), 2);
+        if let Stmt::Expr(Expr::FieldAccess { object, field, .. }) = &body[1] {
+            assert_eq!(field, "x");
+            assert!(matches!(object.as_ref(), Expr::Identifier { name, .. } if name == "p"));
+        } else {
+            panic!("expected FieldAccess, got {:?}", &body[1]);
         }
     }
 

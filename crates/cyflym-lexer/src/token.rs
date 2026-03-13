@@ -46,6 +46,12 @@ pub enum TokenKind {
     Return,
     Mut,
 
+    // Data types
+    Struct,
+
+    // Member access
+    Dot,
+
     // Comparison operators
     EqEq,    // ==
     NotEq,   // !=
