@@ -99,3 +99,18 @@ fn e2e_channel_basic() {
 fn e2e_spawn_channel() {
     assert_eq!(compile_and_run("spawn_channel.cy"), 10);
 }
+
+#[test]
+fn e2e_mutex_basic() {
+    assert_eq!(compile_and_run("mutex_basic.cy"), 15);
+}
+
+#[test]
+fn e2e_mutex_threaded() {
+    assert_eq!(compile_and_run("mutex_threaded.cy"), 1);
+}
+
+#[test]
+fn e2e_channel_bounded() {
+    assert_eq!(compile_and_run("channel_bounded.cy"), 30);
+}
