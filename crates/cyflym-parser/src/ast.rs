@@ -126,6 +126,12 @@ pub enum Stmt {
         value: Expr,
         span: Span,
     },
+    ForIn {
+        var: String,
+        iterable: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
     Expr(Expr),
 }
 
@@ -185,6 +191,10 @@ pub enum Expr {
     },
     MutexCreate {
         value: Box<Expr>,
+        span: Span,
+    },
+    ArrayCreate {
+        element_type: TypeName,
         span: Span,
     },
 }

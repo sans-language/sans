@@ -368,6 +368,26 @@ impl Parser {
             self.parse_return()
         } else if self.peek().kind == TokenKind::If {
             self.parse_if_or_if_else()
+        } else if self.peek().kind == TokenKind::For {
+            let start = self.peek().span.start;
+            self.pos += 1;
+            let var = if let TokenKind::Identifier(name) = &self.peek().kind {
+                let name = name.clone();
+                self.pos += 1;
+                name
+            } else {
+                return Err(ParseError::new(
+                    "expected variable name after 'for'",
+                    self.peek().span.clone(),
+                ));
+            };
+            self.expect(&TokenKind::In)?;
+            let iterable = self.parse_expr(0)?;
+            self.expect(&TokenKind::LBrace)?;
+            let body = self.parse_body()?;
+            self.expect(&TokenKind::RBrace)?;
+            let span = start..self.tokens[self.pos - 1].span.end;
+            Ok(Stmt::ForIn { var, iterable, body, span })
         } else {
             // Could be an expression OR an assignment (name = expr)
             let expr = self.parse_expr(0)?;
@@ -713,6 +733,17 @@ impl Parser {
                 let span = start..self.tokens[self.pos - 1].span.end;
                 Ok(Expr::Spawn { function: func_name, args, span })
             }
+            TokenKind::Array => {
+                let start = tok.span.start;
+                self.pos += 1;
+                self.expect(&TokenKind::Lt)?;
+                let type_name = self.parse_type_name()?;
+                self.expect(&TokenKind::Gt)?;
+                self.expect(&TokenKind::LParen)?;
+                self.expect(&TokenKind::RParen)?;
+                let span = start..self.tokens[self.pos - 1].span.end;
+                Ok(Expr::ArrayCreate { element_type: type_name, span })
+            }
             TokenKind::Mutex => {
                 let start = tok.span.start;
                 self.pos += 1;
@@ -866,7 +897,8 @@ impl Parser {
                     | Stmt::Return { span, .. }
                     | Stmt::Assign { span, .. }
                     | Stmt::If { span, .. }
-                    | Stmt::LetDestructure { span, .. } => {
+                    | Stmt::LetDestructure { span, .. }
+                    | Stmt::ForIn { span, .. } => {
                         return Err(ParseError::new(
                             "block must end with an expression, not a statement",
                             span,
@@ -934,6 +966,7 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::Spawn { span, .. } => span,
         Expr::ChannelCreate { span, .. } => span,
         Expr::MutexCreate { span, .. } => span,
+        Expr::ArrayCreate { span, .. } => span,
     }
 }
 
@@ -1525,6 +1558,62 @@ mod tests {
                 assert_eq!(args.len(), 1);
             }
             other => panic!("expected unlock() call, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_array_create() {
+        let program = parse("fn main() Int { let a = array<Int>() 0 }").unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::ArrayCreate { .. }));
+            }
+            other => panic!("expected Let with ArrayCreate, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_for_in() {
+        let program = parse("fn main() Int { let a = array<Int>() for x in a { print(x) } 0 }").unwrap();
+        match &program.functions[0].body[1] {
+            Stmt::ForIn { var, .. } => {
+                assert_eq!(var, "x");
+            }
+            other => panic!("expected ForIn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_array_push_get_set_len() {
+        let program = parse("fn main() Int { let a = array<Int>() a.push(1) a.get(0) }").unwrap();
+        match &program.functions[0].body[1] {
+            Stmt::Expr(Expr::MethodCall { method, args, .. }) => {
+                assert_eq!(method, "push");
+                assert_eq!(args.len(), 1);
+            }
+            other => panic!("expected push call, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_int_to_string_call() {
+        let program = parse("fn main() Int { let s = int_to_string(42) 0 }").unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::Call { function, .. } if function == "int_to_string"));
+            }
+            other => panic!("expected Let with Call, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_string_concat() {
+        let program = parse(r#"fn main() Int { let s = "a" + "b" 0 }"#).unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::BinaryOp { .. }));
+            }
+            other => panic!("expected Let with BinaryOp, got {:?}", other),
         }
     }
 }
