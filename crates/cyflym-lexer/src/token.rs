@@ -58,6 +58,10 @@ pub enum TokenKind {
     SelfValue, // `self` (value, lowercase)
     SelfType,  // `Self` (type, uppercase)
 
+    // Concurrency
+    Spawn,
+    Channel,
+
     // Member access
     Dot,
 

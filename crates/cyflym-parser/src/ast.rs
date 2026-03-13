@@ -121,6 +121,11 @@ pub enum Stmt {
         body: Vec<Stmt>,
         span: Span,
     },
+    LetDestructure {
+        names: Vec<String>,
+        value: Expr,
+        span: Span,
+    },
     Expr(Expr),
 }
 
@@ -166,6 +171,15 @@ pub enum Expr {
         object: Box<Expr>,
         method: String,
         args: Vec<Expr>,
+        span: Span,
+    },
+    Spawn {
+        function: String,
+        args: Vec<Expr>,
+        span: Span,
+    },
+    ChannelCreate {
+        element_type: TypeName,
         span: Span,
     },
 }

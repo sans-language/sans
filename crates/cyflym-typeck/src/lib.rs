@@ -151,6 +151,20 @@ fn check_stmt(
             check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
             Ok(())
         }
+        Stmt::LetDestructure { names, value, .. } => {
+            match value {
+                Expr::ChannelCreate { element_type, .. } => {
+                    let inner = resolve_type(&element_type.name, structs, enums)?;
+                    if names.len() != 2 {
+                        return Err(TypeError::new("channel destructuring requires exactly 2 names"));
+                    }
+                    locals.insert(names[0].clone(), (Type::Sender { inner: Box::new(inner.clone()) }, false));
+                    locals.insert(names[1].clone(), (Type::Receiver { inner: Box::new(inner) }, false));
+                    Ok(())
+                }
+                _ => Err(TypeError::new("destructuring let is only supported for channel<T>()")),
+            }
+        }
     }
 }
 
@@ -324,7 +338,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
                     Stmt::Return { .. } => {
                         // Already type-checked in check_stmt
                     }
-                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } | Stmt::If { .. } => {
+                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } | Stmt::If { .. } | Stmt::LetDestructure { .. } => {
                         return Err(TypeError::new(format!(
                             "function '{}': missing return expression", func.name
                         )));
@@ -774,8 +788,68 @@ fn check_expr(
             result_type.ok_or_else(|| TypeError::new("match expression has no arms"))
         }
 
+        Expr::Spawn { function, args, .. } => {
+            if let Some((param_types, _)) = fn_env.get(function) {
+                if args.len() != param_types.len() {
+                    return Err(TypeError::new(format!(
+                        "wrong argument count calling '{}': expected {} but got {}",
+                        function, param_types.len(), args.len()
+                    )));
+                }
+                for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
+                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let compatible = actual == *expected
+                        || (*expected == Type::Int && matches!(actual, Type::Sender { .. } | Type::Receiver { .. } | Type::JoinHandle));
+                    if !compatible {
+                        return Err(TypeError::new(format!(
+                            "argument {} to '{}': expected {} but got {}",
+                            i + 1, function, expected, actual
+                        )));
+                    }
+                }
+                Ok(Type::JoinHandle)
+            } else {
+                Err(TypeError::new(format!("undefined function '{}' in spawn", function)))
+            }
+        }
+
+        Expr::ChannelCreate { element_type, .. } => {
+            let inner = resolve_type(&element_type.name, structs, enums)?;
+            Ok(Type::Sender { inner: Box::new(inner) })
+        }
+
         Expr::MethodCall { object, method, args, .. } => {
             let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+
+            // Handle concurrency built-in methods
+            match (&obj_ty, method.as_str()) {
+                (Type::Sender { inner }, "send") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("send() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if arg_ty != **inner {
+                        return Err(TypeError::new(format!(
+                            "send() type mismatch: channel holds {} but got {}", inner, arg_ty
+                        )));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::Receiver { inner }, "recv") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("recv() takes no arguments"));
+                    }
+                    return Ok(*inner.clone());
+                }
+                (Type::JoinHandle, "join") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("join() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                _ => {}
+            }
+
             let type_name = match &obj_ty {
                 Type::Struct { name, .. } => name.clone(),
                 Type::Enum { name, .. } => name.clone(),
@@ -1179,5 +1253,54 @@ mod tests {
             "fn identity<T>(x T) T { x } fn main() Int { identity(1, 2) }"
         ).unwrap_err();
         assert!(err.message.contains("argument"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn typeck_spawn_produces_join_handle() {
+        let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() 0 }").unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn typeck_spawn_wrong_args() {
+        let program = cyflym_parser::parse("fn worker(x Int) Int { x } fn main() Int { let h = spawn worker() 0 }").unwrap();
+        assert!(check(&program).is_err());
+    }
+
+    #[test]
+    fn typeck_channel_creates_sender_receiver() {
+        let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn typeck_send_type_mismatch() {
+        let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(true) 0 }").unwrap();
+        let err = check(&program).unwrap_err();
+        assert!(err.message.contains("mismatch"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn typeck_recv_returns_element_type() {
+        let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn typeck_join_on_handle() {
+        let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").unwrap();
+        assert!(check(&program).is_ok());
+    }
+
+    #[test]
+    fn typeck_join_on_non_handle() {
+        let program = cyflym_parser::parse("fn main() Int { let x Int = 42 x.join() }").unwrap();
+        assert!(check(&program).is_err());
+    }
+
+    #[test]
+    fn typeck_send_on_non_sender() {
+        let program = cyflym_parser::parse("fn main() Int { let x Int = 42 x.send(1) 0 }").unwrap();
+        assert!(check(&program).is_err());
     }
 }

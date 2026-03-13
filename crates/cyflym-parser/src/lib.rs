@@ -397,6 +397,19 @@ impl Parser {
         let let_tok = self.expect(&TokenKind::Let)?;
         let let_start = let_tok.span.start;
 
+        // Check for destructuring: let (a, b) = expr
+        if self.peek().kind == TokenKind::LParen {
+            self.pos += 1; // consume '('
+            let (name1, _) = self.expect_ident()?;
+            self.expect(&TokenKind::Comma)?;
+            let (name2, _) = self.expect_ident()?;
+            self.expect(&TokenKind::RParen)?;
+            self.expect(&TokenKind::Eq)?;
+            let value = self.parse_expr(0)?;
+            let span = let_start..expr_span(&value).end;
+            return Ok(Stmt::LetDestructure { names: vec![name1, name2], value, span });
+        }
+
         // Check for `mut` keyword
         let mutable = if self.peek().kind == TokenKind::Mut {
             self.pos += 1;
@@ -684,6 +697,33 @@ impl Parser {
                 self.pos += 1;
                 Ok(Expr::StringLiteral { value, span })
             }
+            TokenKind::Spawn => {
+                let start = tok.span.start;
+                self.pos += 1;
+                let (func_name, _) = self.expect_ident()?;
+                self.expect(&TokenKind::LParen)?;
+                let mut args = Vec::new();
+                while self.peek().kind != TokenKind::RParen {
+                    args.push(self.parse_expr(0)?);
+                    if self.peek().kind == TokenKind::Comma {
+                        self.pos += 1;
+                    }
+                }
+                self.expect(&TokenKind::RParen)?;
+                let span = start..self.tokens[self.pos - 1].span.end;
+                Ok(Expr::Spawn { function: func_name, args, span })
+            }
+            TokenKind::Channel => {
+                let start = tok.span.start;
+                self.pos += 1;
+                self.expect(&TokenKind::Lt)?;
+                let type_name = self.parse_type_name()?;
+                self.expect(&TokenKind::Gt)?;
+                self.expect(&TokenKind::LParen)?;
+                self.expect(&TokenKind::RParen)?;
+                let span = start..self.tokens[self.pos - 1].span.end;
+                Ok(Expr::ChannelCreate { element_type: type_name, span })
+            }
             TokenKind::LParen => {
                 self.pos += 1;
                 let expr = self.parse_expr(0)?;
@@ -811,7 +851,8 @@ impl Parser {
                     | Stmt::While { span, .. }
                     | Stmt::Return { span, .. }
                     | Stmt::Assign { span, .. }
-                    | Stmt::If { span, .. } => {
+                    | Stmt::If { span, .. }
+                    | Stmt::LetDestructure { span, .. } => {
                         return Err(ParseError::new(
                             "block must end with an expression, not a statement",
                             span,
@@ -876,6 +917,8 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::EnumVariant { span, .. } => span,
         Expr::Match { span, .. } => span,
         Expr::MethodCall { span, .. } => span,
+        Expr::Spawn { span, .. } => span,
+        Expr::ChannelCreate { span, .. } => span,
     }
 }
 
@@ -1353,5 +1396,75 @@ mod tests {
     fn parse_non_generic_function_unchanged() {
         let prog = parse("fn add(a Int, b Int) Int { a + b } fn main() Int { 0 }").unwrap();
         assert_eq!(prog.functions[0].type_params.len(), 0);
+    }
+
+    #[test]
+    fn parse_spawn_expr() {
+        let program = parse("fn main() Int { spawn foo(1, 2) }").unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::Expr(Expr::Spawn { function, args, .. }) => {
+                assert_eq!(function, "foo");
+                assert_eq!(args.len(), 2);
+            }
+            other => panic!("expected Spawn, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_channel_create() {
+        let program = parse("fn main() Int { let (tx, rx) = channel<Int>() 0 }").unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::LetDestructure { names, value, .. } => {
+                assert_eq!(names, &["tx".to_string(), "rx".to_string()]);
+                assert!(matches!(value, Expr::ChannelCreate { .. }));
+            }
+            other => panic!("expected LetDestructure, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_send_method_call() {
+        let program = parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) 0 }").unwrap();
+        match &program.functions[0].body[1] {
+            Stmt::Expr(Expr::MethodCall { method, args, .. }) => {
+                assert_eq!(method, "send");
+                assert_eq!(args.len(), 1);
+            }
+            other => panic!("expected send MethodCall, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_recv_method_call() {
+        let program = parse("fn main() Int { let (tx, rx) = channel<Int>() let val = rx.recv() 0 }").unwrap();
+        match &program.functions[0].body[1] {
+            Stmt::Let { value, .. } => {
+                assert!(matches!(value, Expr::MethodCall { method, .. } if method == "recv"));
+            }
+            other => panic!("expected Let with recv, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_join_method_call() {
+        let program = parse("fn main() Int { let h = spawn foo() h.join() 0 }").unwrap();
+        match &program.functions[0].body[1] {
+            Stmt::Expr(Expr::MethodCall { method, .. }) => {
+                assert_eq!(method, "join");
+            }
+            other => panic!("expected join MethodCall, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_spawn_no_args() {
+        let program = parse("fn main() Int { spawn worker() }").unwrap();
+        match &program.functions[0].body[0] {
+            Stmt::Expr(Expr::Spawn { function, args, .. }) => {
+                assert_eq!(function, "worker");
+                assert_eq!(args.len(), 0);
+            }
+            other => panic!("expected Spawn, got {:?}", other),
+        }
     }
 }

@@ -581,6 +581,12 @@ impl IrBuilder {
                 self.reg_types.insert(result_reg.clone(), IrType::Int);
                 result_reg
             }
+            Expr::Spawn { .. } => {
+                todo!("IR lowering for spawn not yet implemented")
+            }
+            Expr::ChannelCreate { .. } => {
+                todo!("IR lowering for channel not yet implemented")
+            }
         }
     }
 
@@ -655,6 +661,9 @@ impl IrBuilder {
                 self.instructions.push(Instruction::Jump { target: end_label.clone() });
 
                 self.instructions.push(Instruction::Label { name: end_label });
+            }
+            Stmt::LetDestructure { .. } => {
+                todo!("IR lowering for let destructuring not yet implemented")
             }
         }
     }

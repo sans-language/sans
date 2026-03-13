@@ -79,6 +79,8 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "for" => TokenKind::For,
                     "self" => TokenKind::SelfValue,
                     "Self" => TokenKind::SelfType,
+                    "spawn" => TokenKind::Spawn,
+                    "channel" => TokenKind::Channel,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -403,6 +405,18 @@ mod tests {
     fn lex_self_keywords() {
         let tokens = lex("self Self").unwrap();
         assert_eq!(kinds(&tokens), vec![SelfValue, SelfType, Eof]);
+    }
+
+    #[test]
+    fn lex_spawn_keyword() {
+        let tokens = lex("spawn").unwrap();
+        assert_eq!(kinds(&tokens), vec![Spawn, Eof]);
+    }
+
+    #[test]
+    fn lex_channel_keyword() {
+        let tokens = lex("channel").unwrap();
+        assert_eq!(kinds(&tokens), vec![Channel, Eof]);
     }
 
     #[test]
