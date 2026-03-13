@@ -39,7 +39,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     })?;
 
     // Step 3: Type check
-    cyflym_typeck::check(&program).map_err(|e| format!("type error: {}", e.message))?;
+    cyflym_typeck::check(&program, &std::collections::HashMap::new()).map_err(|e| format!("type error: {}", e.message))?;
 
     // Step 4: Lower to IR
     let ir_module = cyflym_ir::lower(&program);

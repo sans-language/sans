@@ -1675,7 +1675,7 @@ mod tests {
         let program = cyflym_parser::parse(
             "struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 3, y: 4 } p.sum() }"
         ).expect("parse failed");
-        cyflym_typeck::check(&program).expect("type error");
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("type error");
         let module = cyflym_ir::lower(&program);
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
         assert!(ir.contains("define i64 @Point_sum"), "expected Point_sum function in:\n{}", ir);
@@ -1685,7 +1685,7 @@ mod tests {
     #[test]
     fn codegen_channel_create() {
         let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() 0 }").expect("parse");
-        cyflym_typeck::check(&program).expect("typeck");
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("typeck");
         let module = cyflym_ir::lower(&program);
         let ir = compile_to_llvm_ir(&module).expect("codegen");
         assert!(ir.contains("malloc"), "expected malloc in:\n{}", ir);
@@ -1695,7 +1695,7 @@ mod tests {
     #[test]
     fn codegen_spawn() {
         let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").expect("parse");
-        cyflym_typeck::check(&program).expect("typeck");
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("typeck");
         let module = cyflym_ir::lower(&program);
         let ir = compile_to_llvm_ir(&module).expect("codegen");
         assert!(ir.contains("pthread_create"), "expected pthread_create in:\n{}", ir);
@@ -1706,7 +1706,7 @@ mod tests {
     #[test]
     fn codegen_send_recv() {
         let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").expect("parse");
-        cyflym_typeck::check(&program).expect("typeck");
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).expect("typeck");
         let module = cyflym_ir::lower(&program);
         let ir = compile_to_llvm_ir(&module).expect("codegen");
         assert!(ir.contains("pthread_mutex_lock"), "expected lock in:\n{}", ir);
@@ -1719,7 +1719,7 @@ mod tests {
         let program = cyflym_parser::parse(
             "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
         let ir = cyflym_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
@@ -1731,7 +1731,7 @@ mod tests {
         let program = cyflym_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>(4) tx.send(1) rx.recv() }"
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
         let ir = cyflym_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
@@ -1743,7 +1743,7 @@ mod tests {
         let program = cyflym_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
         let ir = cyflym_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
@@ -1755,7 +1755,7 @@ mod tests {
         let program = cyflym_parser::parse(
             r#"fn main() Int { let s = "hello" + " world" 0 }"#
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
         let ir = cyflym_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
@@ -1767,7 +1767,7 @@ mod tests {
         let program = cyflym_parser::parse(
             r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
+        cyflym_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
         let ir = cyflym_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);

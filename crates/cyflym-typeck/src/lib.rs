@@ -11,6 +11,21 @@ pub struct GenericFnInfo {
     pub return_type_name: String,                     // raw return type name (may be type param)
 }
 
+/// Exported items from a module, available for cross-module resolution.
+#[derive(Debug)]
+pub struct ModuleExports {
+    pub functions: HashMap<String, FunctionSignature>,
+    pub structs: HashMap<String, Vec<(String, Type)>>,
+    pub enums: HashMap<String, Vec<(String, Vec<Type>)>>,
+}
+
+/// Signature of an exported function.
+#[derive(Debug)]
+pub struct FunctionSignature {
+    pub params: Vec<Type>,
+    pub return_type: Type,
+}
+
 /// An error produced during type checking.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeError {
@@ -34,6 +49,7 @@ fn resolve_type(
     name: &str,
     structs: &HashMap<String, Vec<(String, Type)>>,
     enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
+    module_exports: &HashMap<String, ModuleExports>,
 ) -> Result<Type, TypeError> {
     match name {
         "Int" => Ok(Type::Int),
@@ -45,6 +61,15 @@ fn resolve_type(
             } else if let Some(variants) = enums.get(other) {
                 Ok(Type::Enum { name: other.to_string(), variants: variants.clone() })
             } else {
+                // Search module exports for the type
+                for (_mod_name, exports) in module_exports {
+                    if let Some(fields) = exports.structs.get(other) {
+                        return Ok(Type::Struct { name: other.to_string(), fields: fields.clone() });
+                    }
+                    if let Some(variants) = exports.enums.get(other) {
+                        return Ok(Type::Enum { name: other.to_string(), variants: variants.clone() });
+                    }
+                }
                 Err(TypeError::new(format!("unknown type '{}'", other)))
             }
         }
@@ -62,9 +87,10 @@ fn check_stmts(
     methods: &HashMap<(String, String), (Vec<Type>, Type)>,
     generic_fns: &HashMap<String, GenericFnInfo>,
     traits: &HashMap<String, Vec<(String, Vec<Type>, Type)>>,
+    module_exports: &HashMap<String, ModuleExports>,
 ) -> Result<(), TypeError> {
     for stmt in stmts {
-        check_stmt(stmt, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+        check_stmt(stmt, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
     }
     Ok(())
 }
@@ -79,12 +105,13 @@ fn check_stmt(
     methods: &HashMap<(String, String), (Vec<Type>, Type)>,
     generic_fns: &HashMap<String, GenericFnInfo>,
     traits: &HashMap<String, Vec<(String, Vec<Type>, Type)>>,
+    module_exports: &HashMap<String, ModuleExports>,
 ) -> Result<(), TypeError> {
     match stmt {
         Stmt::Let { name, mutable, type_name, value, .. } => {
-            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             let ty = if let Some(tn) = type_name {
-                let declared = resolve_type(&tn.name, structs, enums)?;
+                let declared = resolve_type(&tn.name, structs, enums, module_exports)?;
                 if declared != actual {
                     return Err(TypeError::new(format!(
                         "type mismatch in let '{}': declared {} but expression has type {}",
@@ -99,21 +126,21 @@ fn check_stmt(
             Ok(())
         }
         Stmt::Expr(expr) => {
-            check_expr(expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            check_expr(expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             Ok(())
         }
         Stmt::While { condition, body, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "while condition must be Bool, got {}", cond_ty
                 )));
             }
-            check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             Ok(())
         }
         Stmt::Return { value, .. } => {
-            let ty = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let ty = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             if ty != *ret_type {
                 return Err(TypeError::new(format!(
                     "return type mismatch: expected {} but got {}",
@@ -132,7 +159,7 @@ fn check_stmt(
                     "cannot assign to immutable variable '{}'", name
                 )));
             }
-            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             if actual != expected_ty {
                 return Err(TypeError::new(format!(
                     "type mismatch in assignment to '{}': expected {} but got {}",
@@ -142,23 +169,23 @@ fn check_stmt(
             Ok(())
         }
         Stmt::If { condition, body, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "if condition must be Bool, got {}", cond_ty
                 )));
             }
-            check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             Ok(())
         }
         Stmt::ForIn { var, iterable, body, .. } => {
-            let iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             match iter_ty {
                 Type::Array { inner } => {
                     let mut loop_locals = locals.clone();
                     loop_locals.insert(var.clone(), (*inner, false));
                     for stmt in body {
-                        check_stmt(stmt, &mut loop_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                        check_stmt(stmt, &mut loop_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     }
                     Ok(())
                 }
@@ -169,14 +196,14 @@ fn check_stmt(
             match value {
                 Expr::ChannelCreate { element_type, capacity, .. } => {
                     if let Some(cap_expr) = capacity {
-                        let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                        let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                         if cap_ty != Type::Int {
                             return Err(TypeError::new(format!(
                                 "channel capacity must be Int, got {}", cap_ty
                             )));
                         }
                     }
-                    let inner = resolve_type(&element_type.name, structs, enums)?;
+                    let inner = resolve_type(&element_type.name, structs, enums, module_exports)?;
                     if names.len() != 2 {
                         return Err(TypeError::new("channel destructuring requires exactly 2 names"));
                     }
@@ -190,16 +217,16 @@ fn check_stmt(
     }
 }
 
-/// Type-check the given `Program`. Returns `Ok(())` if the program is
+/// Type-check the given `Program`. Returns `Ok(ModuleExports)` if the program is
 /// well-typed, or a `TypeError` describing the first problem found.
-pub fn check(program: &Program) -> Result<(), TypeError> {
+pub fn check(program: &Program, module_exports: &HashMap<String, ModuleExports>) -> Result<ModuleExports, TypeError> {
     // Pass 0a: collect struct definitions.
     let mut struct_registry: HashMap<String, Vec<(String, Type)>> = HashMap::new();
     let enum_registry: HashMap<String, Vec<(String, Vec<Type>)>> = HashMap::new();
     for s in &program.structs {
         let mut fields = Vec::new();
         for f in &s.fields {
-            let ty = resolve_type(&f.type_name.name, &struct_registry, &enum_registry)?;
+            let ty = resolve_type(&f.type_name.name, &struct_registry, &enum_registry, module_exports)?;
             fields.push((f.name.clone(), ty));
         }
         struct_registry.insert(s.name.clone(), fields);
@@ -212,7 +239,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         for v in &e.variants {
             let mut field_types = Vec::new();
             for f in &v.fields {
-                let ty = resolve_type(&f.name, &struct_registry, &enum_registry)?;
+                let ty = resolve_type(&f.name, &struct_registry, &enum_registry, module_exports)?;
                 field_types.push(ty);
             }
             variants.push((v.name.clone(), field_types));
@@ -226,9 +253,9 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         let mut trait_methods = Vec::new();
         for m in &t.methods {
             let param_types: Vec<Type> = m.params.iter()
-                .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry))
+                .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry, module_exports))
                 .collect::<Result<_, _>>()?;
-            let ret_type = resolve_type(&m.return_type.name, &struct_registry, &enum_registry)?;
+            let ret_type = resolve_type(&m.return_type.name, &struct_registry, &enum_registry, module_exports)?;
             trait_methods.push((m.name.clone(), param_types, ret_type));
         }
         trait_registry.insert(t.name.clone(), trait_methods);
@@ -250,7 +277,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
                     )))?;
                 // Check params (skip self which is first)
                 let actual_params: Vec<Type> = method.params[1..].iter()
-                    .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry))
+                    .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry, module_exports))
                     .collect::<Result<_, _>>()?;
                 if actual_params != *expected_params {
                     return Err(TypeError::new(format!(
@@ -258,7 +285,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
                         method_name, trait_name
                     )));
                 }
-                let actual_ret = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+                let actual_ret = resolve_type(&method.return_type.name, &struct_registry, &enum_registry, module_exports)?;
                 if actual_ret != *expected_ret {
                     return Err(TypeError::new(format!(
                         "method '{}' return type doesn't match trait '{}' signature",
@@ -270,9 +297,9 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
 
         for method in &imp.methods {
             let param_types: Vec<Type> = method.params[1..].iter() // skip self
-                .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry))
+                .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry, module_exports))
                 .collect::<Result<_, _>>()?;
-            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry, module_exports)?;
             method_registry.insert(
                 (imp.target_type.clone(), method.name.clone()),
                 (param_types, ret_type),
@@ -288,9 +315,9 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         if func.type_params.is_empty() {
             let mut param_types = Vec::new();
             for param in &func.params {
-                param_types.push(resolve_type(&param.type_name.name, &struct_registry, &enum_registry)?);
+                param_types.push(resolve_type(&param.type_name.name, &struct_registry, &enum_registry, module_exports)?);
             }
-            let ret_type = resolve_type(&func.return_type.name, &struct_registry, &enum_registry)?;
+            let ret_type = resolve_type(&func.return_type.name, &struct_registry, &enum_registry, module_exports)?;
             fn_env.insert(func.name.clone(), (param_types, ret_type));
         } else {
             generic_fn_env.insert(func.name.clone(), GenericFnInfo {
@@ -307,9 +334,9 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
             let mangled = format!("{}_{}", imp.target_type, method.name);
             let mut param_types = Vec::new();
             for p in &method.params {
-                param_types.push(resolve_type(&p.type_name.name, &struct_registry, &enum_registry)?);
+                param_types.push(resolve_type(&p.type_name.name, &struct_registry, &enum_registry, module_exports)?);
             }
-            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry, module_exports)?;
             fn_env.insert(mangled, (param_types, ret_type));
         }
     }
@@ -331,7 +358,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
 
         let mut locals: HashMap<String, (Type, bool)> = HashMap::new();
         for param in &func.params {
-            let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry)?;
+            let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry, module_exports)?;
             locals.insert(param.name.clone(), (ty, false));
         }
 
@@ -344,12 +371,12 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         // Check all statements
         for (i, stmt) in func.body.iter().enumerate() {
             let is_last = i == func.body.len() - 1;
-            check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry)?;
+            check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
 
             if is_last {
                 match stmt {
                     Stmt::Expr(expr) => {
-                        let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry)?;
+                        let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
                         if ty != ret_type {
                             return Err(TypeError::new(format!(
                                 "function '{}': return type mismatch: expected {} but got {}",
@@ -373,11 +400,11 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
     // Pass 3: type-check method bodies from impl blocks.
     for imp in &program.impls {
         for method in &imp.methods {
-            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry, module_exports)?;
 
             let mut locals: HashMap<String, (Type, bool)> = HashMap::new();
             for param in &method.params {
-                let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry)?;
+                let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry, module_exports)?;
                 locals.insert(param.name.clone(), (ty, false));
             }
 
@@ -389,12 +416,12 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
 
             for (i, stmt) in method.body.iter().enumerate() {
                 let is_last = i == method.body.len() - 1;
-                check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry)?;
+                check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
 
                 if is_last {
                     match stmt {
                         Stmt::Expr(expr) => {
-                            let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry)?;
+                            let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
                             if ty != ret_type {
                                 return Err(TypeError::new(format!(
                                     "method '{}': return type mismatch: expected {} but got {}",
@@ -414,7 +441,22 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         }
     }
 
-    Ok(())
+    let mut fn_exports = HashMap::new();
+    for func in &program.functions {
+        if func.type_params.is_empty() {
+            let (param_types, ret_type) = fn_env.get(&func.name).unwrap();
+            fn_exports.insert(func.name.clone(), FunctionSignature {
+                params: param_types.clone(),
+                return_type: ret_type.clone(),
+            });
+        }
+    }
+
+    Ok(ModuleExports {
+        functions: fn_exports,
+        structs: struct_registry,
+        enums: enum_registry,
+    })
 }
 
 /// Type-check a single expression and return its type.
@@ -428,6 +470,7 @@ fn check_expr(
     methods: &HashMap<(String, String), (Vec<Type>, Type)>,
     generic_fns: &HashMap<String, GenericFnInfo>,
     traits: &HashMap<String, Vec<(String, Vec<Type>, Type)>>,
+    module_exports: &HashMap<String, ModuleExports>,
 ) -> Result<Type, TypeError> {
     match expr {
         Expr::IntLiteral { .. } => Ok(Type::Int),
@@ -442,8 +485,8 @@ fn check_expr(
 
         Expr::BinaryOp { left, op, right, .. } => {
             use cyflym_parser::ast::BinOp;
-            let lt = check_expr(left, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
-            let rt = check_expr(right, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let lt = check_expr(left, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+            let rt = check_expr(right, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
             match op {
                 // Arithmetic: Int x Int -> Int
@@ -499,7 +542,7 @@ fn check_expr(
         Expr::UnaryOp { op, operand, .. } => {
             match op {
                 cyflym_parser::ast::UnaryOp::Not => {
-                    let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if ty != Type::Bool {
                         return Err(TypeError::new(format!(
                             "'!' operator requires Bool operand, got {}",
@@ -512,7 +555,7 @@ fn check_expr(
         }
 
         Expr::If { condition, then_body, then_expr, else_body, else_expr, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "if condition must be Bool, got {}",
@@ -522,13 +565,13 @@ fn check_expr(
 
             // Type-check then branch (body stmts + final expr)
             let mut then_locals = locals.clone();
-            check_stmts(then_body, &mut then_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
-            let then_ty = check_expr(then_expr, &then_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            check_stmts(then_body, &mut then_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+            let then_ty = check_expr(then_expr, &then_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
             // Type-check else branch
             let mut else_locals = locals.clone();
-            check_stmts(else_body, &mut else_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
-            let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            check_stmts(else_body, &mut else_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+            let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
             // Both branches must have the same type
             if then_ty != else_ty {
@@ -548,7 +591,7 @@ fn check_expr(
                         "print() takes exactly 1 argument, got {}", args.len()
                     )));
                 }
-                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 match arg_ty {
                     Type::String | Type::Int | Type::Bool => {}
                     other => {
@@ -562,7 +605,7 @@ fn check_expr(
                 if args.len() != 1 {
                     return Err(TypeError::new("int_to_string() takes exactly 1 argument"));
                 }
-                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if arg_ty != Type::Int {
                     return Err(TypeError::new(format!("int_to_string() requires Int argument, got {}", arg_ty)));
                 }
@@ -571,7 +614,7 @@ fn check_expr(
                 if args.len() != 1 {
                     return Err(TypeError::new("string_to_int() takes exactly 1 argument"));
                 }
-                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if arg_ty != Type::String {
                     return Err(TypeError::new(format!("string_to_int() requires String argument, got {}", arg_ty)));
                 }
@@ -590,7 +633,7 @@ fn check_expr(
                 }
 
                 for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
-                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if actual != *expected {
                         return Err(TypeError::new(format!(
                             "argument {} to '{}': expected {} but got {}",
@@ -617,7 +660,7 @@ fn check_expr(
                 // Type-check args and infer type params
                 let mut type_map: HashMap<String, Type> = HashMap::new();
                 for (i, (arg, param_type_name)) in args.iter().zip(generic_info.param_types.iter()).enumerate() {
-                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
                     let is_type_param = generic_info.type_params.iter().any(|(n, _)| n == param_type_name);
                     if is_type_param {
@@ -632,7 +675,7 @@ fn check_expr(
                             type_map.insert(param_type_name.clone(), actual.clone());
                         }
                     } else {
-                        let expected = resolve_type(param_type_name, structs, enums)?;
+                        let expected = resolve_type(param_type_name, structs, enums, module_exports)?;
                         if actual != expected {
                             return Err(TypeError::new(format!(
                                 "argument {} to '{}': expected {} but got {}",
@@ -678,7 +721,7 @@ fn check_expr(
                         )))?
                         .clone()
                 } else {
-                    resolve_type(&generic_info.return_type_name, structs, enums)?
+                    resolve_type(&generic_info.return_type_name, structs, enums, module_exports)?
                 };
 
                 return Ok(result_type);
@@ -711,7 +754,7 @@ fn check_expr(
                     .ok_or_else(|| TypeError::new(format!(
                         "unknown field '{}' on struct '{}'", field_name, name
                     )))?;
-                let actual_type = check_expr(field_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let actual_type = check_expr(field_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if actual_type != *expected_type {
                     return Err(TypeError::new(format!(
                         "type mismatch for field '{}' of struct '{}': expected {} but got {}",
@@ -724,7 +767,14 @@ fn check_expr(
         }
 
         Expr::FieldAccess { object, field, .. } => {
-            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            if let Expr::Identifier { name, .. } = object.as_ref() {
+                if module_exports.contains_key(name) {
+                    return Err(TypeError::new(format!(
+                        "cannot access field on module '{}' — did you mean to call a function?", name
+                    )));
+                }
+            }
+            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             match &obj_ty {
                 Type::Struct { name, fields } => {
                     fields
@@ -758,7 +808,7 @@ fn check_expr(
                 )));
             }
             for (i, (arg, expected_ty)) in args.iter().zip(expected_fields.iter()).enumerate() {
-                let actual_ty = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let actual_ty = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if actual_ty != *expected_ty {
                     return Err(TypeError::new(format!(
                         "argument {} to '{}::{}': expected {} but got {}",
@@ -770,7 +820,7 @@ fn check_expr(
         }
 
         Expr::Match { scrutinee, arms, .. } => {
-            let scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             let (enum_name, variants) = match &scrutinee_ty {
                 Type::Enum { name, variants } => (name.clone(), variants.clone()),
                 other => return Err(TypeError::new(format!(
@@ -814,7 +864,7 @@ fn check_expr(
                     arm_locals.insert(binding_name.clone(), (binding_ty.clone(), false));
                 }
 
-                let arm_ty = check_expr(&arm.body, &arm_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let arm_ty = check_expr(&arm.body, &arm_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
                 if let Some(ref expected) = result_type {
                     if arm_ty != *expected {
@@ -840,7 +890,7 @@ fn check_expr(
                     )));
                 }
                 for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
-                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     let compatible = actual == *expected
                         || (*expected == Type::Int && matches!(actual, Type::Sender { .. } | Type::Receiver { .. } | Type::JoinHandle | Type::Mutex { .. }));
                     if !compatible {
@@ -858,29 +908,54 @@ fn check_expr(
 
         Expr::ChannelCreate { element_type, capacity, .. } => {
             if let Some(cap_expr) = capacity {
-                let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if cap_ty != Type::Int {
                     return Err(TypeError::new(format!(
                         "channel capacity must be Int, got {}", cap_ty
                     )));
                 }
             }
-            let inner = resolve_type(&element_type.name, structs, enums)?;
+            let inner = resolve_type(&element_type.name, structs, enums, module_exports)?;
             Ok(Type::Sender { inner: Box::new(inner) })
         }
 
         Expr::MutexCreate { value, .. } => {
-            let inner = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            let inner = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             Ok(Type::Mutex { inner: Box::new(inner) })
         }
 
         Expr::ArrayCreate { element_type, .. } => {
-            let inner = resolve_type(&element_type.name, structs, enums)?;
+            let inner = resolve_type(&element_type.name, structs, enums, module_exports)?;
             Ok(Type::Array { inner: Box::new(inner) })
         }
 
         Expr::MethodCall { object, method, args, .. } => {
-            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            // Check if this is a cross-module function call: mod.func(args)
+            if let Expr::Identifier { name, .. } = object.as_ref() {
+                if let Some(mod_exports) = module_exports.get(name) {
+                    let sig = mod_exports.functions.get(method)
+                        .ok_or_else(|| TypeError::new(format!(
+                            "function '{}' not found in module '{}'", method, name
+                        )))?;
+                    if args.len() != sig.params.len() {
+                        return Err(TypeError::new(format!(
+                            "function '{}' in module '{}' expects {} arguments, got {}",
+                            method, name, sig.params.len(), args.len()
+                        )));
+                    }
+                    for (i, (arg, expected)) in args.iter().zip(sig.params.iter()).enumerate() {
+                        let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                        if actual != *expected {
+                            return Err(TypeError::new(format!(
+                                "argument {} to '{}.{}': expected {} but got {}",
+                                i + 1, name, method, expected, actual
+                            )));
+                        }
+                    }
+                    return Ok(sig.return_type.clone());
+                }
+            }
+            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
             // Handle concurrency built-in methods
             match (&obj_ty, method.as_str()) {
@@ -888,7 +963,7 @@ fn check_expr(
                     if args.len() != 1 {
                         return Err(TypeError::new("send() takes exactly 1 argument"));
                     }
-                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if arg_ty != **inner {
                         return Err(TypeError::new(format!(
                             "send() type mismatch: channel holds {} but got {}", inner, arg_ty
@@ -918,7 +993,7 @@ fn check_expr(
                     if args.len() != 1 {
                         return Err(TypeError::new("unlock() takes exactly 1 argument"));
                     }
-                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if arg_ty != **inner {
                         return Err(TypeError::new(format!(
                             "unlock() type mismatch: mutex holds {} but got {}", inner, arg_ty
@@ -930,7 +1005,7 @@ fn check_expr(
                     if args.len() != 1 {
                         return Err(TypeError::new("push() takes exactly 1 argument"));
                     }
-                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if arg_ty != **inner {
                         return Err(TypeError::new(format!(
                             "push() type mismatch: array holds {} but got {}", inner, arg_ty
@@ -942,7 +1017,7 @@ fn check_expr(
                     if args.len() != 1 {
                         return Err(TypeError::new("get() takes exactly 1 argument"));
                     }
-                    let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if idx_ty != Type::Int {
                         return Err(TypeError::new(format!("get() index must be Int, got {}", idx_ty)));
                     }
@@ -952,11 +1027,11 @@ fn check_expr(
                     if args.len() != 2 {
                         return Err(TypeError::new("set() takes exactly 2 arguments (index, value)"));
                     }
-                    let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if idx_ty != Type::Int {
                         return Err(TypeError::new(format!("set() index must be Int, got {}", idx_ty)));
                     }
-                    let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if val_ty != **inner {
                         return Err(TypeError::new(format!(
                             "set() type mismatch: array holds {} but got {}", inner, val_ty
@@ -980,11 +1055,11 @@ fn check_expr(
                     if args.len() != 2 {
                         return Err(TypeError::new("substring() takes exactly 2 arguments (start, end)"));
                     }
-                    let start_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let start_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if start_ty != Type::Int {
                         return Err(TypeError::new(format!("substring() start must be Int, got {}", start_ty)));
                     }
-                    let end_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    let end_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if end_ty != Type::Int {
                         return Err(TypeError::new(format!("substring() end must be Int, got {}", end_ty)));
                     }
@@ -1012,7 +1087,7 @@ fn check_expr(
                 )));
             }
             for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
-                let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if actual != *expected {
                     return Err(TypeError::new(format!(
                         "argument {} to method '{}': expected {} but got {}",
@@ -1034,7 +1109,8 @@ mod tests {
     fn do_check(src: &str) -> Result<(), TypeError> {
         let prog = cyflym_parser::parse(src)
             .expect("parse error in test input");
-        check(&prog)
+        check(&prog, &HashMap::new())?;
+        Ok(())
     }
 
     #[test]
@@ -1401,50 +1477,50 @@ mod tests {
     #[test]
     fn typeck_spawn_produces_join_handle() {
         let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() 0 }").unwrap();
-        assert!(check(&program).is_ok());
+        assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_spawn_wrong_args() {
         let program = cyflym_parser::parse("fn worker(x Int) Int { x } fn main() Int { let h = spawn worker() 0 }").unwrap();
-        assert!(check(&program).is_err());
+        assert!(check(&program, &HashMap::new()).is_err());
     }
 
     #[test]
     fn typeck_channel_creates_sender_receiver() {
         let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
-        assert!(check(&program).is_ok());
+        assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_send_type_mismatch() {
         let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(true) 0 }").unwrap();
-        let err = check(&program).unwrap_err();
+        let err = check(&program, &HashMap::new()).unwrap_err();
         assert!(err.message.contains("mismatch"), "got: {}", err.message);
     }
 
     #[test]
     fn typeck_recv_returns_element_type() {
         let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
-        assert!(check(&program).is_ok());
+        assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_join_on_handle() {
         let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").unwrap();
-        assert!(check(&program).is_ok());
+        assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_join_on_non_handle() {
         let program = cyflym_parser::parse("fn main() Int { let x Int = 42 x.join() }").unwrap();
-        assert!(check(&program).is_err());
+        assert!(check(&program, &HashMap::new()).is_err());
     }
 
     #[test]
     fn typeck_send_on_non_sender() {
         let program = cyflym_parser::parse("fn main() Int { let x Int = 42 x.send(1) 0 }").unwrap();
-        assert!(check(&program).is_err());
+        assert!(check(&program, &HashMap::new()).is_err());
     }
 
     #[test]
@@ -1547,5 +1623,124 @@ mod tests {
     #[test]
     fn check_string_to_int() {
         assert!(do_check(r#"fn main() Int { string_to_int("42") }"#).is_ok());
+    }
+
+    #[test]
+    fn check_cross_module_function_call() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { utils.add(1, 2) }"
+        ).expect("parse error");
+
+        let mut module_exports = HashMap::new();
+        let mut utils_fns = HashMap::new();
+        utils_fns.insert("add".to_string(), FunctionSignature {
+            params: vec![Type::Int, Type::Int],
+            return_type: Type::Int,
+        });
+        module_exports.insert("utils".to_string(), ModuleExports {
+            functions: utils_fns,
+            structs: HashMap::new(),
+            enums: HashMap::new(),
+        });
+
+        assert!(check(&prog, &module_exports).is_ok());
+    }
+
+    #[test]
+    fn check_cross_module_function_with_struct_return() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { let u = models.create() u.age }"
+        ).expect("parse error");
+
+        let mut module_exports = HashMap::new();
+        let user_fields = vec![
+            ("name".to_string(), Type::String),
+            ("age".to_string(), Type::Int),
+        ];
+        let mut models_fns = HashMap::new();
+        models_fns.insert("create".to_string(), FunctionSignature {
+            params: vec![],
+            return_type: Type::Struct {
+                name: "User".to_string(),
+                fields: user_fields.clone(),
+            },
+        });
+        let mut models_structs = HashMap::new();
+        models_structs.insert("User".to_string(), user_fields);
+        module_exports.insert("models".to_string(), ModuleExports {
+            functions: models_fns,
+            structs: models_structs,
+            enums: HashMap::new(),
+        });
+
+        assert!(check(&prog, &module_exports).is_ok());
+    }
+
+    #[test]
+    fn check_unknown_function_in_module() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { utils.nonexistent() }"
+        ).expect("parse error");
+
+        let mut module_exports = HashMap::new();
+        module_exports.insert("utils".to_string(), ModuleExports {
+            functions: HashMap::new(),
+            structs: HashMap::new(),
+            enums: HashMap::new(),
+        });
+
+        let err = check(&prog, &module_exports).unwrap_err();
+        assert!(err.message.contains("not found in module"),
+            "expected module function error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_unknown_module_prefix() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { nomod.func() }"
+        ).expect("parse error");
+
+        let err = check(&prog, &HashMap::new()).unwrap_err();
+        assert!(err.message.contains("undefined") || err.message.contains("no method"),
+            "expected undefined/no method error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_field_access_on_module_errors() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { utils.x }"
+        ).expect("parse error");
+
+        let mut module_exports = HashMap::new();
+        module_exports.insert("utils".to_string(), ModuleExports {
+            functions: HashMap::new(),
+            structs: HashMap::new(),
+            enums: HashMap::new(),
+        });
+
+        let err = check(&prog, &module_exports).unwrap_err();
+        assert!(err.message.contains("cannot access field on module"),
+            "expected module field access error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_duplicate_import_is_ok() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { utils.add(1, 2) }"
+        ).expect("parse error");
+
+        let mut module_exports = HashMap::new();
+        let mut utils_fns = HashMap::new();
+        utils_fns.insert("add".to_string(), FunctionSignature {
+            params: vec![Type::Int, Type::Int],
+            return_type: Type::Int,
+        });
+        module_exports.insert("utils".to_string(), ModuleExports {
+            functions: utils_fns,
+            structs: HashMap::new(),
+            enums: HashMap::new(),
+        });
+
+        assert!(check(&prog, &module_exports).is_ok());
     }
 }

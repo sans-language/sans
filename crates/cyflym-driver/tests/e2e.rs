@@ -12,7 +12,7 @@ fn compile_and_run(fixture: &str) -> i32 {
         .unwrap_or_else(|e| panic!("parse error: {:?}", e));
 
     // Type check
-    cyflym_typeck::check(&program)
+    cyflym_typeck::check(&program, &std::collections::HashMap::new())
         .unwrap_or_else(|e| panic!("type error: {}", e));
 
     // Lower to IR
