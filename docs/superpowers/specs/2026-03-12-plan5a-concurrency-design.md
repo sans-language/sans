@@ -160,7 +160,8 @@ pub enum Instruction {
 | AST | IR |
 |---|---|
 | `Expr::Spawn { function, args }` | `ThreadSpawn { dest, function, args }` |
-| `Expr::ChannelCreate { element_type }` | `ChannelCreate { tx_dest, rx_dest }` |
+| `Stmt::LetDestructure { names: [tx, rx], value: ChannelCreate }` | `ChannelCreate { tx_dest: tx, rx_dest: rx }` — tx and rx register names bound to the destructured names |
+| `Expr::ChannelCreate { element_type }` | `ChannelCreate { tx_dest, rx_dest }` (when used outside LetDestructure, though currently only valid inside one) |
 | `MethodCall { method: "send" }` on Sender | `ChannelSend { tx, value }` |
 | `MethodCall { method: "recv" }` on Receiver | `ChannelRecv { dest, rx }` |
 | `MethodCall { method: "join" }` on JoinHandle | `ThreadJoin { handle }` |
@@ -222,7 +223,7 @@ All values in the IR are i64. Struct and enum arguments are pointers cast to i64
 
 ### Memory Management
 
-Channel structs, buffers, and arg structs are heap-allocated and **not freed** — they are leaked until process exit. Cleanup and resource management are deferred to the GC phase of the project. This is acceptable for the current stage.
+Channel structs and buffers are heap-allocated and **not freed** — they are leaked until process exit. Cleanup and resource management are deferred to the GC phase of the project. This is acceptable for the current stage. Thread arg structs **are** freed by the trampoline after unpacking (see Thread Spawn step 2).
 
 ### Thread Spawn
 
