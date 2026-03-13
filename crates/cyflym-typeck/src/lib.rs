@@ -31,6 +31,84 @@ fn resolve_type(name: &str) -> Result<Type, TypeError> {
     }
 }
 
+/// Type-check a list of statements.
+fn check_stmts(
+    stmts: &[Stmt],
+    locals: &mut HashMap<String, (Type, bool)>,
+    fn_env: &HashMap<String, (Vec<Type>, Type)>,
+    ret_type: &Type,
+) -> Result<(), TypeError> {
+    for stmt in stmts {
+        check_stmt(stmt, locals, fn_env, ret_type)?;
+    }
+    Ok(())
+}
+
+fn check_stmt(
+    stmt: &Stmt,
+    locals: &mut HashMap<String, (Type, bool)>,
+    fn_env: &HashMap<String, (Vec<Type>, Type)>,
+    ret_type: &Type,
+) -> Result<(), TypeError> {
+    match stmt {
+        Stmt::Let { name, mutable, type_name, value, .. } => {
+            let declared = resolve_type(&type_name.name)?;
+            let actual = check_expr(value, locals, fn_env, ret_type)?;
+            if declared != actual {
+                return Err(TypeError::new(format!(
+                    "type mismatch in let '{}': declared {} but expression has type {}",
+                    name, declared, actual
+                )));
+            }
+            locals.insert(name.clone(), (declared, *mutable));
+            Ok(())
+        }
+        Stmt::Expr(expr) => {
+            check_expr(expr, locals, fn_env, ret_type)?;
+            Ok(())
+        }
+        Stmt::While { condition, body, .. } => {
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type)?;
+            if cond_ty != Type::Bool {
+                return Err(TypeError::new(format!(
+                    "while condition must be Bool, got {}", cond_ty
+                )));
+            }
+            check_stmts(body, locals, fn_env, ret_type)?;
+            Ok(())
+        }
+        Stmt::Return { value, .. } => {
+            let ty = check_expr(value, locals, fn_env, ret_type)?;
+            if ty != *ret_type {
+                return Err(TypeError::new(format!(
+                    "return type mismatch: expected {} but got {}",
+                    ret_type, ty
+                )));
+            }
+            Ok(())
+        }
+        Stmt::Assign { name, value, .. } => {
+            let (expected_ty, is_mutable) = locals
+                .get(name)
+                .ok_or_else(|| TypeError::new(format!("undefined variable '{}'", name)))?
+                .clone();
+            if !is_mutable {
+                return Err(TypeError::new(format!(
+                    "cannot assign to immutable variable '{}'", name
+                )));
+            }
+            let actual = check_expr(value, locals, fn_env, ret_type)?;
+            if actual != expected_ty {
+                return Err(TypeError::new(format!(
+                    "type mismatch in assignment to '{}': expected {} but got {}",
+                    name, expected_ty, actual
+                )));
+            }
+            Ok(())
+        }
+    }
+}
+
 /// Type-check the given `Program`. Returns `Ok(())` if the program is
 /// well-typed, or a `TypeError` describing the first problem found.
 pub fn check(program: &Program) -> Result<(), TypeError> {
@@ -56,52 +134,40 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         let (_, ret_type) = fn_env.get(&func.name).unwrap();
         let ret_type = ret_type.clone();
 
-        // Build the locals map, seeded with the function parameters.
-        let mut locals: HashMap<String, Type> = HashMap::new();
+        let mut locals: HashMap<String, (Type, bool)> = HashMap::new();
         for param in &func.params {
             let ty = resolve_type(&param.type_name.name)?;
-            locals.insert(param.name.clone(), ty);
+            locals.insert(param.name.clone(), (ty, false));
         }
 
-        // Check the body. The last statement must be an Expr whose type
-        // matches the declared return type.
         if func.body.is_empty() {
             return Err(TypeError::new(format!(
-                "function '{}': missing return expression",
-                func.name
+                "function '{}': missing return expression", func.name
             )));
         }
 
-        // Check all statements, updating locals for `let` bindings.
+        // Check all statements
         for (i, stmt) in func.body.iter().enumerate() {
             let is_last = i == func.body.len() - 1;
-            match stmt {
-                Stmt::Let { name, type_name, value, .. } => {
-                    if is_last {
-                        return Err(TypeError::new(format!(
-                            "function '{}': missing return expression",
-                            func.name
-                        )));
+            check_stmt(stmt, &mut locals, &fn_env, &ret_type)?;
+
+            if is_last {
+                match stmt {
+                    Stmt::Expr(expr) => {
+                        let ty = check_expr(expr, &locals, &fn_env, &ret_type)?;
+                        if ty != ret_type {
+                            return Err(TypeError::new(format!(
+                                "function '{}': return type mismatch: expected {} but got {}",
+                                func.name, ret_type, ty
+                            )));
+                        }
                     }
-                    let declared = resolve_type(&type_name.name)?;
-                    let actual = check_expr(value, &locals, &fn_env)?;
-                    if declared != actual {
-                        return Err(TypeError::new(format!(
-                            "type mismatch in let '{}': declared {} but expression has type {}",
-                            name, declared, actual
-                        )));
+                    Stmt::Return { .. } => {
+                        // Already type-checked in check_stmt
                     }
-                    locals.insert(name.clone(), declared);
-                }
-                Stmt::While { .. } => todo!("typeck: while loops"),
-                Stmt::Return { .. } => todo!("typeck: return statements"),
-                Stmt::Assign { .. } => todo!("typeck: assignment"),
-                Stmt::Expr(expr) => {
-                    let ty = check_expr(expr, &locals, &fn_env)?;
-                    if is_last && ty != ret_type {
+                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } => {
                         return Err(TypeError::new(format!(
-                            "function '{}': return type mismatch: expected {} but got {}",
-                            func.name, ret_type, ty
+                            "function '{}': missing return expression", func.name
                         )));
                     }
                 }
@@ -115,8 +181,9 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
 /// Type-check a single expression and return its type.
 fn check_expr(
     expr: &Expr,
-    locals: &HashMap<String, Type>,
+    locals: &HashMap<String, (Type, bool)>,
     fn_env: &HashMap<String, (Vec<Type>, Type)>,
+    ret_type: &Type,
 ) -> Result<Type, TypeError> {
     match expr {
         Expr::IntLiteral { .. } => Ok(Type::Int),
@@ -124,14 +191,14 @@ fn check_expr(
         Expr::Identifier { name, .. } => {
             locals
                 .get(name)
-                .cloned()
+                .map(|(ty, _)| ty.clone())
                 .ok_or_else(|| TypeError::new(format!("undefined variable '{}'", name)))
         }
 
         Expr::BinaryOp { left, op, right, .. } => {
             use cyflym_parser::ast::BinOp;
-            let lt = check_expr(left, locals, fn_env)?;
-            let rt = check_expr(right, locals, fn_env)?;
+            let lt = check_expr(left, locals, fn_env, ret_type)?;
+            let rt = check_expr(right, locals, fn_env, ret_type)?;
 
             match op {
                 // Arithmetic: Int x Int -> Int
@@ -184,7 +251,7 @@ fn check_expr(
         Expr::UnaryOp { op, operand, .. } => {
             match op {
                 cyflym_parser::ast::UnaryOp::Not => {
-                    let ty = check_expr(operand, locals, fn_env)?;
+                    let ty = check_expr(operand, locals, fn_env, ret_type)?;
                     if ty != Type::Bool {
                         return Err(TypeError::new(format!(
                             "'!' operator requires Bool operand, got {}",
@@ -197,8 +264,7 @@ fn check_expr(
         }
 
         Expr::If { condition, then_body, then_expr, else_body, else_expr, .. } => {
-            // Condition must be Bool
-            let cond_ty = check_expr(condition, locals, fn_env)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "if condition must be Bool, got {}",
@@ -208,53 +274,13 @@ fn check_expr(
 
             // Type-check then branch (body stmts + final expr)
             let mut then_locals = locals.clone();
-            for stmt in then_body {
-                match stmt {
-                    Stmt::Let { name, type_name, value, .. } => {
-                        let declared = resolve_type(&type_name.name)?;
-                        let actual = check_expr(value, &then_locals, fn_env)?;
-                        if declared != actual {
-                            return Err(TypeError::new(format!(
-                                "type mismatch in let '{}': declared {} but expression has type {}",
-                                name, declared, actual
-                            )));
-                        }
-                        then_locals.insert(name.clone(), declared);
-                    }
-                    Stmt::While { .. } => todo!("typeck: while in if branch"),
-                    Stmt::Return { .. } => todo!("typeck: return in if branch"),
-                    Stmt::Assign { .. } => todo!("typeck: assign in if branch"),
-                    Stmt::Expr(expr) => {
-                        check_expr(expr, &then_locals, fn_env)?;
-                    }
-                }
-            }
-            let then_ty = check_expr(then_expr, &then_locals, fn_env)?;
+            check_stmts(then_body, &mut then_locals, fn_env, ret_type)?;
+            let then_ty = check_expr(then_expr, &then_locals, fn_env, ret_type)?;
 
             // Type-check else branch
             let mut else_locals = locals.clone();
-            for stmt in else_body {
-                match stmt {
-                    Stmt::Let { name, type_name, value, .. } => {
-                        let declared = resolve_type(&type_name.name)?;
-                        let actual = check_expr(value, &else_locals, fn_env)?;
-                        if declared != actual {
-                            return Err(TypeError::new(format!(
-                                "type mismatch in let '{}': declared {} but expression has type {}",
-                                name, declared, actual
-                            )));
-                        }
-                        else_locals.insert(name.clone(), declared);
-                    }
-                    Stmt::While { .. } => todo!("typeck: while in else branch"),
-                    Stmt::Return { .. } => todo!("typeck: return in else branch"),
-                    Stmt::Assign { .. } => todo!("typeck: assign in else branch"),
-                    Stmt::Expr(expr) => {
-                        check_expr(expr, &else_locals, fn_env)?;
-                    }
-                }
-            }
-            let else_ty = check_expr(else_expr, &else_locals, fn_env)?;
+            check_stmts(else_body, &mut else_locals, fn_env, ret_type)?;
+            let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type)?;
 
             // Both branches must have the same type
             if then_ty != else_ty {
@@ -268,7 +294,7 @@ fn check_expr(
         }
 
         Expr::Call { function, args, .. } => {
-            let (param_types, ret_type) = fn_env
+            let (param_types, call_ret_type) = fn_env
                 .get(function)
                 .ok_or_else(|| TypeError::new(format!("undefined function '{}'", function)))?;
 
@@ -282,7 +308,7 @@ fn check_expr(
             }
 
             for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
-                let actual = check_expr(arg, locals, fn_env)?;
+                let actual = check_expr(arg, locals, fn_env, ret_type)?;
                 if actual != *expected {
                     return Err(TypeError::new(format!(
                         "argument {} to '{}': expected {} but got {}",
@@ -294,7 +320,7 @@ fn check_expr(
                 }
             }
 
-            Ok(ret_type.clone())
+            Ok(call_ret_type.clone())
         }
     }
 }
@@ -426,5 +452,49 @@ mod tests {
     #[test]
     fn check_comparison_in_if() {
         assert!(do_check("fn main() Int { let x Int = 5 if x > 3 { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_while_loop() {
+        assert!(do_check("fn main() Int { let mut x Int = 0 while x < 10 { x = x + 1 } x }").is_ok());
+    }
+
+    #[test]
+    fn check_while_condition_must_be_bool() {
+        let err = do_check("fn main() Int { while 1 { 0 } 0 }").unwrap_err();
+        assert!(err.message.contains("Bool"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_return_statement() {
+        assert!(do_check("fn main() Int { return 42 }").is_ok());
+    }
+
+    #[test]
+    fn check_return_type_mismatch() {
+        let err = do_check("fn main() Int { return true }").unwrap_err();
+        assert!(err.message.contains("mismatch"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_mutable_assignment() {
+        assert!(do_check("fn main() Int { let mut x Int = 1 x = 2 x }").is_ok());
+    }
+
+    #[test]
+    fn check_immutable_assignment_error() {
+        let err = do_check("fn main() Int { let x Int = 1 x = 2 x }").unwrap_err();
+        assert!(err.message.contains("immutable"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_assign_type_mismatch() {
+        let err = do_check("fn main() Int { let mut x Int = 1 x = true x }").unwrap_err();
+        assert!(err.message.contains("mismatch"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_while_with_return() {
+        assert!(do_check("fn main() Int { while true { return 42 } 0 }").is_ok());
     }
 }
