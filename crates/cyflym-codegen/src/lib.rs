@@ -109,6 +109,19 @@ fn generate_llvm<'ctx>(
     let free_type = context.void_type().fn_type(&[ptr_type.into()], false);
     llvm_module.add_function("free", free_type, Some(Linkage::External));
 
+    // Declare C stdlib functions for string/array ops
+    let strlen_type = i64_type.fn_type(&[ptr_type.into()], false);
+    llvm_module.add_function("strlen", strlen_type, Some(Linkage::External));
+
+    let memcpy_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("memcpy", memcpy_type, Some(Linkage::External));
+
+    let snprintf_type = i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], true);
+    llvm_module.add_function("snprintf", snprintf_type, Some(Linkage::External));
+
+    let strtol_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("strtol", strtol_type, Some(Linkage::External));
+
     // First pass: declare all functions
     for func in &module.functions {
         let param_types: Vec<inkwell::types::BasicMetadataTypeEnum> =
@@ -1030,6 +1043,402 @@ fn generate_llvm<'ctx>(
                     regs.insert(tx_dest.clone(), chan_int);
                     regs.insert(rx_dest.clone(), chan_int);
                 }
+                Instruction::ArrayCreate { dest } => {
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+
+                    // Allocate 24-byte struct: [data_ptr, len, capacity] (3 x i64)
+                    let struct_call = builder.build_call(malloc_fn, &[i64_type.const_int(24, false).into()], "arr_struct")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let struct_ptr = match struct_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Allocate initial buffer: capacity=8, 8*8=64 bytes
+                    let buf_call = builder.build_call(malloc_fn, &[i64_type.const_int(64, false).into()], "arr_buf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_ptr = match buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Store buffer ptr (as i64) at offset 0
+                    let buf_int = builder.build_ptr_to_int(buf_ptr, i64_type, "buf_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(struct_ptr, buf_int)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store len=0 at offset 1
+                    let len_ptr = unsafe { builder.build_gep(i64_type, struct_ptr, &[i64_type.const_int(1, false)], "len_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(len_ptr, i64_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store capacity=8 at offset 2
+                    let cap_ptr = unsafe { builder.build_gep(i64_type, struct_ptr, &[i64_type.const_int(2, false)], "cap_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(cap_ptr, i64_type.const_int(8, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Convert struct ptr to i64
+                    let arr_int = builder.build_ptr_to_int(struct_ptr, i64_type, "arr_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), arr_int);
+                }
+                Instruction::ArrayPush { array, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let free_fn = llvm_module.get_function("free").unwrap();
+                    let memcpy_fn = llvm_module.get_function("memcpy").unwrap();
+
+                    let arr_int = regs[array];
+                    let val = regs[value];
+                    let arr_ptr = builder.build_int_to_ptr(arr_int, ptr_type, "arr_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Load len and capacity
+                    let len_ptr = unsafe { builder.build_gep(i64_type, arr_ptr, &[i64_type.const_int(1, false)], "lp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len = builder.build_load(i64_type, len_ptr, "len")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let cap_ptr = unsafe { builder.build_gep(i64_type, arr_ptr, &[i64_type.const_int(2, false)], "cp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cap = builder.build_load(i64_type, cap_ptr, "cap")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+
+                    // Compare len == cap
+                    let need_grow = builder.build_int_compare(IntPredicate::EQ, len, cap, "needgrow")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let grow_bb = context.append_basic_block(llvm_fn, "arr_grow");
+                    let write_bb = context.append_basic_block(llvm_fn, "arr_write");
+
+                    builder.build_conditional_branch(need_grow, grow_bb, write_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // -- grow_bb: malloc(2*cap*8), memcpy, free old, update --
+                    builder.position_at_end(grow_bb);
+                    let two = i64_type.const_int(2, false);
+                    let eight = i64_type.const_int(8, false);
+                    let new_cap = builder.build_int_mul(cap, two, "newcap")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let new_buf_size = builder.build_int_mul(new_cap, eight, "nbs")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let new_buf_call = builder.build_call(malloc_fn, &[new_buf_size.into()], "nbuf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let new_buf_ptr = match new_buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Load old data ptr
+                    let old_data_int = builder.build_load(i64_type, arr_ptr, "odi")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let old_data_ptr = builder.build_int_to_ptr(old_data_int, ptr_type, "odp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // memcpy old to new (len * 8 bytes)
+                    let copy_size = builder.build_int_mul(len, eight, "csz")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(memcpy_fn, &[new_buf_ptr.into(), old_data_ptr.into(), copy_size.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Free old buffer
+                    builder.build_call(free_fn, &[old_data_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Update data ptr and capacity
+                    let new_buf_int = builder.build_ptr_to_int(new_buf_ptr, i64_type, "nbi")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(arr_ptr, new_buf_int)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(cap_ptr, new_cap)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    builder.build_unconditional_branch(write_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // -- write_bb: store value at data[len], increment len --
+                    builder.position_at_end(write_bb);
+
+                    // Reload len and data ptr (may have changed after grow)
+                    let len2 = builder.build_load(i64_type, len_ptr, "len2")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let data_int2 = builder.build_load(i64_type, arr_ptr, "di2")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let data_ptr2 = builder.build_int_to_ptr(data_int2, ptr_type, "dp2")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store value at data[len]
+                    let elem_ptr = unsafe { builder.build_gep(i64_type, data_ptr2, &[len2], "ep") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(elem_ptr, val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Increment len
+                    let one = i64_type.const_int(1, false);
+                    let new_len = builder.build_int_add(len2, one, "nl")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(len_ptr, new_len)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::ArrayGet { dest, array, index } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let arr_int = regs[array];
+                    let idx = regs[index];
+                    let arr_ptr = builder.build_int_to_ptr(arr_int, ptr_type, "arr_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Load data ptr from offset 0
+                    let data_int = builder.build_load(i64_type, arr_ptr, "di")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let data_ptr = builder.build_int_to_ptr(data_int, ptr_type, "dp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // GEP to data[index], load value
+                    let elem_ptr = unsafe { builder.build_gep(i64_type, data_ptr, &[idx], "ep") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let val = builder.build_load(i64_type, elem_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    regs.insert(dest.clone(), val);
+                }
+                Instruction::ArraySet { array, index, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let arr_int = regs[array];
+                    let idx = regs[index];
+                    let val = regs[value];
+                    let arr_ptr = builder.build_int_to_ptr(arr_int, ptr_type, "arr_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Load data ptr from offset 0
+                    let data_int = builder.build_load(i64_type, arr_ptr, "di")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let data_ptr = builder.build_int_to_ptr(data_int, ptr_type, "dp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // GEP to data[index], store value
+                    let elem_ptr = unsafe { builder.build_gep(i64_type, data_ptr, &[idx], "ep") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(elem_ptr, val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::ArrayLen { dest, array } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let arr_int = regs[array];
+                    let arr_ptr = builder.build_int_to_ptr(arr_int, ptr_type, "arr_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Load len from offset 1
+                    let len_ptr = unsafe { builder.build_gep(i64_type, arr_ptr, &[i64_type.const_int(1, false)], "lp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len = builder.build_load(i64_type, len_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    regs.insert(dest.clone(), len);
+                }
+                Instruction::StringLen { dest, string } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let strlen_fn = llvm_module.get_function("strlen").unwrap();
+
+                    // String may be in ptrs (literal) or regs (from concat/etc)
+                    let str_ptr = if let Some(p) = ptrs.get(string) {
+                        *p
+                    } else {
+                        let str_int = regs[string];
+                        builder.build_int_to_ptr(str_int, ptr_type, "sp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    let len_call = builder.build_call(strlen_fn, &[str_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len = match len_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strlen returned void".into())),
+                    };
+                    regs.insert(dest.clone(), len);
+                }
+                Instruction::StringConcat { dest, left, right } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let strlen_fn = llvm_module.get_function("strlen").unwrap();
+                    let memcpy_fn = llvm_module.get_function("memcpy").unwrap();
+
+                    // Get left string ptr
+                    let left_ptr = if let Some(p) = ptrs.get(left) {
+                        *p
+                    } else {
+                        let li = regs[left];
+                        builder.build_int_to_ptr(li, ptr_type, "lp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    // Get right string ptr
+                    let right_ptr = if let Some(p) = ptrs.get(right) {
+                        *p
+                    } else {
+                        let ri = regs[right];
+                        builder.build_int_to_ptr(ri, ptr_type, "rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    // strlen(left)
+                    let len1_call = builder.build_call(strlen_fn, &[left_ptr.into()], "len1")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len1 = match len1_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strlen returned void".into())),
+                    };
+
+                    // strlen(right)
+                    let len2_call = builder.build_call(strlen_fn, &[right_ptr.into()], "len2")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len2 = match len2_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strlen returned void".into())),
+                    };
+
+                    // malloc(len1 + len2 + 1)
+                    let total = builder.build_int_add(len1, len2, "total")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let one = i64_type.const_int(1, false);
+                    let alloc_size = builder.build_int_add(total, one, "asz")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_call = builder.build_call(malloc_fn, &[alloc_size.into()], "buf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_ptr = match buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // memcpy left to buf
+                    builder.build_call(memcpy_fn, &[buf_ptr.into(), left_ptr.into(), len1.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // GEP buf+len1 for mid
+                    let i8_type = context.i8_type();
+                    let mid_ptr = unsafe { builder.build_gep(i8_type, buf_ptr, &[len1], "mid") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // memcpy right to mid
+                    builder.build_call(memcpy_fn, &[mid_ptr.into(), right_ptr.into(), len2.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // null-terminate at buf[total]
+                    let end_ptr = unsafe { builder.build_gep(i8_type, buf_ptr, &[total], "end") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(end_ptr, i8_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store result as i64 in regs AND as ptr in ptrs
+                    let result_int = builder.build_ptr_to_int(buf_ptr, i64_type, "cat_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result_int);
+                    ptrs.insert(dest.clone(), buf_ptr);
+                }
+                Instruction::StringSubstring { dest, string, start, end } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let memcpy_fn = llvm_module.get_function("memcpy").unwrap();
+
+                    // Get string ptr
+                    let str_ptr = if let Some(p) = ptrs.get(string) {
+                        *p
+                    } else {
+                        let si = regs[string];
+                        builder.build_int_to_ptr(si, ptr_type, "sp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    let start_val = regs[start];
+                    let end_val = regs[end];
+
+                    // length = end - start
+                    let length = builder.build_int_sub(end_val, start_val, "sublen")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // malloc(length + 1)
+                    let one = i64_type.const_int(1, false);
+                    let alloc_size = builder.build_int_add(length, one, "asz")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_call = builder.build_call(malloc_fn, &[alloc_size.into()], "subbuf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_ptr = match buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // GEP str_ptr+start for src
+                    let i8_type = context.i8_type();
+                    let src_ptr = unsafe { builder.build_gep(i8_type, str_ptr, &[start_val], "src") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // memcpy src to buf
+                    builder.build_call(memcpy_fn, &[buf_ptr.into(), src_ptr.into(), length.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // null-terminate
+                    let end_ptr = unsafe { builder.build_gep(i8_type, buf_ptr, &[length], "endp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(end_ptr, i8_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store in both regs and ptrs
+                    let result_int = builder.build_ptr_to_int(buf_ptr, i64_type, "sub_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result_int);
+                    ptrs.insert(dest.clone(), buf_ptr);
+                }
+                Instruction::IntToString { dest, value } => {
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let snprintf_fn = llvm_module.get_function("snprintf").unwrap();
+
+                    let val = regs[value];
+
+                    // malloc(21) — enough for i64 including sign and null
+                    let buf_call = builder.build_call(malloc_fn, &[i64_type.const_int(21, false).into()], "itsbuf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_ptr = match buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Build format string "%ld"
+                    let fmt_str = builder.build_global_string_ptr("%ld", "its_fmt")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Call snprintf(buf, 21, "%ld", val)
+                    builder.build_call(snprintf_fn, &[buf_ptr.into(), i64_type.const_int(21, false).into(), fmt_str.as_pointer_value().into(), val.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store in both regs and ptrs
+                    let result_int = builder.build_ptr_to_int(buf_ptr, i64_type, "its_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result_int);
+                    ptrs.insert(dest.clone(), buf_ptr);
+                }
+                Instruction::StringToInt { dest, string } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let strtol_fn = llvm_module.get_function("strtol").unwrap();
+
+                    // Get string ptr
+                    let str_ptr = if let Some(p) = ptrs.get(string) {
+                        *p
+                    } else {
+                        let si = regs[string];
+                        builder.build_int_to_ptr(si, ptr_type, "sp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    // Call strtol(ptr, null, 10)
+                    let null = ptr_type.const_null();
+                    let ten = i64_type.const_int(10, false);
+                    let result_call = builder.build_call(strtol_fn, &[str_ptr.into(), null.into(), ten.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match result_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strtol returned void".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
             }
         }
     }
@@ -1321,6 +1730,42 @@ mod tests {
     fn codegen_bounded_channel() {
         let program = cyflym_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>(4) tx.send(1) rx.recv() }"
+        ).unwrap();
+        cyflym_typeck::check(&program).unwrap();
+        let ir = cyflym_ir::lower(&program);
+        let context = Context::create();
+        let result = generate_llvm(&context, &ir);
+        assert!(result.is_ok(), "codegen failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn codegen_array_create_push_get_len() {
+        let program = cyflym_parser::parse(
+            "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
+        ).unwrap();
+        cyflym_typeck::check(&program).unwrap();
+        let ir = cyflym_ir::lower(&program);
+        let context = Context::create();
+        let result = generate_llvm(&context, &ir);
+        assert!(result.is_ok(), "codegen failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn codegen_string_concat() {
+        let program = cyflym_parser::parse(
+            r#"fn main() Int { let s = "hello" + " world" 0 }"#
+        ).unwrap();
+        cyflym_typeck::check(&program).unwrap();
+        let ir = cyflym_ir::lower(&program);
+        let context = Context::create();
+        let result = generate_llvm(&context, &ir);
+        assert!(result.is_ok(), "codegen failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn codegen_int_to_string_and_string_to_int() {
+        let program = cyflym_parser::parse(
+            r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
         ).unwrap();
         cyflym_typeck::check(&program).unwrap();
         let ir = cyflym_ir::lower(&program);
