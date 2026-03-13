@@ -32,7 +32,7 @@ pub enum Stmt {
     Let {
         name: String,
         mutable: bool,
-        type_name: TypeName,
+        type_name: Option<TypeName>,
         value: Expr,
         span: Span,
     },

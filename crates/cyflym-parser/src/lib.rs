@@ -195,7 +195,11 @@ impl Parser {
         };
 
         let (name, _) = self.expect_ident()?;
-        let type_name = self.parse_type_name()?;
+        let type_name = if self.peek().kind != TokenKind::Eq {
+            Some(self.parse_type_name()?)
+        } else {
+            None
+        };
         self.expect(&TokenKind::Eq)?;
         let value = self.parse_expr(0)?;
         let end = expr_span(&value).end;
@@ -732,6 +736,29 @@ mod tests {
             assert_eq!(name, "x");
         } else {
             panic!("expected Assign statement");
+        }
+    }
+
+    #[test]
+    fn parse_let_inferred_type() {
+        let prog = parse("fn main() Int { let x = 42 x }").unwrap();
+        if let Stmt::Let { name, type_name, .. } = &prog.functions[0].body[0] {
+            assert_eq!(name, "x");
+            assert!(type_name.is_none());
+        } else {
+            panic!("expected Let");
+        }
+    }
+
+    #[test]
+    fn parse_let_mut_inferred_type() {
+        let prog = parse("fn main() Int { let mut x = 0 x }").unwrap();
+        if let Stmt::Let { name, mutable, type_name, .. } = &prog.functions[0].body[0] {
+            assert_eq!(name, "x");
+            assert!(*mutable);
+            assert!(type_name.is_none());
+        } else {
+            panic!("expected mutable Let");
         }
     }
 

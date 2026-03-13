@@ -52,15 +52,20 @@ fn check_stmt(
 ) -> Result<(), TypeError> {
     match stmt {
         Stmt::Let { name, mutable, type_name, value, .. } => {
-            let declared = resolve_type(&type_name.name)?;
             let actual = check_expr(value, locals, fn_env, ret_type)?;
-            if declared != actual {
-                return Err(TypeError::new(format!(
-                    "type mismatch in let '{}': declared {} but expression has type {}",
-                    name, declared, actual
-                )));
-            }
-            locals.insert(name.clone(), (declared, *mutable));
+            let ty = if let Some(tn) = type_name {
+                let declared = resolve_type(&tn.name)?;
+                if declared != actual {
+                    return Err(TypeError::new(format!(
+                        "type mismatch in let '{}': declared {} but expression has type {}",
+                        name, declared, actual
+                    )));
+                }
+                declared
+            } else {
+                actual
+            };
+            locals.insert(name.clone(), (ty, *mutable));
             Ok(())
         }
         Stmt::Expr(expr) => {
@@ -501,6 +506,21 @@ mod tests {
     fn check_assign_type_mismatch() {
         let err = do_check("fn main() Int { let mut x Int = 1 x = true x }").unwrap_err();
         assert!(err.message.contains("mismatch"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_inferred_int() {
+        assert!(do_check("fn main() Int { let x = 42 x }").is_ok());
+    }
+
+    #[test]
+    fn check_inferred_bool() {
+        assert!(do_check("fn main() Bool { let x = true x }").is_ok());
+    }
+
+    #[test]
+    fn check_inferred_mut() {
+        assert!(do_check("fn main() Int { let mut x = 0 x = 42 x }").is_ok());
     }
 
     #[test]
