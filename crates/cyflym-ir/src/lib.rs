@@ -5,6 +5,14 @@ use std::collections::HashMap;
 use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
+#[derive(Clone)]
+enum LocalVar {
+    /// Immutable variable — direct SSA register
+    Value(Reg),
+    /// Mutable variable — alloca pointer register (needs Load to read, Store to write)
+    Ptr(Reg),
+}
+
 /// Lower a parsed `Program` into an IR `Module`.
 pub fn lower(program: &Program) -> Module {
     let functions = program.functions.iter().map(lower_function).collect();
@@ -21,30 +29,31 @@ fn lower_function(func: &cyflym_parser::ast::Function) -> IrFunction {
         .enumerate()
         .map(|(i, param)| {
             let reg = format!("arg{}", i);
-            builder.locals.insert(param.name.clone(), reg.clone());
+            builder.locals.insert(param.name.clone(), LocalVar::Value(reg.clone()));
             reg
         })
         .collect();
 
-    let mut last_reg: Option<Reg> = None;
-    for stmt in &func.body {
-        match stmt {
-            Stmt::Let { name, value, .. } => {
-                let reg = builder.lower_expr(value);
-                builder.locals.insert(name.clone(), reg);
-            }
-            Stmt::While { .. } => todo!("IR: while loops"),
-            Stmt::Return { .. } => todo!("IR: return statements"),
-            Stmt::Assign { .. } => todo!("IR: assignment"),
-            Stmt::Expr(expr) => {
-                last_reg = Some(builder.lower_expr(expr));
-            }
-        }
-    }
+    for (i, stmt) in func.body.iter().enumerate() {
+        let is_last = i == func.body.len() - 1;
 
-    // Emit Ret with the last expression's register
-    if let Some(ret_reg) = last_reg {
-        builder.instructions.push(Instruction::Ret { value: ret_reg });
+        if is_last {
+            match stmt {
+                Stmt::Expr(expr) => {
+                    let reg = builder.lower_expr(expr);
+                    builder.instructions.push(Instruction::Ret { value: reg });
+                }
+                Stmt::Return { value, .. } => {
+                    let reg = builder.lower_expr(value);
+                    builder.instructions.push(Instruction::Ret { value: reg });
+                }
+                other => {
+                    builder.lower_stmt(other);
+                }
+            }
+        } else {
+            builder.lower_stmt(stmt);
+        }
     }
 
     IrFunction {
@@ -57,7 +66,7 @@ fn lower_function(func: &cyflym_parser::ast::Function) -> IrFunction {
 struct IrBuilder {
     counter: usize,
     label_counter: usize,
-    locals: HashMap<String, Reg>,
+    locals: HashMap<String, LocalVar>,
     instructions: Vec<Instruction>,
 }
 
@@ -96,10 +105,14 @@ impl IrBuilder {
                 dest
             }
             Expr::Identifier { name, .. } => {
-                self.locals
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_else(|| panic!("undefined variable: {}", name))
+                match self.locals.get(name).unwrap_or_else(|| panic!("undefined variable: {}", name)).clone() {
+                    LocalVar::Value(reg) => reg,
+                    LocalVar::Ptr(ptr) => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Load { dest: dest.clone(), ptr });
+                        dest
+                    }
+                }
             }
             Expr::BinaryOp { left, op, right, .. } => {
                 // Short-circuit operators: must handle BEFORE evaluating both sides
@@ -240,16 +253,7 @@ impl IrBuilder {
                 // Then branch
                 self.instructions.push(Instruction::Label { name: then_label.clone() });
                 for stmt in then_body {
-                    match stmt {
-                        Stmt::Let { name, value, .. } => {
-                            let reg = self.lower_expr(value);
-                            self.locals.insert(name.clone(), reg);
-                        }
-                        Stmt::While { .. } => todo!("IR: while in if branch"),
-                        Stmt::Return { .. } => todo!("IR: return in if branch"),
-                        Stmt::Assign { .. } => todo!("IR: assign in if branch"),
-                        Stmt::Expr(expr) => { self.lower_expr(expr); }
-                    }
+                    self.lower_stmt(stmt);
                 }
                 let then_reg = self.lower_expr(then_expr);
                 self.instructions.push(Instruction::Jump { target: merge_label.clone() });
@@ -257,16 +261,7 @@ impl IrBuilder {
                 // Else branch
                 self.instructions.push(Instruction::Label { name: else_label.clone() });
                 for stmt in else_body {
-                    match stmt {
-                        Stmt::Let { name, value, .. } => {
-                            let reg = self.lower_expr(value);
-                            self.locals.insert(name.clone(), reg);
-                        }
-                        Stmt::While { .. } => todo!("IR: while in else branch"),
-                        Stmt::Return { .. } => todo!("IR: return in else branch"),
-                        Stmt::Assign { .. } => todo!("IR: assign in else branch"),
-                        Stmt::Expr(expr) => { self.lower_expr(expr); }
-                    }
+                    self.lower_stmt(stmt);
                 }
                 let else_reg = self.lower_expr(else_expr);
                 self.instructions.push(Instruction::Jump { target: merge_label.clone() });
@@ -292,6 +287,60 @@ impl IrBuilder {
                     args: arg_regs,
                 });
                 dest
+            }
+        }
+    }
+
+    fn lower_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Let { name, mutable, value, .. } => {
+                let val_reg = self.lower_expr(value);
+                if *mutable {
+                    let ptr = self.fresh_reg();
+                    self.instructions.push(Instruction::Alloca { dest: ptr.clone() });
+                    self.instructions.push(Instruction::Store { ptr: ptr.clone(), value: val_reg });
+                    self.locals.insert(name.clone(), LocalVar::Ptr(ptr));
+                } else {
+                    self.locals.insert(name.clone(), LocalVar::Value(val_reg));
+                }
+            }
+            Stmt::Assign { name, value, .. } => {
+                let val_reg = self.lower_expr(value);
+                if let LocalVar::Ptr(ptr) = self.locals.get(name).unwrap().clone() {
+                    self.instructions.push(Instruction::Store { ptr, value: val_reg });
+                } else {
+                    panic!("cannot assign to immutable variable: {}", name);
+                }
+            }
+            Stmt::While { condition, body, .. } => {
+                let cond_label = self.fresh_label("while_cond");
+                let body_label = self.fresh_label("while_body");
+                let end_label = self.fresh_label("while_end");
+
+                self.instructions.push(Instruction::Jump { target: cond_label.clone() });
+
+                self.instructions.push(Instruction::Label { name: cond_label.clone() });
+                let cond_reg = self.lower_expr(condition);
+                self.instructions.push(Instruction::Branch {
+                    cond: cond_reg,
+                    then_label: body_label.clone(),
+                    else_label: end_label.clone(),
+                });
+
+                self.instructions.push(Instruction::Label { name: body_label.clone() });
+                for s in body {
+                    self.lower_stmt(s);
+                }
+                self.instructions.push(Instruction::Jump { target: cond_label.clone() });
+
+                self.instructions.push(Instruction::Label { name: end_label.clone() });
+            }
+            Stmt::Return { value, .. } => {
+                let reg = self.lower_expr(value);
+                self.instructions.push(Instruction::Ret { value: reg });
+            }
+            Stmt::Expr(expr) => {
+                self.lower_expr(expr);
             }
         }
     }
@@ -394,5 +443,42 @@ mod tests {
         let func = &module.functions[0];
         let has_not = func.body.iter().any(|i| matches!(i, Instruction::Not { .. }));
         assert!(has_not, "expected Not instruction");
+    }
+
+    #[test]
+    fn lower_while_loop() {
+        let program = parse("fn main() Int { let mut x Int = 0 while x < 10 { x = x + 1 } x }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+
+        let has_alloca = func.body.iter().any(|i| matches!(i, Instruction::Alloca { .. }));
+        let has_store = func.body.iter().any(|i| matches!(i, Instruction::Store { .. }));
+        let has_load = func.body.iter().any(|i| matches!(i, Instruction::Load { .. }));
+        assert!(has_alloca, "expected Alloca for mutable variable");
+        assert!(has_store, "expected Store for assignment");
+        assert!(has_load, "expected Load for variable read");
+
+        let label_count = func.body.iter().filter(|i| matches!(i, Instruction::Label { .. })).count();
+        assert!(label_count >= 3, "expected at least 3 labels for while loop (cond, body, end)");
+    }
+
+    #[test]
+    fn lower_return() {
+        let program = parse("fn main() Int { return 42 }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_ret = func.body.iter().any(|i| matches!(i, Instruction::Ret { .. }));
+        assert!(has_ret, "expected Ret instruction");
+    }
+
+    #[test]
+    fn lower_mutable_variable() {
+        let program = parse("fn main() Int { let mut x Int = 1 x = 2 x }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_alloca = func.body.iter().any(|i| matches!(i, Instruction::Alloca { .. }));
+        let store_count = func.body.iter().filter(|i| matches!(i, Instruction::Store { .. })).count();
+        assert!(has_alloca, "expected Alloca");
+        assert!(store_count >= 2, "expected at least 2 Store instructions (init + reassign)");
     }
 }

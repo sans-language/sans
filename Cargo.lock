@@ -34,6 +34,7 @@ name = "cyflym-codegen"
 version = "0.1.0"
 dependencies = [
  "cyflym-ir",
+ "cyflym-parser",
  "inkwell",
 ]
 

@@ -7,7 +7,7 @@ use inkwell::context::Context;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
-use inkwell::values::IntValue;
+use inkwell::values::{IntValue, PointerValue};
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
@@ -93,6 +93,7 @@ fn generate_llvm<'ctx>(
         builder.position_at_end(entry);
 
         let mut regs: HashMap<String, IntValue<'ctx>> = HashMap::new();
+        let mut ptrs: HashMap<String, PointerValue<'ctx>> = HashMap::new();
 
         // Map parameter names to LLVM parameter values
         for (i, param_name) in func.params.iter().enumerate() {
@@ -260,6 +261,27 @@ fn generate_llvm<'ctx>(
                     phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
                     regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
                 }
+                Instruction::Alloca { dest } => {
+                    let ptr = builder
+                        .build_alloca(i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr);
+                }
+                Instruction::Store { ptr, value } => {
+                    let ptr_val = ptrs[ptr];
+                    let val = regs[value];
+                    builder
+                        .build_store(ptr_val, val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::Load { dest, ptr } => {
+                    let ptr_val = ptrs[ptr];
+                    let loaded = builder
+                        .build_load(i64_type, ptr_val, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), loaded);
+                }
             }
         }
     }
@@ -271,6 +293,19 @@ fn generate_llvm<'ctx>(
 mod tests {
     use super::*;
     use cyflym_ir::ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module};
+
+    #[test]
+    fn codegen_while_loop() {
+        let program = cyflym_parser::parse(
+            "fn main() Int { let mut x Int = 0 while x < 3 { x = x + 1 } x }"
+        ).expect("parse failed");
+        let module = cyflym_ir::lower(&program);
+        let ir = compile_to_llvm_ir(&module).expect("codegen failed");
+
+        assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
+        assert!(ir.contains("br "), "expected branch in:\n{}", ir);
+        assert!(ir.contains("ret i64"), "expected ret in:\n{}", ir);
+    }
 
     #[test]
     fn codegen_produces_llvm_ir() {

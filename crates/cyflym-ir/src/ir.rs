@@ -27,6 +27,10 @@ pub enum Instruction {
     Branch { cond: Reg, then_label: String, else_label: String },
     Jump { target: String },
     Phi { dest: Reg, a_val: Reg, a_label: String, b_val: Reg, b_label: String },
+    // Memory operations for mutable variables
+    Alloca { dest: Reg },
+    Store { ptr: Reg, value: Reg },
+    Load { dest: Reg, ptr: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

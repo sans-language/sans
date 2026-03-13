@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 cyflym-ir = { path = "../cyflym-ir" }
 inkwell = { version = "0.8", features = ["llvm17-0"] }
+
+[dev-dependencies]
+cyflym-parser = { path = "../cyflym-parser" }
