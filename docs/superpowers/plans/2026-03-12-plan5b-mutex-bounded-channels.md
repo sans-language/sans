@@ -54,7 +54,7 @@ In `crates/cyflym-lexer/src/lib.rs`, add after the `lex_channel_keyword` test (l
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer lex_mutex_keyword`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer -- lex_mutex_keyword`
 Expected: FAIL — `Mutex` variant doesn't exist
 
 - [ ] **Step 3: Add `Mutex` token variant**
@@ -75,7 +75,7 @@ In `crates/cyflym-lexer/src/lib.rs`, add after `"channel" => TokenKind::Channel,
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer lex_mutex_keyword`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer -- lex_mutex_keyword`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -282,7 +282,7 @@ In `crates/cyflym-typeck/src/lib.rs`, add after the last concurrency test:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck check_mutex`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck -- check_mutex`
 Expected: FAIL — `Mutex` variant doesn't exist, `MutexCreate` not handled
 
 - [ ] **Step 3: Add `Mutex` type variant**
@@ -461,7 +461,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last concurrency IR test:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-ir lower_mutex lower_bounded lower_unbounded`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-ir -- lower_mutex lower_bounded lower_unbounded`
 Expected: FAIL — `MutexCreate` variant doesn't exist on Instruction
 
 - [ ] **Step 3: Add IR instructions**
@@ -633,7 +633,7 @@ In `crates/cyflym-codegen/src/lib.rs`, add after the last concurrency codegen te
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-codegen codegen_mutex codegen_bounded`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-codegen -- codegen_mutex codegen_bounded`
 Expected: FAIL — no match for `MutexCreate` / `ChannelCreateBounded` in codegen
 
 - [ ] **Step 3: Update ChannelCreate to 208-byte layout**
