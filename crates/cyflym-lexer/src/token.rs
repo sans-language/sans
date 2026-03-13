@@ -61,6 +61,7 @@ pub enum TokenKind {
     // Concurrency
     Spawn,
     Channel,
+    Mutex,
 
     // Member access
     Dot,

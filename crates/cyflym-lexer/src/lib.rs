@@ -81,6 +81,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "Self" => TokenKind::SelfType,
                     "spawn" => TokenKind::Spawn,
                     "channel" => TokenKind::Channel,
+                    "mutex" => TokenKind::Mutex,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -417,6 +418,12 @@ mod tests {
     fn lex_channel_keyword() {
         let tokens = lex("channel").unwrap();
         assert_eq!(kinds(&tokens), vec![Channel, Eof]);
+    }
+
+    #[test]
+    fn lex_mutex_keyword() {
+        let tokens = lex("mutex").unwrap();
+        assert_eq!(kinds(&tokens), vec![Mutex, Eof]);
     }
 
     #[test]
