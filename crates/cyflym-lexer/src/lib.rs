@@ -451,7 +451,10 @@ mod tests {
 
     #[test]
     fn lex_import_keyword() {
-        let tokens = lex("import").unwrap();
-        assert_eq!(kinds(&tokens), vec![Import, Eof]);
+        let tokens = lex("import \"utils\"").unwrap();
+        assert_eq!(
+            kinds(&tokens),
+            vec![Import, StringLiteral("utils".to_string()), Eof]
+        );
     }
 }
