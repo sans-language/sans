@@ -74,3 +74,13 @@ fn e2e_method_basic() {
 fn e2e_trait_impl() {
     assert_eq!(compile_and_run("trait_impl.cy"), 13);
 }
+
+#[test]
+fn e2e_generic_identity() {
+    assert_eq!(compile_and_run("generic_identity.cy"), 42);
+}
+
+#[test]
+fn e2e_generic_pair() {
+    assert_eq!(compile_and_run("generic_pair.cy"), 17);
+}

@@ -97,11 +97,46 @@ impl Parser {
 
     // ─── Function ─────────────────────────────────────────────────────────────
 
+    fn parse_type_params(&mut self) -> Result<Vec<TypeParam>, ParseError> {
+        let mut type_params = Vec::new();
+        if self.peek().kind != TokenKind::Lt {
+            return Ok(type_params);
+        }
+        self.pos += 1; // consume <
+        loop {
+            if self.peek().kind == TokenKind::Gt {
+                break;
+            }
+            let (name, name_span) = self.expect_ident()?;
+            let bound = if self.peek().kind == TokenKind::Colon {
+                self.pos += 1; // consume :
+                let (bound_name, _) = self.expect_ident()?;
+                Some(bound_name)
+            } else {
+                None
+            };
+            let end = if bound.is_some() {
+                self.tokens[self.pos - 1].span.end
+            } else {
+                name_span.end
+            };
+            type_params.push(TypeParam { name, bound, span: name_span.start..end });
+            if self.peek().kind == TokenKind::Comma {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
+        self.expect(&TokenKind::Gt)?;
+        Ok(type_params)
+    }
+
     fn parse_function(&mut self) -> Result<Function, ParseError> {
         let fn_tok = self.expect(&TokenKind::Fn)?;
         let fn_start = fn_tok.span.start;
 
         let (name, _) = self.expect_ident()?;
+        let type_params = self.parse_type_params()?;
 
         self.expect(&TokenKind::LParen)?;
         let params = self.parse_params()?;
@@ -116,6 +151,7 @@ impl Parser {
 
         Ok(Function {
             name,
+            type_params,
             params,
             return_type,
             body,
@@ -196,6 +232,7 @@ impl Parser {
         let fn_tok = self.expect(&TokenKind::Fn)?;
         let start = fn_tok.span.start;
         let (name, _) = self.expect_ident()?;
+        let type_params = self.parse_type_params()?;
         self.expect(&TokenKind::LParen)?;
         // First param must be `self`
         self.expect(&TokenKind::SelfValue)?;
@@ -214,7 +251,7 @@ impl Parser {
         self.expect(&TokenKind::RParen)?;
         let return_type = self.parse_type_name()?;
         let end = return_type.span.end;
-        Ok(TraitMethodSig { name, params, return_type, span: start..end })
+        Ok(TraitMethodSig { name, type_params, params, return_type, span: start..end })
     }
 
     fn parse_impl_block(&mut self) -> Result<ImplBlock, ParseError> {
@@ -243,6 +280,7 @@ impl Parser {
         let fn_tok = self.expect(&TokenKind::Fn)?;
         let fn_start = fn_tok.span.start;
         let (name, _) = self.expect_ident()?;
+        let type_params = self.parse_type_params()?;
         self.expect(&TokenKind::LParen)?;
 
         // First param must be `self` — we translate it to a typed param
@@ -274,6 +312,7 @@ impl Parser {
 
         Ok(Function {
             name,
+            type_params,
             params,
             return_type,
             body,
@@ -1278,5 +1317,41 @@ mod tests {
         } else {
             panic!("expected Let");
         }
+    }
+
+    #[test]
+    fn parse_generic_function() {
+        let prog = parse("fn identity<T>(x T) T { x } fn main() Int { identity(42) }").unwrap();
+        let func = &prog.functions[0];
+        assert_eq!(func.name, "identity");
+        assert_eq!(func.type_params.len(), 1);
+        assert_eq!(func.type_params[0].name, "T");
+        assert_eq!(func.type_params[0].bound, None);
+        assert_eq!(func.params[0].type_name.name, "T");
+        assert_eq!(func.return_type.name, "T");
+    }
+
+    #[test]
+    fn parse_generic_with_bound() {
+        let prog = parse("fn get_sum<T: Summable>(x T) Int { x.sum() } fn main() Int { 0 }").unwrap();
+        let func = &prog.functions[0];
+        assert_eq!(func.type_params.len(), 1);
+        assert_eq!(func.type_params[0].name, "T");
+        assert_eq!(func.type_params[0].bound, Some("Summable".to_string()));
+    }
+
+    #[test]
+    fn parse_generic_multiple_params() {
+        let prog = parse("fn pair<A, B>(a A, b B) Int { 0 } fn main() Int { 0 }").unwrap();
+        let func = &prog.functions[0];
+        assert_eq!(func.type_params.len(), 2);
+        assert_eq!(func.type_params[0].name, "A");
+        assert_eq!(func.type_params[1].name, "B");
+    }
+
+    #[test]
+    fn parse_non_generic_function_unchanged() {
+        let prog = parse("fn add(a Int, b Int) Int { a + b } fn main() Int { 0 }").unwrap();
+        assert_eq!(prog.functions[0].type_params.len(), 0);
     }
 }

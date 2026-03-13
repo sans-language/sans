@@ -880,4 +880,13 @@ mod tests {
         assert!(has_alloca, "expected Alloca");
         assert!(store_count >= 2, "expected at least 2 Store instructions (init + reassign)");
     }
+
+    #[test]
+    fn lower_generic_function() {
+        let program = parse("fn identity<T>(x T) T { x } fn main() Int { identity(42) }");
+        let module = lower(&program);
+        assert_eq!(module.functions.len(), 2);
+        let identity = module.functions.iter().find(|f| f.name == "identity").expect("no identity");
+        assert_eq!(identity.params.len(), 1);
+    }
 }

@@ -17,8 +17,16 @@ pub struct TraitDef {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TypeParam {
+    pub name: String,
+    pub bound: Option<String>,  // trait bound, e.g. "Summable"
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TraitMethodSig {
     pub name: String,
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,  // does NOT include self
     pub return_type: TypeName,
     pub span: Span,
@@ -63,6 +71,7 @@ pub struct StructField {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub name: String,
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub return_type: TypeName,
     pub body: Vec<Stmt>,
