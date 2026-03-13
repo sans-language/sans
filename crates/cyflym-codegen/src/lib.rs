@@ -473,8 +473,8 @@ fn generate_llvm<'ctx>(
                     let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
                     let malloc_fn = llvm_module.get_function("malloc").unwrap();
 
-                    // Allocate channel: 19 * 8 = 152 bytes
-                    let chan_call = builder.build_call(malloc_fn, &[i64_type.const_int(152, false).into()], "chan")
+                    // Allocate channel: 26 * 8 = 208 bytes
+                    let chan_call = builder.build_call(malloc_fn, &[i64_type.const_int(208, false).into()], "chan")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let chan_ptr = match chan_call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
@@ -495,41 +495,53 @@ fn generate_llvm<'ctx>(
                     builder.build_store(chan_ptr, buf_int)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Store capacity=16 at offset 1
+                    // capacity=16 at offset 1
                     let off1 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(1, false)], "cap_ptr") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(off1, i64_type.const_int(16, false))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Store count=0 at offset 2
+                    // count=0 at offset 2
                     let off2 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(2, false)], "cnt_ptr") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(off2, i64_type.const_int(0, false))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Store head=0 at offset 3
+                    // head=0 at offset 3
                     let off3 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(3, false)], "head_ptr") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(off3, i64_type.const_int(0, false))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Store tail=0 at offset 4
+                    // tail=0 at offset 4
                     let off4 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(4, false)], "tail_ptr") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(off4, i64_type.const_int(0, false))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
                     // Init mutex at offset 5
+                    let null = ptr_type.const_null();
                     let mutex_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(5, false)], "mtx") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let null = ptr_type.const_null();
                     builder.build_call(llvm_module.get_function("pthread_mutex_init").unwrap(), &[mutex_ptr.into(), null.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Init condvar at offset 13
-                    let cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(13, false)], "cnd") }
+                    // Init recv condvar at offset 13
+                    let recv_cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(13, false)], "rcnd") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    builder.build_call(llvm_module.get_function("pthread_cond_init").unwrap(), &[cond_ptr.into(), null.into()], "")
+                    builder.build_call(llvm_module.get_function("pthread_cond_init").unwrap(), &[recv_cond_ptr.into(), null.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Init send condvar at offset 19
+                    let send_cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(19, false)], "scnd") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_cond_init").unwrap(), &[send_cond_ptr.into(), null.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // is_bounded=0 at offset 25
+                    let off25 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(25, false)], "bnd_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(off25, i64_type.const_int(0, false))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
                     // Both tx and rx are the channel ptr as i64
@@ -550,35 +562,158 @@ fn generate_llvm<'ctx>(
                     builder.build_call(llvm_module.get_function("pthread_mutex_lock").unwrap(), &[mutex_ptr.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Load tail, capacity, buffer ptr
+                    // Load is_bounded flag (offset 25)
+                    let bnd_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(25, false)], "bnd_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let is_bounded = builder.build_load(i64_type, bnd_ptr, "is_bnd").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let is_bnd_bool = builder.build_int_compare(IntPredicate::NE, is_bounded, i64_type.const_int(0, false), "bnd")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let bounded_bb = context.append_basic_block(llvm_fn, "send_bounded");
+                    let unbounded_check_bb = context.append_basic_block(llvm_fn, "send_unbnd_check");
+                    let grow_bb = context.append_basic_block(llvm_fn, "send_grow");
+                    let write_bb = context.append_basic_block(llvm_fn, "send_write");
+
+                    builder.build_conditional_branch(is_bnd_bool, bounded_bb, unbounded_check_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // -- Bounded path: while count == capacity, wait on send condvar --
+                    builder.position_at_end(bounded_bb);
+                    let send_cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(19, false)], "scnd") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cnt_ptr_b = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(2, false)], "cntp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cnt_b = builder.build_load(i64_type, cnt_ptr_b, "cnt").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let cap_ptr_b = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(1, false)], "cp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cap_b = builder.build_load(i64_type, cap_ptr_b, "cap").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let full_b = builder.build_int_compare(IntPredicate::EQ, cnt_b, cap_b, "full")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let bnd_wait_bb = context.append_basic_block(llvm_fn, "bnd_wait");
+                    let bnd_recheck_bb = context.append_basic_block(llvm_fn, "bnd_recheck");
+                    builder.build_conditional_branch(full_b, bnd_wait_bb, write_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    builder.position_at_end(bnd_wait_bb);
+                    builder.build_call(llvm_module.get_function("pthread_cond_wait").unwrap(), &[send_cond_ptr.into(), mutex_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(bnd_recheck_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    builder.position_at_end(bnd_recheck_bb);
+                    let cnt_b2 = builder.build_load(i64_type, cnt_ptr_b, "cnt2").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let cap_b2 = builder.build_load(i64_type, cap_ptr_b, "cap2").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let still_full = builder.build_int_compare(IntPredicate::EQ, cnt_b2, cap_b2, "sfull")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_conditional_branch(still_full, bnd_wait_bb, write_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // -- Unbounded path: if count == capacity, grow buffer --
+                    builder.position_at_end(unbounded_check_bb);
+                    let cnt_ptr_u = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(2, false)], "cntp_u") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cnt_u = builder.build_load(i64_type, cnt_ptr_u, "cnt_u").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let cap_ptr_u = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(1, false)], "cp_u") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cap_u = builder.build_load(i64_type, cap_ptr_u, "cap_u").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let need_grow = builder.build_int_compare(IntPredicate::EQ, cnt_u, cap_u, "needgrow")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_conditional_branch(need_grow, grow_bb, write_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // -- Grow buffer: malloc new at 2x, copy elements, free old --
+                    builder.position_at_end(grow_bb);
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let free_fn = llvm_module.get_function("free").unwrap();
+                    let old_cap = builder.build_load(i64_type, cap_ptr_u, "old_cap").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let two = i64_type.const_int(2, false);
+                    let new_cap = builder.build_int_mul(old_cap, two, "new_cap").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let eight = i64_type.const_int(8, false);
+                    let new_buf_size = builder.build_int_mul(new_cap, eight, "nbs").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let new_buf_call = builder.build_call(malloc_fn, &[new_buf_size.into()], "nbuf").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let new_buf_ptr = match new_buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Copy elements from old circular buffer to new linear buffer
+                    let old_buf_int = builder.build_load(i64_type, chan_ptr, "obi").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let old_buf_ptr = builder.build_int_to_ptr(old_buf_int, ptr_type, "obp").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let head_ptr_g = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(3, false)], "hp_g") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let head_g = builder.build_load(i64_type, head_ptr_g, "head_g").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let count_g = builder.build_load(i64_type, cnt_ptr_u, "cnt_g").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+
+                    // Alloca loop counter
+                    let idx_ptr = builder.build_alloca(i64_type, "gidx").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(idx_ptr, i64_type.const_int(0, false)).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let gcond_bb = context.append_basic_block(llvm_fn, "gcond");
+                    let gbody_bb = context.append_basic_block(llvm_fn, "gbody");
+                    let gdone_bb = context.append_basic_block(llvm_fn, "gdone");
+
+                    builder.build_unconditional_branch(gcond_bb).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.position_at_end(gcond_bb);
+                    let gi = builder.build_load(i64_type, idx_ptr, "gi").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let gi_lt = builder.build_int_compare(IntPredicate::ULT, gi, count_g, "glt").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_conditional_branch(gi_lt, gbody_bb, gdone_bb).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    builder.position_at_end(gbody_bb);
+                    let src_idx = builder.build_int_add(head_g, gi, "si").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let src_idx_mod = builder.build_int_unsigned_rem(src_idx, old_cap, "sim").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let src_gep = unsafe { builder.build_gep(i64_type, old_buf_ptr, &[src_idx_mod], "sg") }.map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let elem = builder.build_load(i64_type, src_gep, "elem").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let dst_gep = unsafe { builder.build_gep(i64_type, new_buf_ptr, &[gi], "dg") }.map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(dst_gep, elem).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let one = i64_type.const_int(1, false);
+                    let gi_next = builder.build_int_add(gi, one, "gin").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(idx_ptr, gi_next).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(gcond_bb).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    builder.position_at_end(gdone_bb);
+                    // Free old buffer
+                    builder.build_call(free_fn, &[old_buf_ptr.into()], "").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store new buffer ptr
+                    let new_buf_int = builder.build_ptr_to_int(new_buf_ptr, i64_type, "nbi").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(chan_ptr, new_buf_int).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Update capacity
+                    builder.build_store(cap_ptr_u, new_cap).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Reset head=0, tail=count
+                    builder.build_store(head_ptr_g, i64_type.const_int(0, false)).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let tail_ptr_g = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(4, false)], "tp_g") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(tail_ptr_g, count_g).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(write_bb).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // -- Write value at buffer[tail % capacity] --
+                    builder.position_at_end(write_bb);
                     let tail_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(4, false)], "tp") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let tail = builder.build_load(i64_type, tail_ptr, "tail").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
-                    let cap_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(1, false)], "cp") }
+                    let cap_ptr_w = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(1, false)], "cp_w") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let cap = builder.build_load(i64_type, cap_ptr, "cap").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
-                    let buf_int = builder.build_load(i64_type, chan_ptr, "bi").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
-                    let buf_ptr = builder.build_int_to_ptr(buf_int, ptr_type, "bp").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // Write at buffer[tail % cap]
-                    let idx = builder.build_int_unsigned_rem(tail, cap, "idx").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let wp = unsafe { builder.build_gep(i64_type, buf_ptr, &[idx], "wp") }.map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cap_w = builder.build_load(i64_type, cap_ptr_w, "cap_w").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let buf_int_w = builder.build_load(i64_type, chan_ptr, "bi_w").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let buf_ptr_w = builder.build_int_to_ptr(buf_int_w, ptr_type, "bp_w").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let idx = builder.build_int_unsigned_rem(tail, cap_w, "idx").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let wp = unsafe { builder.build_gep(i64_type, buf_ptr_w, &[idx], "wp") }.map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(wp, val).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
                     // Increment tail and count
                     let one = i64_type.const_int(1, false);
                     let new_tail = builder.build_int_add(tail, one, "nt").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(tail_ptr, new_tail).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let cnt_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(2, false)], "cntp") }
+                    let cnt_ptr_w = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(2, false)], "cntp_w") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let cnt = builder.build_load(i64_type, cnt_ptr, "cnt").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
-                    let new_cnt = builder.build_int_add(cnt, one, "nc").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    builder.build_store(cnt_ptr, new_cnt).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let cnt_w = builder.build_load(i64_type, cnt_ptr_w, "cnt_w").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let new_cnt = builder.build_int_add(cnt_w, one, "nc").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(cnt_ptr_w, new_cnt).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Signal condvar
-                    let cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(13, false)], "cnd") }
+                    // Signal recv condvar
+                    let recv_cond = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(13, false)], "rcnd") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    builder.build_call(llvm_module.get_function("pthread_cond_signal").unwrap(), &[cond_ptr.into()], "")
+                    builder.build_call(llvm_module.get_function("pthread_cond_signal").unwrap(), &[recv_cond.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
                     // Unlock
@@ -593,7 +728,7 @@ fn generate_llvm<'ctx>(
 
                     let mutex_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(5, false)], "mtx") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(13, false)], "cnd") }
+                    let recv_cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(13, false)], "rcnd") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
                     // Lock
@@ -616,7 +751,7 @@ fn generate_llvm<'ctx>(
                     builder.build_conditional_branch(empty, do_wait_bb, body_bb).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
                     builder.position_at_end(do_wait_bb);
-                    builder.build_call(llvm_module.get_function("pthread_cond_wait").unwrap(), &[cond_ptr.into(), mutex_ptr.into()], "")
+                    builder.build_call(llvm_module.get_function("pthread_cond_wait").unwrap(), &[recv_cond_ptr.into(), mutex_ptr.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_unconditional_branch(wait_bb).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
@@ -643,6 +778,27 @@ fn generate_llvm<'ctx>(
                     let new_cnt = builder.build_int_sub(cnt2, one, "nc").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(cnt_ptr, new_cnt).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
+                    // Signal send condvar if bounded
+                    let bnd_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(25, false)], "bnd_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let is_bounded = builder.build_load(i64_type, bnd_ptr, "is_bnd").map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    let is_bnd_bool = builder.build_int_compare(IntPredicate::NE, is_bounded, i64_type.const_int(0, false), "bnd")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let signal_bb = context.append_basic_block(llvm_fn, "recv_signal");
+                    let unlock_bb = context.append_basic_block(llvm_fn, "recv_unlock");
+                    builder.build_conditional_branch(is_bnd_bool, signal_bb, unlock_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    builder.position_at_end(signal_bb);
+                    let send_cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(19, false)], "scnd") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_cond_signal").unwrap(), &[send_cond_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(unlock_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    builder.position_at_end(unlock_bb);
                     // Unlock
                     builder.build_call(llvm_module.get_function("pthread_mutex_unlock").unwrap(), &[mutex_ptr.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
@@ -730,6 +886,149 @@ fn generate_llvm<'ctx>(
                         &[h.into(), ptr_type.const_null().into()],
                         ""
                     ).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::MutexCreate { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let val = regs[value];
+
+                    // Allocate mutex struct: 9 * 8 = 72 bytes (1 value + 8 mutex)
+                    let mtx_call = builder.build_call(malloc_fn, &[i64_type.const_int(72, false).into()], "mtx_alloc")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let mtx_ptr = match mtx_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Store value at offset 0
+                    builder.build_store(mtx_ptr, val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Init pthread_mutex at offset 1
+                    let null = ptr_type.const_null();
+                    let mutex_inner = unsafe { builder.build_gep(i64_type, mtx_ptr, &[i64_type.const_int(1, false)], "mi") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_mutex_init").unwrap(), &[mutex_inner.into(), null.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let mtx_int = builder.build_ptr_to_int(mtx_ptr, i64_type, "mtx_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), mtx_int);
+                }
+                Instruction::MutexLock { dest, mutex } => {
+                    let mtx_int = regs[mutex];
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let mtx_ptr = builder.build_int_to_ptr(mtx_int, ptr_type, "mtx_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Lock at offset 1
+                    let mutex_inner = unsafe { builder.build_gep(i64_type, mtx_ptr, &[i64_type.const_int(1, false)], "mi") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_mutex_lock").unwrap(), &[mutex_inner.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Load value from offset 0
+                    let val = builder.build_load(i64_type, mtx_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    regs.insert(dest.clone(), val);
+                }
+                Instruction::MutexUnlock { mutex, value } => {
+                    let mtx_int = regs[mutex];
+                    let val = regs[value];
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let mtx_ptr = builder.build_int_to_ptr(mtx_int, ptr_type, "mtx_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store new value at offset 0
+                    builder.build_store(mtx_ptr, val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Unlock at offset 1
+                    let mutex_inner = unsafe { builder.build_gep(i64_type, mtx_ptr, &[i64_type.const_int(1, false)], "mi") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_mutex_unlock").unwrap(), &[mutex_inner.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::ChannelCreateBounded { tx_dest, rx_dest, capacity } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let cap_val = regs[capacity];
+
+                    // Allocate channel: 26 * 8 = 208 bytes
+                    let chan_call = builder.build_call(malloc_fn, &[i64_type.const_int(208, false).into()], "chan")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let chan_ptr = match chan_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Allocate buffer: capacity * 8 bytes
+                    let eight = i64_type.const_int(8, false);
+                    let buf_size = builder.build_int_mul(cap_val, eight, "bufsz")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_call = builder.build_call(malloc_fn, &[buf_size.into()], "buf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_ptr = match buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // Store buffer ptr at offset 0
+                    let buf_int: IntValue<'ctx> = builder.build_ptr_to_int(buf_ptr, i64_type, "buf_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(chan_ptr, buf_int)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // capacity at offset 1
+                    let off1 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(1, false)], "cap_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(off1, cap_val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // count=0, head=0, tail=0 at offsets 2-4
+                    let off2 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(2, false)], "cnt_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(off2, i64_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let off3 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(3, false)], "head_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(off3, i64_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let off4 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(4, false)], "tail_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(off4, i64_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Init mutex at offset 5
+                    let null = ptr_type.const_null();
+                    let mutex_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(5, false)], "mtx") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_mutex_init").unwrap(), &[mutex_ptr.into(), null.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Init recv condvar at offset 13
+                    let recv_cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(13, false)], "rcnd") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_cond_init").unwrap(), &[recv_cond_ptr.into(), null.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Init send condvar at offset 19
+                    let send_cond_ptr = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(19, false)], "scnd") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(llvm_module.get_function("pthread_cond_init").unwrap(), &[send_cond_ptr.into(), null.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // is_bounded=1 at offset 25
+                    let off25 = unsafe { builder.build_gep(i64_type, chan_ptr, &[i64_type.const_int(25, false)], "bnd_ptr") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(off25, i64_type.const_int(1, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Both tx and rx are the channel ptr as i64
+                    let chan_int = builder.build_ptr_to_int(chan_ptr, i64_type, "chan_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(tx_dest.clone(), chan_int);
+                    regs.insert(rx_dest.clone(), chan_int);
                 }
             }
         }
@@ -1004,5 +1303,29 @@ mod tests {
         assert!(ir.contains("pthread_mutex_lock"), "expected lock in:\n{}", ir);
         assert!(ir.contains("pthread_cond_signal"), "expected signal in:\n{}", ir);
         assert!(ir.contains("pthread_cond_wait"), "expected wait in:\n{}", ir);
+    }
+
+    #[test]
+    fn codegen_mutex_create_lock_unlock() {
+        let program = cyflym_parser::parse(
+            "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
+        ).unwrap();
+        cyflym_typeck::check(&program).unwrap();
+        let ir = cyflym_ir::lower(&program);
+        let context = Context::create();
+        let result = generate_llvm(&context, &ir);
+        assert!(result.is_ok(), "codegen failed: {:?}", result.err());
+    }
+
+    #[test]
+    fn codegen_bounded_channel() {
+        let program = cyflym_parser::parse(
+            "fn main() Int { let (tx, rx) = channel<Int>(4) tx.send(1) rx.recv() }"
+        ).unwrap();
+        cyflym_typeck::check(&program).unwrap();
+        let ir = cyflym_ir::lower(&program);
+        let context = Context::create();
+        let result = generate_llvm(&context, &ir);
+        assert!(result.is_ok(), "codegen failed: {:?}", result.err());
     }
 }
