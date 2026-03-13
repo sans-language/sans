@@ -85,6 +85,52 @@ pub enum Instruction {
         rx_dest: Reg,
         capacity: Reg,
     },
+    // Array operations
+    ArrayCreate {
+        dest: Reg,
+    },
+    ArrayPush {
+        array: Reg,
+        value: Reg,
+    },
+    ArrayGet {
+        dest: Reg,
+        array: Reg,
+        index: Reg,
+    },
+    ArraySet {
+        array: Reg,
+        index: Reg,
+        value: Reg,
+    },
+    ArrayLen {
+        dest: Reg,
+        array: Reg,
+    },
+    // String operations
+    StringLen {
+        dest: Reg,
+        string: Reg,
+    },
+    StringConcat {
+        dest: Reg,
+        left: Reg,
+        right: Reg,
+    },
+    StringSubstring {
+        dest: Reg,
+        string: Reg,
+        start: Reg,
+        end: Reg,
+    },
+    IntToString {
+        dest: Reg,
+        value: Reg,
+    },
+    StringToInt {
+        dest: Reg,
+        string: Reg,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq)]
-enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex }
+enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>) }
 
 #[derive(Clone)]
 enum LocalVar {
@@ -258,6 +258,18 @@ impl IrBuilder {
                 let left_reg = self.lower_expr(left);
                 let right_reg = self.lower_expr(right);
 
+                // Check for String + String → StringConcat
+                if matches!(op, BinOp::Add) && self.reg_types.get(&left_reg) == Some(&IrType::Str) {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::StringConcat {
+                        dest: dest.clone(),
+                        left: left_reg,
+                        right: right_reg,
+                    });
+                    self.reg_types.insert(dest.clone(), IrType::Str);
+                    return dest;
+                }
+
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                         let dest = self.fresh_reg();
@@ -364,9 +376,32 @@ impl IrBuilder {
                         IrType::Struct(_) => panic!("cannot print struct"),
                         IrType::Enum(_) => panic!("cannot print enum"),
                         IrType::Sender | IrType::Receiver | IrType::JoinHandle | IrType::Mutex => panic!("cannot print concurrency type"),
+                        IrType::Array(_) => panic!("cannot print array"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                }
+
+                if function == "int_to_string" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::IntToString {
+                        dest: dest.clone(),
+                        value: val_reg,
+                    });
+                    self.reg_types.insert(dest.clone(), IrType::Str);
+                    return dest;
+                }
+
+                if function == "string_to_int" {
+                    let str_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::StringToInt {
+                        dest: dest.clone(),
+                        string: str_reg,
+                    });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 }
@@ -499,6 +534,73 @@ impl IrBuilder {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
                         self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Array(_)), "push") => {
+                        let val_reg = self.lower_expr(&args[0]);
+                        self.instructions.push(Instruction::ArrayPush {
+                            array: obj_reg,
+                            value: val_reg,
+                        });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Array(inner)), "get") => {
+                        let elem_type = *inner;
+                        let idx_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayGet {
+                            dest: dest.clone(),
+                            array: obj_reg,
+                            index: idx_reg,
+                        });
+                        self.reg_types.insert(dest.clone(), elem_type);
+                        return dest;
+                    }
+                    (Some(IrType::Array(_)), "set") => {
+                        let idx_reg = self.lower_expr(&args[0]);
+                        let val_reg = self.lower_expr(&args[1]);
+                        self.instructions.push(Instruction::ArraySet {
+                            array: obj_reg,
+                            index: idx_reg,
+                            value: val_reg,
+                        });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Array(_)), "len") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayLen {
+                            dest: dest.clone(),
+                            array: obj_reg,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Str), "len") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringLen {
+                            dest: dest.clone(),
+                            string: obj_reg,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Str), "substring") => {
+                        let start_reg = self.lower_expr(&args[0]);
+                        let end_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringSubstring {
+                            dest: dest.clone(),
+                            string: obj_reg,
+                            start: start_reg,
+                            end: end_reg,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
                     _ => {} // fall through to struct/enum handling
@@ -660,6 +762,20 @@ impl IrBuilder {
                 self.reg_types.insert(dest.clone(), IrType::Mutex);
                 dest
             }
+            Expr::ArrayCreate { element_type, .. } => {
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::ArrayCreate {
+                    dest: dest.clone(),
+                });
+                let inner_ir_type = match element_type.name.as_str() {
+                    "Int" => IrType::Int,
+                    "Bool" => IrType::Bool,
+                    "String" => IrType::Str,
+                    other => IrType::Struct(other.to_string()),
+                };
+                self.reg_types.insert(dest.clone(), IrType::Array(Box::new(inner_ir_type)));
+                dest
+            }
         }
     }
 
@@ -733,6 +849,83 @@ impl IrBuilder {
                 }
                 self.instructions.push(Instruction::Jump { target: end_label.clone() });
 
+                self.instructions.push(Instruction::Label { name: end_label });
+            }
+            Stmt::ForIn { var, iterable, body, .. } => {
+                let arr_reg = self.lower_expr(iterable);
+                // len = ArrayLen(arr)
+                let len_reg = self.fresh_reg();
+                self.instructions.push(Instruction::ArrayLen {
+                    dest: len_reg.clone(),
+                    array: arr_reg.clone(),
+                });
+                self.reg_types.insert(len_reg.clone(), IrType::Int);
+                // idx = 0 (use Alloca+Store for mutable counter, same as mut vars)
+                let idx_ptr = self.fresh_reg();
+                self.instructions.push(Instruction::Alloca { dest: idx_ptr.clone() });
+                let zero_reg = self.fresh_reg();
+                self.instructions.push(Instruction::Const { dest: zero_reg.clone(), value: 0 });
+                self.instructions.push(Instruction::Store { ptr: idx_ptr.clone(), value: zero_reg });
+                // Determine element IrType from array's IrType
+                let elem_ir_type = match self.reg_types.get(&arr_reg) {
+                    Some(IrType::Array(inner)) => inner.as_ref().clone(),
+                    _ => IrType::Int, // fallback
+                };
+                // Loop structure — follows the exact While lowering pattern
+                let cond_label = self.fresh_label("forin_cond");
+                let body_label = self.fresh_label("forin_body");
+                let end_label = self.fresh_label("forin_end");
+
+                self.instructions.push(Instruction::Jump { target: cond_label.clone() });
+
+                self.instructions.push(Instruction::Label { name: cond_label.clone() });
+                // Load idx, compare idx < len
+                let idx_reg = self.fresh_reg();
+                self.instructions.push(Instruction::Load { dest: idx_reg.clone(), ptr: idx_ptr.clone() });
+                let cmp_reg = self.fresh_reg();
+                self.instructions.push(Instruction::CmpOp {
+                    dest: cmp_reg.clone(),
+                    op: IrCmpOp::Lt,
+                    left: idx_reg.clone(),
+                    right: len_reg.clone(),
+                });
+                self.instructions.push(Instruction::Branch {
+                    cond: cmp_reg,
+                    then_label: body_label.clone(),
+                    else_label: end_label.clone(),
+                });
+
+                self.instructions.push(Instruction::Label { name: body_label.clone() });
+                // x = ArrayGet(arr, idx)
+                let elem_reg = self.fresh_reg();
+                self.instructions.push(Instruction::ArrayGet {
+                    dest: elem_reg.clone(),
+                    array: arr_reg.clone(),
+                    index: idx_reg.clone(),
+                });
+                self.reg_types.insert(elem_reg.clone(), elem_ir_type);
+                self.locals.insert(var.clone(), LocalVar::Value(elem_reg));
+
+                // Lower body
+                for stmt in body {
+                    self.lower_stmt(stmt);
+                }
+
+                // idx = idx + 1
+                let cur_idx = self.fresh_reg();
+                self.instructions.push(Instruction::Load { dest: cur_idx.clone(), ptr: idx_ptr.clone() });
+                let one_reg = self.fresh_reg();
+                self.instructions.push(Instruction::Const { dest: one_reg.clone(), value: 1 });
+                let next_idx = self.fresh_reg();
+                self.instructions.push(Instruction::BinOp {
+                    dest: next_idx.clone(),
+                    op: IrBinOp::Add,
+                    left: cur_idx,
+                    right: one_reg,
+                });
+                self.instructions.push(Instruction::Store { ptr: idx_ptr, value: next_idx });
+
+                self.instructions.push(Instruction::Jump { target: cond_label });
                 self.instructions.push(Instruction::Label { name: end_label });
             }
             Stmt::LetDestructure { names, value, .. } => {
@@ -1070,5 +1263,57 @@ mod tests {
             "expected ChannelCreate (not bounded) instruction");
         assert!(!instrs.iter().any(|i| matches!(i, Instruction::ChannelCreateBounded { .. })),
             "should NOT have ChannelCreateBounded");
+    }
+
+    #[test]
+    fn lower_array_create_push_get_len() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
+        ).unwrap();
+        let module = lower(&prog);
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ArrayCreate { .. })),
+            "expected ArrayCreate instruction");
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ArrayPush { .. })),
+            "expected ArrayPush instruction");
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ArrayGet { .. })),
+            "expected ArrayGet instruction");
+    }
+
+    #[test]
+    fn lower_for_in_to_counted_loop() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { let a = array<Int>() a.push(1) for x in a { print(x) } 0 }"
+        ).unwrap();
+        let module = lower(&prog);
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ArrayLen { .. })),
+            "expected ArrayLen for for-in loop");
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ArrayGet { .. })),
+            "expected ArrayGet for for-in loop");
+    }
+
+    #[test]
+    fn lower_string_concat() {
+        let prog = cyflym_parser::parse(
+            r#"fn main() Int { let s = "a" + "b" 0 }"#
+        ).unwrap();
+        let module = lower(&prog);
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::StringConcat { .. })),
+            "expected StringConcat instruction");
+    }
+
+    #[test]
+    fn lower_int_to_string_and_string_to_int() {
+        let prog = cyflym_parser::parse(
+            r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
+        ).unwrap();
+        let module = lower(&prog);
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::IntToString { .. })),
+            "expected IntToString instruction");
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::StringToInt { .. })),
+            "expected StringToInt instruction");
     }
 }
