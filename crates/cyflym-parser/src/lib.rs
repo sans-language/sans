@@ -74,25 +74,65 @@ impl Parser {
     // ─── Top-level ────────────────────────────────────────────────────────────
 
     fn parse_program(&mut self) -> Result<Program, ParseError> {
+        let mut imports = Vec::new();
         let mut functions = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
         let mut traits = Vec::new();
         let mut impls = Vec::new();
+        let mut has_declarations = false;
+
         while self.peek().kind != TokenKind::Eof {
-            if self.peek().kind == TokenKind::Enum {
-                enums.push(self.parse_enum_def()?);
-            } else if self.peek().kind == TokenKind::Struct {
-                structs.push(self.parse_struct_def()?);
-            } else if self.peek().kind == TokenKind::Trait {
-                traits.push(self.parse_trait_def()?);
-            } else if self.peek().kind == TokenKind::Impl {
-                impls.push(self.parse_impl_block()?);
+            if self.peek().kind == TokenKind::Import {
+                if has_declarations {
+                    return Err(ParseError::new(
+                        "imports must appear before all declarations",
+                        self.peek().span.clone(),
+                    ));
+                }
+                imports.push(self.parse_import()?);
             } else {
-                functions.push(self.parse_function()?);
+                has_declarations = true;
+                if self.peek().kind == TokenKind::Enum {
+                    enums.push(self.parse_enum_def()?);
+                } else if self.peek().kind == TokenKind::Struct {
+                    structs.push(self.parse_struct_def()?);
+                } else if self.peek().kind == TokenKind::Trait {
+                    traits.push(self.parse_trait_def()?);
+                } else if self.peek().kind == TokenKind::Impl {
+                    impls.push(self.parse_impl_block()?);
+                } else {
+                    functions.push(self.parse_function()?);
+                }
             }
         }
-        Ok(Program { imports: Vec::new(), functions, structs, enums, traits, impls })
+        Ok(Program { imports, functions, structs, enums, traits, impls })
+    }
+
+    fn parse_import(&mut self) -> Result<Import, ParseError> {
+        let import_tok = self.expect(&TokenKind::Import)?;
+        let start = import_tok.span.start;
+
+        let path_tok = self.peek().clone();
+        let path = if let TokenKind::StringLiteral(s) = &path_tok.kind {
+            let s = s.clone();
+            self.pos += 1;
+            s
+        } else {
+            return Err(ParseError::new(
+                format!("expected string literal after 'import', got {:?}", path_tok.kind),
+                path_tok.span,
+            ));
+        };
+
+        let module_name = path.rsplit('/').next().unwrap_or(&path).to_string();
+
+        let end = path_tok.span.end;
+        Ok(Import {
+            path,
+            module_name,
+            span: start..end,
+        })
     }
 
     // ─── Function ─────────────────────────────────────────────────────────────
@@ -1615,5 +1655,32 @@ mod tests {
             }
             other => panic!("expected Let with BinaryOp, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn parse_import_declaration() {
+        let prog = parse("import \"utils\"\nfn main() Int { 0 }").unwrap();
+        assert_eq!(prog.imports.len(), 1);
+        assert_eq!(prog.imports[0].path, "utils");
+        assert_eq!(prog.imports[0].module_name, "utils");
+    }
+
+    #[test]
+    fn parse_multiple_imports() {
+        let prog = parse("import \"utils\"\nimport \"models/user\"\nfn main() Int { 0 }").unwrap();
+        assert_eq!(prog.imports.len(), 2);
+        assert_eq!(prog.imports[0].path, "utils");
+        assert_eq!(prog.imports[0].module_name, "utils");
+        assert_eq!(prog.imports[1].path, "models/user");
+        assert_eq!(prog.imports[1].module_name, "user");
+    }
+
+    #[test]
+    fn parse_import_after_function_errors() {
+        let result = parse("fn foo() Int { 0 }\nimport \"utils\"\nfn main() Int { 0 }");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.message.contains("imports must appear before all declarations"),
+            "expected import placement error, got: {}", err.message);
     }
 }
