@@ -64,3 +64,13 @@ fn e2e_enum_basic() {
 fn e2e_enum_data() {
     assert_eq!(compile_and_run("enum_data.cy"), 12);
 }
+
+#[test]
+fn e2e_method_basic() {
+    assert_eq!(compile_and_run("method_basic.cy"), 7);
+}
+
+#[test]
+fn e2e_trait_impl() {
+    assert_eq!(compile_and_run("trait_impl.cy"), 13);
+}

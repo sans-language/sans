@@ -77,16 +77,22 @@ impl Parser {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
+        let mut traits = Vec::new();
+        let mut impls = Vec::new();
         while self.peek().kind != TokenKind::Eof {
             if self.peek().kind == TokenKind::Enum {
                 enums.push(self.parse_enum_def()?);
             } else if self.peek().kind == TokenKind::Struct {
                 structs.push(self.parse_struct_def()?);
+            } else if self.peek().kind == TokenKind::Trait {
+                traits.push(self.parse_trait_def()?);
+            } else if self.peek().kind == TokenKind::Impl {
+                impls.push(self.parse_impl_block()?);
             } else {
                 functions.push(self.parse_function()?);
             }
         }
-        Ok(Program { functions, structs, enums })
+        Ok(Program { functions, structs, enums, traits, impls })
     }
 
     // ─── Function ─────────────────────────────────────────────────────────────
@@ -170,6 +176,109 @@ impl Parser {
         }
         let rbrace = self.expect(&TokenKind::RBrace)?;
         Ok(EnumDef { name, variants, span: start..rbrace.span.end })
+    }
+
+    fn parse_trait_def(&mut self) -> Result<TraitDef, ParseError> {
+        let trait_tok = self.expect(&TokenKind::Trait)?;
+        let start = trait_tok.span.start;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut methods = Vec::new();
+        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+            let method = self.parse_trait_method_sig()?;
+            methods.push(method);
+        }
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        Ok(TraitDef { name, methods, span: start..rbrace.span.end })
+    }
+
+    fn parse_trait_method_sig(&mut self) -> Result<TraitMethodSig, ParseError> {
+        let fn_tok = self.expect(&TokenKind::Fn)?;
+        let start = fn_tok.span.start;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LParen)?;
+        // First param must be `self`
+        self.expect(&TokenKind::SelfValue)?;
+        // Parse remaining params (each preceded by comma)
+        let mut params = Vec::new();
+        while self.peek().kind == TokenKind::Comma {
+            self.pos += 1; // consume comma
+            if self.peek().kind == TokenKind::RParen {
+                break;
+            }
+            let (param_name, param_span) = self.expect_ident()?;
+            let type_name = self.parse_type_name()?;
+            let end = type_name.span.end;
+            params.push(Param { name: param_name, type_name, span: param_span.start..end });
+        }
+        self.expect(&TokenKind::RParen)?;
+        let return_type = self.parse_type_name()?;
+        let end = return_type.span.end;
+        Ok(TraitMethodSig { name, params, return_type, span: start..end })
+    }
+
+    fn parse_impl_block(&mut self) -> Result<ImplBlock, ParseError> {
+        let impl_tok = self.expect(&TokenKind::Impl)?;
+        let start = impl_tok.span.start;
+        let (first_name, _) = self.expect_ident()?;
+
+        let (trait_name, target_type) = if self.peek().kind == TokenKind::For {
+            self.pos += 1; // consume `for`
+            let (target, _) = self.expect_ident()?;
+            (Some(first_name), target)
+        } else {
+            (None, first_name)
+        };
+
+        self.expect(&TokenKind::LBrace)?;
+        let mut methods = Vec::new();
+        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+            methods.push(self.parse_method(&target_type)?);
+        }
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        Ok(ImplBlock { trait_name, target_type, methods, span: start..rbrace.span.end })
+    }
+
+    fn parse_method(&mut self, target_type: &str) -> Result<Function, ParseError> {
+        let fn_tok = self.expect(&TokenKind::Fn)?;
+        let fn_start = fn_tok.span.start;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LParen)?;
+
+        // First param must be `self` — we translate it to a typed param
+        self.expect(&TokenKind::SelfValue)?;
+        let self_span = self.tokens[self.pos - 1].span.clone();
+        let mut params = vec![Param {
+            name: "self".to_string(),
+            type_name: TypeName { name: target_type.to_string(), span: self_span.clone() },
+            span: self_span,
+        }];
+
+        // Parse remaining params
+        while self.peek().kind == TokenKind::Comma {
+            self.pos += 1;
+            if self.peek().kind == TokenKind::RParen {
+                break;
+            }
+            let (param_name, param_span) = self.expect_ident()?;
+            let type_name = self.parse_type_name()?;
+            let end = type_name.span.end;
+            params.push(Param { name: param_name, type_name, span: param_span.start..end });
+        }
+        self.expect(&TokenKind::RParen)?;
+
+        let return_type = self.parse_type_name()?;
+        self.expect(&TokenKind::LBrace)?;
+        let body = self.parse_body()?;
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+
+        Ok(Function {
+            name,
+            params,
+            return_type,
+            body,
+            span: fn_start..rbrace.span.end,
+        })
     }
 
     fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
@@ -384,16 +493,30 @@ impl Parser {
         let mut lhs = self.parse_atom()?;
 
         loop {
-            // Check for field access first (highest precedence)
+            // Check for field access / method call first (highest precedence)
             if self.peek().kind == TokenKind::Dot {
                 self.pos += 1; // consume .
-                let (field, field_span) = self.expect_ident()?;
+                let (field_or_method, ident_span) = self.expect_ident()?;
                 let start = expr_span(&lhs).start;
-                lhs = Expr::FieldAccess {
-                    object: Box::new(lhs),
-                    field,
-                    span: start..field_span.end,
-                };
+
+                // Check if this is a method call: identifier followed by `(`
+                if self.peek().kind == TokenKind::LParen {
+                    self.pos += 1; // consume (
+                    let args = self.parse_call_args()?;
+                    let rparen = self.expect(&TokenKind::RParen)?;
+                    lhs = Expr::MethodCall {
+                        object: Box::new(lhs),
+                        method: field_or_method,
+                        args,
+                        span: start..rparen.span.end,
+                    };
+                } else {
+                    lhs = Expr::FieldAccess {
+                        object: Box::new(lhs),
+                        field: field_or_method,
+                        span: start..ident_span.end,
+                    };
+                }
                 continue;
             }
 
@@ -483,6 +606,11 @@ impl Parser {
                 } else {
                     Ok(Expr::Identifier { name, span: name_span })
                 }
+            }
+            TokenKind::SelfValue => {
+                let span = tok.span.clone();
+                self.pos += 1;
+                Ok(Expr::Identifier { name: "self".to_string(), span })
             }
             TokenKind::True => {
                 let span = tok.span.clone();
@@ -708,6 +836,7 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::FieldAccess { span, .. } => span,
         Expr::EnumVariant { span, .. } => span,
         Expr::Match { span, .. } => span,
+        Expr::MethodCall { span, .. } => span,
     }
 }
 
@@ -1069,6 +1198,76 @@ mod tests {
         } else {
             panic!("expected Match expression, got {:?}", &body[0]);
         }
+    }
+
+    #[test]
+    fn parse_trait_def() {
+        let prog = parse("trait Describable { fn describe(self) Int } fn main() Int { 0 }").unwrap();
+        assert_eq!(prog.traits.len(), 1);
+        let t = &prog.traits[0];
+        assert_eq!(t.name, "Describable");
+        assert_eq!(t.methods.len(), 1);
+        assert_eq!(t.methods[0].name, "describe");
+        assert_eq!(t.methods[0].params.len(), 0); // self is not in params
+        assert_eq!(t.methods[0].return_type.name, "Int");
+    }
+
+    #[test]
+    fn parse_impl_block() {
+        let prog = parse("struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { 0 }").unwrap();
+        assert_eq!(prog.impls.len(), 1);
+        let imp = &prog.impls[0];
+        assert_eq!(imp.trait_name, None);
+        assert_eq!(imp.target_type, "Point");
+        assert_eq!(imp.methods.len(), 1);
+        assert_eq!(imp.methods[0].name, "sum");
+        // First param is self with type Point
+        assert_eq!(imp.methods[0].params[0].name, "self");
+        assert_eq!(imp.methods[0].params[0].type_name.name, "Point");
+    }
+
+    #[test]
+    fn parse_trait_impl() {
+        let prog = parse("trait Describable { fn value(self) Int } struct Point { x Int, y Int, } impl Describable for Point { fn value(self) Int { self.x } } fn main() Int { 0 }").unwrap();
+        assert_eq!(prog.impls.len(), 1);
+        let imp = &prog.impls[0];
+        assert_eq!(imp.trait_name, Some("Describable".to_string()));
+        assert_eq!(imp.target_type, "Point");
+    }
+
+    #[test]
+    fn parse_method_call() {
+        let prog = parse("fn main() Int { let p = Point { x: 1, y: 2 } p.sum() }").unwrap();
+        let body = &prog.functions[0].body;
+        if let Stmt::Expr(Expr::MethodCall { object, method, args, .. }) = &body[1] {
+            assert_eq!(method, "sum");
+            assert_eq!(args.len(), 0);
+            assert!(matches!(object.as_ref(), Expr::Identifier { name, .. } if name == "p"));
+        } else {
+            panic!("expected MethodCall, got {:?}", &body[1]);
+        }
+    }
+
+    #[test]
+    fn parse_method_call_with_args() {
+        let prog = parse("fn main() Int { let p = Point { x: 1, y: 2 } p.add(3) }").unwrap();
+        let body = &prog.functions[0].body;
+        if let Stmt::Expr(Expr::MethodCall { method, args, .. }) = &body[1] {
+            assert_eq!(method, "add");
+            assert_eq!(args.len(), 1);
+        } else {
+            panic!("expected MethodCall, got {:?}", &body[1]);
+        }
+    }
+
+    #[test]
+    fn parse_trait_method_with_params() {
+        let prog = parse("trait Math { fn add(self, n Int) Int } fn main() Int { 0 }").unwrap();
+        let t = &prog.traits[0];
+        assert_eq!(t.methods[0].name, "add");
+        assert_eq!(t.methods[0].params.len(), 1);
+        assert_eq!(t.methods[0].params[0].name, "n");
+        assert_eq!(t.methods[0].params[0].type_name.name, "Int");
     }
 
     #[test]

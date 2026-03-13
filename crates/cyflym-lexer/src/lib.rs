@@ -74,6 +74,11 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "struct" => TokenKind::Struct,
                     "enum" => TokenKind::Enum,
                     "match" => TokenKind::Match,
+                    "trait" => TokenKind::Trait,
+                    "impl" => TokenKind::Impl,
+                    "for" => TokenKind::For,
+                    "self" => TokenKind::SelfValue,
+                    "Self" => TokenKind::SelfType,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -386,6 +391,18 @@ mod tests {
     fn lex_colon_colon() {
         let tokens = lex("::").unwrap();
         assert_eq!(kinds(&tokens), vec![ColonColon, Eof]);
+    }
+
+    #[test]
+    fn lex_trait_impl_for_keywords() {
+        let tokens = lex("trait impl for").unwrap();
+        assert_eq!(kinds(&tokens), vec![Trait, Impl, For, Eof]);
+    }
+
+    #[test]
+    fn lex_self_keywords() {
+        let tokens = lex("self Self").unwrap();
+        assert_eq!(kinds(&tokens), vec![SelfValue, SelfType, Eof]);
     }
 
     #[test]

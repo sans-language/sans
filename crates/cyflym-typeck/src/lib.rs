@@ -52,9 +52,10 @@ fn check_stmts(
     ret_type: &Type,
     structs: &HashMap<String, Vec<(String, Type)>>,
     enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
+    methods: &HashMap<(String, String), (Vec<Type>, Type)>,
 ) -> Result<(), TypeError> {
     for stmt in stmts {
-        check_stmt(stmt, locals, fn_env, ret_type, structs, enums)?;
+        check_stmt(stmt, locals, fn_env, ret_type, structs, enums, methods)?;
     }
     Ok(())
 }
@@ -66,10 +67,11 @@ fn check_stmt(
     ret_type: &Type,
     structs: &HashMap<String, Vec<(String, Type)>>,
     enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
+    methods: &HashMap<(String, String), (Vec<Type>, Type)>,
 ) -> Result<(), TypeError> {
     match stmt {
         Stmt::Let { name, mutable, type_name, value, .. } => {
-            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums)?;
+            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods)?;
             let ty = if let Some(tn) = type_name {
                 let declared = resolve_type(&tn.name, structs, enums)?;
                 if declared != actual {
@@ -86,21 +88,21 @@ fn check_stmt(
             Ok(())
         }
         Stmt::Expr(expr) => {
-            check_expr(expr, locals, fn_env, ret_type, structs, enums)?;
+            check_expr(expr, locals, fn_env, ret_type, structs, enums, methods)?;
             Ok(())
         }
         Stmt::While { condition, body, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "while condition must be Bool, got {}", cond_ty
                 )));
             }
-            check_stmts(body, locals, fn_env, ret_type, structs, enums)?;
+            check_stmts(body, locals, fn_env, ret_type, structs, enums, methods)?;
             Ok(())
         }
         Stmt::Return { value, .. } => {
-            let ty = check_expr(value, locals, fn_env, ret_type, structs, enums)?;
+            let ty = check_expr(value, locals, fn_env, ret_type, structs, enums, methods)?;
             if ty != *ret_type {
                 return Err(TypeError::new(format!(
                     "return type mismatch: expected {} but got {}",
@@ -119,7 +121,7 @@ fn check_stmt(
                     "cannot assign to immutable variable '{}'", name
                 )));
             }
-            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums)?;
+            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods)?;
             if actual != expected_ty {
                 return Err(TypeError::new(format!(
                     "type mismatch in assignment to '{}': expected {} but got {}",
@@ -129,13 +131,13 @@ fn check_stmt(
             Ok(())
         }
         Stmt::If { condition, body, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "if condition must be Bool, got {}", cond_ty
                 )));
             }
-            check_stmts(body, locals, fn_env, ret_type, structs, enums)?;
+            check_stmts(body, locals, fn_env, ret_type, structs, enums, methods)?;
             Ok(())
         }
     }
@@ -171,6 +173,66 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         enum_registry.insert(e.name.clone(), variants);
     }
 
+    // Pass 0c: collect trait definitions
+    let mut trait_registry: HashMap<String, Vec<(String, Vec<Type>, Type)>> = HashMap::new();
+    for t in &program.traits {
+        let mut trait_methods = Vec::new();
+        for m in &t.methods {
+            let param_types: Vec<Type> = m.params.iter()
+                .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry))
+                .collect::<Result<_, _>>()?;
+            let ret_type = resolve_type(&m.return_type.name, &struct_registry, &enum_registry)?;
+            trait_methods.push((m.name.clone(), param_types, ret_type));
+        }
+        trait_registry.insert(t.name.clone(), trait_methods);
+    }
+
+    // Pass 0d: collect impl blocks — build method registry
+    // method_registry: (type_name, method_name) -> (param_types_without_self, return_type)
+    let mut method_registry: HashMap<(String, String), (Vec<Type>, Type)> = HashMap::new();
+    for imp in &program.impls {
+        // Verify trait conformance if trait impl
+        if let Some(trait_name) = &imp.trait_name {
+            let trait_methods = trait_registry.get(trait_name)
+                .ok_or_else(|| TypeError::new(format!("undefined trait '{}'", trait_name)))?;
+            for (method_name, expected_params, expected_ret) in trait_methods {
+                let method = imp.methods.iter().find(|m| m.name == *method_name)
+                    .ok_or_else(|| TypeError::new(format!(
+                        "impl {} for {} is missing method '{}'",
+                        trait_name, imp.target_type, method_name
+                    )))?;
+                // Check params (skip self which is first)
+                let actual_params: Vec<Type> = method.params[1..].iter()
+                    .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry))
+                    .collect::<Result<_, _>>()?;
+                if actual_params != *expected_params {
+                    return Err(TypeError::new(format!(
+                        "method '{}' params don't match trait '{}' signature",
+                        method_name, trait_name
+                    )));
+                }
+                let actual_ret = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+                if actual_ret != *expected_ret {
+                    return Err(TypeError::new(format!(
+                        "method '{}' return type doesn't match trait '{}' signature",
+                        method_name, trait_name
+                    )));
+                }
+            }
+        }
+
+        for method in &imp.methods {
+            let param_types: Vec<Type> = method.params[1..].iter() // skip self
+                .map(|p| resolve_type(&p.type_name.name, &struct_registry, &enum_registry))
+                .collect::<Result<_, _>>()?;
+            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+            method_registry.insert(
+                (imp.target_type.clone(), method.name.clone()),
+                (param_types, ret_type),
+            );
+        }
+    }
+
     // Pass 1: collect all function signatures into an environment.
     let mut fn_env: HashMap<String, (Vec<Type>, Type)> = HashMap::new();
 
@@ -181,6 +243,19 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         }
         let ret_type = resolve_type(&func.return_type.name, &struct_registry, &enum_registry)?;
         fn_env.insert(func.name.clone(), (param_types, ret_type));
+    }
+
+    // Add mangled method signatures to fn_env for IR/codegen
+    for imp in &program.impls {
+        for method in &imp.methods {
+            let mangled = format!("{}_{}", imp.target_type, method.name);
+            let mut param_types = Vec::new();
+            for p in &method.params {
+                param_types.push(resolve_type(&p.type_name.name, &struct_registry, &enum_registry)?);
+            }
+            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+            fn_env.insert(mangled, (param_types, ret_type));
+        }
     }
 
     // Require a `main` function.
@@ -208,12 +283,12 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         // Check all statements
         for (i, stmt) in func.body.iter().enumerate() {
             let is_last = i == func.body.len() - 1;
-            check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry)?;
+            check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry)?;
 
             if is_last {
                 match stmt {
                     Stmt::Expr(expr) => {
-                        let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry)?;
+                        let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry)?;
                         if ty != ret_type {
                             return Err(TypeError::new(format!(
                                 "function '{}': return type mismatch: expected {} but got {}",
@@ -234,6 +309,50 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         }
     }
 
+    // Pass 3: type-check method bodies from impl blocks.
+    for imp in &program.impls {
+        for method in &imp.methods {
+            let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry)?;
+
+            let mut locals: HashMap<String, (Type, bool)> = HashMap::new();
+            for param in &method.params {
+                let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry)?;
+                locals.insert(param.name.clone(), (ty, false));
+            }
+
+            if method.body.is_empty() {
+                return Err(TypeError::new(format!(
+                    "method '{}': missing return expression", method.name
+                )));
+            }
+
+            for (i, stmt) in method.body.iter().enumerate() {
+                let is_last = i == method.body.len() - 1;
+                check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry)?;
+
+                if is_last {
+                    match stmt {
+                        Stmt::Expr(expr) => {
+                            let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry)?;
+                            if ty != ret_type {
+                                return Err(TypeError::new(format!(
+                                    "method '{}': return type mismatch: expected {} but got {}",
+                                    method.name, ret_type, ty
+                                )));
+                            }
+                        }
+                        Stmt::Return { .. } => {}
+                        _ => {
+                            return Err(TypeError::new(format!(
+                                "method '{}': missing return expression", method.name
+                            )));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -245,6 +364,7 @@ fn check_expr(
     ret_type: &Type,
     structs: &HashMap<String, Vec<(String, Type)>>,
     enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
+    methods: &HashMap<(String, String), (Vec<Type>, Type)>,
 ) -> Result<Type, TypeError> {
     match expr {
         Expr::IntLiteral { .. } => Ok(Type::Int),
@@ -259,8 +379,8 @@ fn check_expr(
 
         Expr::BinaryOp { left, op, right, .. } => {
             use cyflym_parser::ast::BinOp;
-            let lt = check_expr(left, locals, fn_env, ret_type, structs, enums)?;
-            let rt = check_expr(right, locals, fn_env, ret_type, structs, enums)?;
+            let lt = check_expr(left, locals, fn_env, ret_type, structs, enums, methods)?;
+            let rt = check_expr(right, locals, fn_env, ret_type, structs, enums, methods)?;
 
             match op {
                 // Arithmetic: Int x Int -> Int
@@ -313,7 +433,7 @@ fn check_expr(
         Expr::UnaryOp { op, operand, .. } => {
             match op {
                 cyflym_parser::ast::UnaryOp::Not => {
-                    let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums)?;
+                    let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods)?;
                     if ty != Type::Bool {
                         return Err(TypeError::new(format!(
                             "'!' operator requires Bool operand, got {}",
@@ -326,7 +446,7 @@ fn check_expr(
         }
 
         Expr::If { condition, then_body, then_expr, else_body, else_expr, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "if condition must be Bool, got {}",
@@ -336,13 +456,13 @@ fn check_expr(
 
             // Type-check then branch (body stmts + final expr)
             let mut then_locals = locals.clone();
-            check_stmts(then_body, &mut then_locals, fn_env, ret_type, structs, enums)?;
-            let then_ty = check_expr(then_expr, &then_locals, fn_env, ret_type, structs, enums)?;
+            check_stmts(then_body, &mut then_locals, fn_env, ret_type, structs, enums, methods)?;
+            let then_ty = check_expr(then_expr, &then_locals, fn_env, ret_type, structs, enums, methods)?;
 
             // Type-check else branch
             let mut else_locals = locals.clone();
-            check_stmts(else_body, &mut else_locals, fn_env, ret_type, structs, enums)?;
-            let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs, enums)?;
+            check_stmts(else_body, &mut else_locals, fn_env, ret_type, structs, enums, methods)?;
+            let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs, enums, methods)?;
 
             // Both branches must have the same type
             if then_ty != else_ty {
@@ -362,7 +482,7 @@ fn check_expr(
                         "print() takes exactly 1 argument, got {}", args.len()
                     )));
                 }
-                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums)?;
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods)?;
                 match arg_ty {
                     Type::String | Type::Int | Type::Bool => {}
                     other => {
@@ -388,7 +508,7 @@ fn check_expr(
             }
 
             for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
-                let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums)?;
+                let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods)?;
                 if actual != *expected {
                     return Err(TypeError::new(format!(
                         "argument {} to '{}': expected {} but got {}",
@@ -427,7 +547,7 @@ fn check_expr(
                     .ok_or_else(|| TypeError::new(format!(
                         "unknown field '{}' on struct '{}'", field_name, name
                     )))?;
-                let actual_type = check_expr(field_expr, locals, fn_env, ret_type, structs, enums)?;
+                let actual_type = check_expr(field_expr, locals, fn_env, ret_type, structs, enums, methods)?;
                 if actual_type != *expected_type {
                     return Err(TypeError::new(format!(
                         "type mismatch for field '{}' of struct '{}': expected {} but got {}",
@@ -440,7 +560,7 @@ fn check_expr(
         }
 
         Expr::FieldAccess { object, field, .. } => {
-            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums)?;
+            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods)?;
             match &obj_ty {
                 Type::Struct { name, fields } => {
                     fields
@@ -474,7 +594,7 @@ fn check_expr(
                 )));
             }
             for (i, (arg, expected_ty)) in args.iter().zip(expected_fields.iter()).enumerate() {
-                let actual_ty = check_expr(arg, locals, fn_env, ret_type, structs, enums)?;
+                let actual_ty = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods)?;
                 if actual_ty != *expected_ty {
                     return Err(TypeError::new(format!(
                         "argument {} to '{}::{}': expected {} but got {}",
@@ -486,7 +606,7 @@ fn check_expr(
         }
 
         Expr::Match { scrutinee, arms, .. } => {
-            let scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums)?;
+            let scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods)?;
             let (enum_name, variants) = match &scrutinee_ty {
                 Type::Enum { name, variants } => (name.clone(), variants.clone()),
                 other => return Err(TypeError::new(format!(
@@ -530,7 +650,7 @@ fn check_expr(
                     arm_locals.insert(binding_name.clone(), (binding_ty.clone(), false));
                 }
 
-                let arm_ty = check_expr(&arm.body, &arm_locals, fn_env, ret_type, structs, enums)?;
+                let arm_ty = check_expr(&arm.body, &arm_locals, fn_env, ret_type, structs, enums, methods)?;
 
                 if let Some(ref expected) = result_type {
                     if arm_ty != *expected {
@@ -545,6 +665,38 @@ fn check_expr(
             }
 
             result_type.ok_or_else(|| TypeError::new("match expression has no arms"))
+        }
+
+        Expr::MethodCall { object, method, args, .. } => {
+            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods)?;
+            let type_name = match &obj_ty {
+                Type::Struct { name, .. } => name.clone(),
+                Type::Enum { name, .. } => name.clone(),
+                other => return Err(TypeError::new(format!(
+                    "method call on non-struct/enum type {}", other
+                ))),
+            };
+            let (param_types, call_ret_type) = methods
+                .get(&(type_name.clone(), method.clone()))
+                .ok_or_else(|| TypeError::new(format!(
+                    "no method '{}' on type '{}'", method, type_name
+                )))?;
+            if args.len() != param_types.len() {
+                return Err(TypeError::new(format!(
+                    "method '{}' on '{}' expects {} argument(s) but got {}",
+                    method, type_name, param_types.len(), args.len()
+                )));
+            }
+            for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
+                let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods)?;
+                if actual != *expected {
+                    return Err(TypeError::new(format!(
+                        "argument {} to method '{}': expected {} but got {}",
+                        i + 1, method, expected, actual
+                    )));
+                }
+            }
+            Ok(call_ret_type.clone())
         }
     }
 }
@@ -822,5 +974,58 @@ mod tests {
             "fn main() Int { let p = Foo { x: 1 } 0 }"
         ).unwrap_err();
         assert!(err.message.contains("undefined struct"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_method_call_valid() {
+        assert!(do_check(
+            "struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 3, y: 4 } p.sum() }"
+        ).is_ok());
+    }
+
+    #[test]
+    fn check_method_call_with_args() {
+        assert!(do_check(
+            "struct Point { x Int, y Int, } impl Point { fn add(self, n Int) Int { self.x + self.y + n } } fn main() Int { let p = Point { x: 3, y: 4 } p.add(10) }"
+        ).is_ok());
+    }
+
+    #[test]
+    fn check_method_undefined() {
+        let err = do_check(
+            "struct Point { x Int, y Int, } fn main() Int { let p = Point { x: 1, y: 2 } p.foo() }"
+        ).unwrap_err();
+        assert!(err.message.contains("no method"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_method_wrong_args() {
+        let err = do_check(
+            "struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 1, y: 2 } p.sum(1) }"
+        ).unwrap_err();
+        assert!(err.message.contains("expects"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_trait_impl_valid() {
+        assert!(do_check(
+            "trait Summable { fn sum(self) Int } struct Point { x Int, y Int, } impl Summable for Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 3, y: 4 } p.sum() }"
+        ).is_ok());
+    }
+
+    #[test]
+    fn check_trait_missing_method() {
+        let err = do_check(
+            "trait Summable { fn sum(self) Int } struct Point { x Int, y Int, } impl Summable for Point { } fn main() Int { 0 }"
+        ).unwrap_err();
+        assert!(err.message.contains("missing method"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_trait_undefined() {
+        let err = do_check(
+            "struct Point { x Int, y Int, } impl Foo for Point { fn bar(self) Int { 0 } } fn main() Int { 0 }"
+        ).unwrap_err();
+        assert!(err.message.contains("undefined trait"), "got: {}", err.message);
     }
 }

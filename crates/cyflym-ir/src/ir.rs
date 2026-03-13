@@ -7,6 +7,7 @@ pub struct Module {
 pub struct IrFunction {
     pub name: String,
     pub params: Vec<String>, // param register names like "arg0", "arg1"
+    pub param_struct_sizes: Vec<usize>, // 0 = scalar, >0 = pointer with N fields
     pub body: Vec<Instruction>,
 }
 

@@ -5,6 +5,31 @@ pub struct Program {
     pub functions: Vec<Function>,
     pub structs: Vec<StructDef>,
     pub enums: Vec<EnumDef>,
+    pub traits: Vec<TraitDef>,
+    pub impls: Vec<ImplBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitDef {
+    pub name: String,
+    pub methods: Vec<TraitMethodSig>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitMethodSig {
+    pub name: String,
+    pub params: Vec<Param>,  // does NOT include self
+    pub return_type: TypeName,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImplBlock {
+    pub trait_name: Option<String>,  // None for inherent impl, Some for trait impl
+    pub target_type: String,         // e.g., "Point"
+    pub methods: Vec<Function>,      // reuse Function AST node
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -126,6 +151,12 @@ pub enum Expr {
     Match {
         scrutinee: Box<Expr>,
         arms: Vec<MatchArm>,
+        span: Span,
+    },
+    MethodCall {
+        object: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
         span: Span,
     },
 }

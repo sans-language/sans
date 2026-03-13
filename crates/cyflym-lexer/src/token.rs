@@ -51,6 +51,13 @@ pub enum TokenKind {
     Enum,
     Match,
 
+    // Trait / impl
+    Trait,
+    Impl,
+    For,
+    SelfValue, // `self` (value, lowercase)
+    SelfType,  // `Self` (type, uppercase)
+
     // Member access
     Dot,
 

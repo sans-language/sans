@@ -32,7 +32,19 @@ pub fn lower(program: &Program) -> Module {
             .collect();
         enum_defs.insert(e.name.clone(), variants);
     }
-    let functions = program.functions.iter().map(|f| lower_function(f, &struct_defs, &enum_defs)).collect();
+    let mut functions: Vec<IrFunction> = program.functions.iter()
+        .map(|f| lower_function(f, &struct_defs, &enum_defs))
+        .collect();
+
+    // Lower impl methods as mangled functions
+    for imp in &program.impls {
+        for method in &imp.methods {
+            let mut mangled_method = method.clone();
+            mangled_method.name = format!("{}_{}", imp.target_type, method.name);
+            functions.push(lower_function(&mangled_method, &struct_defs, &enum_defs));
+        }
+    }
+
     Module { functions }
 }
 
@@ -47,7 +59,26 @@ fn lower_function(func: &cyflym_parser::ast::Function, struct_defs: &HashMap<Str
         .map(|(i, param)| {
             let reg = format!("arg{}", i);
             builder.locals.insert(param.name.clone(), LocalVar::Value(reg.clone()));
+            // Set type for struct/enum params
+            if struct_defs.contains_key(&param.type_name.name) {
+                builder.reg_types.insert(reg.clone(), IrType::Struct(param.type_name.name.clone()));
+            } else if enum_defs.contains_key(&param.type_name.name) {
+                builder.reg_types.insert(reg.clone(), IrType::Enum(param.type_name.name.clone()));
+            }
             reg
+        })
+        .collect();
+
+    let param_struct_sizes: Vec<usize> = func.params.iter()
+        .map(|p| {
+            if let Some(fields) = struct_defs.get(&p.type_name.name) {
+                fields.len()
+            } else if let Some(variants) = enum_defs.get(&p.type_name.name) {
+                let max_data = variants.iter().map(|(_, _, n)| *n).max().unwrap_or(0);
+                1 + max_data // tag + max data fields
+            } else {
+                0
+            }
         })
         .collect();
 
@@ -76,6 +107,7 @@ fn lower_function(func: &cyflym_parser::ast::Function, struct_defs: &HashMap<Str
     IrFunction {
         name: func.name.clone(),
         params,
+        param_struct_sizes,
         body: builder.instructions,
     }
 }
@@ -412,6 +444,30 @@ impl IrBuilder {
                         value: val_reg,
                     });
                 }
+                dest
+            }
+            Expr::MethodCall { object, method, args, .. } => {
+                let obj_reg = self.lower_expr(object);
+                let type_name = match self.reg_types.get(&obj_reg) {
+                    Some(IrType::Struct(name)) => name.clone(),
+                    Some(IrType::Enum(name)) => name.clone(),
+                    _ => panic!("method call on non-struct/enum"),
+                };
+                let mangled = format!("{}_{}", type_name, method);
+
+                // Build args: self (object) first, then the explicit args
+                let mut arg_regs = vec![obj_reg];
+                for arg in args {
+                    arg_regs.push(self.lower_expr(arg));
+                }
+
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::Call {
+                    dest: dest.clone(),
+                    function: mangled,
+                    args: arg_regs,
+                });
+                self.reg_types.insert(dest.clone(), IrType::Int);
                 dest
             }
             Expr::Match { scrutinee, arms, .. } => {
@@ -791,6 +847,27 @@ mod tests {
         assert!(has_tag, "expected EnumTag instruction");
         assert!(has_branch, "expected Branch instruction");
         assert!(label_count >= 3, "expected at least 3 labels, got {}", label_count);
+    }
+
+    #[test]
+    fn lower_method_call() {
+        let program = parse("struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 3, y: 4 } p.sum() }");
+        let module = lower(&program);
+        // Should have 2 functions: main and Point_sum
+        assert_eq!(module.functions.len(), 2);
+        let point_sum = module.functions.iter().find(|f| f.name == "Point_sum").expect("no Point_sum");
+        assert_eq!(point_sum.params.len(), 1); // self
+        let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_call = main_func.body.iter().any(|i| matches!(i, Instruction::Call { function, .. } if function == "Point_sum"));
+        assert!(has_call, "expected Call(Point_sum)");
+    }
+
+    #[test]
+    fn lower_method_with_args() {
+        let program = parse("struct Point { x Int, y Int, } impl Point { fn add(self, n Int) Int { self.x + self.y + n } } fn main() Int { let p = Point { x: 1, y: 2 } p.add(10) }");
+        let module = lower(&program);
+        let point_add = module.functions.iter().find(|f| f.name == "Point_add").expect("no Point_add");
+        assert_eq!(point_add.params.len(), 2); // self + n
     }
 
     #[test]

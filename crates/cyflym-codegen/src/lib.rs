@@ -109,6 +109,18 @@ fn generate_llvm<'ctx>(
                 .ok_or_else(|| CodegenError::LlvmError(format!("missing param {}", i)))?
                 .into_int_value();
             regs.insert(param_name.clone(), param_val);
+
+            let size = func.param_struct_sizes[i];
+            if size > 0 {
+                // This is a struct/enum pointer passed as i64 — convert back to pointer
+                let ptr_val = builder.build_int_to_ptr(
+                    param_val,
+                    context.ptr_type(inkwell::AddressSpace::default()),
+                    &format!("{}_ptr", param_name),
+                ).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                ptrs.insert(param_name.clone(), ptr_val);
+                struct_sizes.insert(param_name.clone(), size);
+            }
         }
 
         // Pre-create basic blocks for all Label instructions
@@ -165,7 +177,16 @@ fn generate_llvm<'ctx>(
                         CodegenError::LlvmError(format!("undefined function: {}", function))
                     })?;
                     let arg_vals: Vec<inkwell::values::BasicMetadataValueEnum> =
-                        args.iter().map(|a| regs[a].into()).collect();
+                        args.iter().map(|a| {
+                            if let Some(ptr_val) = ptrs.get(a) {
+                                // Convert pointer to i64 for passing struct/enum self
+                                builder.build_ptr_to_int(*ptr_val, i64_type, "ptr2int")
+                                    .unwrap()
+                                    .into()
+                            } else {
+                                regs[a].into()
+                            }
+                        }).collect();
                     let call_site = builder
                         .build_call(callee, &arg_vals, dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
@@ -459,6 +480,7 @@ mod tests {
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],
+                param_struct_sizes: vec![],
                 body: vec![
                     Instruction::Const {
                         dest: "%0".to_string(),
@@ -482,6 +504,7 @@ mod tests {
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],
+                param_struct_sizes: vec![],
                 body: vec![
                     Instruction::Const {
                         dest: "%0".to_string(),
@@ -522,6 +545,7 @@ mod tests {
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],
+                param_struct_sizes: vec![],
                 body: vec![
                     Instruction::BoolConst {
                         dest: "%0".to_string(),
@@ -611,6 +635,7 @@ mod tests {
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],
+                param_struct_sizes: vec![],
                 body: vec![
                     Instruction::Const {
                         dest: "%0".to_string(),
@@ -645,5 +670,17 @@ mod tests {
             "expected zext or constant-folded 'ret i64 0' in:\n{}",
             ir
         );
+    }
+
+    #[test]
+    fn codegen_method_call() {
+        let program = cyflym_parser::parse(
+            "struct Point { x Int, y Int, } impl Point { fn sum(self) Int { self.x + self.y } } fn main() Int { let p = Point { x: 3, y: 4 } p.sum() }"
+        ).expect("parse failed");
+        cyflym_typeck::check(&program).expect("type error");
+        let module = cyflym_ir::lower(&program);
+        let ir = compile_to_llvm_ir(&module).expect("codegen failed");
+        assert!(ir.contains("define i64 @Point_sum"), "expected Point_sum function in:\n{}", ir);
+        assert!(ir.contains("call i64 @Point_sum"), "expected call to Point_sum in:\n{}", ir);
     }
 }
