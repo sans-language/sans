@@ -151,6 +151,20 @@ fn check_stmt(
             check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
             Ok(())
         }
+        Stmt::ForIn { var, iterable, body, .. } => {
+            let iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            match iter_ty {
+                Type::Array { inner } => {
+                    let mut loop_locals = locals.clone();
+                    loop_locals.insert(var.clone(), (*inner, false));
+                    for stmt in body {
+                        check_stmt(stmt, &mut loop_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    }
+                    Ok(())
+                }
+                _ => Err(TypeError::new(format!("for-in requires Array, got {}", iter_ty))),
+            }
+        }
         Stmt::LetDestructure { names, value, .. } => {
             match value {
                 Expr::ChannelCreate { element_type, capacity, .. } => {
@@ -346,7 +360,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
                     Stmt::Return { .. } => {
                         // Already type-checked in check_stmt
                     }
-                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } | Stmt::If { .. } | Stmt::LetDestructure { .. } => {
+                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } | Stmt::If { .. } | Stmt::LetDestructure { .. } | Stmt::ForIn { .. } => {
                         return Err(TypeError::new(format!(
                             "function '{}': missing return expression", func.name
                         )));
@@ -434,6 +448,9 @@ fn check_expr(
             match op {
                 // Arithmetic: Int x Int -> Int
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                    if op == &BinOp::Add && lt == Type::String && rt == Type::String {
+                        return Ok(Type::String);
+                    }
                     if lt != Type::Int {
                         return Err(TypeError::new(format!(
                             "arithmetic operator requires Int operands, left operand is {}", lt
@@ -539,6 +556,24 @@ fn check_expr(
                             "print() cannot print type {}", other
                         )));
                     }
+                }
+                return Ok(Type::Int);
+            } else if function == "int_to_string" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("int_to_string() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("int_to_string() requires Int argument, got {}", arg_ty)));
+                }
+                return Ok(Type::String);
+            } else if function == "string_to_int" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("string_to_int() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("string_to_int() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
             }
@@ -839,6 +874,11 @@ fn check_expr(
             Ok(Type::Mutex { inner: Box::new(inner) })
         }
 
+        Expr::ArrayCreate { element_type, .. } => {
+            let inner = resolve_type(&element_type.name, structs, enums)?;
+            Ok(Type::Array { inner: Box::new(inner) })
+        }
+
         Expr::MethodCall { object, method, args, .. } => {
             let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
 
@@ -885,6 +925,70 @@ fn check_expr(
                         )));
                     }
                     return Ok(Type::Int);
+                }
+                (Type::Array { inner }, "push") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("push() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if arg_ty != **inner {
+                        return Err(TypeError::new(format!(
+                            "push() type mismatch: array holds {} but got {}", inner, arg_ty
+                        )));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::Array { inner }, "get") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("get() takes exactly 1 argument"));
+                    }
+                    let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if idx_ty != Type::Int {
+                        return Err(TypeError::new(format!("get() index must be Int, got {}", idx_ty)));
+                    }
+                    return Ok(*inner.clone());
+                }
+                (Type::Array { inner }, "set") => {
+                    if args.len() != 2 {
+                        return Err(TypeError::new("set() takes exactly 2 arguments (index, value)"));
+                    }
+                    let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if idx_ty != Type::Int {
+                        return Err(TypeError::new(format!("set() index must be Int, got {}", idx_ty)));
+                    }
+                    let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if val_ty != **inner {
+                        return Err(TypeError::new(format!(
+                            "set() type mismatch: array holds {} but got {}", inner, val_ty
+                        )));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::Array { .. }, "len") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("len() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::String, "len") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("len() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::String, "substring") => {
+                    if args.len() != 2 {
+                        return Err(TypeError::new("substring() takes exactly 2 arguments (start, end)"));
+                    }
+                    let start_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if start_ty != Type::Int {
+                        return Err(TypeError::new(format!("substring() start must be Int, got {}", start_ty)));
+                    }
+                    let end_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if end_ty != Type::Int {
+                        return Err(TypeError::new(format!("substring() end must be Int, got {}", end_ty)));
+                    }
+                    return Ok(Type::String);
                 }
                 _ => {}
             }
@@ -1377,5 +1481,71 @@ mod tests {
         let err = do_check("fn main() Int { let (tx, rx) = channel<Int>(true) 0 }").unwrap_err();
         assert!(err.message.contains("Int") || err.message.contains("capacity"),
             "expected capacity type error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_array_create() {
+        assert!(do_check("fn main() Int { let a = array<Int>() 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_array_push_matching_type() {
+        assert!(do_check("fn main() Int { let a = array<Int>() a.push(1) 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_array_push_wrong_type() {
+        let err = do_check("fn main() Int { let a = array<Int>() a.push(true) 0 }").unwrap_err();
+        assert!(err.message.contains("mismatch") || err.message.contains("type"),
+            "expected type error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_array_get_returns_element_type() {
+        assert!(do_check("fn main() Int { let a = array<Int>() a.push(1) a.get(0) }").is_ok());
+    }
+
+    #[test]
+    fn check_array_len_returns_int() {
+        assert!(do_check("fn main() Int { let a = array<Int>() a.len() }").is_ok());
+    }
+
+    #[test]
+    fn check_for_in_binds_element_type() {
+        assert!(do_check("fn main() Int { let a = array<Int>() a.push(1) for x in a { print(x) } 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_for_in_non_array_error() {
+        let err = do_check("fn main() Int { for x in 42 { print(x) } 0 }").unwrap_err();
+        assert!(err.message.contains("Array") || err.message.contains("for"),
+            "expected for-in type error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_string_len() {
+        assert!(do_check(r#"fn main() Int { let s = "hello" s.len() }"#).is_ok());
+    }
+
+    #[test]
+    fn check_string_concat() {
+        assert!(do_check(r#"fn main() Int { let s = "a" + "b" 0 }"#).is_ok());
+    }
+
+    #[test]
+    fn check_string_plus_int_error() {
+        let err = do_check(r#"fn main() Int { let s = "a" + 1 0 }"#).unwrap_err();
+        assert!(err.message.contains("type") || err.message.contains("mismatch") || err.message.contains("operand"),
+            "expected type error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_int_to_string() {
+        assert!(do_check(r#"fn main() Int { let s = int_to_string(42) 0 }"#).is_ok());
+    }
+
+    #[test]
+    fn check_string_to_int() {
+        assert!(do_check(r#"fn main() Int { string_to_int("42") }"#).is_ok());
     }
 }
