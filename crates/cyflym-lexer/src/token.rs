@@ -11,6 +11,7 @@ pub struct Token {
 pub enum TokenKind {
     // Literals
     IntLiteral(i64),
+    StringLiteral(String),
     Identifier(String),
 
     // Keywords

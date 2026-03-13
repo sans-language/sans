@@ -392,6 +392,12 @@ impl Parser {
                     span: start..end,
                 })
             }
+            TokenKind::StringLiteral(s) => {
+                let value = s.clone();
+                let span = tok.span.clone();
+                self.pos += 1;
+                Ok(Expr::StringLiteral { value, span })
+            }
             TokenKind::LParen => {
                 self.pos += 1;
                 let expr = self.parse_expr(0)?;
@@ -509,6 +515,7 @@ fn expr_span(expr: &Expr) -> &Span {
     match expr {
         Expr::IntLiteral { span, .. } => span,
         Expr::BoolLiteral { span, .. } => span,
+        Expr::StringLiteral { span, .. } => span,
         Expr::Identifier { span, .. } => span,
         Expr::BinaryOp { span, .. } => span,
         Expr::Call { span, .. } => span,
@@ -759,6 +766,17 @@ mod tests {
             assert!(type_name.is_none());
         } else {
             panic!("expected mutable Let");
+        }
+    }
+
+    #[test]
+    fn parse_string_literal() {
+        let prog = parse(r#"fn main() Int { print("hello") }"#).unwrap();
+        if let Stmt::Expr(Expr::Call { function, args, .. }) = &prog.functions[0].body[0] {
+            assert_eq!(function, "print");
+            assert!(matches!(&args[0], Expr::StringLiteral { value, .. } if value == "hello"));
+        } else {
+            panic!("expected print call");
         }
     }
 

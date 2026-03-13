@@ -27,6 +27,7 @@ fn resolve_type(name: &str) -> Result<Type, TypeError> {
     match name {
         "Int" => Ok(Type::Int),
         "Bool" => Ok(Type::Bool),
+        "String" => Ok(Type::String),
         other => Err(TypeError::new(format!("unknown type '{}'", other))),
     }
 }
@@ -202,6 +203,7 @@ fn check_expr(
 ) -> Result<Type, TypeError> {
     match expr {
         Expr::IntLiteral { .. } => Ok(Type::Int),
+        Expr::StringLiteral { .. } => Ok(Type::String),
 
         Expr::Identifier { name, .. } => {
             locals
@@ -309,6 +311,24 @@ fn check_expr(
         }
 
         Expr::Call { function, args, .. } => {
+            if function == "print" {
+                if args.len() != 1 {
+                    return Err(TypeError::new(format!(
+                        "print() takes exactly 1 argument, got {}", args.len()
+                    )));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type)?;
+                match arg_ty {
+                    Type::String | Type::Int | Type::Bool => {}
+                    other => {
+                        return Err(TypeError::new(format!(
+                            "print() cannot print type {}", other
+                        )));
+                    }
+                }
+                return Ok(Type::Int);
+            }
+
             let (param_types, call_ret_type) = fn_env
                 .get(function)
                 .ok_or_else(|| TypeError::new(format!("undefined function '{}'", function)))?;
@@ -521,6 +541,16 @@ mod tests {
     #[test]
     fn check_inferred_mut() {
         assert!(do_check("fn main() Int { let mut x = 0 x = 42 x }").is_ok());
+    }
+
+    #[test]
+    fn check_print_string() {
+        assert!(do_check(r#"fn main() Int { print("hello") }"#).is_ok());
+    }
+
+    #[test]
+    fn check_print_int() {
+        assert!(do_check("fn main() Int { print(42) }").is_ok());
     }
 
     #[test]

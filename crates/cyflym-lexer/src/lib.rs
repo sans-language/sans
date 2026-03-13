@@ -180,6 +180,30 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 tokens.push(Token { kind: TokenKind::Colon, span: start..pos });
             }
 
+            '"' => {
+                pos += 1; // skip opening quote
+                let str_start = pos;
+                while pos < len && bytes[pos] != b'"' {
+                    if bytes[pos] == b'\\' {
+                        pos += 1; // skip escape char
+                    }
+                    pos += 1;
+                }
+                if pos >= len {
+                    return Err(LexError {
+                        message: "unterminated string literal".to_string(),
+                        span: start..pos,
+                    });
+                }
+                let raw = &source[str_start..pos];
+                let value = raw.replace("\\n", "\n").replace("\\t", "\t").replace("\\\\", "\\").replace("\\\"", "\"");
+                pos += 1; // skip closing quote
+                tokens.push(Token {
+                    kind: TokenKind::StringLiteral(value),
+                    span: start..pos,
+                });
+            }
+
             other => {
                 return Err(LexError {
                     message: format!("unexpected character '{}'", other),
@@ -307,6 +331,12 @@ mod tests {
     fn lex_while_return_mut_keywords() {
         let tokens = lex("while return mut").unwrap();
         assert_eq!(kinds(&tokens), vec![While, Return, Mut, Eof]);
+    }
+
+    #[test]
+    fn lex_string_literal() {
+        let tokens = lex(r#""hello""#).unwrap();
+        assert_eq!(kinds(&tokens), vec![StringLiteral("hello".to_string()), Eof]);
     }
 
     #[test]

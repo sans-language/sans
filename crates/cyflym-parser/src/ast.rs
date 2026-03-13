@@ -64,6 +64,7 @@ pub enum Stmt {
 pub enum Expr {
     IntLiteral { value: i64, span: Span },
     BoolLiteral { value: bool, span: Span },
+    StringLiteral { value: String, span: Span },
     Identifier { name: String, span: Span },
     BinaryOp { left: Box<Expr>, op: BinOp, right: Box<Expr>, span: Span },
     Call { function: String, args: Vec<Expr>, span: Span },

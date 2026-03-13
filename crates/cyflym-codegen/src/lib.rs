@@ -8,6 +8,7 @@ use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::values::{IntValue, PointerValue};
+use inkwell::module::Linkage;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
 
@@ -74,6 +75,11 @@ fn generate_llvm<'ctx>(
     let llvm_module = context.create_module("cyflym");
     let builder = context.create_builder();
     let i64_type = context.i64_type();
+
+    // Declare printf
+    let i8_ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+    let printf_type = context.i32_type().fn_type(&[i8_ptr_type.into()], true);
+    llvm_module.add_function("printf", printf_type, Some(Linkage::External));
 
     // First pass: declare all functions
     for func in &module.functions {
@@ -261,6 +267,55 @@ fn generate_llvm<'ctx>(
                     phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
                     regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
                 }
+                Instruction::StringConst { dest, value } => {
+                    let string_val = context.const_string(value.as_bytes(), true);
+                    let global = llvm_module.add_global(string_val.get_type(), None, &format!("str.{}", dest));
+                    global.set_initializer(&string_val);
+                    global.set_constant(true);
+                    global.set_unnamed_addr(true);
+                    let ptr = global.as_pointer_value();
+                    ptrs.insert(dest.clone(), ptr);
+                }
+                Instruction::PrintInt { value } => {
+                    let val = regs[value];
+                    let fmt_str = context.const_string(b"%ld\n", true);
+                    let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.int.{}", value));
+                    fmt_global.set_initializer(&fmt_str);
+                    fmt_global.set_constant(true);
+                    let fmt_ptr = fmt_global.as_pointer_value();
+                    let printf_fn = llvm_module.get_function("printf").unwrap();
+                    builder.build_call(printf_fn, &[fmt_ptr.into(), val.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::PrintString { value } => {
+                    let str_ptr = ptrs[value];
+                    let fmt_str = context.const_string(b"%s\n", true);
+                    let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.str.{}", value));
+                    fmt_global.set_initializer(&fmt_str);
+                    fmt_global.set_constant(true);
+                    let fmt_ptr = fmt_global.as_pointer_value();
+                    let printf_fn = llvm_module.get_function("printf").unwrap();
+                    builder.build_call(printf_fn, &[fmt_ptr.into(), str_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::PrintBool { value } => {
+                    let val = regs[value];
+                    let true_str = context.const_string(b"true\n", true);
+                    let false_str = context.const_string(b"false\n", true);
+                    let tg = llvm_module.add_global(true_str.get_type(), None, &format!("bool.t.{}", value));
+                    tg.set_initializer(&true_str);
+                    tg.set_constant(true);
+                    let fg = llvm_module.add_global(false_str.get_type(), None, &format!("bool.f.{}", value));
+                    fg.set_initializer(&false_str);
+                    fg.set_constant(true);
+
+                    let selected = builder.build_select(val, tg.as_pointer_value(), fg.as_pointer_value(), "boolstr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let printf_fn = llvm_module.get_function("printf").unwrap();
+                    builder.build_call(printf_fn, &[selected.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
                 Instruction::Alloca { dest } => {
                     let ptr = builder
                         .build_alloca(i64_type, dest)
@@ -305,6 +360,14 @@ mod tests {
         assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
         assert!(ir.contains("br "), "expected branch in:\n{}", ir);
         assert!(ir.contains("ret i64"), "expected ret in:\n{}", ir);
+    }
+
+    #[test]
+    fn codegen_print() {
+        let program = cyflym_parser::parse(r#"fn main() Int { print("hello") }"#).expect("parse failed");
+        let module = cyflym_ir::lower(&program);
+        let ir = compile_to_llvm_ir(&module).expect("codegen failed");
+        assert!(ir.contains("printf"), "expected printf in:\n{}", ir);
     }
 
     #[test]

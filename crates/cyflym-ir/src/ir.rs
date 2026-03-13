@@ -16,6 +16,10 @@ pub type Reg = String;
 pub enum Instruction {
     Const { dest: Reg, value: i64 },
     BoolConst { dest: Reg, value: bool },
+    StringConst { dest: Reg, value: String },
+    PrintInt { value: Reg },
+    PrintString { value: Reg },
+    PrintBool { value: Reg },
     BinOp { dest: Reg, op: IrBinOp, left: Reg, right: Reg },
     CmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
     Not { dest: Reg, src: Reg },

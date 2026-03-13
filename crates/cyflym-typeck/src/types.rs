@@ -2,6 +2,7 @@
 pub enum Type {
     Int,
     Bool,
+    String,
     Fn { params: Vec<Type>, ret: Box<Type> },
 }
 
@@ -10,6 +11,7 @@ impl std::fmt::Display for Type {
         match self {
             Type::Int => write!(f, "Int"),
             Type::Bool => write!(f, "Bool"),
+            Type::String => write!(f, "String"),
             Type::Fn { params, ret } => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {

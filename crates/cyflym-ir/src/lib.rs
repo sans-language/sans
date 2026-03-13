@@ -5,6 +5,9 @@ use std::collections::HashMap;
 use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
+#[derive(Clone, Copy, PartialEq)]
+enum IrType { Int, Bool, Str }
+
 #[derive(Clone)]
 enum LocalVar {
     /// Immutable variable — direct SSA register
@@ -68,6 +71,7 @@ struct IrBuilder {
     label_counter: usize,
     locals: HashMap<String, LocalVar>,
     instructions: Vec<Instruction>,
+    reg_types: HashMap<Reg, IrType>,
 }
 
 impl IrBuilder {
@@ -77,6 +81,7 @@ impl IrBuilder {
             label_counter: 0,
             locals: HashMap::new(),
             instructions: Vec::new(),
+            reg_types: HashMap::new(),
         }
     }
 
@@ -97,11 +102,19 @@ impl IrBuilder {
             Expr::IntLiteral { value, .. } => {
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::Const { dest: dest.clone(), value: *value });
+                self.reg_types.insert(dest.clone(), IrType::Int);
                 dest
             }
             Expr::BoolLiteral { value, .. } => {
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::BoolConst { dest: dest.clone(), value: *value });
+                self.reg_types.insert(dest.clone(), IrType::Bool);
+                dest
+            }
+            Expr::StringLiteral { value, .. } => {
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::StringConst { dest: dest.clone(), value: value.clone() });
+                self.reg_types.insert(dest.clone(), IrType::Str);
                 dest
             }
             Expr::Identifier { name, .. } => {
@@ -109,7 +122,10 @@ impl IrBuilder {
                     LocalVar::Value(reg) => reg,
                     LocalVar::Ptr(ptr) => {
                         let dest = self.fresh_reg();
-                        self.instructions.push(Instruction::Load { dest: dest.clone(), ptr });
+                        self.instructions.push(Instruction::Load { dest: dest.clone(), ptr: ptr.clone() });
+                        if let Some(ty) = self.reg_types.get(&ptr).copied() {
+                            self.reg_types.insert(dest.clone(), ty);
+                        }
                         dest
                     }
                 }
@@ -136,6 +152,7 @@ impl IrBuilder {
                         self.instructions.push(Instruction::Label { name: false_label.clone() });
                         let false_reg = self.fresh_reg();
                         self.instructions.push(Instruction::BoolConst { dest: false_reg.clone(), value: false });
+                        self.reg_types.insert(false_reg.clone(), IrType::Bool);
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                         self.instructions.push(Instruction::Label { name: merge_label.clone() });
@@ -147,6 +164,7 @@ impl IrBuilder {
                             b_val: false_reg,
                             b_label: false_label,
                         });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
                         return dest;
                     }
                     BinOp::Or => {
@@ -164,6 +182,7 @@ impl IrBuilder {
                         self.instructions.push(Instruction::Label { name: true_label.clone() });
                         let true_reg = self.fresh_reg();
                         self.instructions.push(Instruction::BoolConst { dest: true_reg.clone(), value: true });
+                        self.reg_types.insert(true_reg.clone(), IrType::Bool);
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                         self.instructions.push(Instruction::Label { name: rhs_label.clone() });
@@ -179,6 +198,7 @@ impl IrBuilder {
                             b_val: right_reg,
                             b_label: rhs_label,
                         });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
                         return dest;
                     }
                     _ => {} // fall through to normal handling
@@ -204,6 +224,7 @@ impl IrBuilder {
                             left: left_reg,
                             right: right_reg,
                         });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
                         dest
                     }
                     BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
@@ -223,6 +244,7 @@ impl IrBuilder {
                             left: left_reg,
                             right: right_reg,
                         });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
                         dest
                     }
                     BinOp::And | BinOp::Or => unreachable!("handled above"),
@@ -234,6 +256,7 @@ impl IrBuilder {
                         let src_reg = self.lower_expr(operand);
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Not { dest: dest.clone(), src: src_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
                         dest
                     }
                 }
@@ -269,6 +292,7 @@ impl IrBuilder {
                 // Merge
                 self.instructions.push(Instruction::Label { name: merge_label.clone() });
                 let dest = self.fresh_reg();
+                let phi_type = self.reg_types.get(&then_reg).copied().unwrap_or(IrType::Int);
                 self.instructions.push(Instruction::Phi {
                     dest: dest.clone(),
                     a_val: then_reg,
@@ -276,9 +300,24 @@ impl IrBuilder {
                     b_val: else_reg,
                     b_label: else_label,
                 });
+                self.reg_types.insert(dest.clone(), phi_type);
                 dest
             }
             Expr::Call { function, args, .. } => {
+                if function == "print" {
+                    let arg_reg = self.lower_expr(&args[0]);
+                    let ty = self.reg_types.get(&arg_reg).copied().unwrap_or(IrType::Int);
+                    match ty {
+                        IrType::Str => self.instructions.push(Instruction::PrintString { value: arg_reg }),
+                        IrType::Bool => self.instructions.push(Instruction::PrintBool { value: arg_reg }),
+                        IrType::Int => self.instructions.push(Instruction::PrintInt { value: arg_reg }),
+                    }
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                }
+
                 let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::Call {
@@ -286,6 +325,7 @@ impl IrBuilder {
                     function: function.clone(),
                     args: arg_regs,
                 });
+                self.reg_types.insert(dest.clone(), IrType::Int);
                 dest
             }
         }
@@ -296,10 +336,12 @@ impl IrBuilder {
             Stmt::Let { name, mutable, value, .. } => {
                 let val_reg = self.lower_expr(value);
                 if *mutable {
+                    let val_type = self.reg_types.get(&val_reg).copied().unwrap_or(IrType::Int);
                     let ptr = self.fresh_reg();
                     self.instructions.push(Instruction::Alloca { dest: ptr.clone() });
                     self.instructions.push(Instruction::Store { ptr: ptr.clone(), value: val_reg });
-                    self.locals.insert(name.clone(), LocalVar::Ptr(ptr));
+                    self.locals.insert(name.clone(), LocalVar::Ptr(ptr.clone()));
+                    self.reg_types.insert(ptr, val_type);
                 } else {
                     self.locals.insert(name.clone(), LocalVar::Value(val_reg));
                 }
@@ -488,6 +530,26 @@ mod tests {
         let func = &module.functions[0];
         let has_ret = func.body.iter().any(|i| matches!(i, Instruction::Ret { .. }));
         assert!(has_ret, "expected Ret instruction");
+    }
+
+    #[test]
+    fn lower_print_string() {
+        let program = parse(r#"fn main() Int { print("hello") }"#);
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_print = func.body.iter().any(|i| matches!(i, Instruction::PrintString { .. }));
+        let has_str = func.body.iter().any(|i| matches!(i, Instruction::StringConst { .. }));
+        assert!(has_print, "expected PrintString");
+        assert!(has_str, "expected StringConst");
+    }
+
+    #[test]
+    fn lower_print_int() {
+        let program = parse("fn main() Int { print(42) }");
+        let module = lower(&program);
+        let func = &module.functions[0];
+        let has_print = func.body.iter().any(|i| matches!(i, Instruction::PrintInt { .. }));
+        assert!(has_print, "expected PrintInt");
     }
 
     #[test]
