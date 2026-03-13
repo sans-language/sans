@@ -9,6 +9,7 @@ pub enum Type {
     JoinHandle,
     Sender { inner: Box<Type> },
     Receiver { inner: Box<Type> },
+    Mutex { inner: Box<Type> },
 }
 
 impl std::fmt::Display for Type {
@@ -22,6 +23,7 @@ impl std::fmt::Display for Type {
             Type::JoinHandle => write!(f, "JoinHandle"),
             Type::Sender { inner } => write!(f, "Sender<{}>", inner),
             Type::Receiver { inner } => write!(f, "Receiver<{}>", inner),
+            Type::Mutex { inner } => write!(f, "Mutex<{}>", inner),
             Type::Fn { params, ret } => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {

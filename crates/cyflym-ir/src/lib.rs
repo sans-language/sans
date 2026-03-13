@@ -630,6 +630,10 @@ impl IrBuilder {
                 // Should only appear inside LetDestructure
                 panic!("ChannelCreate should only appear inside LetDestructure")
             }
+            Expr::MutexCreate { .. } => {
+                // TODO: Implement in Plan 5b Batch 2
+                panic!("MutexCreate IR lowering not yet implemented")
+            }
         }
     }
 

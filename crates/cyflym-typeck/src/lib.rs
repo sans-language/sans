@@ -153,7 +153,15 @@ fn check_stmt(
         }
         Stmt::LetDestructure { names, value, .. } => {
             match value {
-                Expr::ChannelCreate { element_type, .. } => {
+                Expr::ChannelCreate { element_type, capacity, .. } => {
+                    if let Some(cap_expr) = capacity {
+                        let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                        if cap_ty != Type::Int {
+                            return Err(TypeError::new(format!(
+                                "channel capacity must be Int, got {}", cap_ty
+                            )));
+                        }
+                    }
                     let inner = resolve_type(&element_type.name, structs, enums)?;
                     if names.len() != 2 {
                         return Err(TypeError::new("channel destructuring requires exactly 2 names"));
@@ -799,7 +807,7 @@ fn check_expr(
                 for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
                     let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
                     let compatible = actual == *expected
-                        || (*expected == Type::Int && matches!(actual, Type::Sender { .. } | Type::Receiver { .. } | Type::JoinHandle));
+                        || (*expected == Type::Int && matches!(actual, Type::Sender { .. } | Type::Receiver { .. } | Type::JoinHandle | Type::Mutex { .. }));
                     if !compatible {
                         return Err(TypeError::new(format!(
                             "argument {} to '{}': expected {} but got {}",
@@ -813,9 +821,22 @@ fn check_expr(
             }
         }
 
-        Expr::ChannelCreate { element_type, .. } => {
+        Expr::ChannelCreate { element_type, capacity, .. } => {
+            if let Some(cap_expr) = capacity {
+                let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                if cap_ty != Type::Int {
+                    return Err(TypeError::new(format!(
+                        "channel capacity must be Int, got {}", cap_ty
+                    )));
+                }
+            }
             let inner = resolve_type(&element_type.name, structs, enums)?;
             Ok(Type::Sender { inner: Box::new(inner) })
+        }
+
+        Expr::MutexCreate { value, .. } => {
+            let inner = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+            Ok(Type::Mutex { inner: Box::new(inner) })
         }
 
         Expr::MethodCall { object, method, args, .. } => {
@@ -844,6 +865,24 @@ fn check_expr(
                 (Type::JoinHandle, "join") => {
                     if !args.is_empty() {
                         return Err(TypeError::new("join() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::Mutex { inner }, "lock") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("lock() takes no arguments"));
+                    }
+                    return Ok(*inner.clone());
+                }
+                (Type::Mutex { inner }, "unlock") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("unlock() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits)?;
+                    if arg_ty != **inner {
+                        return Err(TypeError::new(format!(
+                            "unlock() type mismatch: mutex holds {} but got {}", inner, arg_ty
+                        )));
                     }
                     return Ok(Type::Int);
                 }
@@ -1302,5 +1341,41 @@ mod tests {
     fn typeck_send_on_non_sender() {
         let program = cyflym_parser::parse("fn main() Int { let x Int = 42 x.send(1) 0 }").unwrap();
         assert!(check(&program).is_err());
+    }
+
+    #[test]
+    fn check_mutex_create() {
+        assert!(do_check("fn main() Int { let m = mutex(0) 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_mutex_lock_returns_inner_type() {
+        assert!(do_check("fn main() Int { let m = mutex(42) let v = m.lock() v }").is_ok());
+    }
+
+    #[test]
+    fn check_mutex_unlock_matching_type() {
+        assert!(do_check("fn main() Int { let m = mutex(0) let v = m.lock() m.unlock(v + 1) 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_mutex_unlock_wrong_type() {
+        let err = do_check("fn main() Int { let m = mutex(0) m.unlock(true) 0 }").unwrap_err();
+        assert!(err.message.contains("mismatch") || err.message.contains("type"),
+            "expected type error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_lock_on_non_mutex() {
+        let err = do_check("fn main() Int { let x = 42 x.lock() }").unwrap_err();
+        assert!(err.message.contains("method") || err.message.contains("lock"),
+            "expected method error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_bounded_channel_capacity_non_int() {
+        let err = do_check("fn main() Int { let (tx, rx) = channel<Int>(true) 0 }").unwrap_err();
+        assert!(err.message.contains("Int") || err.message.contains("capacity"),
+            "expected capacity type error, got: {}", err.message);
     }
 }
