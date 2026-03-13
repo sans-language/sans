@@ -127,6 +127,13 @@ impl Parser {
 
         let module_name = path.rsplit('/').next().unwrap_or(&path).to_string();
 
+        if module_name.is_empty() {
+            return Err(ParseError::new(
+                "import path must not be empty".to_string(),
+                path_tok.span.clone(),
+            ));
+        }
+
         let end = path_tok.span.end;
         Ok(Import {
             path,
