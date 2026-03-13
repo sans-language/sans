@@ -44,6 +44,28 @@ pub enum Instruction {
     EnumAlloc { dest: Reg, tag: i64, num_data_fields: usize },
     EnumTag { dest: Reg, ptr: Reg },
     EnumData { dest: Reg, ptr: Reg, field_index: usize },
+    // Thread operations
+    ThreadSpawn {
+        dest: Reg,
+        function: String,
+        args: Vec<Reg>,
+    },
+    ThreadJoin {
+        handle: Reg,
+    },
+    // Channel operations
+    ChannelCreate {
+        tx_dest: Reg,
+        rx_dest: Reg,
+    },
+    ChannelSend {
+        tx: Reg,
+        value: Reg,
+    },
+    ChannelRecv {
+        dest: Reg,
+        rx: Reg,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]

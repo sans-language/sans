@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq)]
-enum IrType { Int, Bool, Str, Struct(String), Enum(String) }
+enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle }
 
 #[derive(Clone)]
 enum LocalVar {
@@ -363,6 +363,7 @@ impl IrBuilder {
                         IrType::Int => self.instructions.push(Instruction::PrintInt { value: arg_reg }),
                         IrType::Struct(_) => panic!("cannot print struct"),
                         IrType::Enum(_) => panic!("cannot print enum"),
+                        IrType::Sender | IrType::Receiver | IrType::JoinHandle => panic!("cannot print concurrency type"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -448,19 +449,52 @@ impl IrBuilder {
             }
             Expr::MethodCall { object, method, args, .. } => {
                 let obj_reg = self.lower_expr(object);
+
+                // Handle concurrency built-in methods FIRST
+                match (self.reg_types.get(&obj_reg).cloned(), method.as_str()) {
+                    (Some(IrType::Sender), "send") => {
+                        let val_reg = self.lower_expr(&args[0]);
+                        self.instructions.push(Instruction::ChannelSend {
+                            tx: obj_reg,
+                            value: val_reg,
+                        });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Receiver), "recv") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ChannelRecv {
+                            dest: dest.clone(),
+                            rx: obj_reg,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::JoinHandle), "join") => {
+                        self.instructions.push(Instruction::ThreadJoin {
+                            handle: obj_reg,
+                        });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    _ => {} // fall through to struct/enum handling
+                }
+
+                // Existing struct/enum method call handling
                 let type_name = match self.reg_types.get(&obj_reg) {
                     Some(IrType::Struct(name)) => name.clone(),
                     Some(IrType::Enum(name)) => name.clone(),
                     _ => panic!("method call on non-struct/enum"),
                 };
                 let mangled = format!("{}_{}", type_name, method);
-
-                // Build args: self (object) first, then the explicit args
                 let mut arg_regs = vec![obj_reg];
                 for arg in args {
                     arg_regs.push(self.lower_expr(arg));
                 }
-
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::Call {
                     dest: dest.clone(),
@@ -581,11 +615,20 @@ impl IrBuilder {
                 self.reg_types.insert(result_reg.clone(), IrType::Int);
                 result_reg
             }
-            Expr::Spawn { .. } => {
-                todo!("IR lowering for spawn not yet implemented")
+            Expr::Spawn { function, args, .. } => {
+                let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::ThreadSpawn {
+                    dest: dest.clone(),
+                    function: function.clone(),
+                    args: arg_regs,
+                });
+                self.reg_types.insert(dest.clone(), IrType::JoinHandle);
+                dest
             }
             Expr::ChannelCreate { .. } => {
-                todo!("IR lowering for channel not yet implemented")
+                // Should only appear inside LetDestructure
+                panic!("ChannelCreate should only appear inside LetDestructure")
             }
         }
     }
@@ -662,8 +705,22 @@ impl IrBuilder {
 
                 self.instructions.push(Instruction::Label { name: end_label });
             }
-            Stmt::LetDestructure { .. } => {
-                todo!("IR lowering for let destructuring not yet implemented")
+            Stmt::LetDestructure { names, value, .. } => {
+                match value {
+                    Expr::ChannelCreate { .. } => {
+                        let tx_reg = self.fresh_reg();
+                        let rx_reg = self.fresh_reg();
+                        self.instructions.push(Instruction::ChannelCreate {
+                            tx_dest: tx_reg.clone(),
+                            rx_dest: rx_reg.clone(),
+                        });
+                        self.reg_types.insert(tx_reg.clone(), IrType::Sender);
+                        self.reg_types.insert(rx_reg.clone(), IrType::Receiver);
+                        self.locals.insert(names[0].clone(), LocalVar::Value(tx_reg));
+                        self.locals.insert(names[1].clone(), LocalVar::Value(rx_reg));
+                    }
+                    _ => panic!("LetDestructure only supports ChannelCreate"),
+                }
             }
         }
     }
@@ -897,5 +954,43 @@ mod tests {
         assert_eq!(module.functions.len(), 2);
         let identity = module.functions.iter().find(|f| f.name == "identity").expect("no identity");
         assert_eq!(identity.params.len(), 1);
+    }
+
+    #[test]
+    fn lower_spawn() {
+        let program = parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() 0 }");
+        let module = lower(&program);
+        let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_spawn = main_func.body.iter().any(|i| matches!(i, Instruction::ThreadSpawn { .. }));
+        assert!(has_spawn, "expected ThreadSpawn instruction");
+    }
+
+    #[test]
+    fn lower_channel_create() {
+        let program = parse("fn main() Int { let (tx, rx) = channel<Int>() 0 }");
+        let module = lower(&program);
+        let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_create = main_func.body.iter().any(|i| matches!(i, Instruction::ChannelCreate { .. }));
+        assert!(has_create, "expected ChannelCreate instruction");
+    }
+
+    #[test]
+    fn lower_send_recv() {
+        let program = parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }");
+        let module = lower(&program);
+        let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_send = main_func.body.iter().any(|i| matches!(i, Instruction::ChannelSend { .. }));
+        let has_recv = main_func.body.iter().any(|i| matches!(i, Instruction::ChannelRecv { .. }));
+        assert!(has_send, "expected ChannelSend instruction");
+        assert!(has_recv, "expected ChannelRecv instruction");
+    }
+
+    #[test]
+    fn lower_join() {
+        let program = parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }");
+        let module = lower(&program);
+        let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_join = main_func.body.iter().any(|i| matches!(i, Instruction::ThreadJoin { .. }));
+        assert!(has_join, "expected ThreadJoin instruction");
     }
 }

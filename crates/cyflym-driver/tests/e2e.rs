@@ -84,3 +84,18 @@ fn e2e_generic_identity() {
 fn e2e_generic_pair() {
     assert_eq!(compile_and_run("generic_pair.cy"), 17);
 }
+
+#[test]
+fn e2e_spawn_join() {
+    assert_eq!(compile_and_run("spawn_join.cy"), 7);
+}
+
+#[test]
+fn e2e_channel_basic() {
+    assert_eq!(compile_and_run("channel_basic.cy"), 42);
+}
+
+#[test]
+fn e2e_spawn_channel() {
+    assert_eq!(compile_and_run("spawn_channel.cy"), 10);
+}
