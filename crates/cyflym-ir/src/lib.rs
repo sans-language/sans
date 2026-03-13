@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq)]
-enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle }
+enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex }
 
 #[derive(Clone)]
 enum LocalVar {
@@ -363,7 +363,7 @@ impl IrBuilder {
                         IrType::Int => self.instructions.push(Instruction::PrintInt { value: arg_reg }),
                         IrType::Struct(_) => panic!("cannot print struct"),
                         IrType::Enum(_) => panic!("cannot print enum"),
-                        IrType::Sender | IrType::Receiver | IrType::JoinHandle => panic!("cannot print concurrency type"),
+                        IrType::Sender | IrType::Receiver | IrType::JoinHandle | IrType::Mutex => panic!("cannot print concurrency type"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -475,6 +475,26 @@ impl IrBuilder {
                     (Some(IrType::JoinHandle), "join") => {
                         self.instructions.push(Instruction::ThreadJoin {
                             handle: obj_reg,
+                        });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Mutex), "lock") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MutexLock {
+                            dest: dest.clone(),
+                            mutex: obj_reg,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Mutex), "unlock") => {
+                        let val_reg = self.lower_expr(&args[0]);
+                        self.instructions.push(Instruction::MutexUnlock {
+                            mutex: obj_reg,
+                            value: val_reg,
                         });
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -630,9 +650,15 @@ impl IrBuilder {
                 // Should only appear inside LetDestructure
                 panic!("ChannelCreate should only appear inside LetDestructure")
             }
-            Expr::MutexCreate { .. } => {
-                // TODO: Implement in Plan 5b Batch 2
-                panic!("MutexCreate IR lowering not yet implemented")
+            Expr::MutexCreate { value, .. } => {
+                let val_reg = self.lower_expr(value);
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::MutexCreate {
+                    dest: dest.clone(),
+                    value: val_reg,
+                });
+                self.reg_types.insert(dest.clone(), IrType::Mutex);
+                dest
             }
         }
     }
@@ -711,13 +737,22 @@ impl IrBuilder {
             }
             Stmt::LetDestructure { names, value, .. } => {
                 match value {
-                    Expr::ChannelCreate { .. } => {
+                    Expr::ChannelCreate { capacity, .. } => {
                         let tx_reg = self.fresh_reg();
                         let rx_reg = self.fresh_reg();
-                        self.instructions.push(Instruction::ChannelCreate {
-                            tx_dest: tx_reg.clone(),
-                            rx_dest: rx_reg.clone(),
-                        });
+                        if let Some(cap_expr) = capacity {
+                            let cap_reg = self.lower_expr(cap_expr);
+                            self.instructions.push(Instruction::ChannelCreateBounded {
+                                tx_dest: tx_reg.clone(),
+                                rx_dest: rx_reg.clone(),
+                                capacity: cap_reg,
+                            });
+                        } else {
+                            self.instructions.push(Instruction::ChannelCreate {
+                                tx_dest: tx_reg.clone(),
+                                rx_dest: rx_reg.clone(),
+                            });
+                        }
                         self.reg_types.insert(tx_reg.clone(), IrType::Sender);
                         self.reg_types.insert(rx_reg.clone(), IrType::Receiver);
                         self.locals.insert(names[0].clone(), LocalVar::Value(tx_reg));
@@ -996,5 +1031,44 @@ mod tests {
         let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_join = main_func.body.iter().any(|i| matches!(i, Instruction::ThreadJoin { .. }));
         assert!(has_join, "expected ThreadJoin instruction");
+    }
+
+    #[test]
+    fn lower_mutex_create_lock_unlock() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
+        ).unwrap();
+        let module = lower(&prog);
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::MutexCreate { .. })),
+            "expected MutexCreate instruction");
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::MutexLock { .. })),
+            "expected MutexLock instruction");
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::MutexUnlock { .. })),
+            "expected MutexUnlock instruction");
+    }
+
+    #[test]
+    fn lower_bounded_channel() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { let (tx, rx) = channel<Int>(10) tx.send(1) rx.recv() }"
+        ).unwrap();
+        let module = lower(&prog);
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ChannelCreateBounded { .. })),
+            "expected ChannelCreateBounded instruction");
+    }
+
+    #[test]
+    fn lower_unbounded_channel_unchanged() {
+        let prog = cyflym_parser::parse(
+            "fn main() Int { let (tx, rx) = channel<Int>() tx.send(1) rx.recv() }"
+        ).unwrap();
+        let module = lower(&prog);
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ChannelCreate { .. })),
+            "expected ChannelCreate (not bounded) instruction");
+        assert!(!instrs.iter().any(|i| matches!(i, Instruction::ChannelCreateBounded { .. })),
+            "should NOT have ChannelCreateBounded");
     }
 }

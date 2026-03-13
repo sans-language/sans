@@ -66,6 +66,25 @@ pub enum Instruction {
         dest: Reg,
         rx: Reg,
     },
+    // Mutex operations
+    MutexCreate {
+        dest: Reg,
+        value: Reg,
+    },
+    MutexLock {
+        dest: Reg,
+        mutex: Reg,
+    },
+    MutexUnlock {
+        mutex: Reg,
+        value: Reg,
+    },
+    // Bounded channel creation
+    ChannelCreateBounded {
+        tx_dest: Reg,
+        rx_dest: Reg,
+        capacity: Reg,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
