@@ -61,7 +61,9 @@ fn resolve_type(
             } else if let Some(variants) = enums.get(other) {
                 Ok(Type::Enum { name: other.to_string(), variants: variants.clone() })
             } else {
-                // Search module exports for the type
+                // Search module exports for the type.
+                // Note: if two modules export the same type name, the first found wins.
+                // Duplicate last-segment detection is deferred (see spec).
                 for (_mod_name, exports) in module_exports {
                     if let Some(fields) = exports.structs.get(other) {
                         return Ok(Type::Struct { name: other.to_string(), fields: fields.clone() });
