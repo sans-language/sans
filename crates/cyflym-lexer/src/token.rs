@@ -48,9 +48,15 @@ pub enum TokenKind {
 
     // Data types
     Struct,
+    Enum,
+    Match,
 
     // Member access
     Dot,
+
+    // Path / match tokens
+    ColonColon, // ::
+    FatArrow,   // =>
 
     // Comparison operators
     EqEq,    // ==

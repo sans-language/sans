@@ -4,6 +4,21 @@ use cyflym_lexer::token::Span;
 pub struct Program {
     pub functions: Vec<Function>,
     pub structs: Vec<StructDef>,
+    pub enums: Vec<EnumDef>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDef {
+    pub name: String,
+    pub variants: Vec<EnumVariant>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumVariant {
+    pub name: String,
+    pub fields: Vec<TypeName>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +115,34 @@ pub enum Expr {
     FieldAccess {
         object: Box<Expr>,
         field: String,
+        span: Span,
+    },
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+        args: Vec<Expr>,
+        span: Span,
+    },
+    Match {
+        scrutinee: Box<Expr>,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    EnumVariant {
+        enum_name: String,
+        variant_name: String,
+        bindings: Vec<String>,
         span: Span,
     },
 }

@@ -76,14 +76,17 @@ impl Parser {
     fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
+        let mut enums = Vec::new();
         while self.peek().kind != TokenKind::Eof {
-            if self.peek().kind == TokenKind::Struct {
+            if self.peek().kind == TokenKind::Enum {
+                enums.push(self.parse_enum_def()?);
+            } else if self.peek().kind == TokenKind::Struct {
                 structs.push(self.parse_struct_def()?);
             } else {
                 functions.push(self.parse_function()?);
             }
         }
-        Ok(Program { functions, structs })
+        Ok(Program { functions, structs, enums })
     }
 
     // ─── Function ─────────────────────────────────────────────────────────────
@@ -135,6 +138,38 @@ impl Parser {
         }
         let rbrace = self.expect(&TokenKind::RBrace)?;
         Ok(StructDef { name, fields, span: start..rbrace.span.end })
+    }
+
+    fn parse_enum_def(&mut self) -> Result<EnumDef, ParseError> {
+        let enum_tok = self.expect(&TokenKind::Enum)?;
+        let start = enum_tok.span.start;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut variants = Vec::new();
+        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+            let (variant_name, variant_span) = self.expect_ident()?;
+            let mut fields = Vec::new();
+            let end;
+            if self.peek().kind == TokenKind::LParen {
+                self.pos += 1; // consume (
+                while self.peek().kind != TokenKind::RParen {
+                    fields.push(self.parse_type_name()?);
+                    if self.peek().kind == TokenKind::Comma {
+                        self.pos += 1;
+                    }
+                }
+                let rparen = self.expect(&TokenKind::RParen)?;
+                end = rparen.span.end;
+            } else {
+                end = variant_span.end;
+            }
+            variants.push(EnumVariant { name: variant_name, fields, span: variant_span.start..end });
+            if self.peek().kind == TokenKind::Comma {
+                self.pos += 1;
+            }
+        }
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        Ok(EnumDef { name, variants, span: start..rbrace.span.end })
     }
 
     fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
@@ -395,6 +430,27 @@ impl Parser {
             }
             TokenKind::Identifier(_) => {
                 let (name, name_span) = self.expect_ident()?;
+                // Check for enum variant: identifier followed by `::`
+                if self.peek().kind == TokenKind::ColonColon {
+                    self.pos += 1; // consume ::
+                    let (variant_name, variant_span) = self.expect_ident()?;
+                    let mut args = Vec::new();
+                    let end;
+                    if self.peek().kind == TokenKind::LParen {
+                        self.pos += 1; // consume (
+                        args = self.parse_call_args()?;
+                        let rparen = self.expect(&TokenKind::RParen)?;
+                        end = rparen.span.end;
+                    } else {
+                        end = variant_span.end;
+                    }
+                    return Ok(Expr::EnumVariant {
+                        enum_name: name,
+                        variant_name,
+                        args,
+                        span: name_span.start..end,
+                    });
+                }
                 // Check for function call: identifier followed by `(`
                 if self.peek().kind == TokenKind::LParen {
                     self.pos += 1; // consume `(`
@@ -440,6 +496,9 @@ impl Parser {
             }
             TokenKind::If => {
                 self.parse_if_expr()
+            }
+            TokenKind::Match => {
+                self.parse_match_expr()
             }
             TokenKind::Bang => {
                 let start = tok.span.start;
@@ -497,6 +556,70 @@ impl Parser {
             else_body,
             else_expr: Box::new(else_expr),
             span: start..end,
+        })
+    }
+
+    fn parse_match_expr(&mut self) -> Result<Expr, ParseError> {
+        let match_tok = self.expect(&TokenKind::Match)?;
+        let start = match_tok.span.start;
+        let scrutinee = self.parse_expr(0)?;
+        self.expect(&TokenKind::LBrace)?;
+        let mut arms = Vec::new();
+        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+            let arm = self.parse_match_arm()?;
+            arms.push(arm);
+            if self.peek().kind == TokenKind::Comma {
+                self.pos += 1;
+            }
+        }
+        let rbrace = self.expect(&TokenKind::RBrace)?;
+        Ok(Expr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+            span: start..rbrace.span.end,
+        })
+    }
+
+    fn parse_match_arm(&mut self) -> Result<MatchArm, ParseError> {
+        let pattern = self.parse_pattern()?;
+        let pattern_start = match &pattern {
+            Pattern::EnumVariant { span, .. } => span.start,
+        };
+        self.expect(&TokenKind::FatArrow)?;
+        let body = self.parse_expr(0)?;
+        let end = expr_span(&body).end;
+        Ok(MatchArm {
+            pattern,
+            body,
+            span: pattern_start..end,
+        })
+    }
+
+    fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        let (enum_name, enum_span) = self.expect_ident()?;
+        self.expect(&TokenKind::ColonColon)?;
+        let (variant_name, variant_span) = self.expect_ident()?;
+        let mut bindings = Vec::new();
+        let end;
+        if self.peek().kind == TokenKind::LParen {
+            self.pos += 1; // consume (
+            while self.peek().kind != TokenKind::RParen {
+                let (binding, _) = self.expect_ident()?;
+                bindings.push(binding);
+                if self.peek().kind == TokenKind::Comma {
+                    self.pos += 1;
+                }
+            }
+            let rparen = self.expect(&TokenKind::RParen)?;
+            end = rparen.span.end;
+        } else {
+            end = variant_span.end;
+        }
+        Ok(Pattern::EnumVariant {
+            enum_name,
+            variant_name,
+            bindings,
+            span: enum_span.start..end,
         })
     }
 
@@ -583,6 +706,8 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::UnaryOp { span, .. } => span,
         Expr::StructLiteral { span, .. } => span,
         Expr::FieldAccess { span, .. } => span,
+        Expr::EnumVariant { span, .. } => span,
+        Expr::Match { span, .. } => span,
     }
 }
 
@@ -883,6 +1008,66 @@ mod tests {
             assert!(matches!(object.as_ref(), Expr::Identifier { name, .. } if name == "p"));
         } else {
             panic!("expected FieldAccess, got {:?}", &body[1]);
+        }
+    }
+
+    #[test]
+    fn parse_enum_def() {
+        let prog = parse("enum Color { Red, Green, Blue, } fn main() Int { 0 }").unwrap();
+        assert_eq!(prog.enums.len(), 1);
+        let e = &prog.enums[0];
+        assert_eq!(e.name, "Color");
+        assert_eq!(e.variants.len(), 3);
+        assert_eq!(e.variants[0].name, "Red");
+        assert_eq!(e.variants[0].fields.len(), 0);
+        assert_eq!(e.variants[1].name, "Green");
+        assert_eq!(e.variants[2].name, "Blue");
+    }
+
+    #[test]
+    fn parse_enum_with_data() {
+        let prog = parse("enum Shape { Circle(Int), Rectangle(Int, Int), } fn main() Int { 0 }").unwrap();
+        let e = &prog.enums[0];
+        assert_eq!(e.name, "Shape");
+        assert_eq!(e.variants.len(), 2);
+        assert_eq!(e.variants[0].name, "Circle");
+        assert_eq!(e.variants[0].fields.len(), 1);
+        assert_eq!(e.variants[0].fields[0].name, "Int");
+        assert_eq!(e.variants[1].name, "Rectangle");
+        assert_eq!(e.variants[1].fields.len(), 2);
+    }
+
+    #[test]
+    fn parse_enum_variant_expr() {
+        let prog = parse("fn main() Int { let c = Color::Red 0 }").unwrap();
+        let body = &prog.functions[0].body;
+        if let Stmt::Let { value, .. } = &body[0] {
+            if let Expr::EnumVariant { enum_name, variant_name, args, .. } = value {
+                assert_eq!(enum_name, "Color");
+                assert_eq!(variant_name, "Red");
+                assert_eq!(args.len(), 0);
+            } else {
+                panic!("expected EnumVariant, got {:?}", value);
+            }
+        } else {
+            panic!("expected Let");
+        }
+    }
+
+    #[test]
+    fn parse_match_expr() {
+        let prog = parse("fn main() Int { match Color::Red { Color::Red => 1, Color::Green => 2, } }").unwrap();
+        let body = &prog.functions[0].body;
+        if let Stmt::Expr(Expr::Match { arms, .. }) = &body[0] {
+            assert_eq!(arms.len(), 2);
+            if let Pattern::EnumVariant { enum_name, variant_name, .. } = &arms[0].pattern {
+                assert_eq!(enum_name, "Color");
+                assert_eq!(variant_name, "Red");
+            } else {
+                panic!("expected EnumVariant pattern");
+            }
+        } else {
+            panic!("expected Match expression, got {:?}", &body[0]);
         }
     }
 

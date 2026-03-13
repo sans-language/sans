@@ -39,6 +39,10 @@ pub enum Instruction {
     StructAlloc { dest: Reg, num_fields: usize },
     FieldStore { ptr: Reg, field_index: usize, value: Reg },
     FieldLoad { dest: Reg, ptr: Reg, field_index: usize },
+    // Enum operations
+    EnumAlloc { dest: Reg, tag: i64, num_data_fields: usize },
+    EnumTag { dest: Reg, ptr: Reg },
+    EnumData { dest: Reg, ptr: Reg, field_index: usize },
 }
 
 #[derive(Debug, Clone, Copy)]

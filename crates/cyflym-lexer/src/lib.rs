@@ -72,6 +72,8 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "return" => TokenKind::Return,
                     "mut" => TokenKind::Mut,
                     "struct" => TokenKind::Struct,
+                    "enum" => TokenKind::Enum,
+                    "match" => TokenKind::Match,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {
@@ -102,6 +104,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 if pos + 1 < len && bytes[pos + 1] == b'=' {
                     pos += 2;
                     tokens.push(Token { kind: TokenKind::EqEq, span: start..pos });
+                } else if pos + 1 < len && bytes[pos + 1] == b'>' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::FatArrow, span: start..pos });
                 } else {
                     pos += 1;
                     tokens.push(Token { kind: TokenKind::Eq, span: start..pos });
@@ -177,8 +182,13 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 tokens.push(Token { kind: TokenKind::Comma, span: start..pos });
             }
             ':' => {
-                pos += 1;
-                tokens.push(Token { kind: TokenKind::Colon, span: start..pos });
+                if pos + 1 < len && bytes[pos + 1] == b':' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::ColonColon, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Colon, span: start..pos });
+                }
             }
 
             '.' => {
@@ -358,6 +368,24 @@ mod tests {
             kinds(&tokens),
             vec![Identifier("a".to_string()), Dot, Identifier("b".to_string()), Eof]
         );
+    }
+
+    #[test]
+    fn lex_enum_match_keywords() {
+        let tokens = lex("enum match").unwrap();
+        assert_eq!(kinds(&tokens), vec![Enum, Match, Eof]);
+    }
+
+    #[test]
+    fn lex_fat_arrow() {
+        let tokens = lex("=>").unwrap();
+        assert_eq!(kinds(&tokens), vec![FatArrow, Eof]);
+    }
+
+    #[test]
+    fn lex_colon_colon() {
+        let tokens = lex("::").unwrap();
+        assert_eq!(kinds(&tokens), vec![ColonColon, Eof]);
     }
 
     #[test]

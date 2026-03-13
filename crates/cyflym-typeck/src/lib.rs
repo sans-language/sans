@@ -23,7 +23,11 @@ impl std::fmt::Display for TypeError {
 }
 
 /// Resolve an AST type name string to a `Type`.
-fn resolve_type(name: &str, structs: &HashMap<String, Vec<(String, Type)>>) -> Result<Type, TypeError> {
+fn resolve_type(
+    name: &str,
+    structs: &HashMap<String, Vec<(String, Type)>>,
+    enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
+) -> Result<Type, TypeError> {
     match name {
         "Int" => Ok(Type::Int),
         "Bool" => Ok(Type::Bool),
@@ -31,6 +35,8 @@ fn resolve_type(name: &str, structs: &HashMap<String, Vec<(String, Type)>>) -> R
         other => {
             if let Some(fields) = structs.get(other) {
                 Ok(Type::Struct { name: other.to_string(), fields: fields.clone() })
+            } else if let Some(variants) = enums.get(other) {
+                Ok(Type::Enum { name: other.to_string(), variants: variants.clone() })
             } else {
                 Err(TypeError::new(format!("unknown type '{}'", other)))
             }
@@ -45,9 +51,10 @@ fn check_stmts(
     fn_env: &HashMap<String, (Vec<Type>, Type)>,
     ret_type: &Type,
     structs: &HashMap<String, Vec<(String, Type)>>,
+    enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
 ) -> Result<(), TypeError> {
     for stmt in stmts {
-        check_stmt(stmt, locals, fn_env, ret_type, structs)?;
+        check_stmt(stmt, locals, fn_env, ret_type, structs, enums)?;
     }
     Ok(())
 }
@@ -58,12 +65,13 @@ fn check_stmt(
     fn_env: &HashMap<String, (Vec<Type>, Type)>,
     ret_type: &Type,
     structs: &HashMap<String, Vec<(String, Type)>>,
+    enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
 ) -> Result<(), TypeError> {
     match stmt {
         Stmt::Let { name, mutable, type_name, value, .. } => {
-            let actual = check_expr(value, locals, fn_env, ret_type, structs)?;
+            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums)?;
             let ty = if let Some(tn) = type_name {
-                let declared = resolve_type(&tn.name, structs)?;
+                let declared = resolve_type(&tn.name, structs, enums)?;
                 if declared != actual {
                     return Err(TypeError::new(format!(
                         "type mismatch in let '{}': declared {} but expression has type {}",
@@ -78,21 +86,21 @@ fn check_stmt(
             Ok(())
         }
         Stmt::Expr(expr) => {
-            check_expr(expr, locals, fn_env, ret_type, structs)?;
+            check_expr(expr, locals, fn_env, ret_type, structs, enums)?;
             Ok(())
         }
         Stmt::While { condition, body, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "while condition must be Bool, got {}", cond_ty
                 )));
             }
-            check_stmts(body, locals, fn_env, ret_type, structs)?;
+            check_stmts(body, locals, fn_env, ret_type, structs, enums)?;
             Ok(())
         }
         Stmt::Return { value, .. } => {
-            let ty = check_expr(value, locals, fn_env, ret_type, structs)?;
+            let ty = check_expr(value, locals, fn_env, ret_type, structs, enums)?;
             if ty != *ret_type {
                 return Err(TypeError::new(format!(
                     "return type mismatch: expected {} but got {}",
@@ -111,7 +119,7 @@ fn check_stmt(
                     "cannot assign to immutable variable '{}'", name
                 )));
             }
-            let actual = check_expr(value, locals, fn_env, ret_type, structs)?;
+            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums)?;
             if actual != expected_ty {
                 return Err(TypeError::new(format!(
                     "type mismatch in assignment to '{}': expected {} but got {}",
@@ -121,13 +129,13 @@ fn check_stmt(
             Ok(())
         }
         Stmt::If { condition, body, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "if condition must be Bool, got {}", cond_ty
                 )));
             }
-            check_stmts(body, locals, fn_env, ret_type, structs)?;
+            check_stmts(body, locals, fn_env, ret_type, structs, enums)?;
             Ok(())
         }
     }
@@ -136,17 +144,31 @@ fn check_stmt(
 /// Type-check the given `Program`. Returns `Ok(())` if the program is
 /// well-typed, or a `TypeError` describing the first problem found.
 pub fn check(program: &Program) -> Result<(), TypeError> {
-    // Pass 0: collect struct definitions.
+    // Pass 0a: collect struct definitions.
     let mut struct_registry: HashMap<String, Vec<(String, Type)>> = HashMap::new();
-    // First pass to register struct names (for self-referential types later, but for now just collect)
+    let enum_registry: HashMap<String, Vec<(String, Vec<Type>)>> = HashMap::new();
     for s in &program.structs {
         let mut fields = Vec::new();
         for f in &s.fields {
-            // Use an empty struct registry for field resolution (no recursive structs yet)
-            let ty = resolve_type(&f.type_name.name, &struct_registry)?;
+            let ty = resolve_type(&f.type_name.name, &struct_registry, &enum_registry)?;
             fields.push((f.name.clone(), ty));
         }
         struct_registry.insert(s.name.clone(), fields);
+    }
+
+    // Pass 0b: collect enum definitions.
+    let mut enum_registry: HashMap<String, Vec<(String, Vec<Type>)>> = HashMap::new();
+    for e in &program.enums {
+        let mut variants = Vec::new();
+        for v in &e.variants {
+            let mut field_types = Vec::new();
+            for f in &v.fields {
+                let ty = resolve_type(&f.name, &struct_registry, &enum_registry)?;
+                field_types.push(ty);
+            }
+            variants.push((v.name.clone(), field_types));
+        }
+        enum_registry.insert(e.name.clone(), variants);
     }
 
     // Pass 1: collect all function signatures into an environment.
@@ -155,9 +177,9 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
     for func in &program.functions {
         let mut param_types = Vec::new();
         for param in &func.params {
-            param_types.push(resolve_type(&param.type_name.name, &struct_registry)?);
+            param_types.push(resolve_type(&param.type_name.name, &struct_registry, &enum_registry)?);
         }
-        let ret_type = resolve_type(&func.return_type.name, &struct_registry)?;
+        let ret_type = resolve_type(&func.return_type.name, &struct_registry, &enum_registry)?;
         fn_env.insert(func.name.clone(), (param_types, ret_type));
     }
 
@@ -173,7 +195,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
 
         let mut locals: HashMap<String, (Type, bool)> = HashMap::new();
         for param in &func.params {
-            let ty = resolve_type(&param.type_name.name, &struct_registry)?;
+            let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry)?;
             locals.insert(param.name.clone(), (ty, false));
         }
 
@@ -186,12 +208,12 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
         // Check all statements
         for (i, stmt) in func.body.iter().enumerate() {
             let is_last = i == func.body.len() - 1;
-            check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry)?;
+            check_stmt(stmt, &mut locals, &fn_env, &ret_type, &struct_registry, &enum_registry)?;
 
             if is_last {
                 match stmt {
                     Stmt::Expr(expr) => {
-                        let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry)?;
+                        let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry)?;
                         if ty != ret_type {
                             return Err(TypeError::new(format!(
                                 "function '{}': return type mismatch: expected {} but got {}",
@@ -222,6 +244,7 @@ fn check_expr(
     fn_env: &HashMap<String, (Vec<Type>, Type)>,
     ret_type: &Type,
     structs: &HashMap<String, Vec<(String, Type)>>,
+    enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
 ) -> Result<Type, TypeError> {
     match expr {
         Expr::IntLiteral { .. } => Ok(Type::Int),
@@ -236,8 +259,8 @@ fn check_expr(
 
         Expr::BinaryOp { left, op, right, .. } => {
             use cyflym_parser::ast::BinOp;
-            let lt = check_expr(left, locals, fn_env, ret_type, structs)?;
-            let rt = check_expr(right, locals, fn_env, ret_type, structs)?;
+            let lt = check_expr(left, locals, fn_env, ret_type, structs, enums)?;
+            let rt = check_expr(right, locals, fn_env, ret_type, structs, enums)?;
 
             match op {
                 // Arithmetic: Int x Int -> Int
@@ -290,7 +313,7 @@ fn check_expr(
         Expr::UnaryOp { op, operand, .. } => {
             match op {
                 cyflym_parser::ast::UnaryOp::Not => {
-                    let ty = check_expr(operand, locals, fn_env, ret_type, structs)?;
+                    let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums)?;
                     if ty != Type::Bool {
                         return Err(TypeError::new(format!(
                             "'!' operator requires Bool operand, got {}",
@@ -303,7 +326,7 @@ fn check_expr(
         }
 
         Expr::If { condition, then_body, then_expr, else_body, else_expr, .. } => {
-            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs)?;
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums)?;
             if cond_ty != Type::Bool {
                 return Err(TypeError::new(format!(
                     "if condition must be Bool, got {}",
@@ -313,13 +336,13 @@ fn check_expr(
 
             // Type-check then branch (body stmts + final expr)
             let mut then_locals = locals.clone();
-            check_stmts(then_body, &mut then_locals, fn_env, ret_type, structs)?;
-            let then_ty = check_expr(then_expr, &then_locals, fn_env, ret_type, structs)?;
+            check_stmts(then_body, &mut then_locals, fn_env, ret_type, structs, enums)?;
+            let then_ty = check_expr(then_expr, &then_locals, fn_env, ret_type, structs, enums)?;
 
             // Type-check else branch
             let mut else_locals = locals.clone();
-            check_stmts(else_body, &mut else_locals, fn_env, ret_type, structs)?;
-            let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs)?;
+            check_stmts(else_body, &mut else_locals, fn_env, ret_type, structs, enums)?;
+            let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs, enums)?;
 
             // Both branches must have the same type
             if then_ty != else_ty {
@@ -339,7 +362,7 @@ fn check_expr(
                         "print() takes exactly 1 argument, got {}", args.len()
                     )));
                 }
-                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs)?;
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums)?;
                 match arg_ty {
                     Type::String | Type::Int | Type::Bool => {}
                     other => {
@@ -365,7 +388,7 @@ fn check_expr(
             }
 
             for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
-                let actual = check_expr(arg, locals, fn_env, ret_type, structs)?;
+                let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums)?;
                 if actual != *expected {
                     return Err(TypeError::new(format!(
                         "argument {} to '{}': expected {} but got {}",
@@ -404,7 +427,7 @@ fn check_expr(
                     .ok_or_else(|| TypeError::new(format!(
                         "unknown field '{}' on struct '{}'", field_name, name
                     )))?;
-                let actual_type = check_expr(field_expr, locals, fn_env, ret_type, structs)?;
+                let actual_type = check_expr(field_expr, locals, fn_env, ret_type, structs, enums)?;
                 if actual_type != *expected_type {
                     return Err(TypeError::new(format!(
                         "type mismatch for field '{}' of struct '{}': expected {} but got {}",
@@ -417,7 +440,7 @@ fn check_expr(
         }
 
         Expr::FieldAccess { object, field, .. } => {
-            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs)?;
+            let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums)?;
             match &obj_ty {
                 Type::Struct { name, fields } => {
                     fields
@@ -432,6 +455,96 @@ fn check_expr(
                     "field access on non-struct type {}", other
                 ))),
             }
+        }
+
+        Expr::EnumVariant { enum_name, variant_name, args, .. } => {
+            let variants = enums
+                .get(enum_name)
+                .ok_or_else(|| TypeError::new(format!("undefined enum '{}'", enum_name)))?;
+            let (_, expected_fields) = variants
+                .iter()
+                .find(|(n, _)| n == variant_name)
+                .ok_or_else(|| TypeError::new(format!(
+                    "unknown variant '{}' on enum '{}'", variant_name, enum_name
+                )))?;
+            if args.len() != expected_fields.len() {
+                return Err(TypeError::new(format!(
+                    "variant '{}::{}' expects {} argument(s) but got {}",
+                    enum_name, variant_name, expected_fields.len(), args.len()
+                )));
+            }
+            for (i, (arg, expected_ty)) in args.iter().zip(expected_fields.iter()).enumerate() {
+                let actual_ty = check_expr(arg, locals, fn_env, ret_type, structs, enums)?;
+                if actual_ty != *expected_ty {
+                    return Err(TypeError::new(format!(
+                        "argument {} to '{}::{}': expected {} but got {}",
+                        i + 1, enum_name, variant_name, expected_ty, actual_ty
+                    )));
+                }
+            }
+            Ok(Type::Enum { name: enum_name.clone(), variants: variants.clone() })
+        }
+
+        Expr::Match { scrutinee, arms, .. } => {
+            let scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums)?;
+            let (enum_name, variants) = match &scrutinee_ty {
+                Type::Enum { name, variants } => (name.clone(), variants.clone()),
+                other => return Err(TypeError::new(format!(
+                    "match scrutinee must be an enum type, got {}", other
+                ))),
+            };
+
+            let mut result_type: Option<Type> = None;
+            for arm in arms {
+                let cyflym_parser::ast::Pattern::EnumVariant {
+                    enum_name: pat_enum,
+                    variant_name: pat_variant,
+                    bindings,
+                    ..
+                } = &arm.pattern;
+
+                if *pat_enum != enum_name {
+                    return Err(TypeError::new(format!(
+                        "pattern enum '{}' does not match scrutinee enum '{}'",
+                        pat_enum, enum_name
+                    )));
+                }
+
+                let (_, variant_fields) = variants
+                    .iter()
+                    .find(|(n, _)| n == pat_variant)
+                    .ok_or_else(|| TypeError::new(format!(
+                        "unknown variant '{}' on enum '{}'", pat_variant, enum_name
+                    )))?;
+
+                if bindings.len() != variant_fields.len() {
+                    return Err(TypeError::new(format!(
+                        "pattern '{}::{}' expects {} binding(s) but got {}",
+                        enum_name, pat_variant, variant_fields.len(), bindings.len()
+                    )));
+                }
+
+                // Create a local scope with bindings
+                let mut arm_locals = locals.clone();
+                for (binding_name, binding_ty) in bindings.iter().zip(variant_fields.iter()) {
+                    arm_locals.insert(binding_name.clone(), (binding_ty.clone(), false));
+                }
+
+                let arm_ty = check_expr(&arm.body, &arm_locals, fn_env, ret_type, structs, enums)?;
+
+                if let Some(ref expected) = result_type {
+                    if arm_ty != *expected {
+                        return Err(TypeError::new(format!(
+                            "match arm type mismatch: expected {} but got {}",
+                            expected, arm_ty
+                        )));
+                    }
+                } else {
+                    result_type = Some(arm_ty);
+                }
+            }
+
+            result_type.ok_or_else(|| TypeError::new("match expression has no arms"))
         }
     }
 }
@@ -632,6 +745,44 @@ mod tests {
     #[test]
     fn check_while_with_return() {
         assert!(do_check("fn main() Int { while true { return 42 } 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_enum_valid() {
+        assert!(do_check(
+            "enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Green match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3, } }"
+        ).is_ok());
+    }
+
+    #[test]
+    fn check_enum_with_data() {
+        assert!(do_check(
+            "enum Shape { Circle(Int), Rectangle(Int, Int), } fn main() Int { let s = Shape::Rectangle(3, 4) match s { Shape::Circle(r) => r, Shape::Rectangle(w, h) => w * h, } }"
+        ).is_ok());
+    }
+
+    #[test]
+    fn check_enum_undefined() {
+        let err = do_check(
+            "fn main() Int { let c = Foo::Bar 0 }"
+        ).unwrap_err();
+        assert!(err.message.contains("undefined enum"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_enum_wrong_variant() {
+        let err = do_check(
+            "enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Yellow 0 }"
+        ).unwrap_err();
+        assert!(err.message.contains("unknown variant"), "got: {}", err.message);
+    }
+
+    #[test]
+    fn check_match_arm_type_mismatch() {
+        let err = do_check(
+            "enum Color { Red, Green, } fn main() Int { let c = Color::Red match c { Color::Red => 1, Color::Green => true, } }"
+        ).unwrap_err();
+        assert!(err.message.contains("mismatch"), "got: {}", err.message);
     }
 
     #[test]

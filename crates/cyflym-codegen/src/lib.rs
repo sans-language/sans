@@ -377,6 +377,49 @@ fn generate_llvm<'ctx>(
                         .into_int_value();
                     regs.insert(dest.clone(), loaded);
                 }
+                Instruction::EnumAlloc { dest, tag, num_data_fields } => {
+                    let total_fields = 1 + num_data_fields;
+                    let field_types: Vec<inkwell::types::BasicTypeEnum> =
+                        (0..total_fields).map(|_| i64_type.into()).collect();
+                    let struct_type = context.struct_type(&field_types, false);
+                    let ptr = builder.build_alloca(struct_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store tag at field 0
+                    let tag_ptr = builder.build_struct_gep(struct_type, ptr, 0, "tag_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let tag_val = i64_type.const_int(*tag as u64, true);
+                    builder.build_store(tag_ptr, tag_val)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr);
+                    struct_sizes.insert(dest.clone(), total_fields);
+                }
+                Instruction::EnumTag { dest, ptr } => {
+                    let enum_ptr = ptrs[ptr];
+                    let num_fields = struct_sizes[ptr];
+                    let field_types: Vec<inkwell::types::BasicTypeEnum> =
+                        (0..num_fields).map(|_| i64_type.into()).collect();
+                    let struct_type = context.struct_type(&field_types, false);
+                    let tag_ptr = builder.build_struct_gep(struct_type, enum_ptr, 0, "tag_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let tag_val = builder.build_load(i64_type, tag_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), tag_val);
+                }
+                Instruction::EnumData { dest, ptr, field_index } => {
+                    let enum_ptr = ptrs[ptr];
+                    let num_fields = struct_sizes[ptr];
+                    let field_types: Vec<inkwell::types::BasicTypeEnum> =
+                        (0..num_fields).map(|_| i64_type.into()).collect();
+                    let struct_type = context.struct_type(&field_types, false);
+                    let gep_index = (*field_index + 1) as u32; // +1 for tag at field 0
+                    let data_ptr = builder.build_struct_gep(struct_type, enum_ptr, gep_index, "data_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let data_val = builder.build_load(i64_type, data_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), data_val);
+                }
             }
         }
     }
@@ -545,6 +588,19 @@ mod tests {
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
         assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
         assert!(ir.contains("getelementptr"), "expected GEP in:\n{}", ir);
+        assert!(ir.contains("ret i64"), "expected ret in:\n{}", ir);
+    }
+
+    #[test]
+    fn codegen_enum_match() {
+        let program = cyflym_parser::parse(
+            "enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Green match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3, } }"
+        ).expect("parse failed");
+        let module = cyflym_ir::lower(&program);
+        let ir = compile_to_llvm_ir(&module).expect("codegen failed");
+        assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
+        assert!(ir.contains("getelementptr"), "expected GEP in:\n{}", ir);
+        assert!(ir.contains("br "), "expected branch in:\n{}", ir);
         assert!(ir.contains("ret i64"), "expected ret in:\n{}", ir);
     }
 

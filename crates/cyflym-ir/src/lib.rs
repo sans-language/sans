@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq)]
-enum IrType { Int, Bool, Str, Struct(String) }
+enum IrType { Int, Bool, Str, Struct(String), Enum(String) }
 
 #[derive(Clone)]
 enum LocalVar {
@@ -24,12 +24,20 @@ pub fn lower(program: &Program) -> Module {
         let field_names: Vec<String> = s.fields.iter().map(|f| f.name.clone()).collect();
         struct_defs.insert(s.name.clone(), field_names);
     }
-    let functions = program.functions.iter().map(|f| lower_function(f, &struct_defs)).collect();
+    // Collect enum definitions: name -> [(variant_name, tag_index, num_data_fields)]
+    let mut enum_defs: HashMap<String, Vec<(String, usize, usize)>> = HashMap::new();
+    for e in &program.enums {
+        let variants: Vec<(String, usize, usize)> = e.variants.iter().enumerate()
+            .map(|(i, v)| (v.name.clone(), i, v.fields.len()))
+            .collect();
+        enum_defs.insert(e.name.clone(), variants);
+    }
+    let functions = program.functions.iter().map(|f| lower_function(f, &struct_defs, &enum_defs)).collect();
     Module { functions }
 }
 
-fn lower_function(func: &cyflym_parser::ast::Function, struct_defs: &HashMap<String, Vec<String>>) -> IrFunction {
-    let mut builder = IrBuilder::new(struct_defs.clone());
+fn lower_function(func: &cyflym_parser::ast::Function, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>) -> IrFunction {
+    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone());
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -79,10 +87,11 @@ struct IrBuilder {
     instructions: Vec<Instruction>,
     reg_types: HashMap<Reg, IrType>,
     struct_defs: HashMap<String, Vec<String>>,
+    enum_defs: HashMap<String, Vec<(String, usize, usize)>>,
 }
 
 impl IrBuilder {
-    fn new(struct_defs: HashMap<String, Vec<String>>) -> Self {
+    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>) -> Self {
         IrBuilder {
             counter: 0,
             label_counter: 0,
@@ -90,6 +99,7 @@ impl IrBuilder {
             instructions: Vec::new(),
             reg_types: HashMap::new(),
             struct_defs,
+            enum_defs,
         }
     }
 
@@ -320,6 +330,7 @@ impl IrBuilder {
                         IrType::Bool => self.instructions.push(Instruction::PrintBool { value: arg_reg }),
                         IrType::Int => self.instructions.push(Instruction::PrintInt { value: arg_reg }),
                         IrType::Struct(_) => panic!("cannot print struct"),
+                        IrType::Enum(_) => panic!("cannot print enum"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -375,6 +386,144 @@ impl IrBuilder {
                 // For now, all struct fields are Int
                 self.reg_types.insert(dest.clone(), IrType::Int);
                 dest
+            }
+            Expr::EnumVariant { enum_name, variant_name, args, .. } => {
+                let variants = self.enum_defs.get(enum_name)
+                    .expect("unknown enum in variant construction").clone();
+                let (_, tag, num_data_fields) = variants.iter()
+                    .find(|(n, _, _)| n == variant_name)
+                    .expect("unknown variant");
+                let tag = *tag as i64;
+                let num_data_fields = *num_data_fields;
+
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::EnumAlloc {
+                    dest: dest.clone(),
+                    tag,
+                    num_data_fields,
+                });
+                self.reg_types.insert(dest.clone(), IrType::Enum(enum_name.clone()));
+
+                for (i, arg) in args.iter().enumerate() {
+                    let val_reg = self.lower_expr(arg);
+                    self.instructions.push(Instruction::FieldStore {
+                        ptr: dest.clone(),
+                        field_index: i + 1, // +1 because tag is at index 0
+                        value: val_reg,
+                    });
+                }
+                dest
+            }
+            Expr::Match { scrutinee, arms, .. } => {
+                let scrutinee_reg = self.lower_expr(scrutinee);
+                let enum_name = match self.reg_types.get(&scrutinee_reg) {
+                    Some(IrType::Enum(name)) => name.clone(),
+                    _ => panic!("match on non-enum register"),
+                };
+                let variants = self.enum_defs.get(&enum_name)
+                    .expect("unknown enum in match").clone();
+
+                // Get the tag
+                let tag_reg = self.fresh_reg();
+                self.instructions.push(Instruction::EnumTag {
+                    dest: tag_reg.clone(),
+                    ptr: scrutinee_reg.clone(),
+                });
+                self.reg_types.insert(tag_reg.clone(), IrType::Int);
+
+                // Alloca for the result
+                let result_ptr = self.fresh_reg();
+                self.instructions.push(Instruction::Alloca { dest: result_ptr.clone() });
+
+                let merge_label = self.fresh_label("match_merge");
+
+                for (arm_index, arm) in arms.iter().enumerate() {
+                    let cyflym_parser::ast::Pattern::EnumVariant {
+                        variant_name,
+                        bindings,
+                        ..
+                    } = &arm.pattern;
+
+                    let (_, tag, _num_data) = variants.iter()
+                        .find(|(n, _, _)| n == variant_name)
+                        .expect("unknown variant in match arm");
+                    let tag_val = *tag as i64;
+
+                    let arm_label = self.fresh_label(&format!("match_arm{}", arm_index));
+                    let next_label = if arm_index < arms.len() - 1 {
+                        self.fresh_label(&format!("match_check{}", arm_index + 1))
+                    } else {
+                        // Last arm: fall through to arm (always taken)
+                        arm_label.clone()
+                    };
+
+                    if arm_index < arms.len() - 1 {
+                        // Compare tag
+                        let tag_const = self.fresh_reg();
+                        self.instructions.push(Instruction::Const {
+                            dest: tag_const.clone(),
+                            value: tag_val,
+                        });
+                        self.reg_types.insert(tag_const.clone(), IrType::Int);
+
+                        let cmp_reg = self.fresh_reg();
+                        self.instructions.push(Instruction::CmpOp {
+                            dest: cmp_reg.clone(),
+                            op: IrCmpOp::Eq,
+                            left: tag_reg.clone(),
+                            right: tag_const,
+                        });
+                        self.reg_types.insert(cmp_reg.clone(), IrType::Bool);
+
+                        self.instructions.push(Instruction::Branch {
+                            cond: cmp_reg,
+                            then_label: arm_label.clone(),
+                            else_label: next_label.clone(),
+                        });
+                    } else {
+                        // Last arm: just jump to it
+                        self.instructions.push(Instruction::Jump {
+                            target: arm_label.clone(),
+                        });
+                    }
+
+                    self.instructions.push(Instruction::Label { name: arm_label });
+
+                    // Bind data fields
+                    for (i, binding_name) in bindings.iter().enumerate() {
+                        let data_reg = self.fresh_reg();
+                        self.instructions.push(Instruction::EnumData {
+                            dest: data_reg.clone(),
+                            ptr: scrutinee_reg.clone(),
+                            field_index: i,
+                        });
+                        self.reg_types.insert(data_reg.clone(), IrType::Int);
+                        self.locals.insert(binding_name.clone(), LocalVar::Value(data_reg));
+                    }
+
+                    let body_reg = self.lower_expr(&arm.body);
+                    self.instructions.push(Instruction::Store {
+                        ptr: result_ptr.clone(),
+                        value: body_reg,
+                    });
+                    self.instructions.push(Instruction::Jump {
+                        target: merge_label.clone(),
+                    });
+
+                    // If not the last arm, emit the next check label
+                    if arm_index < arms.len() - 1 {
+                        self.instructions.push(Instruction::Label { name: next_label });
+                    }
+                }
+
+                self.instructions.push(Instruction::Label { name: merge_label });
+                let result_reg = self.fresh_reg();
+                self.instructions.push(Instruction::Load {
+                    dest: result_reg.clone(),
+                    ptr: result_ptr,
+                });
+                self.reg_types.insert(result_reg.clone(), IrType::Int);
+                result_reg
             }
         }
     }
@@ -618,6 +767,30 @@ mod tests {
         let func = module.functions.iter().find(|f| f.name == "main").unwrap();
         let has_load = func.body.iter().any(|i| matches!(i, Instruction::FieldLoad { field_index: 0, .. }));
         assert!(has_load, "expected FieldLoad with field_index 0");
+    }
+
+    #[test]
+    fn lower_enum_variant() {
+        let program = parse("enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Green 0 }");
+        let module = lower(&program);
+        let func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_alloc = func.body.iter().any(|i| matches!(i, Instruction::EnumAlloc { tag: 1, num_data_fields: 0, .. }));
+        assert!(has_alloc, "expected EnumAlloc with tag=1, num_data_fields=0");
+    }
+
+    #[test]
+    fn lower_match_expr() {
+        let program = parse(
+            "enum Color { Red, Green, Blue, } fn main() Int { let c = Color::Green match c { Color::Red => 1, Color::Green => 2, Color::Blue => 3, } }"
+        );
+        let module = lower(&program);
+        let func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_tag = func.body.iter().any(|i| matches!(i, Instruction::EnumTag { .. }));
+        let has_branch = func.body.iter().any(|i| matches!(i, Instruction::Branch { .. }));
+        let label_count = func.body.iter().filter(|i| matches!(i, Instruction::Label { .. })).count();
+        assert!(has_tag, "expected EnumTag instruction");
+        assert!(has_branch, "expected Branch instruction");
+        assert!(label_count >= 3, "expected at least 3 labels, got {}", label_count);
     }
 
     #[test]

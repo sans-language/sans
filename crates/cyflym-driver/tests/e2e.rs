@@ -54,3 +54,13 @@ fn e2e_struct_basic() {
 fn e2e_struct_nested_access() {
     assert_eq!(compile_and_run("struct_nested_access.cy"), 30);
 }
+
+#[test]
+fn e2e_enum_basic() {
+    assert_eq!(compile_and_run("enum_basic.cy"), 2);
+}
+
+#[test]
+fn e2e_enum_data() {
+    assert_eq!(compile_and_run("enum_data.cy"), 12);
+}
