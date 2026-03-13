@@ -50,6 +50,13 @@ pub enum Stmt {
         value: Expr,
         span: Span,
     },
+    /// An `if` used as a statement (no else branch required; body is
+    /// a list of statements, not required to end with an expression).
+    If {
+        condition: Expr,
+        body: Vec<Stmt>,
+        span: Span,
+    },
     Expr(Expr),
 }
 

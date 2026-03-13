@@ -106,6 +106,16 @@ fn check_stmt(
             }
             Ok(())
         }
+        Stmt::If { condition, body, .. } => {
+            let cond_ty = check_expr(condition, locals, fn_env, ret_type)?;
+            if cond_ty != Type::Bool {
+                return Err(TypeError::new(format!(
+                    "if condition must be Bool, got {}", cond_ty
+                )));
+            }
+            check_stmts(body, locals, fn_env, ret_type)?;
+            Ok(())
+        }
     }
 }
 
@@ -165,7 +175,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
                     Stmt::Return { .. } => {
                         // Already type-checked in check_stmt
                     }
-                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } => {
+                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } | Stmt::If { .. } => {
                         return Err(TypeError::new(format!(
                             "function '{}': missing return expression", func.name
                         )));

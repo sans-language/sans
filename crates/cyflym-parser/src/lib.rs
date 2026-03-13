@@ -155,6 +155,8 @@ impl Parser {
             self.parse_while()
         } else if self.peek().kind == TokenKind::Return {
             self.parse_return()
+        } else if self.peek().kind == TokenKind::If {
+            self.parse_if_or_if_else()
         } else {
             // Could be an expression OR an assignment (name = expr)
             let expr = self.parse_expr(0)?;
@@ -235,6 +237,76 @@ impl Parser {
             value,
             span: start..end,
         })
+    }
+
+    /// Parse `if condition { ... }` — if followed by `else`, returns Expr::If
+    /// wrapped in Stmt::Expr; otherwise returns Stmt::If (no else branch).
+    fn parse_if_or_if_else(&mut self) -> Result<Stmt, ParseError> {
+        let if_tok = self.expect(&TokenKind::If)?;
+        let start = if_tok.span.start;
+
+        let condition = self.parse_expr(0)?;
+
+        self.expect(&TokenKind::LBrace)?;
+
+        // Check if this is an if/else expression or an if statement
+        if self.peek_has_else_after_block() {
+            // if/else expression: parse body as block_body (stmts + final expr)
+            let (then_body, then_expr) = self.parse_block_body()?;
+            self.expect(&TokenKind::RBrace)?;
+
+            self.expect(&TokenKind::Else)?;
+            self.expect(&TokenKind::LBrace)?;
+            let (else_body, else_expr) = self.parse_block_body()?;
+            let rbrace = self.expect(&TokenKind::RBrace)?;
+            let end = rbrace.span.end;
+
+            Ok(Stmt::Expr(Expr::If {
+                condition: Box::new(condition),
+                then_body,
+                then_expr: Box::new(then_expr),
+                else_body,
+                else_expr: Box::new(else_expr),
+                span: start..end,
+            }))
+        } else {
+            // if statement (no else): parse body as statements
+            let body = self.parse_body()?;
+            let rbrace = self.expect(&TokenKind::RBrace)?;
+            let end = rbrace.span.end;
+
+            Ok(Stmt::If {
+                condition,
+                body,
+                span: start..end,
+            })
+        }
+    }
+
+    /// Look ahead to determine if after the current block `{ ... }` there is
+    /// an `else` keyword. This doesn't consume any tokens.
+    fn peek_has_else_after_block(&self) -> bool {
+        // Scan forward to find the matching `}`, then check if `else` follows.
+        let mut depth = 1; // we've already consumed the opening `{`
+        let mut pos = self.pos;
+        while pos < self.tokens.len() {
+            match &self.tokens[pos].kind {
+                TokenKind::LBrace => depth += 1,
+                TokenKind::RBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // Check the token after the matching `}`
+                        let next = pos + 1;
+                        return next < self.tokens.len()
+                            && self.tokens[next].kind == TokenKind::Else;
+                    }
+                }
+                TokenKind::Eof => return false,
+                _ => {}
+            }
+            pos += 1;
+        }
+        false
     }
 
     // ─── Expressions (Pratt / precedence climbing) ────────────────────────────
@@ -378,7 +450,8 @@ impl Parser {
                     Stmt::Let { span, .. }
                     | Stmt::While { span, .. }
                     | Stmt::Return { span, .. }
-                    | Stmt::Assign { span, .. } => {
+                    | Stmt::Assign { span, .. }
+                    | Stmt::If { span, .. } => {
                         return Err(ParseError::new(
                             "block must end with an expression, not a statement",
                             span,

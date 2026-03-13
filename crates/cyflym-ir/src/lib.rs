@@ -342,6 +342,25 @@ impl IrBuilder {
             Stmt::Expr(expr) => {
                 self.lower_expr(expr);
             }
+            Stmt::If { condition, body, .. } => {
+                let cond_reg = self.lower_expr(condition);
+                let then_label = self.fresh_label("if_then");
+                let end_label = self.fresh_label("if_end");
+
+                self.instructions.push(Instruction::Branch {
+                    cond: cond_reg,
+                    then_label: then_label.clone(),
+                    else_label: end_label.clone(),
+                });
+
+                self.instructions.push(Instruction::Label { name: then_label });
+                for s in body {
+                    self.lower_stmt(s);
+                }
+                self.instructions.push(Instruction::Jump { target: end_label.clone() });
+
+                self.instructions.push(Instruction::Label { name: end_label });
+            }
         }
     }
 }
