@@ -225,6 +225,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 if pos + 1 < len && bytes[pos + 1] == b':' {
                     pos += 2;
                     tokens.push(Token { kind: TokenKind::ColonColon, span: start..pos });
+                } else if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::ColonEq, span: start..pos });
                 } else {
                     pos += 1;
                     tokens.push(Token { kind: TokenKind::Colon, span: start..pos });
@@ -234,6 +237,11 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
             '.' => {
                 pos += 1;
                 tokens.push(Token { kind: TokenKind::Dot, span: start..pos });
+            }
+
+            '?' => {
+                pos += 1;
+                tokens.push(Token { kind: TokenKind::Question, span: start..pos });
             }
 
             '"' => {

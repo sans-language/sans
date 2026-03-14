@@ -73,17 +73,18 @@ pub fn lower_with_extra_structs(
     let mut local_fn_ret_types: HashMap<String, IrType> = HashMap::new();
     for f in &program.functions {
         let ret_name = &f.return_type.name;
-        let ir_type = if ret_name.starts_with("Result<") && ret_name.ends_with('>') {
-            let inner_str = &ret_name[7..ret_name.len()-1];
+        let ir_type = if (ret_name.starts_with("Result<") || ret_name.starts_with("R<")) && ret_name.ends_with('>') {
+            let prefix_len = if ret_name.starts_with("Result<") { 7 } else { 2 };
+            let inner_str = &ret_name[prefix_len..ret_name.len()-1];
             let inner = match inner_str {
-                "Int" => IrType::Int,
-                "Float" => IrType::Float,
-                "Bool" => IrType::Bool,
-                "String" => IrType::Str,
+                "Int" | "I" => IrType::Int,
+                "Float" | "F" => IrType::Float,
+                "Bool" | "B" => IrType::Bool,
+                "String" | "S" => IrType::Str,
                 _ => IrType::Int,
             };
             IrType::Result(Box::new(inner))
-        } else if ret_name == "Float" {
+        } else if ret_name == "Float" || ret_name == "F" {
             IrType::Float
         } else if ret_name == "JsonValue" {
             IrType::JsonValue
@@ -1395,10 +1396,15 @@ impl IrBuilder {
             }
             Stmt::Assign { name, value, .. } => {
                 let val_reg = self.lower_expr(value);
-                if let LocalVar::Ptr(ptr) = self.locals.get(name).unwrap().clone() {
-                    self.instructions.push(Instruction::Store { ptr, value: val_reg });
+                if let Some(local) = self.locals.get(name).cloned() {
+                    if let LocalVar::Ptr(ptr) = local {
+                        self.instructions.push(Instruction::Store { ptr, value: val_reg });
+                    } else {
+                        panic!("cannot assign to immutable variable: {}", name);
+                    }
                 } else {
-                    panic!("cannot assign to immutable variable: {}", name);
+                    // Bare assignment creating a new immutable binding
+                    self.locals.insert(name.clone(), LocalVar::Value(val_reg));
                 }
             }
             Stmt::While { condition, body, .. } => {

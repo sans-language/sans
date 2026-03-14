@@ -398,3 +398,13 @@ fn e2e_modulo_neg() {
 fn e2e_string_interp() {
     assert_eq!(compile_and_run("string_interp.cy"), 13);
 }
+
+#[test]
+fn e2e_ai_syntax() {
+    assert_eq!(compile_and_run("ai_syntax.cy"), 126);
+}
+
+#[test]
+fn e2e_ai_syntax2() {
+    assert_eq!(compile_and_run("ai_syntax2.cy"), 17);
+}

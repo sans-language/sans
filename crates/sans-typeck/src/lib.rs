@@ -59,10 +59,15 @@ fn resolve_type(
     module_exports: &HashMap<String, ModuleExports>,
 ) -> Result<Type, TypeError> {
     match name {
-        "Int" => Ok(Type::Int),
-        "Float" => Ok(Type::Float),
-        "Bool" => Ok(Type::Bool),
-        "String" => Ok(Type::String),
+        "Int" | "I" => Ok(Type::Int),
+        "Float" | "F" => Ok(Type::Float),
+        "Bool" | "B" => Ok(Type::Bool),
+        "String" | "S" => Ok(Type::String),
+        _ if name.starts_with("R<") && name.ends_with('>') => {
+            let inner_str = &name[2..name.len()-1];
+            let inner = resolve_type(inner_str, structs, enums, module_exports)?;
+            Ok(Type::Result { inner: Box::new(inner) })
+        }
         _ if name.starts_with("Result<") && name.ends_with('>') => {
             let inner_str = &name[7..name.len()-1];
             let inner = resolve_type(inner_str, structs, enums, module_exports)?;
@@ -165,21 +170,24 @@ fn check_stmt(
             Ok(())
         }
         Stmt::Assign { name, value, .. } => {
-            let (expected_ty, is_mutable) = locals
-                .get(name)
-                .ok_or_else(|| TypeError::new(format!("undefined variable '{}'", name)))?
-                .clone();
-            if !is_mutable {
-                return Err(TypeError::new(format!(
-                    "cannot assign to immutable variable '{}'", name
-                )));
-            }
-            let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-            if actual != expected_ty {
-                return Err(TypeError::new(format!(
-                    "type mismatch in assignment to '{}': expected {} but got {}",
-                    name, expected_ty, actual
-                )));
+            if let Some((expected_ty, is_mutable)) = locals.get(name).cloned() {
+                // Existing variable — assignment
+                if !is_mutable {
+                    return Err(TypeError::new(format!(
+                        "cannot assign to immutable variable '{}'", name
+                    )));
+                }
+                let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if actual != expected_ty {
+                    return Err(TypeError::new(format!(
+                        "type mismatch in assignment to '{}': expected {} but got {}",
+                        name, expected_ty, actual
+                    )));
+                }
+            } else {
+                // New variable — bare assignment creates immutable binding
+                let val_type = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                locals.insert(name.clone(), (val_type, false));
             }
             Ok(())
         }

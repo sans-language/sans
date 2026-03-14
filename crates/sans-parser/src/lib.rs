@@ -101,8 +101,28 @@ impl Parser {
                     traits.push(self.parse_trait_def()?);
                 } else if self.peek().kind == TokenKind::Impl {
                     impls.push(self.parse_impl_block()?);
-                } else {
+                } else if self.peek().kind == TokenKind::Fn {
                     functions.push(self.parse_function()?);
+                } else if matches!(&self.peek().kind, TokenKind::Identifier(_)) {
+                    // Check if next token is ( or < — if so, parse as fn without keyword
+                    let next_kind = if self.pos + 1 < self.tokens.len() {
+                        &self.tokens[self.pos + 1].kind
+                    } else {
+                        &TokenKind::Eof
+                    };
+                    if *next_kind == TokenKind::LParen || *next_kind == TokenKind::Lt {
+                        functions.push(self.parse_function()?);
+                    } else {
+                        return Err(ParseError::new(
+                            format!("unexpected token at top level: {:?}", self.peek().kind),
+                            self.peek().span.clone(),
+                        ));
+                    }
+                } else {
+                    return Err(ParseError::new(
+                        format!("unexpected token at top level: {:?}", self.peek().kind),
+                        self.peek().span.clone(),
+                    ));
                 }
             }
         }
@@ -179,8 +199,13 @@ impl Parser {
     }
 
     fn parse_function(&mut self) -> Result<Function, ParseError> {
-        let fn_tok = self.expect(&TokenKind::Fn)?;
-        let fn_start = fn_tok.span.start;
+        let fn_start;
+        if self.peek().kind == TokenKind::Fn {
+            let fn_tok = self.expect(&TokenKind::Fn)?;
+            fn_start = fn_tok.span.start;
+        } else {
+            fn_start = self.peek().span.start;
+        }
 
         let (name, _) = self.expect_ident()?;
         let type_params = self.parse_type_params()?;
@@ -384,7 +409,8 @@ impl Parser {
             });
             if self.peek().kind == TokenKind::Comma {
                 self.pos += 1; // consume comma
-            } else {
+            }
+            if self.peek().kind == TokenKind::RParen {
                 break;
             }
         }
@@ -445,6 +471,23 @@ impl Parser {
             let span = start..self.tokens[self.pos - 1].span.end;
             Ok(Stmt::ForIn { var, iterable, body, span })
         } else {
+            // Check for `:=` mutable declaration: ident := expr
+            if let TokenKind::Identifier(_) = &self.peek().kind {
+                if self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1].kind == TokenKind::ColonEq {
+                    let (name, name_span) = self.expect_ident()?;
+                    self.pos += 1; // consume :=
+                    let value = self.parse_expr(0)?;
+                    let end = expr_span(&value).end;
+                    return Ok(Stmt::Let {
+                        name,
+                        mutable: true,
+                        type_name: None,
+                        value,
+                        span: name_span.start..end,
+                    });
+                }
+            }
+
             // Could be an expression OR an assignment (name = expr)
             let expr = self.parse_expr(0)?;
             // Check if this is an assignment: identifier followed by =
@@ -664,6 +707,23 @@ impl Parser {
                 op,
                 right: Box::new(rhs),
                 span: span_start..span_end,
+            };
+        }
+
+        // Check for ternary operator: expr ? then_expr : else_expr
+        if min_bp == 0 && self.peek().kind == TokenKind::Question {
+            self.pos += 1; // consume ?
+            let then_expr = self.parse_expr(0)?;
+            self.expect(&TokenKind::Colon)?;
+            let else_expr = self.parse_expr(0)?;
+            let span = expr_span(&lhs).start..expr_span(&else_expr).end;
+            lhs = Expr::If {
+                condition: Box::new(lhs),
+                then_body: vec![],
+                then_expr: Box::new(then_expr),
+                else_body: vec![],
+                else_expr: Box::new(else_expr),
+                span,
             };
         }
 
@@ -1041,7 +1101,8 @@ impl Parser {
             args.push(self.parse_expr(0)?);
             if self.peek().kind == TokenKind::Comma {
                 self.pos += 1;
-            } else {
+            }
+            if self.peek().kind == TokenKind::RParen {
                 break;
             }
         }
