@@ -27,6 +27,7 @@ pub enum Instruction {
     FloatBinOp { dest: Reg, op: IrBinOp, left: Reg, right: Reg },
     FloatCmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
     CmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
+    StringCmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
     Not { dest: Reg, src: Reg },
     Copy { dest: Reg, src: Reg },
     Call { dest: Reg, function: String, args: Vec<Reg> },

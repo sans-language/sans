@@ -367,8 +367,9 @@ impl IrBuilder {
                     return dest;
                 }
 
-                // Check if this is a float operation
+                // Check operand types for dispatch
                 let is_float = self.reg_types.get(&left_reg) == Some(&IrType::Float);
+                let is_string = self.reg_types.get(&left_reg) == Some(&IrType::Str);
 
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
@@ -412,6 +413,13 @@ impl IrBuilder {
                         };
                         if is_float {
                             self.instructions.push(Instruction::FloatCmpOp {
+                                dest: dest.clone(),
+                                op: cmp_op,
+                                left: left_reg,
+                                right: right_reg,
+                            });
+                        } else if is_string {
+                            self.instructions.push(Instruction::StringCmpOp {
                                 dest: dest.clone(),
                                 op: cmp_op,
                                 left: left_reg,

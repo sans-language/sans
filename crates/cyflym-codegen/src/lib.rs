@@ -178,6 +178,10 @@ fn generate_llvm<'ctx>(
     let json_push_type = context.void_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_json_push", json_push_type, Some(Linkage::External));
 
+    // Declare strcmp for string comparison
+    let strcmp_type = i32_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("strcmp", strcmp_type, Some(Linkage::External));
+
     // Declare HTTP server runtime functions
     let http_listen_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("cy_http_listen", http_listen_type, Some(Linkage::External));
@@ -734,6 +738,33 @@ fn generate_llvm<'ctx>(
                     };
                     let result = builder
                         .build_int_compare(pred, lhs, rhs, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::StringCmpOp { dest, op, left, right } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let lhs_ptr = if let Some(p) = ptrs.get(left) { *p } else {
+                        builder.build_int_to_ptr(regs[left], ptr_type, "scmp_lp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let rhs_ptr = if let Some(p) = ptrs.get(right) { *p } else {
+                        builder.build_int_to_ptr(regs[right], ptr_type, "scmp_rp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let strcmp_fn = llvm_module.get_function("strcmp").unwrap();
+                    let call = builder.build_call(strcmp_fn, &[lhs_ptr.into(), rhs_ptr.into()], "scmp_res")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let strcmp_result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strcmp: expected return".into())),
+                    };
+                    let zero_i32 = context.i32_type().const_int(0, false);
+                    let pred = match op {
+                        IrCmpOp::Eq => IntPredicate::EQ,
+                        IrCmpOp::NotEq => IntPredicate::NE,
+                        _ => IntPredicate::EQ, // only == and != supported for strings
+                    };
+                    let cmp = builder.build_int_compare(pred, strcmp_result, zero_i32, "scmp_cmp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = builder.build_int_z_extend(cmp, i64_type, dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
                 }

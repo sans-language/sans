@@ -539,19 +539,31 @@ fn check_expr(
                     }
                     Ok(Type::Int)
                 }
-                // Comparison: Int x Int -> Bool, Float x Float -> Bool
+                // Comparison: same-type operands -> Bool
                 BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
                     if lt == Type::Float && rt == Type::Float {
                         return Ok(Type::Bool);
                     }
+                    if lt == Type::String && rt == Type::String {
+                        match op {
+                            BinOp::Eq | BinOp::NotEq => return Ok(Type::Bool),
+                            _ => return Err(TypeError::new("String only supports == and != comparison")),
+                        }
+                    }
+                    if lt == Type::Bool && rt == Type::Bool {
+                        match op {
+                            BinOp::Eq | BinOp::NotEq => return Ok(Type::Bool),
+                            _ => return Err(TypeError::new("Bool only supports == and != comparison")),
+                        }
+                    }
                     if lt != Type::Int {
                         return Err(TypeError::new(format!(
-                            "comparison operator requires Int operands, left operand is {}", lt
+                            "comparison operator requires matching operands, left operand is {}", lt
                         )));
                     }
                     if rt != Type::Int {
                         return Err(TypeError::new(format!(
-                            "comparison operator requires Int operands, right operand is {}", rt
+                            "comparison operator requires matching operands, right operand is {}", rt
                         )));
                     }
                     Ok(Type::Bool)
