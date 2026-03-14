@@ -173,6 +173,17 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         return Err("failed to compile array_ext runtime".to_string());
     }
 
+    // Compile server runtime
+    let server_c_path = format!("{}/../../runtime/server.c", manifest_dir);
+    let server_o_path = tmp_dir.join("cyflym_server_runtime.o");
+    let server_compile = process::Command::new("cc")
+        .args(["-c", &server_c_path, "-o", server_o_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("failed to compile server runtime: {}", e))?;
+    if !server_compile.success() {
+        return Err("failed to compile server runtime".to_string());
+    }
+
     // Compile functional runtime
     let functional_c_path = format!("{}/../../runtime/functional.c", manifest_dir);
     let functional_o_path = tmp_dir.join("cyflym_functional_runtime.o");
@@ -185,7 +196,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     }
 
     let link_status = process::Command::new("cc")
-        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
+        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), server_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
         .status()
         .map_err(|e| format!("failed to invoke linker: {}", e))?;
 

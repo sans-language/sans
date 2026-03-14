@@ -175,6 +175,13 @@ pub enum Instruction {
     JsonPush { array: Reg, value: Reg },
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
+    // HTTP Server
+    HttpListen { dest: Reg, port: Reg },
+    HttpAccept { dest: Reg, server: Reg },
+    HttpRequestPath { dest: Reg, request: Reg },
+    HttpRequestMethod { dest: Reg, request: Reg },
+    HttpRequestBody { dest: Reg, request: Reg },
+    HttpRespond { dest: Reg, request: Reg, status: Reg, body: Reg },
     // Function references
     FnRef { dest: Reg, name: String },
     // Array higher-order methods

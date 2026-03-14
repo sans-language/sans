@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>) }
+pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>), HttpServer, HttpRequest }
 
 pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
     use cyflym_typeck::types::Type;
@@ -20,6 +20,8 @@ pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
         Type::Array { inner } => IrType::Array(Box::new(ir_type_for_return(inner))),
         Type::JsonValue => IrType::JsonValue,
         Type::HttpResponse => IrType::HttpResponse,
+        Type::HttpServer => IrType::HttpServer,
+        Type::HttpRequest => IrType::HttpRequest,
         Type::Result { inner } => IrType::Result(Box::new(ir_type_for_return(inner))),
         Type::ResultErr => IrType::Result(Box::new(IrType::Int)), // default inner type for err
         _ => IrType::Int, // Fallback
@@ -506,6 +508,8 @@ impl IrBuilder {
                         IrType::Float => self.instructions.push(Instruction::PrintFloat { value: arg_reg }),
                         IrType::HttpResponse => panic!("cannot print HttpResponse"),
                         IrType::Result(_) => panic!("cannot print Result"),
+                        IrType::HttpServer => panic!("cannot print HttpServer"),
+                        IrType::HttpRequest => panic!("cannot print HttpRequest"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -617,6 +621,12 @@ impl IrBuilder {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Str);
+                    return dest;
+                } else if function == "http_listen" {
+                    let port_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::HttpListen { dest: dest.clone(), port: port_reg });
+                    self.reg_types.insert(dest.clone(), IrType::HttpServer);
                     return dest;
                 } else if function == "int_to_float" {
                     let val_reg = self.lower_expr(&args[0]);
@@ -1057,6 +1067,38 @@ impl IrBuilder {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::HttpOk { dest: dest.clone(), response: obj_reg });
                         self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::HttpServer), "accept") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpAccept { dest: dest.clone(), server: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::HttpRequest);
+                        return dest;
+                    }
+                    (Some(IrType::HttpRequest), "path") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpRequestPath { dest: dest.clone(), request: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::HttpRequest), "method") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpRequestMethod { dest: dest.clone(), request: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::HttpRequest), "body") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpRequestBody { dest: dest.clone(), request: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::HttpRequest), "respond") => {
+                        let status_reg = self.lower_expr(&args[0]);
+                        let body_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpRespond { dest: dest.clone(), request: obj_reg, status: status_reg, body: body_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
                     (Some(IrType::Result(ref inner)), "is_ok") => {

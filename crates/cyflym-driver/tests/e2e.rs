@@ -129,8 +129,17 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         .expect("failed to compile functional runtime");
     assert!(functional_compile.success(), "functional runtime compilation failed");
 
+    // Compile server runtime
+    let server_c_path = format!("{}/../../runtime/server.c", manifest_dir);
+    let server_o_path = tmp_dir.join(format!("{}_server.o", fixture_dir));
+    let server_compile = Command::new("cc")
+        .args(["-c", &server_c_path, "-o", server_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile server runtime");
+    assert!(server_compile.success(), "server runtime compilation failed");
+
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), server_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -148,6 +157,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let _ = std::fs::remove_file(&string_ext_o_path);
     let _ = std::fs::remove_file(&array_ext_o_path);
     let _ = std::fs::remove_file(&functional_o_path);
+    let _ = std::fs::remove_file(&server_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -241,9 +251,18 @@ fn compile_and_run(fixture: &str) -> i32 {
         .expect("failed to compile functional runtime");
     assert!(functional_compile.success(), "functional runtime compilation failed");
 
+    // Compile server runtime
+    let server_c_path = format!("{}/../../runtime/server.c", manifest_dir);
+    let server_o_path = tmp_dir.join(format!("{}_server.o", fixture));
+    let server_compile = Command::new("cc")
+        .args(["-c", &server_c_path, "-o", server_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile server runtime");
+    assert!(server_compile.success(), "server runtime compilation failed");
+
     // Link
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), server_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -263,6 +282,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     let _ = std::fs::remove_file(&string_ext_o_path);
     let _ = std::fs::remove_file(&array_ext_o_path);
     let _ = std::fs::remove_file(&functional_o_path);
+    let _ = std::fs::remove_file(&server_o_path);
 
     run_status.code().unwrap_or(-1)
 }

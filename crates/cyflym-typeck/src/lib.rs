@@ -823,6 +823,15 @@ fn check_expr(
                     return Err(TypeError::new(format!("log_set_level() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "http_listen" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("http_listen() takes exactly 1 argument (port)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("http_listen() requires Int port, got {}", arg_ty)));
+                }
+                return Ok(Type::HttpServer);
             } else if function == "ok" {
                 if args.len() != 1 {
                     return Err(TypeError::new("ok() takes exactly 1 argument"));
@@ -1471,6 +1480,50 @@ fn check_expr(
                 }
                 (Type::HttpResponse, other) => {
                     return Err(TypeError::new(format!("HttpResponse has no method '{}'", other)));
+                }
+                (Type::HttpServer, "accept") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("accept() takes no arguments"));
+                    }
+                    return Ok(Type::HttpRequest);
+                }
+                (Type::HttpServer, other) => {
+                    return Err(TypeError::new(format!("HttpServer has no method '{}'", other)));
+                }
+                (Type::HttpRequest, "path") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("path() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::HttpRequest, "method") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("method() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::HttpRequest, "body") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("body() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::HttpRequest, "respond") => {
+                    if args.len() != 2 {
+                        return Err(TypeError::new("respond() takes exactly 2 arguments (status, body)"));
+                    }
+                    let status_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if status_ty != Type::Int {
+                        return Err(TypeError::new(format!("respond() status must be Int, got {}", status_ty)));
+                    }
+                    let body_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if body_ty != Type::String {
+                        return Err(TypeError::new(format!("respond() body must be String, got {}", body_ty)));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::HttpRequest, other) => {
+                    return Err(TypeError::new(format!("HttpRequest has no method '{}'", other)));
                 }
                 (Type::Result { .. } | Type::ResultErr, "is_ok") => {
                     if !args.is_empty() {
@@ -2449,5 +2502,20 @@ mod tests {
     #[test]
     fn check_array_contains() {
         assert!(do_check("fn main() Int { let a = array<Int>() \n a.push(1) \n if a.contains(1) { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_http_listen() {
+        assert!(do_check("fn main() Int { let s = http_listen(8080) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_http_server_accept() {
+        assert!(do_check("fn main() Int { let s = http_listen(8080) \n let r = s.accept() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_http_request_methods() {
+        assert!(do_check("fn main() Int { let s = http_listen(8080) \n let r = s.accept() \n let p = r.path() \n let m = r.method() \n r.respond(200, \"ok\") }").is_ok());
     }
 }
