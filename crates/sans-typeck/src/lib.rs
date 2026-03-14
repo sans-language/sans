@@ -1594,8 +1594,8 @@ fn check_expr(
                     return Ok(Type::String);
                 }
                 (Type::HttpRequest, "respond") => {
-                    if args.len() != 2 {
-                        return Err(TypeError::new("respond() takes exactly 2 arguments (status, body)"));
+                    if args.len() < 2 || args.len() > 3 {
+                        return Err(TypeError::new("respond() takes 2 or 3 arguments (status, body[, content_type])"));
                     }
                     let status_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if status_ty != Type::Int {
@@ -1604,6 +1604,12 @@ fn check_expr(
                     let body_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if body_ty != Type::String {
                         return Err(TypeError::new(format!("respond() body must be String, got {}", body_ty)));
+                    }
+                    if args.len() == 3 {
+                        let ct_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                        if ct_ty != Type::String {
+                            return Err(TypeError::new(format!("respond() content_type must be String, got {}", ct_ty)));
+                        }
                     }
                     return Ok(Type::Int);
                 }

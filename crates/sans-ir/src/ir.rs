@@ -184,6 +184,7 @@ pub enum Instruction {
     HttpRequestMethod { dest: Reg, request: Reg },
     HttpRequestBody { dest: Reg, request: Reg },
     HttpRespond { dest: Reg, request: Reg, status: Reg, body: Reg },
+    HttpRespondWithContentType { dest: Reg, request: Reg, status: Reg, body: Reg, content_type: Reg },
     // Function references
     FnRef { dest: Reg, name: String },
     // Array higher-order methods

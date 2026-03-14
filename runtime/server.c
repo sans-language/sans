@@ -139,7 +139,7 @@ char* cy_http_request_path(CyHttpRequest* req) { return req->path; }
 char* cy_http_request_method(CyHttpRequest* req) { return req->method; }
 char* cy_http_request_body(CyHttpRequest* req) { return req->body; }
 
-long cy_http_respond(CyHttpRequest* req, long status, const char* body) {
+long cy_http_respond(CyHttpRequest* req, long status, const char* body, const char* content_type) {
     if (req->client_fd < 0) return 0;
 
     const char* status_text = "OK";
@@ -147,15 +147,17 @@ long cy_http_respond(CyHttpRequest* req, long status, const char* body) {
     else if (status == 500) status_text = "Internal Server Error";
     else if (status == 400) status_text = "Bad Request";
 
+    if (content_type == NULL) { content_type = "text/html; charset=utf-8"; }
+
     long body_len = (long)strlen(body);
-    char header[512];
+    char header[1024];
     int header_len = snprintf(header, sizeof(header),
         "HTTP/1.1 %ld %s\r\n"
         "Content-Length: %ld\r\n"
-        "Content-Type: text/html; charset=utf-8\r\n"
+        "Content-Type: %s\r\n"
         "Connection: close\r\n"
         "\r\n",
-        status, status_text, body_len);
+        status, status_text, body_len, content_type);
 
     /* Send header and body together to avoid partial writes */
     char* full_response = malloc(header_len + body_len + 1);

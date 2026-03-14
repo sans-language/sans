@@ -1162,7 +1162,14 @@ impl IrBuilder {
                         let status_reg = self.lower_expr(&args[0]);
                         let body_reg = self.lower_expr(&args[1]);
                         let dest = self.fresh_reg();
-                        self.instructions.push(Instruction::HttpRespond { dest: dest.clone(), request: obj_reg, status: status_reg, body: body_reg });
+                        if args.len() == 3 {
+                            let ct_reg = self.lower_expr(&args[2]);
+                            self.instructions.push(Instruction::HttpRespondWithContentType {
+                                dest: dest.clone(), request: obj_reg, status: status_reg, body: body_reg, content_type: ct_reg
+                            });
+                        } else {
+                            self.instructions.push(Instruction::HttpRespond { dest: dest.clone(), request: obj_reg, status: status_reg, body: body_reg });
+                        }
                         self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
