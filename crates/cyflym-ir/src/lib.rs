@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>) }
+pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue }
 
 pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
     use cyflym_typeck::types::Type;
@@ -17,6 +17,7 @@ pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
         Type::Struct { name, .. } => IrType::Struct(name.clone()),
         Type::Enum { name, .. } => IrType::Enum(name.clone()),
         Type::Array { inner } => IrType::Array(Box::new(ir_type_for_return(inner))),
+        Type::JsonValue => IrType::JsonValue,
         _ => IrType::Int, // Fallback
     }
 }
@@ -421,6 +422,7 @@ impl IrBuilder {
                         IrType::Enum(_) => panic!("cannot print enum"),
                         IrType::Sender | IrType::Receiver | IrType::JoinHandle | IrType::Mutex => panic!("cannot print concurrency type"),
                         IrType::Array(_) => panic!("cannot print array"),
+                        IrType::JsonValue => panic!("cannot print JsonValue"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -487,6 +489,51 @@ impl IrBuilder {
                         path: path_reg,
                     });
                     self.reg_types.insert(dest.clone(), IrType::Bool);
+                    return dest;
+                } else if function == "json_parse" {
+                    let source_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonParse { dest: dest.clone(), source: source_reg });
+                    self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "json_object" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonObject { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "json_array" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonArray { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "json_string" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonString { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "json_int" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonInt { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "json_bool" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonBool { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "json_null" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonNull { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "json_stringify" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Str);
                     return dest;
                 }
 
@@ -709,6 +756,67 @@ impl IrBuilder {
                             end: end_reg,
                         });
                         self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "get") => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonGet { dest: dest.clone(), object: obj_reg, key: key_reg });
+                        self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "get_index") => {
+                        let idx_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonGetIndex { dest: dest.clone(), array: obj_reg, index: idx_reg });
+                        self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "get_string") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonGetString { dest: dest.clone(), value: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "get_int") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonGetInt { dest: dest.clone(), value: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "get_bool") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonGetBool { dest: dest.clone(), value: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "len") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonLen { dest: dest.clone(), value: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "type_of") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonTypeOf { dest: dest.clone(), value: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "set") => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let val_reg = self.lower_expr(&args[1]);
+                        self.instructions.push(Instruction::JsonSet { object: obj_reg, key: key_reg, value: val_reg });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::JsonValue), "push") => {
+                        let val_reg = self.lower_expr(&args[0]);
+                        self.instructions.push(Instruction::JsonPush { array: obj_reg, value: val_reg });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
                     _ => {} // fall through to struct/enum handling
@@ -1465,5 +1573,41 @@ mod tests {
             matches!(i, Instruction::FileWrite { .. })
         });
         assert!(has_file_write, "expected FileWrite instruction, got: {:?}", func.body);
+    }
+
+    #[test]
+    fn lower_json_parse() {
+        let program = cyflym_parser::parse("fn main() Int { let v = json_parse(\"{}\") \n 0 }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonParse { .. })),
+            "expected JsonParse instruction");
+    }
+
+    #[test]
+    fn lower_json_object() {
+        let program = cyflym_parser::parse("fn main() Int { let v = json_object() \n 0 }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonObject { .. })),
+            "expected JsonObject instruction");
+    }
+
+    #[test]
+    fn lower_json_stringify() {
+        let program = cyflym_parser::parse("fn main() Int { let v = json_object() \n let s = json_stringify(v) \n 0 }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonStringify { .. })),
+            "expected JsonStringify instruction");
+    }
+
+    #[test]
+    fn lower_json_get_method() {
+        let program = cyflym_parser::parse("fn main() Int { let v = json_parse(\"{}\") \n let inner = v.get(\"key\") \n 0 }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonGet { .. })),
+            "expected JsonGet instruction");
     }
 }

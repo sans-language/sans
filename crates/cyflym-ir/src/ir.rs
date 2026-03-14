@@ -150,6 +150,27 @@ pub enum Instruction {
         dest: Reg,
         path: Reg,
     },
+    // JSON constructors
+    JsonParse { dest: Reg, source: Reg },
+    JsonObject { dest: Reg },
+    JsonArray { dest: Reg },
+    JsonString { dest: Reg, value: Reg },
+    JsonInt { dest: Reg, value: Reg },
+    JsonBool { dest: Reg, value: Reg },
+    JsonNull { dest: Reg },
+    // JSON accessors
+    JsonGet { dest: Reg, object: Reg, key: Reg },
+    JsonGetIndex { dest: Reg, array: Reg, index: Reg },
+    JsonGetString { dest: Reg, value: Reg },
+    JsonGetInt { dest: Reg, value: Reg },
+    JsonGetBool { dest: Reg, value: Reg },
+    JsonLen { dest: Reg, value: Reg },
+    JsonTypeOf { dest: Reg, value: Reg },
+    // JSON mutators (no dest — use Const for expression result)
+    JsonSet { object: Reg, key: Reg, value: Reg },
+    JsonPush { array: Reg, value: Reg },
+    // JSON serialization
+    JsonStringify { dest: Reg, value: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]
