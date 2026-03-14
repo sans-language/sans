@@ -128,6 +128,10 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 pos += 1;
                 tokens.push(Token { kind: TokenKind::Slash, span: start..pos });
             }
+            '%' => {
+                pos += 1;
+                tokens.push(Token { kind: TokenKind::Percent, span: start..pos });
+            }
             '=' => {
                 if pos + 1 < len && bytes[pos + 1] == b'=' {
                     pos += 2;
@@ -205,6 +209,14 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 pos += 1;
                 tokens.push(Token { kind: TokenKind::RBrace, span: start..pos });
             }
+            '[' => {
+                pos += 1;
+                tokens.push(Token { kind: TokenKind::LBracket, span: start..pos });
+            }
+            ']' => {
+                pos += 1;
+                tokens.push(Token { kind: TokenKind::RBracket, span: start..pos });
+            }
             ',' => {
                 pos += 1;
                 tokens.push(Token { kind: TokenKind::Comma, span: start..pos });
@@ -225,27 +237,105 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
             }
 
             '"' => {
-                pos += 1; // skip opening quote
-                let str_start = pos;
-                while pos < len && bytes[pos] != b'"' {
-                    if bytes[pos] == b'\\' {
-                        pos += 1; // skip escape char
+                if pos + 2 < len && bytes[pos + 1] == b'"' && bytes[pos + 2] == b'"' {
+                    // Triple-quoted multiline string
+                    pos += 3; // skip opening """
+                    let content_start = pos;
+                    loop {
+                        if pos + 2 >= len {
+                            return Err(LexError {
+                                message: "unterminated multiline string".to_string(),
+                                span: start..pos,
+                            });
+                        }
+                        if bytes[pos] == b'"' && bytes[pos + 1] == b'"' && bytes[pos + 2] == b'"' {
+                            break;
+                        }
+                        pos += 1;
                     }
-                    pos += 1;
-                }
-                if pos >= len {
-                    return Err(LexError {
-                        message: "unterminated string literal".to_string(),
+                    let value = source[content_start..pos].to_string();
+                    pos += 3; // skip closing """
+                    tokens.push(Token {
+                        kind: TokenKind::StringLiteral(value),
                         span: start..pos,
                     });
+                } else {
+                    // Regular string with interpolation support
+                    pos += 1; // skip opening quote
+                    let mut parts: Vec<token::StringPart> = Vec::new();
+                    let mut has_interp = false;
+                    let mut cur = String::new();
+                    while pos < len && bytes[pos] != b'"' {
+                        if bytes[pos] == b'\\' {
+                            if pos + 1 < len {
+                                match bytes[pos + 1] {
+                                    b'n' => { cur.push('\n'); pos += 2; }
+                                    b't' => { cur.push('\t'); pos += 2; }
+                                    b'\\' => { cur.push('\\'); pos += 2; }
+                                    b'"' => { cur.push('"'); pos += 2; }
+                                    b'{' => { cur.push('{'); pos += 2; }
+                                    _ => { cur.push('\\'); pos += 1; }
+                                }
+                            } else {
+                                cur.push('\\');
+                                pos += 1;
+                            }
+                        } else if bytes[pos] == b'{' {
+                            // Check if content between { and } forms a valid identifier
+                            let mut probe = pos + 1;
+                            while probe < len && bytes[probe] != b'}' && bytes[probe] != b'"' {
+                                probe += 1;
+                            }
+                            let is_valid_interp = probe < len && bytes[probe] == b'}' && {
+                                let candidate = source[pos + 1..probe].trim();
+                                !candidate.is_empty()
+                                    && candidate.bytes().next().map_or(false, |b| b.is_ascii_alphabetic() || b == b'_')
+                                    && candidate.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                            };
+                            if is_valid_interp {
+                                has_interp = true;
+                                if !cur.is_empty() {
+                                    parts.push(token::StringPart::Literal(std::mem::take(&mut cur)));
+                                }
+                                pos += 1; // skip '{'
+                                let ident_start = pos;
+                                while pos < len && bytes[pos] != b'}' {
+                                    pos += 1;
+                                }
+                                let ident = source[ident_start..pos].trim().to_string();
+                                parts.push(token::StringPart::Ident(ident));
+                                pos += 1; // skip '}'
+                            } else {
+                                cur.push('{');
+                                pos += 1;
+                            }
+                        } else {
+                            cur.push(bytes[pos] as char);
+                            pos += 1;
+                        }
+                    }
+                    if pos >= len {
+                        return Err(LexError {
+                            message: "unterminated string literal".to_string(),
+                            span: start..pos,
+                        });
+                    }
+                    pos += 1; // skip closing quote
+                    if has_interp {
+                        if !cur.is_empty() {
+                            parts.push(token::StringPart::Literal(cur));
+                        }
+                        tokens.push(Token {
+                            kind: TokenKind::InterpolatedString(parts),
+                            span: start..pos,
+                        });
+                    } else {
+                        tokens.push(Token {
+                            kind: TokenKind::StringLiteral(cur),
+                            span: start..pos,
+                        });
+                    }
                 }
-                let raw = &source[str_start..pos];
-                let value = raw.replace("\\n", "\n").replace("\\t", "\t").replace("\\\\", "\\").replace("\\\"", "\"");
-                pos += 1; // skip closing quote
-                tokens.push(Token {
-                    kind: TokenKind::StringLiteral(value),
-                    span: start..pos,
-                });
             }
 
             other => {

@@ -6,17 +6,55 @@ use cyflym::imports;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() < 3 || args[1] != "build" {
-        eprintln!("Usage: cyflym build <file.cy>");
+    if args.len() < 3 {
+        eprintln!("Usage: cyflym <build|run> <file.cy>");
         process::exit(1);
     }
 
+    let command = &args[1];
     let source_path = PathBuf::from(&args[2]);
 
-    if let Err(e) = build(&source_path) {
-        eprintln!("error: {}", e);
-        process::exit(1);
+    match command.as_str() {
+        "build" => {
+            if let Err(e) = build(&source_path) {
+                eprintln!("error: {}", e);
+                process::exit(1);
+            }
+        }
+        "run" => {
+            match run(&source_path) {
+                Ok(exit_code) => process::exit(exit_code),
+                Err(e) => {
+                    eprintln!("error: {}", e);
+                    process::exit(1);
+                }
+            }
+        }
+        other => {
+            eprintln!("unknown command '{}'. Usage: cyflym <build|run> <file.cy>", other);
+            process::exit(1);
+        }
     }
+}
+
+fn run(source_path: &PathBuf) -> Result<i32, String> {
+    // Build the binary
+    build(source_path)?;
+
+    // Run the binary
+    let output_path = source_path.with_extension("");
+    let output_path_str = output_path
+        .to_str()
+        .ok_or_else(|| "output path contains invalid UTF-8".to_string())?;
+
+    let run_status = process::Command::new(output_path_str)
+        .status()
+        .map_err(|e| format!("failed to run '{}': {}", output_path.display(), e))?;
+
+    // Clean up the binary
+    let _ = std::fs::remove_file(&output_path);
+
+    Ok(run_status.code().unwrap_or(-1))
 }
 
 fn build(source_path: &PathBuf) -> Result<(), String> {

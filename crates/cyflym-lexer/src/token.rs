@@ -1,94 +1,16 @@
 /// Byte offset in source code.
 pub type Span = std::ops::Range<usize>;
-
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub span: Span,
-}
-
+pub struct Token { pub kind: TokenKind, pub span: Span }
+/// A segment of an interpolated string.
+#[derive(Debug, Clone, PartialEq)]
+pub enum StringPart { Literal(String), Ident(String) }
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
-    // Literals
-    IntLiteral(i64),
-    FloatLiteral(f64),
-    StringLiteral(String),
-    Identifier(String),
-
-    // Keywords
-    Fn,
-    Let,
-
-    // Operators
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Eq,        // =
-
-    // Delimiters
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
-
-    // Punctuation
-    Comma,
-    Colon,
-
-    // Boolean literals
-    True,
-    False,
-
-    // Control flow
-    If,
-    Else,
-    While,
-    Return,
-    Mut,
-
-    // Data types
-    Struct,
-    Enum,
-    Match,
-
-    // Trait / impl
-    Trait,
-    Impl,
-    For,
-    SelfValue, // `self` (value, lowercase)
-    SelfType,  // `Self` (type, uppercase)
-
-    // Concurrency
-    Spawn,
-    Channel,
-    Mutex,
-    Array,
-    In,
-
-    // Modules
-    Import,
-
-    // Member access
-    Dot,
-
-    // Path / match tokens
-    ColonColon, // ::
-    FatArrow,   // =>
-
-    // Comparison operators
-    EqEq,    // ==
-    NotEq,   // !=
-    Lt,      // <
-    Gt,      // >
-    LtEq,    // <=
-    GtEq,    // >=
-
-    // Boolean operators
-    And,     // &&
-    Or,      // ||
-    Bang,    // !
-
-    // Special
-    Eof,
+    IntLiteral(i64), FloatLiteral(f64), StringLiteral(String), InterpolatedString(Vec<StringPart>), Identifier(String),
+    Fn, Let, Plus, Minus, Star, Slash, Percent, Eq,
+    LParen, RParen, LBrace, RBrace, LBracket, RBracket, Comma, Colon,
+    True, False, If, Else, While, Return, Mut, Struct, Enum, Match,
+    Trait, Impl, For, SelfValue, SelfType, Spawn, Channel, Mutex, Array, In, Import,
+    Dot, ColonColon, FatArrow, EqEq, NotEq, Lt, Gt, LtEq, GtEq, And, Or, Bang, Eof,
 }

@@ -372,13 +372,14 @@ impl IrBuilder {
                 let is_string = self.reg_types.get(&left_reg) == Some(&IrType::Str);
 
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                         let dest = self.fresh_reg();
                         let ir_op = match op {
                             BinOp::Add => IrBinOp::Add,
                             BinOp::Sub => IrBinOp::Sub,
                             BinOp::Mul => IrBinOp::Mul,
                             BinOp::Div => IrBinOp::Div,
+                            BinOp::Mod => IrBinOp::Mod,
                             _ => unreachable!(),
                         };
                         if is_float {
@@ -446,6 +447,27 @@ impl IrBuilder {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Not { dest: dest.clone(), src: src_reg });
                         self.reg_types.insert(dest.clone(), IrType::Bool);
+                        dest
+                    }
+                    cyflym_parser::ast::UnaryOp::Neg => {
+                        let src_reg = self.lower_expr(operand);
+                        let src_type = self.reg_types.get(&src_reg).cloned().unwrap_or(IrType::Int);
+                        let dest = self.fresh_reg();
+                        if src_type == IrType::Float {
+                            let zero_reg = self.fresh_reg();
+                            self.instructions.push(Instruction::FloatConst { dest: zero_reg.clone(), value: 0.0 });
+                            self.reg_types.insert(zero_reg.clone(), IrType::Float);
+                            self.instructions.push(Instruction::FloatBinOp {
+                                dest: dest.clone(),
+                                op: IrBinOp::Sub,
+                                left: zero_reg,
+                                right: src_reg,
+                            });
+                            self.reg_types.insert(dest.clone(), IrType::Float);
+                        } else {
+                            self.instructions.push(Instruction::Neg { dest: dest.clone(), src: src_reg });
+                            self.reg_types.insert(dest.clone(), IrType::Int);
+                        }
                         dest
                     }
                 }
@@ -1332,6 +1354,25 @@ impl IrBuilder {
                     other => IrType::Struct(other.to_string()),
                 };
                 self.reg_types.insert(dest.clone(), IrType::Array(Box::new(inner_ir_type)));
+                dest
+            }
+            Expr::ArrayLiteral { elements, .. } => {
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::ArrayCreate {
+                    dest: dest.clone(),
+                });
+                let mut elem_type = IrType::Int;
+                for (i, elem) in elements.iter().enumerate() {
+                    let val_reg = self.lower_expr(elem);
+                    if i == 0 {
+                        elem_type = self.reg_types.get(&val_reg).cloned().unwrap_or(IrType::Int);
+                    }
+                    self.instructions.push(Instruction::ArrayPush {
+                        array: dest.clone(),
+                        value: val_reg,
+                    });
+                }
+                self.reg_types.insert(dest.clone(), IrType::Array(Box::new(elem_type)));
                 dest
             }
         }

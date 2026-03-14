@@ -610,6 +610,8 @@ fn generate_llvm<'ctx>(
                             .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
                         IrBinOp::Div => builder.build_float_div(lhs, rhs, dest)
                             .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
+                        IrBinOp::Mod => builder.build_float_rem(lhs, rhs, dest)
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
                     };
                     let as_int = builder.build_bit_cast(result, i64_type, "fbo_int")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
@@ -697,6 +699,9 @@ fn generate_llvm<'ctx>(
                             .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
                         IrBinOp::Div => builder
                             .build_int_signed_div(lhs, rhs, dest)
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
+                        IrBinOp::Mod => builder
+                            .build_int_signed_rem(lhs, rhs, dest)
                             .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
                     };
                     regs.insert(dest.clone(), result);
@@ -815,6 +820,13 @@ fn generate_llvm<'ctx>(
                     let val = regs[src];
                     let result = builder
                         .build_not(val, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::Neg { dest, src } => {
+                    let val = regs[src];
+                    let result = builder
+                        .build_int_neg(val, dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
                 }

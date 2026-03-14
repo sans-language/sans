@@ -206,6 +206,10 @@ pub enum Expr {
         element_type: TypeName,
         span: Span,
     },
+    ArrayLiteral {
+        elements: Vec<Expr>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -226,7 +230,7 @@ pub enum Pattern {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum BinOp { Add, Sub, Mul, Div, Eq, NotEq, Lt, Gt, LtEq, GtEq, And, Or }
+pub enum BinOp { Add, Sub, Mul, Div, Mod, Eq, NotEq, Lt, Gt, LtEq, GtEq, And, Or }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum UnaryOp { Not }
+pub enum UnaryOp { Not, Neg }

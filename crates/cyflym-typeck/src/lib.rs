@@ -520,7 +520,7 @@ fn check_expr(
 
             match op {
                 // Arithmetic: Int x Int -> Int, Float x Float -> Float, String + String -> String
-                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
                     if op == &BinOp::Add && lt == Type::String && rt == Type::String {
                         return Ok(Type::String);
                     }
@@ -598,6 +598,16 @@ fn check_expr(
                         )));
                     }
                     Ok(Type::Bool)
+                }
+                cyflym_parser::ast::UnaryOp::Neg => {
+                    let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if ty != Type::Int && ty != Type::Float {
+                        return Err(TypeError::new(format!(
+                            "'-' operator requires Int or Float operand, got {}",
+                            ty
+                        )));
+                    }
+                    Ok(ty)
                 }
             }
         }
@@ -1167,6 +1177,20 @@ fn check_expr(
         Expr::ArrayCreate { element_type, .. } => {
             let inner = resolve_type(&element_type.name, structs, enums, module_exports)?;
             Ok(Type::Array { inner: Box::new(inner) })
+        }
+
+        Expr::ArrayLiteral { elements, .. } => {
+            let first_ty = check_expr(&elements[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+            for (i, elem) in elements.iter().enumerate().skip(1) {
+                let elem_ty = check_expr(elem, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if elem_ty != first_ty {
+                    return Err(TypeError::new(format!(
+                        "array literal element {} has type {} but expected {} (from first element)",
+                        i, elem_ty, first_ty
+                    )));
+                }
+            }
+            Ok(Type::Array { inner: Box::new(first_ty) })
         }
 
         Expr::MethodCall { object, method, args, .. } => {
@@ -2563,5 +2587,77 @@ mod tests {
     #[test]
     fn check_http_request_methods() {
         assert!(do_check("fn main() Int { let s = http_listen(8080) \n let r = s.accept() \n let p = r.path() \n let m = r.method() \n r.respond(200, \"ok\") }").is_ok());
+    }
+
+    #[test]
+    fn check_array_literal() {
+        assert!(do_check("fn main() Int { let a = [1, 2, 3] \n a.len() }").is_ok());
+    }
+
+    #[test]
+    fn check_array_literal_type_mismatch() {
+        let err = do_check(r#"fn main() Int { let a = [1, "hello"]
+ a.len() }"#).unwrap_err();
+        assert!(err.message.contains("array literal element"));
+    }
+
+    // Modulo operator tests
+    #[test]
+    fn check_modulo_int() {
+        assert!(do_check("fn main() Int { 17 % 5 }").is_ok());
+    }
+
+    #[test]
+    fn check_modulo_float() {
+        assert!(do_check("fn main() Float { 3.14 % 1.0 }").is_ok());
+    }
+
+    #[test]
+    fn check_modulo_type_mismatch() {
+        assert!(do_check("fn main() Int { true % 5 }").is_err());
+    }
+
+    // Unary negation tests
+    #[test]
+    fn check_neg_int() {
+        assert!(do_check("fn main() Int { -42 }").is_ok());
+    }
+
+    #[test]
+    fn check_neg_float() {
+        assert!(do_check("fn main() Float { -3.14 }").is_ok());
+    }
+
+    #[test]
+    fn check_neg_bool_error() {
+        assert!(do_check("fn main() Int { -true }").is_err());
+    }
+
+    #[test]
+    fn check_neg_in_expr() {
+        assert!(do_check("fn main() Int { let x = 10 \n x + -3 }").is_ok());
+    }
+
+    // Array literal tests
+    #[test]
+    fn check_array_literal_string() {
+        assert!(do_check("fn main() Int { let a = [\"a\", \"b\"] \n a.len() }").is_ok());
+    }
+
+    // String interpolation tests
+    #[test]
+    fn check_string_interp() {
+        assert!(do_check("fn main() Int { let name = \"world\" \n let s = \"Hello {name}!\" \n s.len() }").is_ok());
+    }
+
+    #[test]
+    fn check_string_interp_type_error() {
+        assert!(do_check("fn main() Int { let x = 42 \n let s = \"value: {x}\" \n s.len() }").is_err());
+    }
+
+    // Multiline string test
+    #[test]
+    fn check_multiline_string() {
+        assert!(do_check("fn main() Int { let s = \"\"\"\nhello\nworld\n\"\"\" \n s.len() }").is_ok());
     }
 }

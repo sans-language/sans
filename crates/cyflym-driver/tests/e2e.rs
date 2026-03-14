@@ -247,6 +247,11 @@ fn e2e_array_basic() {
 }
 
 #[test]
+fn e2e_array_literal() {
+    assert_eq!(compile_and_run("array_literal.cy"), 63);
+}
+
+#[test]
 fn e2e_array_for_in() {
     assert_eq!(compile_and_run("array_for_in.cy"), 10);
 }
@@ -377,4 +382,19 @@ fn e2e_string_replace() {
 #[test]
 fn e2e_array_remove() {
     assert_eq!(compile_and_run("array_remove.cy"), 63);
+}
+
+#[test]
+fn e2e_multiline_string() {
+    assert_eq!(compile_and_run("multiline_string.cy"), 11);
+}
+
+#[test]
+fn e2e_modulo_neg() {
+    assert_eq!(compile_and_run("modulo_neg.cy"), 9);
+}
+
+#[test]
+fn e2e_string_interp() {
+    assert_eq!(compile_and_run("string_interp.cy"), 13);
 }

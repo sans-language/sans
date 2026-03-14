@@ -29,6 +29,7 @@ pub enum Instruction {
     CmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
     StringCmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
     Not { dest: Reg, src: Reg },
+    Neg { dest: Reg, src: Reg },
     Copy { dest: Reg, src: Reg },
     Call { dest: Reg, function: String, args: Vec<Reg> },
     Ret { value: Reg },
@@ -231,6 +232,7 @@ pub enum IrBinOp {
     Sub,
     Mul,
     Div,
+    Mod,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -772,12 +772,29 @@ impl Parser {
                     operand: Box::new(operand),
                     span: start..end,
                 })
+            }            TokenKind::Minus => {
+                let start = tok.span.start;
+                self.pos += 1; // consume -
+                let operand = self.parse_expr(13)?; // prefix binding power 13 (tightest)
+                let end = expr_span(&operand).end;
+                Ok(Expr::UnaryOp {
+                    op: ast::UnaryOp::Neg,
+                    operand: Box::new(operand),
+                    span: start..end,
+                })
             }
+
             TokenKind::StringLiteral(s) => {
                 let value = s.clone();
                 let span = tok.span.clone();
                 self.pos += 1;
                 Ok(Expr::StringLiteral { value, span })
+            }
+            TokenKind::InterpolatedString(parts) => {
+                let parts = parts.clone();
+                let span = tok.span.clone();
+                self.pos += 1;
+                self.desugar_interpolated_string(parts, span)
             }
             TokenKind::Spawn => {
                 let start = tok.span.start;
@@ -837,6 +854,28 @@ impl Parser {
                 self.expect(&TokenKind::RParen)?;
                 Ok(expr)
             }
+            TokenKind::LBracket => {
+                let start = tok.span.start;
+                self.pos += 1;
+                let mut elements = Vec::new();
+                while self.peek().kind != TokenKind::RBracket && self.peek().kind != TokenKind::Eof {
+                    elements.push(self.parse_expr(0)?);
+                    if self.peek().kind == TokenKind::Comma {
+                        self.pos += 1;
+                    }
+                }
+                let rbracket = self.expect(&TokenKind::RBracket)?;
+                if elements.is_empty() {
+                    return Err(ParseError::new(
+                        "empty array literal not allowed; use array<T>() for empty arrays",
+                        start..rbracket.span.end,
+                    ));
+                }
+                Ok(Expr::ArrayLiteral {
+                    elements,
+                    span: start..rbracket.span.end,
+                })
+            }
             _ => Err(ParseError::new(
                 format!("unexpected token in expression: {:?}", tok.kind),
                 tok.span,
@@ -871,6 +910,27 @@ impl Parser {
             else_expr: Box::new(else_expr),
             span: start..end,
         })
+    }
+
+    fn desugar_interpolated_string(&self, parts: Vec<cyflym_lexer::token::StringPart>, span: Span) -> Result<Expr, ParseError> {
+        use cyflym_lexer::token::StringPart;
+        let mut result: Option<Expr> = None;
+        for part in parts {
+            let expr = match part {
+                StringPart::Literal(s) => Expr::StringLiteral { value: s, span: span.clone() },
+                StringPart::Ident(name) => Expr::Identifier { name, span: span.clone() },
+            };
+            result = Some(match result {
+                None => expr,
+                Some(left) => Expr::BinaryOp {
+                    left: Box::new(left),
+                    op: BinOp::Add,
+                    right: Box::new(expr),
+                    span: span.clone(),
+                },
+            });
+        }
+        Ok(result.unwrap_or(Expr::StringLiteral { value: String::new(), span }))
     }
 
     fn parse_match_expr(&mut self) -> Result<Expr, ParseError> {
@@ -1005,7 +1065,8 @@ fn infix_binding_power(kind: &TokenKind) -> Option<(u8, u8, BinOp)> {
         TokenKind::Plus   => Some((9, 10, BinOp::Add)),
         TokenKind::Minus  => Some((9, 10, BinOp::Sub)),
         TokenKind::Star   => Some((11, 12, BinOp::Mul)),
-        TokenKind::Slash  => Some((11, 12, BinOp::Div)),
+        TokenKind::Slash   => Some((11, 12, BinOp::Div)),
+        TokenKind::Percent => Some((11, 12, BinOp::Mod)),
         _ => None,
     }
 }
@@ -1030,6 +1091,7 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::ChannelCreate { span, .. } => span,
         Expr::MutexCreate { span, .. } => span,
         Expr::ArrayCreate { span, .. } => span,
+        Expr::ArrayLiteral { span, .. } => span,
     }
 }
 
