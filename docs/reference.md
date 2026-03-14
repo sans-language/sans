@@ -202,6 +202,15 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `slen(ptr)` | `(Int) -> Int` | strlen on raw pointer |
 | `load8(ptr)` | `(Int) -> Int` | load byte (0-255) |
 | `store8(ptr, val)` | `(Int, Int) -> Int` | store byte |
+| `load16(ptr)` | `(Int) -> Int` | load 16-bit value |
+| `store16(ptr, val)` | `(Int, Int) -> Int` | store 16-bit value |
+| `load32(ptr)` | `(Int) -> Int` | load 32-bit value |
+| `store32(ptr, val)` | `(Int, Int) -> Int` | store 32-bit value |
+| `load64(ptr)` | `(Int) -> Int` | load 64-bit value |
+| `store64(ptr, val)` | `(Int, Int) -> Int` | store 64-bit value |
+| `strstr(haystack, needle)` | `(Int, Int) -> Int` | find substring, 0 if not found |
+| `bswap16(val)` | `(Int) -> Int` | byte-swap 16-bit (htons) |
+| `exit(code)` | `(Int) -> Int` | exit process |
 
 #### I/O
 
@@ -220,6 +229,8 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `srecv(fd, buf, len)` | `(Int, Int, Int) -> Int` | recv() |
 | `ssend(fd, buf, len)` | `(Int, Int, Int) -> Int` | send() |
 | `sclose(fd)` | `(Int) -> Int` | close() |
+| `rbind(fd, addr, len)` | `(Int, Int, Int) -> Int` | raw bind() |
+| `rsetsockopt(fd, level, opt, val, len)` | `(Int, Int, Int, Int, Int) -> Int` | raw setsockopt() |
 
 #### Curl
 
@@ -231,6 +242,8 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `cperf(h)` | `(Int) -> Int` | curl_easy_perform |
 | `cclean(h)` | `(Int) -> Int` | curl_easy_cleanup |
 | `cinfo(h, info, buf)` | `(Int, Int, Int) -> Int` | curl_easy_getinfo |
+| `curl_slist_append(slist, str)` | `(Int, Int) -> Int` | append to curl header list |
+| `curl_slist_free(slist)` | `(Int) -> Int` | free curl header list |
 
 #### Function Pointers
 

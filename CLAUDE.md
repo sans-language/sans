@@ -80,7 +80,7 @@ All version numbers must stay in sync and follow semver (`x.y.z`). When bumping,
 
 The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
 
-**Current version: `0.2.0`**
+**Current version: `0.3.0`**
 
 **Rule:** Every release or version bump must update ALL version files together in a single commit. Never let them drift.
 

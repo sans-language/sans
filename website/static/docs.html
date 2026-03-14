@@ -27,10 +27,12 @@
       <ul>
         <li><a href="#types">Types</a></li>
         <li><a href="#variables">Variables</a></li>
+        <li><a href="#globals">Global Variables</a></li>
         <li><a href="#functions">Functions</a></li>
         <li><a href="#control-flow">Control Flow</a></li>
         <li><a href="#operators">Operators</a></li>
         <li><a href="#builtins">Built-in Functions</a></li>
+        <li><a href="#lowlevel">Low-Level Primitives</a></li>
         <li><a href="#methods">Methods by Type</a></li>
         <li><a href="#structs">Structs</a></li>
         <li><a href="#enums">Enums</a></li>
@@ -69,6 +71,15 @@
 x := <span class="num">0</span>              <span class="comment">// mutable</span>
 <span class="kw">let</span> x <span class="type">Int</span> = <span class="num">42</span>      <span class="comment">// explicit type (verbose, optional)</span>
 <span class="kw">let mut</span> x = <span class="num">0</span>       <span class="comment">// verbose mutable (optional)</span></code></pre>
+
+    <h2 id="globals">Global Variables</h2>
+    <pre><code><span class="kw">g</span> counter = <span class="num">0</span>       <span class="comment">// global mutable variable</span>
+
+<span class="fn">inc</span>() <span class="type">I</span> {
+  counter = counter + <span class="num">1</span>
+  counter
+}</code></pre>
+    <p>Globals are mutable and accessible from any function. Declared at the top level with <code>g</code>.</p>
 
     <h2 id="functions">Function Definition</h2>
     <pre><code><span class="comment">// Full form</span>
@@ -185,6 +196,81 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       </tbody>
     </table>
     <p>Log levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR</p>
+
+    <h3 id="lowlevel">Low-Level Primitives</h3>
+    <p>These enable Sans to replace its own C runtime. Pointers are stored as Int (i64).</p>
+
+    <h4>Memory</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>alloc(size)</code></td><td><code>(Int) -&gt; Int</code></td><td>malloc, returns pointer</td></tr>
+        <tr><td><code>dealloc(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>free</td></tr>
+        <tr><td><code>ralloc(ptr, size)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>realloc</td></tr>
+        <tr><td><code>mcpy(dst, src, n)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>memcpy</td></tr>
+        <tr><td><code>mcmp(a, b, n)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>memcmp</td></tr>
+        <tr><td><code>slen(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>strlen on raw pointer</td></tr>
+        <tr><td><code>load8(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>load byte (0-255)</td></tr>
+        <tr><td><code>store8(ptr, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>store byte</td></tr>
+        <tr><td><code>load16(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>load 16-bit value</td></tr>
+        <tr><td><code>store16(ptr, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>store 16-bit value</td></tr>
+        <tr><td><code>load32(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>load 32-bit value</td></tr>
+        <tr><td><code>store32(ptr, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>store 32-bit value</td></tr>
+        <tr><td><code>load64(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>load 64-bit value</td></tr>
+        <tr><td><code>store64(ptr, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>store 64-bit value</td></tr>
+        <tr><td><code>strstr(haystack, needle)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>find substring, 0 if not found</td></tr>
+        <tr><td><code>bswap16(val)</code></td><td><code>(Int) -&gt; Int</code></td><td>byte-swap 16-bit (htons)</td></tr>
+        <tr><td><code>exit(code)</code></td><td><code>(Int) -&gt; Int</code></td><td>exit process</td></tr>
+      </tbody>
+    </table>
+
+    <h4>I/O</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>wfd(fd, msg)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>write string to file descriptor</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Sockets</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>sock(domain, type, proto)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>socket()</td></tr>
+        <tr><td><code>sbind(fd, port)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>bind to port</td></tr>
+        <tr><td><code>slisten(fd, backlog)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>listen()</td></tr>
+        <tr><td><code>saccept(fd)</code></td><td><code>(Int) -&gt; Int</code></td><td>accept()</td></tr>
+        <tr><td><code>srecv(fd, buf, len)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>recv()</td></tr>
+        <tr><td><code>ssend(fd, buf, len)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>send()</td></tr>
+        <tr><td><code>sclose(fd)</code></td><td><code>(Int) -&gt; Int</code></td><td>close()</td></tr>
+        <tr><td><code>rbind(fd, addr, len)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>raw bind()</td></tr>
+        <tr><td><code>rsetsockopt(fd, level, opt, val, len)</code></td><td><code>(Int, Int, Int, Int, Int) -&gt; Int</code></td><td>raw setsockopt()</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Curl</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>cinit()</code></td><td><code>() -&gt; Int</code></td><td>curl_easy_init</td></tr>
+        <tr><td><code>csets(h, opt, val)</code></td><td><code>(Int, Int, String) -&gt; Int</code></td><td>setopt with string</td></tr>
+        <tr><td><code>cseti(h, opt, val)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>setopt with long</td></tr>
+        <tr><td><code>cperf(h)</code></td><td><code>(Int) -&gt; Int</code></td><td>curl_easy_perform</td></tr>
+        <tr><td><code>cclean(h)</code></td><td><code>(Int) -&gt; Int</code></td><td>curl_easy_cleanup</td></tr>
+        <tr><td><code>cinfo(h, info, buf)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>curl_easy_getinfo</td></tr>
+        <tr><td><code>curl_slist_append(slist, str)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>append to curl header list</td></tr>
+        <tr><td><code>curl_slist_free(slist)</code></td><td><code>(Int) -&gt; Int</code></td><td>free curl header list</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Function Pointers</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>fptr("name")</code></td><td><code>(String) -&gt; Int</code></td><td>get pointer to named function</td></tr>
+        <tr><td><code>fcall(ptr, arg)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>call function pointer with 1 arg</td></tr>
+      </tbody>
+    </table>
 
     <h3>Error Handling</h3>
     <table>
@@ -375,7 +461,7 @@ msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hell
 
   <footer>
     <div class="container">
-      <p>Sans v0.2.0 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.0 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

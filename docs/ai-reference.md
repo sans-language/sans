@@ -78,6 +78,15 @@ mcmp(a b n)                             I I I -> I (memcmp)
 slen(p)                                 I -> I (strlen)
 load8(p)                                I -> I (load byte)
 store8(p v)                             I I -> I (store byte)
+load16(p)                               I -> I (load 16-bit)
+store16(p v)                            I I -> I (store 16-bit)
+load32(p)                               I -> I (load 32-bit)
+store32(p v)                            I I -> I (store 32-bit)
+load64(p)                               I -> I (load 64-bit)
+store64(p v)                            I I -> I (store 64-bit)
+strstr(h n)                             I I -> I (find substr)
+bswap16(v)                              I -> I (byte swap 16)
+exit(code)                              I -> I (exit process)
 wfd(fd msg)                             I S -> I (write to fd)
 
 // Sockets
@@ -88,6 +97,8 @@ saccept(fd)                             I -> I (accept)
 srecv(fd buf len)                       I I I -> I (recv)
 ssend(fd buf len)                       I I I -> I (send)
 sclose(fd)                              I -> I (close)
+rbind(fd addr len)                      I I I -> I (raw bind)
+rsetsockopt(fd l o v n)                 I I I I I -> I (raw setsockopt)
 
 // Curl
 cinit()                                 -> I (curl init)
@@ -96,6 +107,8 @@ cseti(h opt val)                        I I I -> I (setopt long)
 cperf(h)                                I -> I (perform)
 cclean(h)                               I -> I (cleanup)
 cinfo(h info buf)                       I I I -> I (getinfo)
+curl_slist_append(sl s)                 I I -> I (append header)
+curl_slist_free(sl)                     I -> I (free headers)
 
 // Function pointers
 fptr("name")                            S -> I (get fn pointer)

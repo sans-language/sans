@@ -87,6 +87,28 @@ const HOVER_DATA: Record<string, string> = {
     // HTTP methods
     'respond': '**respond**(status: Int, body: String, content_type?: String) -> Int\n\nSend HTTP response. `content_type` defaults to `text/html`.\n\nUsage: `req.respond(200, body)` or `req.respond(200, body, "text/css")`',
 
+    // Memory / low-level
+    'load16': '**load16**(ptr: Int) -> Int\n\nLoad 16-bit unsigned integer from memory address.\n\nUsage: `v = load16(addr)`',
+    'store16': '**store16**(ptr: Int, val: Int) -> Int\n\nStore 16-bit value to memory address.\n\nUsage: `store16(addr, 0xFF)`',
+    'load32': '**load32**(ptr: Int) -> Int\n\nLoad 32-bit unsigned integer from memory address.\n\nUsage: `v = load32(addr)`',
+    'store32': '**store32**(ptr: Int, val: Int) -> Int\n\nStore 32-bit value to memory address.\n\nUsage: `store32(addr, 42)`',
+    'load64': '**load64**(ptr: Int) -> Int\n\nLoad 64-bit integer from memory address.\n\nUsage: `v = load64(addr)`',
+    'store64': '**store64**(ptr: Int, val: Int) -> Int\n\nStore 64-bit value to memory address.\n\nUsage: `store64(addr, val)`',
+    'strstr': '**strstr**(haystack: String, needle: String) -> Int\n\nReturn pointer to first occurrence of needle in haystack, or 0 if not found.\n\nUsage: `p = strstr(s, "foo")`',
+    'bswap16': '**bswap16**(n: Int) -> Int\n\nByte-swap a 16-bit integer (reverse byte order).\n\nUsage: `be = bswap16(le)`',
+    'exit': '**exit**(code: Int) -> Int\n\nTerminate the process with the given exit code.\n\nUsage: `exit(1)`',
+
+    // Sockets
+    'rbind': '**rbind**(port: Int) -> Int\n\nCreate and bind a raw TCP socket to port. Returns socket fd, or -1 on error.\n\nUsage: `fd = rbind(8080)`',
+    'rsetsockopt': '**rsetsockopt**(fd: Int, opt: Int, val: Int) -> Int\n\nSet a socket option on fd. Returns 0 on success.\n\nUsage: `rsetsockopt(fd, 1, 1)`',
+
+    // Curl helpers
+    'curl_slist_append': '**curl_slist_append**(list: Int, header: String) -> Int\n\nAppend a header string to a curl slist. Pass 0 for list to create a new one. Returns new list pointer.\n\nUsage: `hdrs = curl_slist_append(0, "Content-Type: application/json")`',
+    'curl_slist_free': '**curl_slist_free**(list: Int) -> Int\n\nFree a curl slist previously built with curl_slist_append.\n\nUsage: `curl_slist_free(hdrs)`',
+
+    // Globals
+    'g': '**g** — global variable declaration keyword\n\nDeclare a mutable global variable.\n\nUsage: `g counter := 0`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

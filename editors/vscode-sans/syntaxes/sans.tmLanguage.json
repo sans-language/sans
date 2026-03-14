@@ -78,7 +78,7 @@
         },
         {
           "name": "keyword.declaration.sans",
-          "match": "\\b(fn|let|mut|struct|enum|trait|impl|import)\\b"
+          "match": "\\b(fn|let|mut|struct|enum|trait|impl|import|g)\\b"
         },
         {
           "name": "constant.language.boolean.sans",
@@ -127,6 +127,18 @@
         {
           "name": "support.function.result.sans",
           "match": "\\b(ok|err)\\b"
+        },
+        {
+          "name": "support.function.memory.sans",
+          "match": "\\b(load16|store16|load32|store32|load64|store64|strstr|bswap16|exit)\\b"
+        },
+        {
+          "name": "support.function.socket.sans",
+          "match": "\\b(rbind|rsetsockopt)\\b"
+        },
+        {
+          "name": "support.function.curl.sans",
+          "match": "\\b(curl_slist_append|curl_slist_free)\\b"
         }
       ]
     },
