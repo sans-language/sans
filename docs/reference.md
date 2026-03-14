@@ -206,6 +206,7 @@ Log levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
 | `substring(start, end)` | `(Int, Int) -> String` |
 | `trim` | `() -> String` |
 | `starts_with(prefix)` | `(String) -> Bool` |
+| `ends_with(suffix)` | `(String) -> Bool` |
 | `contains(needle)` | `(String) -> Bool` |
 | `split(delimiter)` | `(String) -> Array<String>` |
 | `replace(old, new)` | `(String, String) -> String` |
@@ -246,7 +247,8 @@ Log levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
 | `path` | `() -> String` |
 | `method` | `() -> String` |
 | `body` | `() -> String` |
-| `respond(status, body)` | `(Int, String) -> Int` |
+| `respond(status, body)` | `(Int, String) -> Int` | Defaults to `text/html` content-type |
+| `respond(status, body, content_type)` | `(Int, String, String) -> Int` | Explicit content-type |
 
 ### Result\<T\>
 

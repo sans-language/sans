@@ -80,6 +80,13 @@ const HOVER_DATA: Record<string, string> = {
     'ok': '**ok**(value: T) -> Result\\<T\\>\n\nWrap value in successful Result.',
     'err': '**err**(message: String) -> Result\\<_\\>\n\nCreate error Result with message.',
 
+    // String methods
+    'ends_with': '**ends_with**(suffix: String) -> Bool\n\nCheck if string ends with suffix. Returns Bool.\n\nUsage: `s.ends_with(".html")`\n\nAlias: `ew`',
+    'ew': '**ew**(suffix: String) -> Bool\n\nShort alias for `ends_with`. Check if string ends with suffix.\n\nUsage: `s.ew(".html")`',
+
+    // HTTP methods
+    'respond': '**respond**(status: Int, body: String, content_type?: String) -> Int\n\nSend HTTP response. `content_type` defaults to `text/html`.\n\nUsage: `req.respond(200, body)` or `req.respond(200, body, "text/css")`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

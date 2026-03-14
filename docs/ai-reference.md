@@ -72,11 +72,11 @@ err(msg)                                S -> R<_>
 ## Methods
 ```
 Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f)
-String:    len substring(s e) trim starts_with(s) contains(s) split(d) replace(o n)
+String:    len substring(s e) trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
 HttpServer:   accept
-HttpRequest:  path method body respond(status body)
+HttpRequest:  path method body respond(status body) respond(status body ct)
 Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
 Sender<T>:    send(v)
 Receiver<T>:  recv
