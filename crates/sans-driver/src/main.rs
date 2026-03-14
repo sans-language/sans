@@ -151,15 +151,22 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         .to_str()
         .ok_or_else(|| "output path contains invalid UTF-8".to_string())?;
 
-    // Compile all runtime C modules
+    // Compile runtime modules (C and Sans)
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let tmp_dir = std::env::temp_dir();
-    let runtime_modules = [
-        "json", "http", "log", "result", "string_ext", "array_ext", "functional", "server",
+    let c_runtime_modules = [
+        "json", "http", "kernel", "result", "string_ext", "array_ext", "functional", "server",
+    ];
+    let sans_runtime_modules = [
+        "log",
     ];
     let mut runtime_o_paths: Vec<PathBuf> = Vec::new();
-    for name in &runtime_modules {
+    for name in &c_runtime_modules {
         let o_path = compile_runtime(manifest_dir, &tmp_dir, name)?;
+        runtime_o_paths.push(o_path);
+    }
+    for name in &sans_runtime_modules {
+        let o_path = compile_sans_runtime(manifest_dir, &tmp_dir, name)?;
         runtime_o_paths.push(o_path);
     }
 
@@ -204,5 +211,37 @@ fn compile_runtime(
     if !status.success() {
         return Err(format!("failed to compile {} runtime", name));
     }
+    Ok(o_path)
+}
+
+fn compile_sans_runtime(
+    manifest_dir: &str,
+    tmp_dir: &std::path::Path,
+    name: &str,
+) -> Result<PathBuf, String> {
+    let sans_path = format!("{}/../../runtime/{}.sans", manifest_dir, name);
+    let o_path = tmp_dir.join(format!("sans_{}_runtime.o", name));
+
+    // Read and parse the .sans runtime file
+    let source = std::fs::read_to_string(&sans_path)
+        .map_err(|e| format!("could not read runtime '{}': {}", sans_path, e))?;
+    let program = sans_parser::parse(&source)
+        .map_err(|e| format!("parse error in runtime {}: {}", name, e.message))?;
+
+    // Type-check as a module (no main required)
+    let module_exports = std::collections::HashMap::new();
+    sans_typeck::check_module(&program, &module_exports)
+        .map_err(|e| format!("type error in runtime {}: {}", name, e.message))?;
+
+    // Lower to IR (no module prefix — we need raw cy_* symbol names)
+    let module_fn_ret_types = std::collections::HashMap::new();
+    let ir = sans_ir::lower(&program, None, &module_fn_ret_types);
+
+    // Compile to object file
+    let o_path_str = o_path.to_str()
+        .ok_or_else(|| "runtime object path contains invalid UTF-8".to_string())?;
+    sans_codegen::compile_to_object(&ir, o_path_str)
+        .map_err(|e| format!("codegen error in runtime {}: {}", name, e))?;
+
     Ok(o_path)
 }

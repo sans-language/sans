@@ -855,6 +855,29 @@ fn check_expr(
                     return Err(TypeError::new(format!("log_set_level() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "print_err" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("print_err() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("print_err() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "get_log_level" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("get_log_level() takes no arguments"));
+                }
+                return Ok(Type::Int);
+            } else if function == "set_log_level" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("set_log_level() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("set_log_level() requires Int argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "http_listen" || function == "listen" || function == "hl" {
                 if args.len() != 1 {
                     return Err(TypeError::new("http_listen() takes exactly 1 argument (port)"));

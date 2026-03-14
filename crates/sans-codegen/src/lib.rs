@@ -255,6 +255,16 @@ fn generate_llvm<'ctx>(
     let log_set_level_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("cy_log_set_level", log_set_level_type, Some(Linkage::External));
 
+    // Kernel functions
+    let print_err_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_print_err", print_err_type, Some(Linkage::External));
+
+    let get_log_level_type = i64_type.fn_type(&[], false);
+    llvm_module.add_function("cy_get_log_level", get_log_level_type, Some(Linkage::External));
+
+    let set_log_level_type = i64_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("cy_set_log_level", set_log_level_type, Some(Linkage::External));
+
     // Declare HTTP runtime functions
     let http_get_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
     llvm_module.add_function("cy_http_get", http_get_type, Some(Linkage::External));
@@ -2834,6 +2844,45 @@ fn generate_llvm<'ctx>(
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_log_set_level: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::PrintErr { dest, message } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let msg_ptr = if let Some(p) = ptrs.get(message) {
+                        *p
+                    } else {
+                        let iv = regs[message];
+                        builder.build_int_to_ptr(iv, ptr_type, "pe_mp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_print_err").unwrap();
+                    let call = builder.build_call(fn_ref, &[msg_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_print_err: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::GetLogLevel { dest } => {
+                    let fn_ref = llvm_module.get_function("cy_get_log_level").unwrap();
+                    let call = builder.build_call(fn_ref, &[], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_get_log_level: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::SetLogLevel { dest, level } => {
+                    let level_val = regs[level];
+                    let fn_ref = llvm_module.get_function("cy_set_log_level").unwrap();
+                    let call = builder.build_call(fn_ref, &[level_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_set_log_level: expected return".into())),
                     };
                     regs.insert(dest.clone(), result);
                 }

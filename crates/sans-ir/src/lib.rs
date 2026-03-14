@@ -767,6 +767,23 @@ impl IrBuilder {
                     self.instructions.push(Instruction::LogSetLevel { dest: dest.clone(), level: level_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "print_err" {
+                    let msg_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::PrintErr { dest: dest.clone(), message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "get_log_level" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::GetLogLevel { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "set_log_level" {
+                    let lvl_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SetLogLevel { dest: dest.clone(), level: lvl_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "http_get" || function == "hget" || function == "hg" {
                     let url_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();

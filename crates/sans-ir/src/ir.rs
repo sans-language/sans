@@ -219,6 +219,10 @@ pub enum Instruction {
     LogWarn { dest: Reg, message: Reg },
     LogError { dest: Reg, message: Reg },
     LogSetLevel { dest: Reg, level: Reg },
+    // Kernel functions
+    PrintErr { dest: Reg, message: Reg },
+    GetLogLevel { dest: Reg },
+    SetLogLevel { dest: Reg, level: Reg },
     // HTTP operations
     HttpGet { dest: Reg, url: Reg },
     HttpPost { dest: Reg, url: Reg, body: Reg, content_type: Reg },
