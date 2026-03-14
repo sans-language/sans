@@ -31,16 +31,17 @@ Add JSON support via an opaque `JsonValue` built-in type backed by a C runtime l
 **Serialization:**
 - `json_stringify(value)` — convert JsonValue to JSON string
 
-**Out of scope (deferred):** Iteration over keys/values, `.remove()`, `.contains()`, pretty-printing, streaming parse, float/double type, JSON schema validation, JSONL, comments.
+**Out of scope (deferred):** Iteration over keys/values, `.remove()`, `.contains()`, pretty-printing, streaming parse, float/double type, JSON schema validation, JSONL, comments, `\uXXXX` unicode escape sequences in parser.
 
 ## Decisions
 
 - **Opaque built-in type.** `JsonValue` is a new type like `Sender<T>` or `Mutex<T>`. Users never see the internal representation. All access goes through built-in functions and methods.
 - **C runtime library.** JSON logic (parsing, stringifying, tree manipulation) lives in `runtime/json.c`, compiled separately and linked alongside the user's object file. This is a new pattern — file I/O used inline C stdlib calls, but JSON is too complex for inline LLVM IR.
-- **Sentinel values on error.** `json_parse` of invalid JSON returns a null JsonValue. Accessor type mismatches return defaults (0, "", false). `.get()` on missing key returns null JsonValue. No panics, no crashes.
+- **Sentinel values on error.** `json_parse` of invalid JSON returns a null JsonValue. Accessor type mismatches return defaults (0, "", false). `.get()` on missing key returns null JsonValue. `.get_index()` on out-of-bounds returns null JsonValue. `.len()` on non-array/non-object types returns 0. No panics, no crashes.
 - **Integer-only numbers.** JSON numbers are parsed as `long` (i64). Floats are truncated to integer. This matches the language's current Int-only numeric type.
 - **No new keywords or syntax.** All constructors are built-in function names. All accessors/mutators use existing method call syntax.
-- **Linking change.** The `cc` invocation in `main.rs` and e2e test helpers must compile `runtime/json.c` and link the resulting object file alongside the user's code.
+- **`print` does not accept JsonValue.** Users must call `json_stringify()` first to get a String, then pass that to `print`.
+- **Linking change.** The `cc` invocation in `main.rs` and both e2e test helpers (`compile_and_run` and `compile_and_run_dir`) must compile `runtime/json.c` and link the resulting object file alongside the user's code.
 
 ## Runtime Representation
 
@@ -109,6 +110,10 @@ fn main() Int {
 
 ## Type System
 
+### New Type Variant
+
+Add `JsonValue` to the `Type` enum in `crates/cyflym-typeck/src/types.rs`. The `Display` impl should format it as `"JsonValue"`.
+
 ### Type Checking Rules
 
 | Expression | Args | Returns |
@@ -150,6 +155,8 @@ fn main() Int {
 IrType::JsonValue
 ```
 
+The `ir_type_for_return` helper in `crates/cyflym-ir/src/lib.rs` must map `Type::JsonValue` to `IrType::JsonValue`.
+
 ### New Instructions
 
 **Constructors:**
@@ -176,9 +183,11 @@ JsonTypeOf { dest: Reg, value: Reg },                    // .type_of()
 
 **Mutators:**
 ```rust
-JsonSet { object: Reg, key: Reg, value: Reg },   // .set(key, val) — no dest, returns 1
-JsonPush { array: Reg, value: Reg },              // .push(val) — no dest, returns 1
+JsonSet { object: Reg, key: Reg, value: Reg },   // .set(key, val) — no dest
+JsonPush { array: Reg, value: Reg },              // .push(val) — no dest
 ```
+
+`JsonSet` and `JsonPush` have no `dest` register, matching the `ArrayPush`/`ArraySet` pattern. The IR lowering emits a separate `Instruction::Const { dest, value: 0 }` after the mutator instruction to produce the expression result.
 
 **Serialization:**
 ```rust
@@ -231,7 +240,7 @@ Each JSON IR instruction compiles to a single C function call. No branching, no 
 
 **Accessors returning Int/Bool:** Call `cy_json_get_int` / `cy_json_get_bool` / `cy_json_len`, store i64 in `regs`.
 
-**Mutators:** Call `cy_json_set` / `cy_json_push`. For `.set()` and `.push()` as expressions, store constant `1` in `regs` for the dest register.
+**Mutators:** Call the void C functions `cy_json_set` / `cy_json_push`. The Int expression result is synthesized in IR (a `Const { value: 0 }` instruction), not read from the C function return. Codegen for `JsonSet`/`JsonPush` only needs to emit the C call — the `Const` instruction handles the result register separately.
 
 ### Linking Change
 
@@ -243,15 +252,15 @@ cc user.o /tmp/json.o -o binary
 
 The `runtime/` directory path is resolved relative to the `cyflym` binary's location (or the workspace root during development).
 
-**E2E test helpers:** Same pattern — compile `json.c` to `json.o` and include in the link step.
+**E2E test helpers:** Both `compile_and_run` and `compile_and_run_dir` in `crates/cyflym-driver/tests/e2e.rs` need updating. The `json.c` path resolves via `CARGO_MANIFEST_DIR/../../runtime/json.c`. Compile it to a temp `json.o` and include in the `cc` link step.
 
 ## C Runtime Library (`runtime/json.c`)
 
 ### JSON Parser
 
 Recursive descent parser handling:
-- Objects: `{` key `:` value (`,` key `:` value)* `}`
-- Arrays: `[` value (`,` value)* `]`
+- Objects: `{` (key `:` value (`,` key `:` value)*)? `}` (empty `{}` is valid)
+- Arrays: `[` (value (`,` value)*)? `]` (empty `[]` is valid)
 - Strings: `"` chars `"` with escape sequences (`\"`, `\\`, `\/`, `\n`, `\t`, `\r`, `\b`, `\f`)
 - Numbers: optional `-`, digits (parsed as `long` via `strtol`; decimals truncated)
 - Booleans: `true`, `false`
@@ -296,14 +305,14 @@ All CyJsonValue nodes and strings are malloc'd. No free — consistent with the 
 - `json_stringify` lowers to `JsonStringify` instruction with `IrType::Str`
 - `.get()` method lowers to `JsonGet` instruction
 
-**Codegen (~2):**
-- `json_object` + `json_stringify` produces `{}`
-- `json_int` + `get_int` round-trip
-
-**E2E (~3):**
+**E2E (~5):**
 - `json_build.cy` — Build object with set/push, stringify, exit with string length
 - `json_parse_access.cy` — Parse JSON string, access nested fields, extract typed values, exit with sum
 - `json_roundtrip.cy` — Build structure, stringify, re-parse, verify values match
+- `json_object_stringify.cy` — json_object + json_stringify produces `{}` (verifies linking works)
+- `json_int_roundtrip.cy` — json_int + get_int round-trip
+
+Note: Codegen unit tests are not practical for JSON instructions because they require the C runtime (`json.o`) to be linked. All JSON codegen testing goes through E2E tests.
 
 ### Estimated Total: ~249 existing + ~19 new = ~268 tests
 
@@ -319,3 +328,4 @@ All CyJsonValue nodes and strings are malloc'd. No free — consistent with the 
 - JSONL (newline-delimited JSON)
 - `json_merge(a, b)` for combining objects
 - Memory cleanup / reference counting
+- `\uXXXX` unicode escape sequences in JSON string parser
