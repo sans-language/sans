@@ -50,6 +50,10 @@ Sans is designed for AI generation, not human readability. All new features, syn
 
 **Rule:** When adding any new feature or syntax, always ask: "Can this be expressed in fewer tokens?" If yes, implement the shorter form.
 
+## Rules
+- **NEVER commit compiled binaries** (.o files, executables, Mach-O binaries). Use .gitignore to prevent this.
+- **All new syntax/features must be AI-optimized** — use the fewest tokens possible.
+
 ## Conventions
 - All values are stored as i64 in the IR/codegen register map
 - Pointers (strings, opaque types) stored in both regs (as i64 via ptr_to_int) and ptrs (as PointerValue)
