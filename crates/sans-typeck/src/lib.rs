@@ -657,7 +657,7 @@ fn check_expr(
         }
 
         Expr::Call { function, args, .. } => {
-            if function == "print" {
+            if function == "print" || function == "p" {
                 if args.len() != 1 {
                     return Err(TypeError::new(format!(
                         "print() takes exactly 1 argument, got {}", args.len()
@@ -673,7 +673,7 @@ fn check_expr(
                     }
                 }
                 return Ok(Type::Int);
-            } else if function == "int_to_string" {
+            } else if function == "int_to_string" || function == "str" || function == "itos" {
                 if args.len() != 1 {
                     return Err(TypeError::new("int_to_string() takes exactly 1 argument"));
                 }
@@ -682,7 +682,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("int_to_string() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
-            } else if function == "string_to_int" {
+            } else if function == "string_to_int" || function == "stoi" {
                 if args.len() != 1 {
                     return Err(TypeError::new("string_to_int() takes exactly 1 argument"));
                 }
@@ -691,7 +691,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("string_to_int() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
-            } else if function == "int_to_float" {
+            } else if function == "int_to_float" || function == "itof" {
                 if args.len() != 1 {
                     return Err(TypeError::new("int_to_float() takes exactly 1 argument"));
                 }
@@ -700,7 +700,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("int_to_float() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Float);
-            } else if function == "float_to_int" {
+            } else if function == "float_to_int" || function == "ftoi" {
                 if args.len() != 1 {
                     return Err(TypeError::new("float_to_int() takes exactly 1 argument"));
                 }
@@ -709,7 +709,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("float_to_int() requires Float argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
-            } else if function == "float_to_string" {
+            } else if function == "float_to_string" || function == "ftos" {
                 if args.len() != 1 {
                     return Err(TypeError::new("float_to_string() takes exactly 1 argument"));
                 }
@@ -718,7 +718,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("float_to_string() requires Float argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
-            } else if function == "file_read" {
+            } else if function == "file_read" || function == "fread" || function == "fr" {
                 if args.len() != 1 {
                     return Err(TypeError::new("file_read() takes exactly 1 argument"));
                 }
@@ -727,7 +727,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("file_read() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
-            } else if function == "file_write" || function == "file_append" {
+            } else if function == "file_write" || function == "fwrite" || function == "fw" || function == "file_append" || function == "fappend" || function == "fa" {
                 if args.len() != 2 {
                     return Err(TypeError::new(format!("{}() takes exactly 2 arguments", function)));
                 }
@@ -740,7 +740,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("{}() requires String as second argument, got {}", function, content_ty)));
                 }
                 return Ok(Type::Int);
-            } else if function == "file_exists" {
+            } else if function == "file_exists" || function == "fexists" || function == "fe" {
                 if args.len() != 1 {
                     return Err(TypeError::new("file_exists() takes exactly 1 argument"));
                 }
@@ -749,7 +749,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("file_exists() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Bool);
-            } else if function == "json_parse" {
+            } else if function == "json_parse" || function == "jparse" || function == "jp" {
                 if args.len() != 1 {
                     return Err(TypeError::new("json_parse() takes exactly 1 argument"));
                 }
@@ -758,17 +758,17 @@ fn check_expr(
                     return Err(TypeError::new(format!("json_parse() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
-            } else if function == "json_object" {
+            } else if function == "json_object" || function == "jobj" || function == "jo" {
                 if !args.is_empty() {
                     return Err(TypeError::new("json_object() takes 0 arguments"));
                 }
                 return Ok(Type::JsonValue);
-            } else if function == "json_array" {
+            } else if function == "json_array" || function == "jarr" || function == "ja" {
                 if !args.is_empty() {
                     return Err(TypeError::new("json_array() takes 0 arguments"));
                 }
                 return Ok(Type::JsonValue);
-            } else if function == "json_string" {
+            } else if function == "json_string" || function == "jstr" || function == "js" {
                 if args.len() != 1 {
                     return Err(TypeError::new("json_string() takes exactly 1 argument"));
                 }
@@ -777,7 +777,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("json_string() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
-            } else if function == "json_int" {
+            } else if function == "json_int" || function == "ji" {
                 if args.len() != 1 {
                     return Err(TypeError::new("json_int() takes exactly 1 argument"));
                 }
@@ -786,7 +786,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("json_int() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
-            } else if function == "json_bool" {
+            } else if function == "json_bool" || function == "jb" {
                 if args.len() != 1 {
                     return Err(TypeError::new("json_bool() takes exactly 1 argument"));
                 }
@@ -795,12 +795,12 @@ fn check_expr(
                     return Err(TypeError::new(format!("json_bool() requires Bool argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
-            } else if function == "json_null" {
+            } else if function == "json_null" || function == "jn" {
                 if !args.is_empty() {
                     return Err(TypeError::new("json_null() takes 0 arguments"));
                 }
                 return Ok(Type::JsonValue);
-            } else if function == "json_stringify" {
+            } else if function == "json_stringify" || function == "jstringify" || function == "jfy" {
                 if args.len() != 1 {
                     return Err(TypeError::new("json_stringify() takes exactly 1 argument"));
                 }
@@ -809,7 +809,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("json_stringify() requires JsonValue argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
-            } else if function == "http_get" {
+            } else if function == "http_get" || function == "hget" || function == "hg" {
                 if args.len() != 1 {
                     return Err(TypeError::new("http_get() takes exactly 1 argument"));
                 }
@@ -818,7 +818,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("http_get() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::HttpResponse);
-            } else if function == "http_post" {
+            } else if function == "http_post" || function == "hpost" || function == "hp" {
                 if args.len() != 3 {
                     return Err(TypeError::new("http_post() takes exactly 3 arguments (url, body, content_type)"));
                 }
@@ -835,7 +835,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("http_post() content_type must be String, got {}", ct_ty)));
                 }
                 return Ok(Type::HttpResponse);
-            } else if function == "log_debug" || function == "log_info" || function == "log_warn" || function == "log_error" {
+            } else if function == "log_debug" || function == "ld" || function == "log_info" || function == "li" || function == "log_warn" || function == "lw" || function == "log_error" || function == "le" {
                 if args.len() != 1 {
                     return Err(TypeError::new(format!("{}() takes exactly 1 argument", function)));
                 }
@@ -844,7 +844,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("{}() requires String argument, got {}", function, arg_ty)));
                 }
                 return Ok(Type::Int);
-            } else if function == "log_set_level" {
+            } else if function == "log_set_level" || function == "ll" {
                 if args.len() != 1 {
                     return Err(TypeError::new("log_set_level() takes exactly 1 argument"));
                 }
@@ -853,7 +853,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("log_set_level() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
-            } else if function == "http_listen" {
+            } else if function == "http_listen" || function == "listen" || function == "hl" {
                 if args.len() != 1 {
                     return Err(TypeError::new("http_listen() takes exactly 1 argument (port)"));
                 }
@@ -1024,7 +1024,7 @@ fn check_expr(
             Ok(Type::Struct { name: name.clone(), fields: expected_fields })
         }
 
-        Expr::FieldAccess { object, field, .. } => {
+        Expr::FieldAccess { object, field, span } => {
             if let Expr::Identifier { name, .. } = object.as_ref() {
                 if module_exports.contains_key(name) {
                     return Err(TypeError::new(format!(
@@ -1043,9 +1043,16 @@ fn check_expr(
                             "no field '{}' on struct '{}'", field, name
                         )))
                 }
-                other => Err(TypeError::new(format!(
-                    "field access on non-struct type {}", other
-                ))),
+                _ => {
+                    // Try as no-arg method call on non-struct types
+                    let synthetic = Expr::MethodCall {
+                        object: object.clone(),
+                        method: field.clone(),
+                        args: vec![],
+                        span: span.clone(),
+                    };
+                    check_expr(&synthetic, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)
+                }
             }
         }
 

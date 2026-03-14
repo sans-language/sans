@@ -524,7 +524,7 @@ impl IrBuilder {
                 dest
             }
             Expr::Call { function, args, .. } => {
-                if function == "print" {
+                if function == "print" || function == "p" {
                     let arg_reg = self.lower_expr(&args[0]);
                     let ty = self.reg_types.get(&arg_reg).cloned().unwrap_or(IrType::Int);
                     match ty {
@@ -548,7 +548,7 @@ impl IrBuilder {
                     return dest;
                 }
 
-                if function == "int_to_string" {
+                if function == "int_to_string" || function == "str" || function == "itos" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::IntToString {
@@ -559,7 +559,7 @@ impl IrBuilder {
                     return dest;
                 }
 
-                if function == "string_to_int" {
+                if function == "string_to_int" || function == "stoi" {
                     let str_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::StringToInt {
@@ -568,7 +568,7 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "file_read" {
+                } else if function == "file_read" || function == "fread" || function == "fr" {
                     let path_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::FileRead {
@@ -577,7 +577,7 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Str);
                     return dest;
-                } else if function == "file_write" {
+                } else if function == "file_write" || function == "fwrite" || function == "fw" {
                     let path_reg = self.lower_expr(&args[0]);
                     let content_reg = self.lower_expr(&args[1]);
                     let dest = self.fresh_reg();
@@ -588,7 +588,7 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "file_append" {
+                } else if function == "file_append" || function == "fappend" || function == "fa" {
                     let path_reg = self.lower_expr(&args[0]);
                     let content_reg = self.lower_expr(&args[1]);
                     let dest = self.fresh_reg();
@@ -599,7 +599,7 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "file_exists" {
+                } else if function == "file_exists" || function == "fexists" || function == "fe" {
                     let path_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::FileExists {
@@ -608,70 +608,70 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Bool);
                     return dest;
-                } else if function == "json_parse" {
+                } else if function == "json_parse" || function == "jparse" || function == "jp" {
                     let source_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonParse { dest: dest.clone(), source: source_reg });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
                     return dest;
-                } else if function == "json_object" {
+                } else if function == "json_object" || function == "jobj" || function == "jo" {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonObject { dest: dest.clone() });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
                     return dest;
-                } else if function == "json_array" {
+                } else if function == "json_array" || function == "jarr" || function == "ja" {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonArray { dest: dest.clone() });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
                     return dest;
-                } else if function == "json_string" {
+                } else if function == "json_string" || function == "jstr" || function == "js" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonString { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
                     return dest;
-                } else if function == "json_int" {
+                } else if function == "json_int" || function == "ji" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonInt { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
                     return dest;
-                } else if function == "json_bool" {
+                } else if function == "json_bool" || function == "jb" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonBool { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
                     return dest;
-                } else if function == "json_null" {
+                } else if function == "json_null" || function == "jn" {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonNull { dest: dest.clone() });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
                     return dest;
-                } else if function == "json_stringify" {
+                } else if function == "json_stringify" || function == "jstringify" || function == "jfy" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Str);
                     return dest;
-                } else if function == "http_listen" {
+                } else if function == "http_listen" || function == "listen" || function == "hl" {
                     let port_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::HttpListen { dest: dest.clone(), port: port_reg });
                     self.reg_types.insert(dest.clone(), IrType::HttpServer);
                     return dest;
-                } else if function == "int_to_float" {
+                } else if function == "int_to_float" || function == "itof" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::IntToFloat { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Float);
                     return dest;
-                } else if function == "float_to_int" {
+                } else if function == "float_to_int" || function == "ftoi" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::FloatToInt { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "float_to_string" {
+                } else if function == "float_to_string" || function == "ftos" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::FloatToString { dest: dest.clone(), value: val_reg });
@@ -690,43 +690,43 @@ impl IrBuilder {
                     self.instructions.push(Instruction::ResultErr { dest: dest.clone(), message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Result(Box::new(IrType::Int))); // default inner
                     return dest;
-                } else if function == "log_debug" {
+                } else if function == "log_debug" || function == "ld" {
                     let msg_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::LogDebug { dest: dest.clone(), message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "log_info" {
+                } else if function == "log_info" || function == "li" {
                     let msg_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::LogInfo { dest: dest.clone(), message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "log_warn" {
+                } else if function == "log_warn" || function == "lw" {
                     let msg_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::LogWarn { dest: dest.clone(), message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "log_error" {
+                } else if function == "log_error" || function == "le" {
                     let msg_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::LogError { dest: dest.clone(), message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "log_set_level" {
+                } else if function == "log_set_level" || function == "ll" {
                     let level_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::LogSetLevel { dest: dest.clone(), level: level_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "http_get" {
+                } else if function == "http_get" || function == "hget" || function == "hg" {
                     let url_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::HttpGet { dest: dest.clone(), url: url_reg });
                     self.reg_types.insert(dest.clone(), IrType::HttpResponse);
                     return dest;
-                } else if function == "http_post" {
+                } else if function == "http_post" || function == "hpost" || function == "hp" {
                     let url_reg = self.lower_expr(&args[0]);
                     let body_reg = self.lower_expr(&args[1]);
                     let ct_reg = self.lower_expr(&args[2]);
@@ -767,27 +767,38 @@ impl IrBuilder {
                 }
                 dest
             }
-            Expr::FieldAccess { object, field, .. } => {
+            Expr::FieldAccess { object, field, span } => {
                 let obj_reg = self.lower_expr(object);
-                let struct_name = match self.reg_types.get(&obj_reg) {
-                    Some(IrType::Struct(name)) => name.clone(),
-                    _ => panic!("field access on non-struct register"),
-                };
-                let struct_fields = self.struct_defs.get(&struct_name)
-                    .expect("unknown struct in field access");
-                let num_fields = struct_fields.len();
-                let field_index = struct_fields.iter().position(|n| n == field)
-                    .expect("unknown field in field access");
-                let dest = self.fresh_reg();
-                self.instructions.push(Instruction::FieldLoad {
-                    dest: dest.clone(),
-                    ptr: obj_reg,
-                    field_index,
-                    num_fields,
-                });
-                // For now, all struct fields are Int
-                self.reg_types.insert(dest.clone(), IrType::Int);
-                dest
+                match self.reg_types.get(&obj_reg) {
+                    Some(IrType::Struct(name)) => {
+                        let struct_name = name.clone();
+                        let struct_fields = self.struct_defs.get(&struct_name)
+                            .expect("unknown struct in field access");
+                        let num_fields = struct_fields.len();
+                        let field_index = struct_fields.iter().position(|n| n == field)
+                            .expect("unknown field in field access");
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::FieldLoad {
+                            dest: dest.clone(),
+                            ptr: obj_reg,
+                            field_index,
+                            num_fields,
+                        });
+                        // For now, all struct fields are Int
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        dest
+                    }
+                    _ => {
+                        // Non-struct: treat as no-arg method call
+                        let synthetic = Expr::MethodCall {
+                            object: object.clone(),
+                            method: field.clone(),
+                            args: vec![],
+                            span: span.clone(),
+                        };
+                        self.lower_expr(&synthetic)
+                    }
+                }
             }
             Expr::EnumVariant { enum_name, variant_name, args, .. } => {
                 let variants = self.enum_defs.get(enum_name)

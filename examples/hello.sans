@@ -1,32 +1,19 @@
 main() {
-    log_info("Hello from Cyflym!")
-
-    // JSON
-    data = json_object()
-    data.set("language" json_string("cyflym"))
-    data.set("version" json_int(1))
-    data.set("features" json_array())
-    data.get("features").push(json_string("fast"))
-    data.get("features").push(json_string("safe"))
-    data.get("features").push(json_string("concurrent"))
-
-    json_out = json_stringify(data)
-    print(json_out)
-
-    // String operations
-    name = "Cyflym"
-    msg = "Welcome to " + name + "!"
-    print(msg)
-
-    // Math
+    li("Hello from Sans!")
+    data = jo()
+    data.set("language" js("sans"))
+    data.set("version" ji(1))
+    data.set("features" ja())
+    data.get("features").push(js("fast"))
+    data.get("features").push(js("safe"))
+    data.get("features").push(js("concurrent"))
+    p(jfy(data))
+    name = "Sans"
+    p("Welcome to " + name + "!")
     sum := 0
     i := 1
-    while i <= 10 {
-        sum += i
-        i += 1
-    }
-    print(int_to_string(sum))
-
-    log_info("Done!")
+    while i <= 10 { sum += i; i += 1 }
+    p(str(sum))
+    li("Done!")
     0
 }

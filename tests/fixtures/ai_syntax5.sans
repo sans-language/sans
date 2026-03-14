@@ -1,0 +1,7 @@
+main() {
+    a = [10 20 30]
+    n = a.len
+    s = str(n)
+    p(s)
+    n
+}

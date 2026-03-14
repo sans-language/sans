@@ -420,3 +420,9 @@ fn e2e_ai_syntax4() {
     // divide(10,2)=5
     assert_eq!(compile_and_run("ai_syntax4.sans"), 5);
 }
+
+#[test]
+fn e2e_ai_syntax5() {
+    // a.len without parens = 3
+    assert_eq!(compile_and_run("ai_syntax5.sans"), 3);
+}
