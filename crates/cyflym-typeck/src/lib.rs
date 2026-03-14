@@ -631,6 +631,37 @@ fn check_expr(
                     return Err(TypeError::new(format!("string_to_int() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "file_read" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("file_read() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("file_read() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::String);
+            } else if function == "file_write" || function == "file_append" {
+                if args.len() != 2 {
+                    return Err(TypeError::new(format!("{}() takes exactly 2 arguments", function)));
+                }
+                let path_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if path_ty != Type::String {
+                    return Err(TypeError::new(format!("{}() requires String as first argument, got {}", function, path_ty)));
+                }
+                let content_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if content_ty != Type::String {
+                    return Err(TypeError::new(format!("{}() requires String as second argument, got {}", function, content_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "file_exists" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("file_exists() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("file_exists() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Bool);
             }
 
             // Check regular functions first
@@ -1754,5 +1785,27 @@ mod tests {
         });
 
         assert!(check(&prog, &module_exports).is_ok());
+    }
+
+    #[test]
+    fn check_file_read_builtin() {
+        do_check("fn main() Int { let s = file_read(\"test.txt\") 0 }").unwrap();
+    }
+
+    #[test]
+    fn check_file_write_builtin() {
+        do_check("fn main() Int { file_write(\"test.txt\", \"hello\") }").unwrap();
+    }
+
+    #[test]
+    fn check_file_exists_builtin() {
+        do_check("fn main() Int { if file_exists(\"test.txt\") { 1 } else { 0 } }").unwrap();
+    }
+
+    #[test]
+    fn check_file_read_wrong_type() {
+        let err = do_check("fn main() Int { let s = file_read(42) 0 }").unwrap_err();
+        assert!(err.message.contains("String"),
+            "expected type error mentioning String, got: {}", err.message);
     }
 }
