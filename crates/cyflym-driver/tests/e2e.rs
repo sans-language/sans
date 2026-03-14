@@ -236,3 +236,13 @@ fn e2e_import_chain() {
 fn e2e_import_struct() {
     assert_eq!(compile_and_run_dir("import_struct"), 22);
 }
+
+#[test]
+fn e2e_file_write_read() {
+    assert_eq!(compile_and_run("file_write_read.cy"), 11);
+}
+
+#[test]
+fn e2e_file_exists_check() {
+    assert_eq!(compile_and_run("file_exists_check.cy"), 1);
+}
