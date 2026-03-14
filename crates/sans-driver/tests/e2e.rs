@@ -365,6 +365,11 @@ fn e2e_string_methods() {
 }
 
 #[test]
+fn e2e_string_ends_with() {
+    assert_eq!(compile_and_run("string_ends_with.sans"), 2);
+}
+
+#[test]
 fn e2e_array_methods() {
     assert_eq!(compile_and_run("array_methods.sans"), 33);
 }

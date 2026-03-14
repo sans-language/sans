@@ -1019,6 +1019,13 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Bool);
                         return dest;
                     }
+                    (Some(IrType::Str), "ends_with") | (Some(IrType::Str), "ew") => {
+                        let suffix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringEndsWith { dest: dest.clone(), string: obj_reg, suffix: suffix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
                     (Some(IrType::Str), "contains") => {
                         let needle_reg = self.lower_expr(&args[0]);
                         let dest = self.fresh_reg();

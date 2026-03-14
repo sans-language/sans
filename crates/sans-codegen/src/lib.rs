@@ -213,6 +213,7 @@ fn generate_llvm<'ctx>(
 
     let string_check_type = i64_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_string_starts_with", string_check_type, Some(Linkage::External));
+    llvm_module.add_function("cy_string_ends_with", string_check_type, Some(Linkage::External));
     llvm_module.add_function("cy_string_contains", string_check_type, Some(Linkage::External));
 
     let string_split_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
@@ -473,6 +474,22 @@ fn generate_llvm<'ctx>(
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_string_starts_with: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::StringEndsWith { dest, string, suffix } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
+                        builder.build_int_to_ptr(regs[string], ptr_type, "ew_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let sfx_ptr = if let Some(p) = ptrs.get(suffix) { *p } else {
+                        builder.build_int_to_ptr(regs[suffix], ptr_type, "ew_pp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_string_ends_with").unwrap();
+                    let call = builder.build_call(fn_ref, &[str_ptr.into(), sfx_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_string_ends_with: expected return".into())),
                     };
                     regs.insert(dest.clone(), result);
                 }

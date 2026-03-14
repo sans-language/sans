@@ -192,6 +192,7 @@ pub enum Instruction {
     // String extension methods
     StringTrim { dest: Reg, string: Reg },
     StringStartsWith { dest: Reg, string: Reg, prefix: Reg },
+    StringEndsWith { dest: Reg, string: Reg, suffix: Reg },
     StringContains { dest: Reg, string: Reg, needle: Reg },
     StringSplit { dest: Reg, string: Reg, delimiter: Reg },
     StringReplace { dest: Reg, string: Reg, old: Reg, new_str: Reg },

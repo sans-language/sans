@@ -1414,6 +1414,16 @@ fn check_expr(
                     }
                     return Ok(Type::Bool);
                 }
+                (Type::String, "ends_with") | (Type::String, "ew") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("ends_with() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("ends_with() requires String argument, got {}", arg_ty)));
+                    }
+                    return Ok(Type::Bool);
+                }
                 (Type::String, "contains") => {
                     if args.len() != 1 {
                         return Err(TypeError::new("contains() takes exactly 1 argument"));
@@ -2557,6 +2567,11 @@ mod tests {
     #[test]
     fn check_string_starts_with() {
         assert!(do_check("fn main() Int { if \"hello\".starts_with(\"he\") { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_string_ends_with() {
+        assert!(do_check("fn main() Int { if \"hello\".ends_with(\"lo\") { 1 } else { 0 } }").is_ok());
     }
 
     #[test]

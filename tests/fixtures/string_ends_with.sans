@@ -1,0 +1,10 @@
+bool_to_int(b:B) = b ? 1 : 0
+
+main() {
+    s = "hello.html"
+    ew1 = bool_to_int(s.ends_with(".html"))
+    ew2 = bool_to_int(s.ends_with(".css"))
+    ew3 = bool_to_int(s.ew(".html"))
+    // ew1=1, ew2=0, ew3=1 => 1+0+1 = 2
+    ew1 + ew2 + ew3
+}

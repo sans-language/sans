@@ -25,6 +25,14 @@ long cy_string_starts_with(const char* s, const char* prefix) {
     return memcmp(s, prefix, prefix_len) == 0 ? 1 : 0;
 }
 
+/* Check if s ends with suffix. Returns 1 or 0. */
+long cy_string_ends_with(const char* s, const char* suffix) {
+    long suffix_len = (long)strlen(suffix);
+    long s_len = (long)strlen(s);
+    if (suffix_len > s_len) return 0;
+    return memcmp(s + s_len - suffix_len, suffix, suffix_len) == 0 ? 1 : 0;
+}
+
 /* Check if s contains substring. Returns 1 or 0. */
 long cy_string_contains(const char* s, const char* needle) {
     return strstr(s, needle) != NULL ? 1 : 0;
