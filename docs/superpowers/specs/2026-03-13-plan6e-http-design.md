@@ -48,7 +48,7 @@ The struct is entirely internal. Sans code only interacts with it via the C func
 
 ## Syntax
 
-```cyflym
+```sans
 fn main() Int {
     // Simple GET
     let resp = http_get("https://httpbin.org/get")
@@ -168,8 +168,8 @@ Each HTTP IR instruction compiles to a single C function call. No branching, no 
 
 **`main.rs`:** Before invoking `cc` to link, compile `runtime/http.c` to a temporary `http.o`:
 ```
-cc -c runtime/http.c -o /tmp/cyflym_http_runtime.o
-cc user.o /tmp/cyflym_json_runtime.o /tmp/cyflym_http_runtime.o -lcurl -o binary
+cc -c runtime/http.c -o /tmp/sans_http_runtime.o
+cc user.o /tmp/sans_json_runtime.o /tmp/sans_http_runtime.o -lcurl -o binary
 ```
 
 **E2E test helpers:** Both `compile_and_run` and `compile_and_run_dir` in `crates/sans-driver/tests/e2e.rs` need updating. The `http.c` path resolves via `CARGO_MANIFEST_DIR/../../runtime/http.c`. Compile it to a temp `http.o` and include in the `cc` link step with `-lcurl`.
@@ -327,9 +327,9 @@ All CyHttpResponse structs, body buffers, and header strings are malloc'd. No fr
 
 ### E2E Tests (~2 new)
 
-**`http_get_status.cy`** — GET request to a local/reliable URL, check that status is non-zero. Exit code = 1 if status > 0, else 0. (Note: E2E HTTP tests require network access; use a simple public endpoint or test with error response for offline resilience.)
+**`http_get_status.sans`** — GET request to a local/reliable URL, check that status is non-zero. Exit code = 1 if status > 0, else 0. (Note: E2E HTTP tests require network access; use a simple public endpoint or test with error response for offline resilience.)
 
-**`http_error_handling.cy`** — Request to an invalid URL, verify status is 0 and ok() is false. Exit code = 1 (success = error handled correctly).
+**`http_error_handling.sans`** — Request to an invalid URL, verify status is 0 and ok() is false. Exit code = 1 (success = error handled correctly).
 
 Note: HTTP E2E tests are inherently dependent on network availability. The error handling test works offline. The GET test uses a reliable public endpoint but may fail without network.
 

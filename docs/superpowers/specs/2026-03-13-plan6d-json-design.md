@@ -73,11 +73,11 @@ The struct is entirely internal. Sans code only interacts with it via the C func
 
 ## Syntax
 
-```cyflym
+```sans
 fn main() Int {
     // Build JSON
     let obj = json_object()
-    obj.set("name", json_string("cyflym"))
+    obj.set("name", json_string("sans"))
     obj.set("version", json_int(1))
     obj.set("fast", json_bool(true))
 
@@ -250,7 +250,7 @@ cc -c runtime/json.c -o /tmp/json.o
 cc user.o /tmp/json.o -o binary
 ```
 
-The `runtime/` directory path is resolved relative to the `cyflym` binary's location (or the workspace root during development).
+The `runtime/` directory path is resolved relative to the `sans` binary's location (or the workspace root during development).
 
 **E2E test helpers:** Both `compile_and_run` and `compile_and_run_dir` in `crates/sans-driver/tests/e2e.rs` need updating. The `json.c` path resolves via `CARGO_MANIFEST_DIR/../../runtime/json.c`. Compile it to a temp `json.o` and include in the `cc` link step.
 
@@ -306,11 +306,11 @@ All CyJsonValue nodes and strings are malloc'd. No free — consistent with the 
 - `.get()` method lowers to `JsonGet` instruction
 
 **E2E (~5):**
-- `json_build.cy` — Build object with set/push, stringify, exit with string length
-- `json_parse_access.cy` — Parse JSON string, access nested fields, extract typed values, exit with sum
-- `json_roundtrip.cy` — Build structure, stringify, re-parse, verify values match
-- `json_object_stringify.cy` — json_object + json_stringify produces `{}` (verifies linking works)
-- `json_int_roundtrip.cy` — json_int + get_int round-trip
+- `json_build.sans` — Build object with set/push, stringify, exit with string length
+- `json_parse_access.sans` — Parse JSON string, access nested fields, extract typed values, exit with sum
+- `json_roundtrip.sans` — Build structure, stringify, re-parse, verify values match
+- `json_object_stringify.sans` — json_object + json_stringify produces `{}` (verifies linking works)
+- `json_int_roundtrip.sans` — json_int + get_int round-trip
 
 Note: Codegen unit tests are not practical for JSON instructions because they require the C runtime (`json.o`) to be linked. All JSON codegen testing goes through E2E tests.
 

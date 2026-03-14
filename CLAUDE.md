@@ -18,9 +18,11 @@ Pipeline: typeck (type check) -> IR (instruction + lowering) -> codegen (LLVM co
 4. Add codegen in `crates/sans-codegen/src/lib.rs` (declare external fn + compile instruction)
 5. If backed by C: add function to appropriate `runtime/*.c` file
 6. Add tests in each crate
+7. **Update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist))
 
 ## Adding a New Method on a Type
 Same pipeline but use `Expr::MethodCall` match in typeck and method dispatch in IR lowering.
+After implementation + tests, **update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist)).
 
 ## Adding a New Type
 1. Add variant to `Type` enum in `crates/sans-typeck/src/types.rs`
@@ -30,6 +32,7 @@ Same pipeline but use `Expr::MethodCall` match in typeck and method dispatch in 
 5. Add `ir_type_for_return` mapping
 6. Add print guard in IR lowering
 7. If opaque: add C runtime backing
+8. **Update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist))
 
 ## AI-Optimized Syntax (MANDATORY)
 Sans is designed for AI generation, not human readability. All new features, syntax additions, and examples MUST use the fewest tokens possible.
@@ -50,9 +53,25 @@ Sans is designed for AI generation, not human readability. All new features, syn
 
 **Rule:** When adding any new feature or syntax, always ask: "Can this be expressed in fewer tokens?" If yes, implement the shorter form.
 
+## Documentation Update Checklist
+**Every new feature, built-in function, method, type, or syntax change MUST update all of the following before the work is considered complete:**
+
+1. **`docs/reference.md`** — Add/update the human-readable reference with full explanation and examples
+2. **`docs/ai-reference.md`** — Add/update the compact AI reference (short-form syntax)
+3. **`editors/vscode-sans/src/extension.ts`** — Add hover documentation entry to `HOVER_DATA` for any new keyword, function, method, or alias
+4. **`editors/vscode-sans/syntaxes/sans.tmLanguage.json`** — Add syntax highlighting patterns for new keywords, builtins, or operators
+5. **`tests/fixtures/`** — Add at least one E2E test fixture (`.sans` file) demonstrating the feature
+6. **`examples/`** — Update existing examples or add a new one if the feature is significant enough to showcase
+7. **`README.md`** — Update feature list if the feature is user-facing and notable
+
+**If a short alias is added** (e.g., `p` for `print`), it must appear in all of: `ai-reference.md`, `reference.md`, and `HOVER_DATA`.
+
+**Rule: A feature is not done until docs, hover docs, syntax highlighting, and examples are updated.** Do not split docs into a separate PR — ship them with the feature.
+
 ## Rules
 - **NEVER commit compiled binaries** (.o files, executables, Mach-O binaries). Use .gitignore to prevent this.
 - **All new syntax/features must be AI-optimized** — use the fewest tokens possible.
+- **All new features must include documentation updates** — see [Documentation Update Checklist](#documentation-update-checklist).
 
 ## Conventions
 - All values are stored as i64 in the IR/codegen register map

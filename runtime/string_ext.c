@@ -30,7 +30,7 @@ long cy_string_contains(const char* s, const char* needle) {
     return strstr(s, needle) != NULL ? 1 : 0;
 }
 
-/* Split string by delimiter. Returns a Cyflym array pointer.
+/* Split string by delimiter. Returns a Sans array pointer.
    The array is a 24-byte struct: { i64* data, i64 len, i64 cap }
    Each element is a char* stored as i64. */
 void* cy_string_split(const char* s, const char* delim) {

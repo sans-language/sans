@@ -6,7 +6,7 @@
 
 **Architecture:** The lexer gains an `Import` token. The parser parses `import "path"` declarations at the top of files into `Program.imports`. A new `imports.rs` module in the driver crate recursively resolves imports, detects cycles, and returns modules in topological order. The type checker gains a `module_exports` parameter to resolve cross-module function calls. IR lowering mangles non-main function names as `{module}__{function}`. All module IR is merged into one flat `Module` before codegen (unchanged).
 
-**Tech Stack:** Rust, cyflym compiler workspace (lexer/parser/typeck/IR/codegen/driver crates), LLVM 17 via inkwell 0.8
+**Tech Stack:** Rust, sans compiler workspace (lexer/parser/typeck/IR/codegen/driver crates), LLVM 17 via inkwell 0.8
 
 **Spec:** `docs/superpowers/specs/2026-03-13-plan6b-module-import-design.md`
 
@@ -25,10 +25,10 @@
 | `crates/sans-driver/src/imports.rs` | Create | `resolve_imports()` — recursive import resolution, cycle detection, topological sort |
 | `crates/sans-driver/src/main.rs` | Modify | Update `build()` to use multi-module pipeline: resolve → parse → check → lower → merge → codegen |
 | `crates/sans-driver/tests/e2e.rs` | Modify | Update `compile_and_run` for multi-file fixtures, add 4 E2E tests |
-| `tests/fixtures/import_basic/` | Create | Basic import E2E fixture (main.cy + utils.cy) |
-| `tests/fixtures/import_nested/` | Create | Nested path import E2E fixture (main.cy + models/user.cy) |
-| `tests/fixtures/import_chain/` | Create | Transitive import E2E fixture (main.cy + a.cy + b.cy) |
-| `tests/fixtures/import_struct/` | Create | Cross-module struct E2E fixture (main.cy + models.cy) |
+| `tests/fixtures/import_basic/` | Create | Basic import E2E fixture (main.sans + utils.sans) |
+| `tests/fixtures/import_nested/` | Create | Nested path import E2E fixture (main.sans + models/user.sans) |
+| `tests/fixtures/import_chain/` | Create | Transitive import E2E fixture (main.sans + a.sans + b.sans) |
+| `tests/fixtures/import_struct/` | Create | Cross-module struct E2E fixture (main.sans + models.sans) |
 
 ---
 
@@ -986,7 +986,7 @@ use sans_parser::ast::Program;
 /// A parsed module with its metadata.
 pub struct ResolvedModule {
     pub name: String,      // module prefix, e.g., "user"
-    pub path: PathBuf,     // absolute path to .cy file
+    pub path: PathBuf,     // absolute path to .sans file
     pub program: Program,  // parsed AST
 }
 
@@ -1037,7 +1037,7 @@ fn resolve_import(
     _from_file: &Path,
 ) -> Result<(), String> {
     // Resolve the file path
-    let file_path = base_dir.join(format!("{}.cy", import_path));
+    let file_path = base_dir.join(format!("{}.sans", import_path));
     let canonical = file_path.canonicalize()
         .map_err(|_| format!("module not found: {}", import_path))?;
 
@@ -1105,9 +1105,9 @@ Replace the entire `build()` function body in `crates/sans-driver/src/main.rs`:
 ```rust
 fn build(source_path: &PathBuf) -> Result<(), String> {
     // Validate extension
-    if source_path.extension().and_then(|e| e.to_str()) != Some("cy") {
+    if source_path.extension().and_then(|e| e.to_str()) != Some("sans") {
         return Err(format!(
-            "expected a .cy source file, got: {}",
+            "expected a .sans source file, got: {}",
             source_path.display()
         ));
     }
@@ -1229,15 +1229,15 @@ git commit -m "feat(driver): add import resolution and multi-module compilation 
 
 **Files:**
 - Modify: `crates/sans-driver/tests/e2e.rs`
-- Create: `tests/fixtures/import_basic/main.cy`
-- Create: `tests/fixtures/import_basic/utils.cy`
-- Create: `tests/fixtures/import_nested/main.cy`
-- Create: `tests/fixtures/import_nested/models/user.cy`
-- Create: `tests/fixtures/import_chain/main.cy`
-- Create: `tests/fixtures/import_chain/a.cy`
-- Create: `tests/fixtures/import_chain/b.cy`
-- Create: `tests/fixtures/import_struct/main.cy`
-- Create: `tests/fixtures/import_struct/models.cy`
+- Create: `tests/fixtures/import_basic/main.sans`
+- Create: `tests/fixtures/import_basic/utils.sans`
+- Create: `tests/fixtures/import_nested/main.sans`
+- Create: `tests/fixtures/import_nested/models/user.sans`
+- Create: `tests/fixtures/import_chain/main.sans`
+- Create: `tests/fixtures/import_chain/a.sans`
+- Create: `tests/fixtures/import_chain/b.sans`
+- Create: `tests/fixtures/import_struct/main.sans`
+- Create: `tests/fixtures/import_struct/models.sans`
 
 - [ ] **Step 1: Create `crates/sans-driver/src/lib.rs` and update `main.rs`**
 
@@ -1252,29 +1252,29 @@ pub mod imports;
 In `crates/sans-driver/src/main.rs`, replace `mod imports;` (added in Task 6) with:
 
 ```rust
-use cyflym::imports;
+use sans::imports;
 ```
 
-This lets `e2e.rs` tests use `cyflym::imports::resolve_imports`.
+This lets `e2e.rs` tests use `sans::imports::resolve_imports`.
 
 - [ ] **Step 2: Add `compile_and_run_dir` helper for multi-file fixtures**
 
 The current `compile_and_run(fixture: &str)` handles single files. Add a new helper that replicates the multi-module pipeline:
 
 ```rust
-/// Helper: compile a multi-file fixture directory and run main.cy, returning the exit code.
+/// Helper: compile a multi-file fixture directory and run main.sans, returning the exit code.
 fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let dir_path = format!("{}/../../tests/fixtures/{}", manifest_dir, fixture_dir);
-    let main_path = std::path::PathBuf::from(format!("{}/main.cy", dir_path));
+    let main_path = std::path::PathBuf::from(format!("{}/main.sans", dir_path));
 
     // Resolve imports
-    let resolved_modules = cyflym::imports::resolve_imports(&main_path)
+    let resolved_modules = sans::imports::resolve_imports(&main_path)
         .unwrap_or_else(|e| panic!("import resolution error: {}", e));
 
     // Parse main
     let main_source = std::fs::read_to_string(&main_path)
-        .unwrap_or_else(|e| panic!("could not read main.cy: {}", e));
+        .unwrap_or_else(|e| panic!("could not read main.sans: {}", e));
     let main_program = sans_parser::parse(&main_source)
         .unwrap_or_else(|e| panic!("parse error: {:?}", e));
 
@@ -1339,23 +1339,23 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
 No `simple_resolve_type` helper needed — `check()` returns `ModuleExports` directly.
 
 ```rust
-use cyflym::imports;
+use sans::imports;
 ```
 
-Then in `e2e.rs`, the test can use `cyflym::imports::resolve_imports`.
+Then in `e2e.rs`, the test can use `sans::imports::resolve_imports`.
 
 - [ ] **Step 3: Create E2E fixture: `import_basic`**
 
 Create directory `tests/fixtures/import_basic/`.
 
-Create `tests/fixtures/import_basic/utils.cy`:
+Create `tests/fixtures/import_basic/utils.sans`:
 ```
 fn add(a Int, b Int) Int {
     a + b
 }
 ```
 
-Create `tests/fixtures/import_basic/main.cy`:
+Create `tests/fixtures/import_basic/main.sans`:
 ```
 import "utils"
 
@@ -1370,7 +1370,7 @@ Expected exit code: **7**
 
 Create directories `tests/fixtures/import_nested/` and `tests/fixtures/import_nested/models/`.
 
-Create `tests/fixtures/import_nested/models/user.cy`:
+Create `tests/fixtures/import_nested/models/user.sans`:
 ```
 struct User {
     name String,
@@ -1382,7 +1382,7 @@ fn create_age(age Int) Int {
 }
 ```
 
-Create `tests/fixtures/import_nested/main.cy`:
+Create `tests/fixtures/import_nested/main.sans`:
 ```
 import "models/user"
 
@@ -1397,14 +1397,14 @@ Expected exit code: **15**
 
 Create directory `tests/fixtures/import_chain/`.
 
-Create `tests/fixtures/import_chain/b.cy`:
+Create `tests/fixtures/import_chain/b.sans`:
 ```
 fn base_value() Int {
     10
 }
 ```
 
-Create `tests/fixtures/import_chain/a.cy`:
+Create `tests/fixtures/import_chain/a.sans`:
 ```
 import "b"
 
@@ -1413,7 +1413,7 @@ fn compute() Int {
 }
 ```
 
-Create `tests/fixtures/import_chain/main.cy`:
+Create `tests/fixtures/import_chain/main.sans`:
 ```
 import "a"
 
@@ -1428,7 +1428,7 @@ Expected exit code: **13**
 
 Create directory `tests/fixtures/import_struct/`.
 
-Create `tests/fixtures/import_struct/models.cy`:
+Create `tests/fixtures/import_struct/models.sans`:
 ```
 struct Point {
     x Int,
@@ -1440,7 +1440,7 @@ fn new_point(x Int, y Int) Point {
 }
 ```
 
-Create `tests/fixtures/import_struct/main.cy`:
+Create `tests/fixtures/import_struct/main.sans`:
 ```
 import "models"
 

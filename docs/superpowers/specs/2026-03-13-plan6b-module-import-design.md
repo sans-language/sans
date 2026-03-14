@@ -14,11 +14,11 @@ Add minimal multi-file compilation via `import "path"` syntax with module-prefix
 - Topological sort of import graph for type checking order
 - Recursive imports (imported files can import other files)
 
-**Out of scope (deferred):** `pub` keyword / visibility control, selective imports (`import { X } from "mod"`), import aliases (`import "foo" as f`), trait/impl block imports, stdlib module resolution, external dependency resolution / `cyflym.toml`, separate compilation, duplicate last-segment detection.
+**Out of scope (deferred):** `pub` keyword / visibility control, selective imports (`import { X } from "mod"`), import aliases (`import "foo" as f`), trait/impl block imports, stdlib module resolution, external dependency resolution / `sans.toml`, separate compilation, duplicate last-segment detection.
 
 ## Decisions
 
-- **Path resolution:** Relative to the directory containing the file passed to `sans build`. `import "utils"` resolves to `utils.cy`, `import "models/user"` resolves to `models/user.cy`.
+- **Path resolution:** Relative to the directory containing the file passed to `sans build`. `import "utils"` resolves to `utils.sans`, `import "models/user"` resolves to `models/user.sans`.
 - **Module prefix:** Last path segment. `import "models/user"` → prefix `user`. Access as `user.function()`.
 - **Visibility:** All top-level functions, structs, and enums are public. No `pub` keyword in this plan.
 - **Importable items:** Functions, structs, enums. Traits and impl blocks are NOT importable.
@@ -34,8 +34,8 @@ Add minimal multi-file compilation via `import "path"` syntax with module-prefix
 
 ## Syntax
 
-```cyflym
-// utils.cy
+```sans
+// utils.sans
 fn greet(name String) String {
     "hello " + name
 }
@@ -44,7 +44,7 @@ fn add(a Int, b Int) Int {
     a + b
 }
 
-// models/user.cy
+// models/user.sans
 struct User {
     name String,
     age Int,
@@ -54,7 +54,7 @@ fn create(name String, age Int) User {
     User { name: name, age: age }
 }
 
-// main.cy
+// main.sans
 import "utils"
 import "models/user"
 
@@ -72,7 +72,7 @@ fn main() Int {
 
 ### Import Declaration
 
-`import "path"` where path is a string literal. Path must not include the `.cy` extension. The last segment of the path becomes the module prefix.
+`import "path"` where path is a string literal. Path must not include the `.sans` extension. The last segment of the path becomes the module prefix.
 
 ## AST Changes
 
@@ -162,8 +162,8 @@ For `Expr::FieldAccess` where the receiver is a module name, the type checker pr
 
 ### Type Errors
 
-- `import "foo"` but `foo.cy` not found → `"module not found: foo"`
-- `import "foo.cy"` (with extension) → `"module not found: foo.cy"` (no special handling — the path simply won't resolve)
+- `import "foo"` but `foo.sans` not found → `"module not found: foo"`
+- `import "foo.sans"` (with extension) → `"module not found: foo.sans"` (no special handling — the path simply won't resolve)
 - `foo.bar()` but `bar` not in foo's exports → `"function 'bar' not found in module 'foo'"`
 - `foo.bar` (field access on module) → `"cannot access field on module 'foo' — did you mean to call a function?"`
 - `foo.bar(wrong_args)` → normal argument type mismatch error
@@ -176,8 +176,8 @@ For `Expr::FieldAccess` where the receiver is a module name, the type checker pr
 
 Functions in non-main modules are mangled: `{module_name}__{function_name}`.
 
-- `utils.cy`'s `fn greet()` → IR function named `utils__greet`
-- `main.cy`'s `fn main()` → IR function named `main` (no mangling)
+- `utils.sans`'s `fn greet()` → IR function named `utils__greet`
+- `main.sans`'s `fn main()` → IR function named `main` (no mangling)
 
 ### Cross-Module Call Lowering
 
@@ -215,7 +215,7 @@ Import resolution lives in a new module in the driver crate: `crates/sans-driver
 ```rust
 pub struct ResolvedModule {
     pub name: String,           // module prefix, e.g., "user"
-    pub path: PathBuf,          // absolute path to .cy file
+    pub path: PathBuf,          // absolute path to .sans file
     pub program: Program,       // parsed AST
 }
 
@@ -259,13 +259,13 @@ The driver calls `resolve_imports`, then iterates the result in order, type-chec
 
 ### E2E Tests (~4 new)
 
-**`import_basic/main.cy` + `import_basic/utils.cy`** — Main imports utils, calls a function, exits with return value.
+**`import_basic/main.sans` + `import_basic/utils.sans`** — Main imports utils, calls a function, exits with return value.
 
-**`import_nested/main.cy` + `import_nested/models/user.cy`** — Main imports `"models/user"`, calls `user.create()`, exits with return value. Tests nested path resolution.
+**`import_nested/main.sans` + `import_nested/models/user.sans`** — Main imports `"models/user"`, calls `user.create()`, exits with return value. Tests nested path resolution.
 
-**`import_chain/main.cy` + `import_chain/a.cy` + `import_chain/b.cy`** — Main imports a, a imports b, main calls a.func() which internally calls b.func(). Tests transitive imports.
+**`import_chain/main.sans` + `import_chain/a.sans` + `import_chain/b.sans`** — Main imports a, a imports b, main calls a.func() which internally calls b.func(). Tests transitive imports.
 
-**`import_struct/main.cy` + `import_struct/models.cy`** — Main imports models, calls a constructor function that returns a struct, accesses fields. Tests cross-module struct types.
+**`import_struct/main.sans` + `import_struct/models.sans`** — Main imports models, calls a constructor function that returns a struct, accesses fields. Tests cross-module struct types.
 
 ### Estimated Total: ~243 tests (225 existing + ~18 new)
 
@@ -276,7 +276,7 @@ The driver calls `resolve_imports`, then iterates the result in order, type-chec
 - Import aliases (`import "foo" as f`)
 - Trait and impl block imports
 - Standard library module resolution
-- External dependency resolution / `cyflym.toml`
+- External dependency resolution / `sans.toml`
 - Separate compilation / incremental builds
 - Direct cross-module struct literal construction (`mod.Struct { ... }`)
 - Direct cross-module enum variant construction (`mod.Enum::Variant`)

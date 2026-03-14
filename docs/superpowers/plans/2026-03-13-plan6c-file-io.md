@@ -537,32 +537,32 @@ git commit -m "feat(codegen): add file I/O instruction compilation with fopen nu
 
 **Files:**
 - Modify: `crates/sans-driver/tests/e2e.rs`
-- Create: `tests/fixtures/file_write_read.cy`
-- Create: `tests/fixtures/file_exists_check.cy`
+- Create: `tests/fixtures/file_write_read.sans`
+- Create: `tests/fixtures/file_exists_check.sans`
 
-- [ ] **Step 1: Create `file_write_read.cy` fixture**
+- [ ] **Step 1: Create `file_write_read.sans` fixture**
 
-Create `tests/fixtures/file_write_read.cy`:
+Create `tests/fixtures/file_write_read.sans`:
 
-```cyflym
+```sans
 fn main() Int {
-    let ok = file_write("/tmp/cyflym_test_write.txt", "hello world")
-    let content = file_read("/tmp/cyflym_test_write.txt")
+    let ok = file_write("/tmp/sans_test_write.txt", "hello world")
+    let content = file_read("/tmp/sans_test_write.txt")
     content.len()
 }
 ```
 
 Expected exit code: **11** (length of "hello world")
 
-- [ ] **Step 2: Create `file_exists_check.cy` fixture**
+- [ ] **Step 2: Create `file_exists_check.sans` fixture**
 
-Create `tests/fixtures/file_exists_check.cy`:
+Create `tests/fixtures/file_exists_check.sans`:
 
-```cyflym
+```sans
 fn main() Int {
-    file_write("/tmp/cyflym_test_exists.txt", "test")
-    let a = file_exists("/tmp/cyflym_test_exists.txt")
-    let b = file_exists("/tmp/cyflym_nonexistent_file_xyz.txt")
+    file_write("/tmp/sans_test_exists.txt", "test")
+    let a = file_exists("/tmp/sans_test_exists.txt")
+    let b = file_exists("/tmp/sans_nonexistent_file_xyz.txt")
     let result = 0
     if a {
         let result = 1
@@ -576,11 +576,11 @@ fn main() Int {
 
 Wait — Sans uses `let` for new bindings, not reassignment. And `if` without `else` is a statement, not an expression. Let me reconsider. The simplest approach:
 
-```cyflym
+```sans
 fn main() Int {
-    file_write("/tmp/cyflym_test_exists.txt", "test")
-    let a = file_exists("/tmp/cyflym_test_exists.txt")
-    let b = file_exists("/tmp/cyflym_nonexistent_file_xyz.txt")
+    file_write("/tmp/sans_test_exists.txt", "test")
+    let a = file_exists("/tmp/sans_test_exists.txt")
+    let b = file_exists("/tmp/sans_nonexistent_file_xyz.txt")
     if a {
         if b {
             11
@@ -606,18 +606,18 @@ In `crates/sans-driver/tests/e2e.rs`, add after the last test:
 ```rust
 #[test]
 fn e2e_file_write_read() {
-    assert_eq!(compile_and_run("file_write_read.cy"), 11);
+    assert_eq!(compile_and_run("file_write_read.sans"), 11);
 }
 
 #[test]
 fn e2e_file_exists_check() {
-    assert_eq!(compile_and_run("file_exists_check.cy"), 1);
+    assert_eq!(compile_and_run("file_exists_check.sans"), 1);
 }
 ```
 
 - [ ] **Step 4: Run E2E tests**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym e2e_file`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans e2e_file`
 Expected: Both new tests pass
 
 - [ ] **Step 5: Run full test suite**
@@ -628,6 +628,6 @@ Expected: All ~249 tests pass
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/sans-driver/tests/e2e.rs tests/fixtures/file_write_read.cy tests/fixtures/file_exists_check.cy
+git add crates/sans-driver/tests/e2e.rs tests/fixtures/file_write_read.sans tests/fixtures/file_exists_check.sans
 git commit -m "feat(e2e): add file I/O end-to-end tests"
 ```

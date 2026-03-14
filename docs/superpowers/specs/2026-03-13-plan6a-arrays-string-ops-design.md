@@ -31,7 +31,7 @@ Add dynamically-sized `Array<T>` with push/get/set/len, `for..in` iteration, str
 
 ## Syntax
 
-```cyflym
+```sans
 // Array creation
 let a = array<Int>()
 
@@ -322,13 +322,13 @@ Same as channels/mutex — all heap allocations (array structs, buffers, concate
 
 ### E2E Fixtures (4)
 
-**`array_basic.cy`** — Create array, push values, get and len. Exit with computed value.
+**`array_basic.sans`** — Create array, push values, get and len. Exit with computed value.
 
-**`array_for_in.cy`** — Create array, push values, iterate with for-in summing elements. Exit with sum.
+**`array_for_in.sans`** — Create array, push values, iterate with for-in summing elements. Exit with sum.
 
-**`string_ops.cy`** — String len, concatenation, substring. Exit with computed value.
+**`string_ops.sans`** — String len, concatenation, substring. Exit with computed value.
 
-**`string_conversion.cy`** — int_to_string and string_to_int round-trip. Exit with computed value.
+**`string_conversion.sans`** — int_to_string and string_to_int round-trip. Exit with computed value.
 
 ### Estimated Total: ~220 tests (195 existing + ~25 new)
 

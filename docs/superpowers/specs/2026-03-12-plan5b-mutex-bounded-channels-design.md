@@ -22,7 +22,7 @@ Add mutex primitives and bounded channels to Sans's concurrency toolkit — expl
 
 ## Syntax
 
-```cyflym
+```sans
 // Create a mutex wrapping an initial value
 let m = mutex(0)
 
@@ -278,11 +278,11 @@ Same as Plan 5a — mutex and channel structs are leaked until process exit. Cle
 
 ### E2E Fixtures (3)
 
-**`mutex_basic.cy`** — Create mutex with initial value, lock, read, unlock with new value, lock again, exit with final value.
+**`mutex_basic.sans`** — Create mutex with initial value, lock, read, unlock with new value, lock again, exit with final value.
 
-**`mutex_threaded.cy`** — Two threads incrementing a shared mutex counter, exit with final count.
+**`mutex_threaded.sans`** — Two threads incrementing a shared mutex counter, exit with final count.
 
-**`channel_bounded.cy`** — Bounded channel with small capacity, sender and receiver in separate threads, exit with sum of received values.
+**`channel_bounded.sans`** — Bounded channel with small capacity, sender and receiver in separate threads, exit with sum of received values.
 
 ### Estimated Total: ~194 tests (177 existing + ~17 new)
 

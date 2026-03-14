@@ -26,10 +26,10 @@
 | `crates/sans-ir/src/lib.rs` | Modify | Add `Array(Box<IrType>)` to IrType, lower all new ops, lower ForIn to counted loop + 4 tests |
 | `crates/sans-codegen/src/lib.rs` | Modify | Codegen for array (24-byte struct), string ops (strlen/memcpy/snprintf/strtol), declare C functions + 3 tests |
 | `crates/sans-driver/tests/e2e.rs` | Modify | Add 4 E2E test entries |
-| `tests/fixtures/array_basic.cy` | Create | Array create/push/get/set/len test |
-| `tests/fixtures/array_for_in.cy` | Create | For-in iteration test |
-| `tests/fixtures/string_ops.cy` | Create | String len/concat/substring test |
-| `tests/fixtures/string_conversion.cy` | Create | int_to_string/string_to_int test |
+| `tests/fixtures/array_basic.sans` | Create | Array create/push/get/set/len test |
+| `tests/fixtures/array_for_in.sans` | Create | For-in iteration test |
+| `tests/fixtures/string_ops.sans` | Create | String len/concat/substring test |
+| `tests/fixtures/string_conversion.sans` | Create | int_to_string/string_to_int test |
 
 ---
 
@@ -1300,15 +1300,15 @@ git commit -m "feat(codegen): add array ops, string ops, and C stdlib declaratio
 ### Task 6: E2E Tests
 
 **Files:**
-- Create: `tests/fixtures/array_basic.cy`
-- Create: `tests/fixtures/array_for_in.cy`
-- Create: `tests/fixtures/string_ops.cy`
-- Create: `tests/fixtures/string_conversion.cy`
+- Create: `tests/fixtures/array_basic.sans`
+- Create: `tests/fixtures/array_for_in.sans`
+- Create: `tests/fixtures/string_ops.sans`
+- Create: `tests/fixtures/string_conversion.sans`
 - Modify: `crates/sans-driver/tests/e2e.rs`
 
-- [ ] **Step 1: Create `array_basic.cy`**
+- [ ] **Step 1: Create `array_basic.sans`**
 
-```cyflym
+```sans
 fn main() Int {
     let a = array<Int>()
     a.push(10)
@@ -1323,9 +1323,9 @@ fn main() Int {
 
 Expected exit code: 28 (25 + 3)
 
-- [ ] **Step 2: Create `array_for_in.cy`**
+- [ ] **Step 2: Create `array_for_in.sans`**
 
-```cyflym
+```sans
 fn main() Int {
     let a = array<Int>()
     a.push(1)
@@ -1342,9 +1342,9 @@ fn main() Int {
 
 Expected exit code: 10 (1+2+3+4)
 
-- [ ] **Step 3: Create `string_ops.cy`**
+- [ ] **Step 3: Create `string_ops.sans`**
 
-```cyflym
+```sans
 fn main() Int {
     let s = "hello"
     let n = s.len()
@@ -1358,9 +1358,9 @@ fn main() Int {
 
 Expected exit code: 18 (5 + 11 + 2)
 
-- [ ] **Step 4: Create `string_conversion.cy`**
+- [ ] **Step 4: Create `string_conversion.sans`**
 
-```cyflym
+```sans
 fn main() Int {
     let s = int_to_string(42)
     let n = string_to_int(s)
@@ -1377,22 +1377,22 @@ In `crates/sans-driver/tests/e2e.rs`, add:
 ```rust
 #[test]
 fn e2e_array_basic() {
-    assert_eq!(compile_and_run("array_basic.cy"), 28);
+    assert_eq!(compile_and_run("array_basic.sans"), 28);
 }
 
 #[test]
 fn e2e_array_for_in() {
-    assert_eq!(compile_and_run("array_for_in.cy"), 10);
+    assert_eq!(compile_and_run("array_for_in.sans"), 10);
 }
 
 #[test]
 fn e2e_string_ops() {
-    assert_eq!(compile_and_run("string_ops.cy"), 18);
+    assert_eq!(compile_and_run("string_ops.sans"), 18);
 }
 
 #[test]
 fn e2e_string_conversion() {
-    assert_eq!(compile_and_run("string_conversion.cy"), 42);
+    assert_eq!(compile_and_run("string_conversion.sans"), 42);
 }
 ```
 
@@ -1409,6 +1409,6 @@ Expected: ~220+ tests PASS
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tests/fixtures/array_basic.cy tests/fixtures/array_for_in.cy tests/fixtures/string_ops.cy tests/fixtures/string_conversion.cy crates/sans-driver/tests/e2e.rs
+git add tests/fixtures/array_basic.sans tests/fixtures/array_for_in.sans tests/fixtures/string_ops.sans tests/fixtures/string_conversion.sans crates/sans-driver/tests/e2e.rs
 git commit -m "feat: add array and string E2E tests"
 ```

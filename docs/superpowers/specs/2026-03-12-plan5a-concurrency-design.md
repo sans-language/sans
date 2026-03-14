@@ -14,7 +14,7 @@ Add OS-thread-based concurrency to Sans with `spawn`, `channel`, and `join` — 
 
 ## Syntax
 
-```cyflym
+```sans
 // Spawn a thread — returns a JoinHandle
 let handle = spawn some_function(arg1, arg2)
 
@@ -282,11 +282,11 @@ Channel structs and buffers are heap-allocated and **not freed** — they are le
 
 ### E2E Fixtures (3)
 
-**`spawn_basic.cy`** — Spawn a thread that sends a value through a channel, main receives it and exits with that value.
+**`spawn_basic.sans`** — Spawn a thread that sends a value through a channel, main receives it and exits with that value.
 
-**`spawn_join.cy`** — Spawn a thread, join it, verify completion by exiting with a known value.
+**`spawn_join.sans`** — Spawn a thread, join it, verify completion by exiting with a known value.
 
-**`channel_pingpong.cy`** — Two threads passing values through channels, exit with final computed value.
+**`channel_pingpong.sans`** — Two threads passing values through channels, exit with final computed value.
 
 ### Estimated Total: ~174 tests (151 existing + ~23 new)
 

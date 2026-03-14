@@ -27,8 +27,8 @@ The name "Sans" comes from Welsh, meaning "fast."
 | Null handling | Nullable types (`T?`), non-null by default |
 | Generics | Simple with trait constraints |
 | Stdlib | HTTP, JSON, logging, crypto, TLS, networking |
-| Toolchain | All-in-one `cyflym` binary |
-| Module system | File-based + `cyflym.toml` manifest |
+| Toolchain | All-in-one `sans` binary |
+| Module system | File-based + `sans.toml` manifest |
 | GC | Phased: generational semi-space -> concurrent tri-color |
 | Self-hosting | Long-term goal: rewrite compiler in Sans |
 
@@ -59,7 +59,7 @@ All primitive types are value types (copied on assignment) except `String`, whic
 Immutable by default. `mut` keyword for mutable bindings.
 
 ```
-let name = "cyflym"
+let name = "sans"
 let mut counter = 0
 ```
 
@@ -117,7 +117,7 @@ Non-null by default. `T?` is syntactic sugar for `Option<T>` — they are the sa
 let email String? = None
 let email Option<String> = None
 
-let name String = "cyflym"       // never null
+let name String = "sans"       // never null
 let email String? = None         // nullable
 
 // Optional chaining and nil coalescing
@@ -771,22 +771,22 @@ File-based. Directory structure is the module structure.
 
 ```
 myapp/
-  cyflym.toml
+  sans.toml
   src/
-    main.cy
+    main.sans
     models/
-      user.cy          // module: models/user
-      post.cy          // module: models/post
+      user.sans          // module: models/user
+      post.sans          // module: models/post
     handlers/
-      users.cy         // module: handlers/users
+      users.sans         // module: handlers/users
     middleware/
-      auth.cy          // module: middleware/auth
+      auth.sans          // module: middleware/auth
 ```
 
 ### Project Manifest
 
 ```toml
-# cyflym.toml
+# sans.toml
 [package]
 name = "myapp"
 version = "0.1.0"
@@ -801,15 +801,15 @@ redis = "1.2.0"
 The compiler resolves imports in this order:
 1. **Local modules** — paths matching `src/` directory structure
 2. **Standard library** — built-in packages (`http`, `json`, `log`, etc.)
-3. **External dependencies** — packages listed in `cyflym.toml` `[dependencies]`
+3. **External dependencies** — packages listed in `sans.toml` `[dependencies]`
 
 If a name collision occurs between stdlib and an external package, the compiler raises an error and requires an explicit alias.
 
 ```
-import "models/user"              // local: src/models/user.cy
-import "handlers/users"           // local: src/handlers/users.cy
+import "models/user"              // local: src/models/user.sans
+import "handlers/users"           // local: src/handlers/users.sans
 import "http"                     // stdlib
-import "postgres"                 // external (from cyflym.toml)
+import "postgres"                 // external (from sans.toml)
 
 // Aliased imports
 import "models/user" as u
@@ -841,24 +841,24 @@ fn hash_password(raw String) String {   // private
 
 ### Toolchain
 
-Single `cyflym` binary.
+Single `sans` binary.
 
 ```
-cyflym new myapp          # scaffold new project
+sans new myapp          # scaffold new project
 sans build              # compile to native binary
 sans run                # build and run
-cyflym test               # run all tests
-cyflym fmt                # format code
-cyflym lint               # static analysis
-cyflym doc                # generate documentation
-cyflym dep add postgres   # add dependency
-cyflym dep update         # update dependencies
-cyflym lsp                # start language server
+sans test               # run all tests
+sans fmt                # format code
+sans lint               # static analysis
+sans doc                # generate documentation
+sans dep add postgres   # add dependency
+sans dep update         # update dependencies
+sans lsp                # start language server
 ```
 
 ### Testing
 
-Built-in test framework. Tests in `_test.cy` files.
+Built-in test framework. Tests in `_test.sans` files.
 
 ```
 import "testing"
@@ -1068,8 +1068,8 @@ for i in 0..items.len() {
 
 ```
 // GC tuning via environment
-// CYFLYM_GC_THREADS=4
-// CYFLYM_GC_HEAP_MAX=2G
+// SANS_GC_THREADS=4
+// SANS_GC_HEAP_MAX=2G
 
 // Or in code
 import "runtime"
@@ -1083,7 +1083,7 @@ fn main() {
 ### Compilation Pipeline
 
 ```
-Source (.cy)
+Source (.sans)
     |
     v
   Lexer/Parser --> AST
@@ -1119,7 +1119,7 @@ When Sans becomes self-hosting, the compiler rewrite only needs to emit this sam
 
 ## File Extension
 
-`.cy`
+`.sans`
 
 ## Example: Complete API Server
 

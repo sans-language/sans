@@ -27,7 +27,7 @@ Add leveled logging to stderr via built-in functions. Users can log messages at 
 
 ## Syntax
 
-```cyflym
+```sans
 fn main() Int {
     log_set_level(1)  // INFO and above
 
@@ -154,7 +154,7 @@ long cy_log_set_level(long level) {
 
 ### E2E Tests (~1 new)
 
-**`log_levels.cy`** — Set level to WARN, call all four log functions. The test captures stderr to verify only WARN and ERROR messages appear. Exit code encodes success.
+**`log_levels.sans`** — Set level to WARN, call all four log functions. The test captures stderr to verify only WARN and ERROR messages appear. Exit code encodes success.
 
 Note: E2E tests for logging are tricky because the test helper captures exit code, not stderr. The E2E test will verify that the program compiles and runs without crashing, and that log_set_level + log functions work without error. The actual stderr output verification would require test infrastructure changes.
 

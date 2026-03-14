@@ -26,7 +26,7 @@ Add minimal file I/O via built-in functions: `file_read`, `file_write`, `file_ap
 
 ## Syntax
 
-```cyflym
+```sans
 fn main() Int {
     // Write a file
     let ok = file_write("output.txt", "hello world")
@@ -188,9 +188,9 @@ Same as FileWrite but with `fopen(path, "a")`.
 
 ### E2E Tests (~2 new)
 
-**`file_write_read.cy`** — Write a string to a temp file, read it back, compare length. Exit code = string length (verifies round-trip).
+**`file_write_read.sans`** — Write a string to a temp file, read it back, compare length. Exit code = string length (verifies round-trip).
 
-**`file_exists_check.cy`** — Write a file, check it exists (true=1), check a nonexistent file (false=0). Exit code = sum of checks.
+**`file_exists_check.sans`** — Write a file, check it exists (true=1), check a nonexistent file (false=0). Exit code = sum of checks.
 
 ### Estimated Total: ~249 tests (241 existing + ~8 new)
 

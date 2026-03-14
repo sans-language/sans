@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust (compiler implementation), LLVM 17+ (code generation via `inkwell` crate), Cargo workspace (build system)
 
-**Spec:** `docs/superpowers/specs/2026-03-12-cyflym-language-design.md`
+**Spec:** `docs/superpowers/specs/2026-03-12-sans-language-design.md`
 
 ---
 
@@ -22,7 +22,7 @@ This is **Plan 1 of 7** in the Sans compiler series:
 4. **Traits & Generics** — trait system, generic functions/structs, type constraints
 5. **Concurrency** — green thread runtime, channels, spawn, select
 6. **Standard Library** — http, json, log, crypto, io, testing
-7. **Toolchain** — `cyflym` CLI, formatter, linter, test runner, package manager, LSP
+7. **Toolchain** — `sans` CLI, formatter, linter, test runner, package manager, LSP
 
 ---
 
@@ -84,7 +84,7 @@ source ~/.zshrc
 ## File Structure
 
 ```
-cyflym/
+sans/
 ├── Cargo.toml                          # Workspace root
 ├── crates/
 │   ├── sans-lexer/
@@ -117,16 +117,16 @@ cyflym/
 │           └── main.rs                 # CLI: orchestrates pipeline
 ├── tests/
 │   └── fixtures/
-│       ├── minimal.cy                  # fn main() Int { 42 }
-│       ├── let_binding.cy             # let bindings + arithmetic
-│       ├── function_call.cy           # function calls
-│       └── full_mvp.cy               # full MVP program
+│       ├── minimal.sans                  # fn main() Int { 42 }
+│       ├── let_binding.sans             # let bindings + arithmetic
+│       ├── function_call.sans           # function calls
+│       └── full_mvp.sans               # full MVP program
 └── docs/
     └── superpowers/
         ├── specs/
-        │   └── 2026-03-12-cyflym-language-design.md
+        │   └── 2026-03-12-sans-language-design.md
         └── plans/
-            └── 2026-03-12-cyflym-mvp-compiler.md  (this file)
+            └── 2026-03-12-sans-mvp-compiler.md  (this file)
 ```
 
 ---
@@ -1974,7 +1974,7 @@ fn generate_llvm<'ctx>(
     context: &'ctx Context,
     module: &Module,
 ) -> Result<LlvmModule<'ctx>, CodegenError> {
-    let llvm_module = context.create_module("cyflym");
+    let llvm_module = context.create_module("sans");
     let builder = context.create_builder();
     let i64_type = context.i64_type();
 
@@ -2161,7 +2161,7 @@ Create `crates/sans-driver/Cargo.toml`:
 
 ```toml
 [package]
-name = "cyflym"
+name = "sans"
 version = "0.1.0"
 edition = "2021"
 
@@ -2184,7 +2184,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 3 {
-        eprintln!("Usage: sans build <file.cy>");
+        eprintln!("Usage: sans build <file.sans>");
         std::process::exit(1);
     }
 
@@ -2222,12 +2222,12 @@ fn build(input_path: &str) -> Result<(), String> {
     let ir_module = sans_ir::lower(&program);
 
     // Codegen to object file
-    let obj_path = input_path.replace(".cy", ".o");
+    let obj_path = input_path.replace(".sans", ".o");
     sans_codegen::compile_to_object(&ir_module, &obj_path)
         .map_err(|e| format!("codegen error: {}", e.message))?;
 
     // Link with system linker
-    let output_path = input_path.replace(".cy", "");
+    let output_path = input_path.replace(".sans", "");
     let status = Command::new("cc")
         .args([&obj_path, "-o", &output_path])
         .status()
@@ -2247,7 +2247,7 @@ fn build(input_path: &str) -> Result<(), String> {
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `cargo build -p cyflym`
+Run: `cargo build -p sans`
 Expected: Compiles successfully
 
 - [ ] **Step 3: Commit**
@@ -2262,14 +2262,14 @@ git commit -m "feat: implement driver CLI with build command"
 ### Task 9: End-to-End Test
 
 **Files:**
-- Create: `tests/fixtures/minimal.cy`
-- Create: `tests/fixtures/let_binding.cy`
-- Create: `tests/fixtures/function_call.cy`
-- Create: `tests/fixtures/full_mvp.cy`
+- Create: `tests/fixtures/minimal.sans`
+- Create: `tests/fixtures/let_binding.sans`
+- Create: `tests/fixtures/function_call.sans`
+- Create: `tests/fixtures/full_mvp.sans`
 
 - [ ] **Step 1: Create test fixture files**
 
-Create `tests/fixtures/minimal.cy`:
+Create `tests/fixtures/minimal.sans`:
 
 ```
 fn main() Int {
@@ -2277,7 +2277,7 @@ fn main() Int {
 }
 ```
 
-Create `tests/fixtures/let_binding.cy`:
+Create `tests/fixtures/let_binding.sans`:
 
 ```
 fn main() Int {
@@ -2287,7 +2287,7 @@ fn main() Int {
 }
 ```
 
-Create `tests/fixtures/function_call.cy`:
+Create `tests/fixtures/function_call.sans`:
 
 ```
 fn add(a Int, b Int) Int {
@@ -2299,7 +2299,7 @@ fn main() Int {
 }
 ```
 
-Create `tests/fixtures/full_mvp.cy`:
+Create `tests/fixtures/full_mvp.sans`:
 
 ```
 fn add(a Int, b Int) Int {
@@ -2316,44 +2316,44 @@ fn main() Int {
 
 - [ ] **Step 2: Build the compiler**
 
-Run: `cargo build --release -p cyflym`
+Run: `cargo build --release -p sans`
 Expected: Compiles successfully
 
-- [ ] **Step 3: Compile and run minimal.cy**
+- [ ] **Step 3: Compile and run minimal.sans**
 
 Run:
 ```bash
-./target/release/sans build tests/fixtures/minimal.cy
+./target/release/sans build tests/fixtures/minimal.sans
 ./tests/fixtures/minimal
 echo $?
 ```
 Expected: Exit code `42`
 
-- [ ] **Step 4: Compile and run let_binding.cy**
+- [ ] **Step 4: Compile and run let_binding.sans**
 
 Run:
 ```bash
-./target/release/sans build tests/fixtures/let_binding.cy
+./target/release/sans build tests/fixtures/let_binding.sans
 ./tests/fixtures/let_binding
 echo $?
 ```
 Expected: Exit code `42` (10 + 32 = 42)
 
-- [ ] **Step 5: Compile and run function_call.cy**
+- [ ] **Step 5: Compile and run function_call.sans**
 
 Run:
 ```bash
-./target/release/sans build tests/fixtures/function_call.cy
+./target/release/sans build tests/fixtures/function_call.sans
 ./tests/fixtures/function_call
 echo $?
 ```
 Expected: Exit code `42` (20 + 22 = 42)
 
-- [ ] **Step 6: Compile and run full_mvp.cy**
+- [ ] **Step 6: Compile and run full_mvp.sans**
 
 Run:
 ```bash
-./target/release/sans build tests/fixtures/full_mvp.cy
+./target/release/sans build tests/fixtures/full_mvp.sans
 ./tests/fixtures/full_mvp
 echo $?
 ```
@@ -2372,7 +2372,7 @@ git commit -m "feat: add end-to-end test fixtures — MVP compiler works!"
 
 After completing all tasks, you will have:
 
-1. **Lexer** (`sans-lexer`) — tokenizes `.cy` source into tokens
+1. **Lexer** (`sans-lexer`) — tokenizes `.sans` source into tokens
 2. **Parser** (`sans-parser`) — parses tokens into an AST with operator precedence
 3. **Type Checker** (`sans-typeck`) — validates types, catches undefined vars/functions
 4. **IR** (`sans-ir`) — lowers AST to flat SSA-style intermediate representation

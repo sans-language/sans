@@ -1,6 +1,6 @@
 fn main() Int {
     let obj = json_object()
-    obj.set("name", json_string("cyflym"))
+    obj.set("name", json_string("sans"))
     obj.set("version", json_int(1))
 
     let tags = json_array()

@@ -26,9 +26,9 @@
 | `crates/sans-ir/src/lib.rs` | Modify | Add `Mutex` to `IrType`, lower mutex + bounded channel + 3 tests |
 | `crates/sans-codegen/src/lib.rs` | Modify | Codegen for mutex (72-byte struct), update channel to 208-byte struct, bounded send/recv + 2 tests |
 | `crates/sans-driver/tests/e2e.rs` | Modify | Add 3 E2E test entries |
-| `tests/fixtures/mutex_basic.cy` | Create | Single-threaded mutex test |
-| `tests/fixtures/mutex_threaded.cy` | Create | Multi-threaded mutex test |
-| `tests/fixtures/channel_bounded.cy` | Create | Bounded channel test |
+| `tests/fixtures/mutex_basic.sans` | Create | Single-threaded mutex test |
+| `tests/fixtures/mutex_threaded.sans` | Create | Multi-threaded mutex test |
+| `tests/fixtures/channel_bounded.sans` | Create | Bounded channel test |
 
 ---
 
@@ -1175,14 +1175,14 @@ git commit -m "feat(codegen): add mutex ops, bounded channels, and buffer growth
 ### Task 6: E2E Tests
 
 **Files:**
-- Create: `tests/fixtures/mutex_basic.cy`
-- Create: `tests/fixtures/mutex_threaded.cy`
-- Create: `tests/fixtures/channel_bounded.cy`
+- Create: `tests/fixtures/mutex_basic.sans`
+- Create: `tests/fixtures/mutex_threaded.sans`
+- Create: `tests/fixtures/channel_bounded.sans`
 - Modify: `crates/sans-driver/tests/e2e.rs`
 
-- [ ] **Step 1: Create `mutex_basic.cy`**
+- [ ] **Step 1: Create `mutex_basic.sans`**
 
-```cyflym
+```sans
 fn main() Int {
     let m = mutex(10)
     let v = m.lock()
@@ -1195,13 +1195,13 @@ fn main() Int {
 
 Expected exit code: 15
 
-- [ ] **Step 2: Create `mutex_threaded.cy`**
+- [ ] **Step 2: Create `mutex_threaded.sans`**
 
 Note: Concurrency method calls (`.lock()`, `.unlock()`, `.send()`, `.recv()`) must stay in `main()` where the IR lowering tracks their types via `reg_types`. Passing concurrency types as `Int` params to spawned functions loses the `IrType` — the IR lowering only tracks types within the function where the value was created. This is a known limitation; cross-function type propagation is deferred.
 
 The test uses channels to coordinate: each spawned thread receives a value, adds 1, and sends it back.
 
-```cyflym
+```sans
 fn worker(val Int) Int {
     val + 1
 }
@@ -1224,11 +1224,11 @@ Expected exit code: 1
 
 This tests mutex create, lock, unlock, and interaction with spawn/join — all mutex method calls happen in `main()`.
 
-- [ ] **Step 3: Create `channel_bounded.cy`**
+- [ ] **Step 3: Create `channel_bounded.sans`**
 
 Single-threaded bounded channel test — verifies blocking send doesn't deadlock when capacity isn't exceeded, and values are received correctly.
 
-```cyflym
+```sans
 fn main() Int {
     let (tx, rx) = channel<Int>(2)
     tx.send(10)
@@ -1248,17 +1248,17 @@ In `crates/sans-driver/tests/e2e.rs`, add:
 ```rust
 #[test]
 fn e2e_mutex_basic() {
-    assert_eq!(compile_and_run("mutex_basic.cy"), 15);
+    assert_eq!(compile_and_run("mutex_basic.sans"), 15);
 }
 
 #[test]
 fn e2e_mutex_threaded() {
-    assert_eq!(compile_and_run("mutex_threaded.cy"), 1);
+    assert_eq!(compile_and_run("mutex_threaded.sans"), 1);
 }
 
 #[test]
 fn e2e_channel_bounded() {
-    assert_eq!(compile_and_run("channel_bounded.cy"), 30);
+    assert_eq!(compile_and_run("channel_bounded.sans"), 30);
 }
 ```
 
@@ -1275,6 +1275,6 @@ Expected: ~194 tests PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tests/fixtures/mutex_basic.cy tests/fixtures/mutex_threaded.cy tests/fixtures/channel_bounded.cy crates/sans-driver/tests/e2e.rs
+git add tests/fixtures/mutex_basic.sans tests/fixtures/mutex_threaded.sans tests/fixtures/channel_bounded.sans crates/sans-driver/tests/e2e.rs
 git commit -m "feat: add mutex and bounded channel E2E tests"
 ```

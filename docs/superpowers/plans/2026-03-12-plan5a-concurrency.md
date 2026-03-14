@@ -1104,16 +1104,16 @@ fn codegen_send_recv() {
 ### Task 7: E2E Tests — Fixture programs
 
 **Files:**
-- Create: `tests/fixtures/spawn_basic.cy`
-- Create: `tests/fixtures/spawn_join.cy`
-- Create: `tests/fixtures/channel_pingpong.cy`
+- Create: `tests/fixtures/spawn_basic.sans`
+- Create: `tests/fixtures/spawn_join.sans`
+- Create: `tests/fixtures/channel_pingpong.sans`
 - Modify: `crates/sans-driver/tests/e2e.rs`
 
 **E2E linking note:** The `compile_and_run` helper links with `cc`. On macOS, pthreads are included in libc automatically, so no `-lpthread` flag is needed. On Linux, `-lpthread` would be needed — for now we target macOS only.
 
-**spawn_basic.cy** — Spawn thread sends value through channel, main receives and exits with it:
+**spawn_basic.sans** — Spawn thread sends value through channel, main receives and exits with it:
 
-```cyflym
+```sans
 fn sender(tx Int) Int {
     tx.send(42)
     0
@@ -1161,9 +1161,9 @@ for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
 }
 ```
 
-**spawn_basic.cy:**
+**spawn_basic.sans:**
 
-```cyflym
+```sans
 fn sender(tx Int) Int {
     tx.send(42)
     0
@@ -1182,9 +1182,9 @@ Wait, but inside `sender`, `tx` is typed as `Int`, so `tx.send(42)` would fail t
 
 **Better approach:** Don't pass channels as function params. Instead, use a shared global or restructure the test. Actually, the simplest E2E test pattern is:
 
-**spawn_join.cy** — Simple join test, no channels:
+**spawn_join.sans** — Simple join test, no channels:
 
-```cyflym
+```sans
 fn worker() Int {
     0
 }
@@ -1198,13 +1198,13 @@ fn main() Int {
 
 Expected exit code: 7 (just verifies spawn + join work)
 
-**spawn_basic.cy** — Use channel in main, spawned function writes to it via a wrapper:
+**spawn_basic.sans** — Use channel in main, spawned function writes to it via a wrapper:
 
 Actually this reveals a real design gap: you can't pass typed channels to spawned functions without generic type names in function signatures. For Plan 5a, let's keep the E2E tests simple:
 
-1. **spawn_join.cy** — spawn + join, exit 7
-2. **spawn_basic.cy** — channel send/recv in single thread (no cross-thread), exit 42
-3. **channel_cross_thread.cy** — use a global channel approach...
+1. **spawn_join.sans** — spawn + join, exit 7
+2. **spawn_basic.sans** — channel send/recv in single thread (no cross-thread), exit 42
+3. **channel_cross_thread.sans** — use a global channel approach...
 
 No, we can't do globals either. Let me think about this differently.
 
@@ -1218,8 +1218,8 @@ Actually, the cleanest Plan 5a approach: **only test channel within the same thr
 
 **Final E2E fixtures:**
 
-**spawn_join.cy** (exit 7):
-```cyflym
+**spawn_join.sans** (exit 7):
+```sans
 fn worker() Int {
     0
 }
@@ -1231,8 +1231,8 @@ fn main() Int {
 }
 ```
 
-**channel_basic.cy** (exit 42) — single-threaded channel test:
-```cyflym
+**channel_basic.sans** (exit 42) — single-threaded channel test:
+```sans
 fn main() Int {
     let (tx, rx) = channel<Int>()
     tx.send(42)
@@ -1240,8 +1240,8 @@ fn main() Int {
 }
 ```
 
-**spawn_channel.cy** (exit 10) — cross-thread via shared channel. The trick: the spawned function doesn't need the channel — the main thread sends, spawned thread is just for join testing:
-```cyflym
+**spawn_channel.sans** (exit 10) — cross-thread via shared channel. The trick: the spawned function doesn't need the channel — the main thread sends, spawned thread is just for join testing:
+```sans
 fn adder(a Int, b Int) Int {
     a + b
 }
@@ -1263,17 +1263,17 @@ Expected: exit 10
 ```rust
 #[test]
 fn e2e_spawn_join() {
-    assert_eq!(compile_and_run("spawn_join.cy"), 7);
+    assert_eq!(compile_and_run("spawn_join.sans"), 7);
 }
 
 #[test]
 fn e2e_channel_basic() {
-    assert_eq!(compile_and_run("channel_basic.cy"), 42);
+    assert_eq!(compile_and_run("channel_basic.sans"), 42);
 }
 
 #[test]
 fn e2e_spawn_channel() {
-    assert_eq!(compile_and_run("spawn_channel.cy"), 10);
+    assert_eq!(compile_and_run("spawn_channel.sans"), 10);
 }
 ```
 

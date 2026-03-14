@@ -308,7 +308,7 @@ fn e2e_json_int_roundtrip() {
 
 #[test]
 fn e2e_json_build() {
-    assert_eq!(compile_and_run("json_build.sans"), 52);
+    assert_eq!(compile_and_run("json_build.sans"), 50);
 }
 
 #[test]
@@ -338,7 +338,7 @@ fn e2e_demo_backend() {
     let result = compile_and_run_dir("demo_backend");
     // Clean up output file created by the demo
     let _ = std::fs::remove_file("demo_output.txt");
-    assert_eq!(result, 30);
+    assert_eq!(result, 28);
 }
 
 #[test]
@@ -396,7 +396,7 @@ fn e2e_modulo_neg() {
 
 #[test]
 fn e2e_string_interp() {
-    assert_eq!(compile_and_run("string_interp.sans"), 13);
+    assert_eq!(compile_and_run("string_interp.sans"), 11);
 }
 
 #[test]
