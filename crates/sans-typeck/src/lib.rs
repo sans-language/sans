@@ -1014,6 +1014,81 @@ fn check_expr(
                     return Err(TypeError::new(format!("store8() val must be Int, got {}", val_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "load16" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("load16() takes exactly 1 argument (ptr)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("load16() ptr must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "store16" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("store16() takes exactly 2 arguments (ptr, val)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("store16() ptr must be Int, got {}", ptr_ty)));
+                }
+                let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if val_ty != Type::Int {
+                    return Err(TypeError::new(format!("store16() val must be Int, got {}", val_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "load32" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("load32() takes exactly 1 argument (ptr)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("load32() ptr must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "store32" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("store32() takes exactly 2 arguments (ptr, val)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("store32() ptr must be Int, got {}", ptr_ty)));
+                }
+                let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if val_ty != Type::Int {
+                    return Err(TypeError::new(format!("store32() val must be Int, got {}", val_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "bswap16" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("bswap16() takes exactly 1 argument (val)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("bswap16() val must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "rbind" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("rbind() takes exactly 3 arguments (fd, addr, len)"));
+                }
+                for (i, label) in ["fd", "addr", "len"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("rbind() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "rsetsockopt" {
+                if args.len() != 5 {
+                    return Err(TypeError::new("rsetsockopt() takes exactly 5 arguments (fd, level, opt, val_ptr, val_len)"));
+                }
+                for (i, label) in ["fd", "level", "opt", "val_ptr", "val_len"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("rsetsockopt() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
             } else if function == "load64" {
                 if args.len() != 1 {
                     return Err(TypeError::new("load64() takes exactly 1 argument (ptr)"));
@@ -1191,6 +1266,26 @@ fn check_expr(
                     if t != Type::Int {
                         return Err(TypeError::new(format!("cinfo() {} must be Int, got {}", label, t)));
                     }
+                }
+                return Ok(Type::Int);
+            } else if function == "curl_slist_append" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("curl_slist_append() takes exactly 2 arguments (slist, str)"));
+                }
+                for (i, label) in ["slist", "str"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("curl_slist_append() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "curl_slist_free" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("curl_slist_free() takes exactly 1 argument (slist)"));
+                }
+                let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if t != Type::Int {
+                    return Err(TypeError::new(format!("curl_slist_free() slist must be Int, got {}", t)));
                 }
                 return Ok(Type::Int);
             } else if function == "get_log_level" {

@@ -156,11 +156,9 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     // Compile runtime modules (C and Sans)
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let tmp_dir = std::env::temp_dir();
-    let c_runtime_modules = [
-        "server", "sock", "curl_helpers",
-    ];
+    let c_runtime_modules: [&str; 0] = [];
     let sans_runtime_modules = [
-        "log", "result", "functional", "array_ext", "string_ext", "http", "json",
+        "log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl",
     ];
     let mut runtime_o_paths: Vec<PathBuf> = Vec::new();
     for name in &c_runtime_modules {

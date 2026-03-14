@@ -237,6 +237,13 @@ pub enum Instruction {
     Slen { dest: Reg, ptr: Reg },
     Load8 { dest: Reg, ptr: Reg },
     Store8 { dest: Reg, ptr: Reg, val: Reg },
+    Load16 { dest: Reg, ptr: Reg },
+    Store16 { dest: Reg, ptr: Reg, val: Reg },
+    Load32 { dest: Reg, ptr: Reg },
+    Store32 { dest: Reg, ptr: Reg, val: Reg },
+    Bswap16 { dest: Reg, val: Reg },
+    Rbind { dest: Reg, fd: Reg, addr: Reg, len: Reg },
+    Rsetsockopt { dest: Reg, fd: Reg, level: Reg, opt: Reg, val_ptr: Reg, val_len: Reg },
     Load64 { dest: Reg, ptr: Reg },
     Store64 { dest: Reg, ptr: Reg, val: Reg },
     Strstr { dest: Reg, haystack: Reg, needle: Reg },
@@ -265,6 +272,8 @@ pub enum Instruction {
     Cperf { dest: Reg, handle: Reg },
     Cclean { dest: Reg, handle: Reg },
     Cinfo { dest: Reg, handle: Reg, info: Reg, buf: Reg },
+    CurlSlistAppend { dest: Reg, slist: Reg, str_ptr: Reg },
+    CurlSlistFree { dest: Reg, slist: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -141,14 +141,30 @@ cy_http_respond(req:I status:I body:I ct:I) I {
 }
 
 cy_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
-  ct_str = ct == 0 ? "text/html; charset=utf-8" : ct
-  st = cy_status_text(status)
   body_len = slen(body)
-  header = "HTTP/1.1 " + str(status) + " " + st + "\r\nContent-Length: " + str(body_len) + "\r\nContent-Type: " + ct_str + "\r\nConnection: close\r\n\r\n"
-  header_len = slen(header)
+  status_str = cy_int_to_buf(status)
+  status_str_len = slen(status_str)
+  blen_str = cy_int_to_buf(body_len)
+  blen_str_len = slen(blen_str)
+  st = cy_status_text(status)
+  st_len = slen(st)
+  ct_len = slen(ct)
+  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + 23
+  buf = alloc(header_len + 1)
+  pos := 0
+  pos = cy_buf_write(buf, pos, cy_lit_http11(), 9)
+  pos = cy_buf_write(buf, pos, status_str, status_str_len)
+  pos = cy_buf_write(buf, pos, cy_lit_space(), 1)
+  pos = cy_buf_write(buf, pos, st, st_len)
+  pos = cy_buf_write(buf, pos, cy_lit_content_length(), 18)
+  pos = cy_buf_write(buf, pos, blen_str, blen_str_len)
+  pos = cy_buf_write(buf, pos, cy_lit_content_type(), 16)
+  pos = cy_buf_write(buf, pos, ct, ct_len)
+  pos = cy_buf_write(buf, pos, cy_lit_conn_close(), 23)
+  store8(buf + pos, 0)
   total = header_len + body_len
   resp = alloc(total)
-  mcpy(resp, header, header_len)
+  mcpy(resp, buf, header_len)
   body_len > 0 ? mcpy(resp + header_len, body, body_len) : 0
   cy_send_all(fd, resp, total)
   sclose(fd)
@@ -156,8 +172,210 @@ cy_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
   1
 }
 
+cy_buf_write(buf:I pos:I src:I len:I) I {
+  len > 0 ? mcpy(buf + pos, src, len) : 0
+  pos + len
+}
+
+cy_int_to_buf(n:I) I {
+  n == 0 ? cy_int_zero_str() : cy_int_to_buf_pos(n)
+}
+
+cy_int_zero_str() I {
+  buf = alloc(2)
+  store8(buf, 48)
+  store8(buf + 1, 0)
+  buf
+}
+
+cy_int_to_buf_pos(n:I) I {
+  digits := 0
+  tmp := n
+  while tmp > 0 {
+    digits += 1
+    tmp = tmp / 10
+  }
+  buf = alloc(digits + 1)
+  store8(buf + digits, 0)
+  i := digits - 1
+  tmp = n
+  while tmp > 0 {
+    store8(buf + i, 48 + tmp % 10)
+    tmp = tmp / 10
+    i -= 1
+  }
+  buf
+}
+
 cy_status_text(s:I) I {
-  s == 404 ? "Not Found" : s == 500 ? "Internal Server Error" : s == 400 ? "Bad Request" : "OK"
+  s == 404 ? cy_st_not_found() : s == 500 ? cy_st_internal_error() : s == 400 ? cy_st_bad_request() : cy_st_ok()
+}
+
+cy_st_ok() I {
+  buf = alloc(3)
+  store8(buf, 79)
+  store8(buf + 1, 75)
+  store8(buf + 2, 0)
+  buf
+}
+
+cy_st_not_found() I {
+  buf = alloc(10)
+  store8(buf, 78)
+  store8(buf + 1, 111)
+  store8(buf + 2, 116)
+  store8(buf + 3, 32)
+  store8(buf + 4, 70)
+  store8(buf + 5, 111)
+  store8(buf + 6, 117)
+  store8(buf + 7, 110)
+  store8(buf + 8, 100)
+  store8(buf + 9, 0)
+  buf
+}
+
+cy_st_internal_error() I {
+  buf = alloc(22)
+  store8(buf, 73)
+  store8(buf + 1, 110)
+  store8(buf + 2, 116)
+  store8(buf + 3, 101)
+  store8(buf + 4, 114)
+  store8(buf + 5, 110)
+  store8(buf + 6, 97)
+  store8(buf + 7, 108)
+  store8(buf + 8, 32)
+  store8(buf + 9, 83)
+  store8(buf + 10, 101)
+  store8(buf + 11, 114)
+  store8(buf + 12, 118)
+  store8(buf + 13, 101)
+  store8(buf + 14, 114)
+  store8(buf + 15, 32)
+  store8(buf + 16, 69)
+  store8(buf + 17, 114)
+  store8(buf + 18, 114)
+  store8(buf + 19, 111)
+  store8(buf + 20, 114)
+  store8(buf + 21, 0)
+  buf
+}
+
+cy_st_bad_request() I {
+  buf = alloc(12)
+  store8(buf, 66)
+  store8(buf + 1, 97)
+  store8(buf + 2, 100)
+  store8(buf + 3, 32)
+  store8(buf + 4, 82)
+  store8(buf + 5, 101)
+  store8(buf + 6, 113)
+  store8(buf + 7, 117)
+  store8(buf + 8, 101)
+  store8(buf + 9, 115)
+  store8(buf + 10, 116)
+  store8(buf + 11, 0)
+  buf
+}
+
+cy_lit_http11() I {
+  buf = alloc(10)
+  store8(buf, 72)
+  store8(buf + 1, 84)
+  store8(buf + 2, 84)
+  store8(buf + 3, 80)
+  store8(buf + 4, 47)
+  store8(buf + 5, 49)
+  store8(buf + 6, 46)
+  store8(buf + 7, 49)
+  store8(buf + 8, 32)
+  store8(buf + 9, 0)
+  buf
+}
+
+cy_lit_space() I {
+  buf = alloc(2)
+  store8(buf, 32)
+  store8(buf + 1, 0)
+  buf
+}
+
+cy_lit_content_length() I {
+  // "\r\nContent-Length: " = 18 bytes
+  buf = alloc(19)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)
+  store8(buf + 3, 111)
+  store8(buf + 4, 110)
+  store8(buf + 5, 116)
+  store8(buf + 6, 101)
+  store8(buf + 7, 110)
+  store8(buf + 8, 116)
+  store8(buf + 9, 45)
+  store8(buf + 10, 76)
+  store8(buf + 11, 101)
+  store8(buf + 12, 110)
+  store8(buf + 13, 103)
+  store8(buf + 14, 116)
+  store8(buf + 15, 104)
+  store8(buf + 16, 58)
+  store8(buf + 17, 32)
+  store8(buf + 18, 0)
+  buf
+}
+
+cy_lit_content_type() I {
+  // "\r\nContent-Type: " = 16 bytes
+  buf = alloc(17)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)
+  store8(buf + 3, 111)
+  store8(buf + 4, 110)
+  store8(buf + 5, 116)
+  store8(buf + 6, 101)
+  store8(buf + 7, 110)
+  store8(buf + 8, 116)
+  store8(buf + 9, 45)
+  store8(buf + 10, 84)
+  store8(buf + 11, 121)
+  store8(buf + 12, 112)
+  store8(buf + 13, 101)
+  store8(buf + 14, 58)
+  store8(buf + 15, 32)
+  store8(buf + 16, 0)
+  buf
+}
+
+cy_lit_conn_close() I {
+  // "\r\nConnection: close\r\n\r\n" = 23 bytes
+  buf = alloc(24)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)
+  store8(buf + 3, 111)
+  store8(buf + 4, 110)
+  store8(buf + 5, 110)
+  store8(buf + 6, 101)
+  store8(buf + 7, 99)
+  store8(buf + 8, 116)
+  store8(buf + 9, 105)
+  store8(buf + 10, 111)
+  store8(buf + 11, 110)
+  store8(buf + 12, 58)
+  store8(buf + 13, 32)
+  store8(buf + 14, 99)
+  store8(buf + 15, 108)
+  store8(buf + 16, 111)
+  store8(buf + 17, 115)
+  store8(buf + 18, 101)
+  store8(buf + 19, 13)
+  store8(buf + 20, 10)
+  store8(buf + 21, 13)
+  store8(buf + 22, 10)
+  store8(buf + 23, 0)
+  buf
 }
 
 cy_send_all(fd:I data:I total:I) I {
@@ -165,9 +383,14 @@ cy_send_all(fd:I data:I total:I) I {
   ok := 1
   while sent < total {
     n = ssend(fd, data + sent, total - sent)
-    n <= 0 ? ok = 0 : 0
-    n <= 0 ? sent = total : sent += n
-    0
+    if n <= 0 {
+      ok = 0
+      sent = total
+      0
+    } else {
+      sent += n
+      0
+    }
   }
   ok
 }

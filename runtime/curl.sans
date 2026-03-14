@@ -1,0 +1,322 @@
+// CURL option constants
+g CURLOPT_URL = 10002
+g CURLOPT_FOLLOWLOCATION = 52
+g CURLOPT_MAXREDIRS = 68
+g CURLOPT_WRITEFUNCTION = 20011
+g CURLOPT_WRITEDATA = 10001
+g CURLOPT_HEADERFUNCTION = 20079
+g CURLOPT_HEADERDATA = 10029
+g CURLOPT_POST = 47
+g CURLOPT_POSTFIELDS = 10015
+g CURLOPT_POSTFIELDSIZE = 60
+g CURLOPT_HTTPHEADER = 10023
+g CURLINFO_RESPONSE_CODE = 2097154
+
+// Write callback - appends data to a WriteBuffer {data_ptr, size, cap}
+cy_write_cb(ptr:I size:I nmemb:I userdata:I) I {
+  bytes = size * nmemb
+  buf_data = load64(userdata)
+  buf_size = load64(userdata + 8)
+  buf_cap = load64(userdata + 16)
+  // grow if needed
+  new_cap := buf_cap
+  while buf_size + bytes + 1 > new_cap {
+    new_cap = new_cap == 0 ? 1024 : new_cap * 2
+  }
+  new_data = new_cap != buf_cap ? ralloc(buf_data, new_cap) : buf_data
+  new_cap != buf_cap ? store64(userdata, new_data) : 0
+  new_cap != buf_cap ? store64(userdata + 16, new_cap) : 0
+  // copy data
+  mcpy(new_data + buf_size, ptr, bytes)
+  store64(userdata + 8, buf_size + bytes)
+  store8(new_data + buf_size + bytes, 0)
+  bytes
+}
+
+// Header callback - parses "Name: Value\r\n" and stores in response struct
+cy_header_cb(buffer:I size:I nitems:I userdata:I) I {
+  len = size * nitems
+  // Find colon
+  colon := cy_find_colon(buffer, len)
+  colon < 0 ? len : cy_header_cb_parse(buffer, len, colon, userdata)
+}
+
+cy_find_colon(buf:I len:I) I {
+  i := 0
+  result := -1
+  done := 0
+  while done == 0 {
+    if i >= len {
+      done = 1
+      0
+    } else {
+      if load8(buf + i) == 58 {
+        result = i
+        done = 1
+        0
+      } else {
+        i = i + 1
+        0
+      }
+    }
+  }
+  result
+}
+
+cy_header_cb_parse(buffer:I len:I colon:I resp:I) I {
+  // Extract name (lowercase)
+  name = alloc(colon + 1)
+  i := 0
+  while i < colon {
+    // lowercase: if 65 <= ch <= 90, add 32
+    store8(name + i, load8(buffer + i) >= 65 ? load8(buffer + i) <= 90 ? load8(buffer + i) + 32 : load8(buffer + i) : load8(buffer + i))
+    i = i + 1
+  }
+  store8(name + colon, 0)
+
+  // Extract value (skip ": ", trim \r\n)
+  val_start := colon + 1
+  if val_start < len {
+    if load8(buffer + val_start) == 32 {
+      val_start = val_start + 1
+      0
+    } else { 0 }
+  } else { 0 }
+  val_end := len
+  done := 0
+  while done == 0 {
+    if val_end <= val_start {
+      done = 1
+      0
+    } else {
+      if load8(buffer + val_end - 1) == 13 {
+        val_end = val_end - 1
+        0
+      } else {
+        if load8(buffer + val_end - 1) == 10 {
+          val_end = val_end - 1
+          0
+        } else {
+          done = 1
+          0
+        }
+      }
+    }
+  }
+  vlen = val_end - val_start
+  val = alloc(vlen + 1)
+  vlen > 0 ? mcpy(val, buffer + val_start, vlen) : 0
+  store8(val + vlen, 0)
+
+  // Add to response headers
+  cy_add_header(resp, name, val)
+  len
+}
+
+cy_add_header(resp:I name:I val:I) I {
+  count = load64(resp + 32)
+  cap = load64(resp + 40)
+  if count >= cap {
+    new_cap = cap == 0 ? 16 : cap * 2
+    names = load64(resp + 16)
+    vals = load64(resp + 24)
+    new_names = names == 0 ? alloc(new_cap * 8) : ralloc(names, new_cap * 8)
+    new_vals = vals == 0 ? alloc(new_cap * 8) : ralloc(vals, new_cap * 8)
+    store64(resp + 16, new_names)
+    store64(resp + 24, new_vals)
+    store64(resp + 40, new_cap)
+    0
+  } else { 0 }
+  names2 = load64(resp + 16)
+  vals2 = load64(resp + 24)
+  count2 = load64(resp + 32)
+  store64(names2 + count2 * 8, name)
+  store64(vals2 + count2 * 8, val)
+  store64(resp + 32, count2 + 1)
+  0
+}
+
+// HTTP response struct: {status(i64), body(i64), header_names(i64), header_values(i64), header_count(i64), header_cap(i64)} = 48 bytes
+
+cy_make_error_resp() I {
+  resp = alloc(48)
+  store64(resp, 0)
+  empty = alloc(1)
+  store8(empty, 0)
+  store64(resp + 8, empty)
+  store64(resp + 16, 0)
+  store64(resp + 24, 0)
+  store64(resp + 32, 0)
+  store64(resp + 40, 0)
+  resp
+}
+
+cy_http_get(url:I) I {
+  curl = cinit()
+  curl == 0 ? cy_make_error_resp() : cy_http_get_inner(curl, url)
+}
+
+cy_http_get_inner(curl:I url:I) I {
+  resp = alloc(48)
+  store64(resp, 0)
+  store64(resp + 8, 0)
+  store64(resp + 16, 0)
+  store64(resp + 24, 0)
+  store64(resp + 32, 0)
+  store64(resp + 40, 0)
+
+  // Write buffer: {data_ptr, size, cap}
+  wbuf = alloc(24)
+  store64(wbuf, 0)
+  store64(wbuf + 8, 0)
+  store64(wbuf + 16, 0)
+
+  cseti(curl, CURLOPT_URL, url)
+  cseti(curl, CURLOPT_FOLLOWLOCATION, 1)
+  cseti(curl, CURLOPT_MAXREDIRS, 10)
+  cseti(curl, CURLOPT_WRITEFUNCTION, fptr("cy_write_cb"))
+  cseti(curl, CURLOPT_WRITEDATA, wbuf)
+  cseti(curl, CURLOPT_HEADERFUNCTION, fptr("cy_header_cb"))
+  cseti(curl, CURLOPT_HEADERDATA, resp)
+
+  res = cperf(curl)
+  res != 0 ? cy_http_get_fail(curl, wbuf, resp) : cy_http_get_ok(curl, wbuf, resp)
+}
+
+cy_http_get_fail(curl:I wbuf:I resp:I) I {
+  cclean(curl)
+  cy_make_error_resp()
+}
+
+cy_http_get_ok(curl:I wbuf:I resp:I) I {
+  // Get status code
+  status_buf = alloc(8)
+  cinfo(curl, CURLINFO_RESPONSE_CODE, status_buf)
+  status = load64(status_buf)
+  store64(resp, status)
+
+  // Set body
+  body_data = load64(wbuf)
+  if body_data == 0 {
+    empty = alloc(1)
+    store8(empty, 0)
+    store64(resp + 8, empty)
+    0
+  } else {
+    store64(resp + 8, body_data)
+    0
+  }
+
+  cclean(curl)
+  resp
+}
+
+cy_http_post(url:I body:I ct:I) I {
+  curl = cinit()
+  curl == 0 ? cy_make_error_resp() : cy_http_post_inner(curl, url, body, ct)
+}
+
+cy_http_post_inner(curl:I url:I body:I ct:I) I {
+  resp = alloc(48)
+  store64(resp, 0)
+  store64(resp + 8, 0)
+  store64(resp + 16, 0)
+  store64(resp + 24, 0)
+  store64(resp + 32, 0)
+  store64(resp + 40, 0)
+
+  wbuf = alloc(24)
+  store64(wbuf, 0)
+  store64(wbuf + 8, 0)
+  store64(wbuf + 16, 0)
+
+  cseti(curl, CURLOPT_URL, url)
+  cseti(curl, CURLOPT_FOLLOWLOCATION, 1)
+  cseti(curl, CURLOPT_MAXREDIRS, 10)
+  cseti(curl, CURLOPT_POST, 1)
+  cseti(curl, CURLOPT_POSTFIELDS, body)
+  cseti(curl, CURLOPT_POSTFIELDSIZE, slen(body))
+  cseti(curl, CURLOPT_WRITEFUNCTION, fptr("cy_write_cb"))
+  cseti(curl, CURLOPT_WRITEDATA, wbuf)
+  cseti(curl, CURLOPT_HEADERFUNCTION, fptr("cy_header_cb"))
+  cseti(curl, CURLOPT_HEADERDATA, resp)
+
+  // Build "Content-Type: X" header
+  ct_hdr = cy_build_ct_header(ct)
+  slist := 0
+  slist = curl_slist_append(slist, ct_hdr)
+  cseti(curl, CURLOPT_HTTPHEADER, slist)
+
+  res = cperf(curl)
+  curl_slist_free(slist)
+  res != 0 ? cy_http_get_fail(curl, wbuf, resp) : cy_http_get_ok(curl, wbuf, resp)
+}
+
+cy_build_ct_header(ct:I) I {
+  // Build "Content-Type: " + ct manually
+  prefix_len = 14
+  ct_len = slen(ct)
+  buf = alloc(prefix_len + ct_len + 1)
+  // "Content-Type: "
+  store8(buf, 67)
+  store8(buf+1, 111)
+  store8(buf+2, 110)
+  store8(buf+3, 116)
+  store8(buf+4, 101)
+  store8(buf+5, 110)
+  store8(buf+6, 116)
+  store8(buf+7, 45)
+  store8(buf+8, 84)
+  store8(buf+9, 121)
+  store8(buf+10, 112)
+  store8(buf+11, 101)
+  store8(buf+12, 58)
+  store8(buf+13, 32)
+  mcpy(buf + prefix_len, ct, ct_len)
+  store8(buf + prefix_len + ct_len, 0)
+  buf
+}
+
+// Header lookup
+cy_http_header(resp:I name:I) I {
+  names = load64(resp + 16)
+  vals = load64(resp + 24)
+  count = load64(resp + 32)
+  // Lowercase the search name
+  name_len = slen(name)
+  lower = alloc(name_len + 1)
+  i := 0
+  while i < name_len {
+    store8(lower + i, load8(name + i) >= 65 ? load8(name + i) <= 90 ? load8(name + i) + 32 : load8(name + i) : load8(name + i))
+    i = i + 1
+  }
+  store8(lower + name_len, 0)
+  // Search
+  cy_header_search(names, vals, count, lower, name_len)
+}
+
+cy_header_search(names:I vals:I count:I lower:I name_len:I) I {
+  i := 0
+  result := 0
+  found := 0
+  while i < count {
+    key = load64(names + i * 8)
+    key_len = slen(key)
+    if key_len == name_len {
+      if mcmp(key, lower, name_len) == 0 {
+        result = load64(vals + i * 8)
+        found = 1
+        i = count
+        0
+      } else { 0 }
+    } else { 0 }
+    i = i + 1
+  }
+  found == 0 ? cy_empty_header() : result
+}
+
+cy_empty_header() I {
+  buf = alloc(1)
+  store8(buf, 0)
+  buf
+}

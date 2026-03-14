@@ -878,6 +878,56 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Store8 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "load16" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Load16 { dest: dest.clone(), ptr: ptr_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "store16" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let val_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Store16 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "load32" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Load32 { dest: dest.clone(), ptr: ptr_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "store32" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let val_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Store32 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "bswap16" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Bswap16 { dest: dest.clone(), val: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "rbind" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let addr_reg = self.lower_expr(&args[1]);
+                    let len_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Rbind { dest: dest.clone(), fd: fd_reg, addr: addr_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "rsetsockopt" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let level_reg = self.lower_expr(&args[1]);
+                    let opt_reg = self.lower_expr(&args[2]);
+                    let val_ptr_reg = self.lower_expr(&args[3]);
+                    let val_len_reg = self.lower_expr(&args[4]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Rsetsockopt { dest: dest.clone(), fd: fd_reg, level: level_reg, opt: opt_reg, val_ptr: val_ptr_reg, val_len: val_len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "load64" {
                     let ptr_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
@@ -993,6 +1043,19 @@ impl IrBuilder {
                     let buf_reg = self.lower_expr(&args[2]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Cinfo { dest: dest.clone(), handle: handle_reg, info: info_reg, buf: buf_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "curl_slist_append" {
+                    let slist_reg = self.lower_expr(&args[0]);
+                    let str_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::CurlSlistAppend { dest: dest.clone(), slist: slist_reg, str_ptr: str_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "curl_slist_free" {
+                    let slist_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::CurlSlistFree { dest: dest.clone(), slist: slist_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "get_log_level" {
