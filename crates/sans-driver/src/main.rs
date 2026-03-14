@@ -59,7 +59,7 @@ fn run(source_path: &PathBuf) -> Result<i32, String> {
 
 fn build(source_path: &PathBuf) -> Result<(), String> {
     // Validate extension
-    if source_path.extension().and_then(|e| e.to_str()) != Some("cy") {
+    if source_path.extension().and_then(|e| e.to_str()) != Some("sans") {
         return Err(format!(
             "expected a .sans source file, got: {}",
             source_path.display()
