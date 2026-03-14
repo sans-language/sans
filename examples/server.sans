@@ -11,7 +11,7 @@ main() {
         log_info("request: " + path)
 
         if path == "/" {
-            req.respond(200 "Hello from Cyflym!")
+            req.respond(200 "Hello from Sans!")
         } else {
             req.respond(404 "Not Found")
         }

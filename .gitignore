@@ -1,2 +1,12 @@
 .idea
+.claude
 target
+
+# Compiled binaries
+examples/server
+examples/hello
+*.o
+*.out
+
+# OS files
+.DS_Store
