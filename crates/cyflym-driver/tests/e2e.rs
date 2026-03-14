@@ -93,8 +93,17 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         .expect("failed to compile log runtime");
     assert!(log_compile.success(), "log runtime compilation failed");
 
+    // Compile result runtime
+    let result_c_path = format!("{}/../../runtime/result.c", manifest_dir);
+    let result_o_path = tmp_dir.join(format!("{}_result.o", fixture_dir));
+    let result_compile = Command::new("cc")
+        .args(["-c", &result_c_path, "-o", result_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile result runtime");
+    assert!(result_compile.success(), "result runtime compilation failed");
+
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -108,6 +117,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let _ = std::fs::remove_file(&json_o_path);
     let _ = std::fs::remove_file(&http_o_path);
     let _ = std::fs::remove_file(&log_o_path);
+    let _ = std::fs::remove_file(&result_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -165,9 +175,18 @@ fn compile_and_run(fixture: &str) -> i32 {
         .expect("failed to compile log runtime");
     assert!(log_compile.success(), "log runtime compilation failed");
 
+    // Compile result runtime
+    let result_c_path = format!("{}/../../runtime/result.c", manifest_dir);
+    let result_o_path = tmp_dir.join(format!("{}_result.o", fixture));
+    let result_compile = Command::new("cc")
+        .args(["-c", &result_c_path, "-o", result_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile result runtime");
+    assert!(result_compile.success(), "result runtime compilation failed");
+
     // Link
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -183,6 +202,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     let _ = std::fs::remove_file(&json_o_path);
     let _ = std::fs::remove_file(&http_o_path);
     let _ = std::fs::remove_file(&log_o_path);
+    let _ = std::fs::remove_file(&result_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -350,4 +370,16 @@ fn e2e_demo_backend() {
     // Clean up output file created by the demo
     let _ = std::fs::remove_file("demo_output.txt");
     assert_eq!(result, 30);
+}
+
+#[test]
+fn e2e_result_ok_unwrap() {
+    // divide(10,2)=5 + divide(20,4)=5 = 10
+    assert_eq!(compile_and_run("result_ok_unwrap.cy"), 10);
+}
+
+#[test]
+fn e2e_result_error_handling() {
+    // divide(10,0) -> err, unwrap_or(99) = 99
+    assert_eq!(compile_and_run("result_error_handling.cy"), 99);
 }

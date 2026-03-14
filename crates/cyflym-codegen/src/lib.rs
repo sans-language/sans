@@ -178,6 +178,24 @@ fn generate_llvm<'ctx>(
     let json_push_type = context.void_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_json_push", json_push_type, Some(Linkage::External));
 
+    // Declare result runtime functions
+    let result_ok_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("cy_result_ok", result_ok_type, Some(Linkage::External));
+
+    let result_err_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_result_err", result_err_type, Some(Linkage::External));
+
+    let result_check_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_result_is_ok", result_check_type, Some(Linkage::External));
+    llvm_module.add_function("cy_result_is_err", result_check_type, Some(Linkage::External));
+    llvm_module.add_function("cy_result_unwrap", result_check_type, Some(Linkage::External));
+
+    let result_unwrap_or_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("cy_result_unwrap_or", result_unwrap_or_type, Some(Linkage::External));
+
+    let result_error_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_result_error", result_error_type, Some(Linkage::External));
+
     // Declare logging runtime functions
     let log_msg_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
     llvm_module.add_function("cy_log_debug", log_msg_type, Some(Linkage::External));
@@ -2164,6 +2182,142 @@ fn generate_llvm<'ctx>(
                     let fn_ref = llvm_module.get_function("cy_json_push").unwrap();
                     builder.build_call(fn_ref, &[arr_ptr.into(), val_ptr.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::ResultOk { dest, value } => {
+                    let val = regs[value];
+                    let fn_ref = llvm_module.get_function("cy_result_ok").unwrap();
+                    let call = builder.build_call(fn_ref, &[val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_result_ok: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "rok_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::ResultErr { dest, message } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let msg_ptr = if let Some(p) = ptrs.get(message) {
+                        *p
+                    } else {
+                        let iv = regs[message];
+                        builder.build_int_to_ptr(iv, ptr_type, "rerr_mp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_result_err").unwrap();
+                    let call = builder.build_call(fn_ref, &[msg_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_result_err: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "rerr_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::ResultIsOk { dest, result } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let res_ptr = if let Some(p) = ptrs.get(result) {
+                        *p
+                    } else {
+                        let iv = regs[result];
+                        builder.build_int_to_ptr(iv, ptr_type, "risok_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_result_is_ok").unwrap();
+                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_result_is_ok: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_val);
+                }
+                Instruction::ResultIsErr { dest, result } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let res_ptr = if let Some(p) = ptrs.get(result) {
+                        *p
+                    } else {
+                        let iv = regs[result];
+                        builder.build_int_to_ptr(iv, ptr_type, "riserr_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_result_is_err").unwrap();
+                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_result_is_err: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_val);
+                }
+                Instruction::ResultUnwrap { dest, result } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let res_ptr = if let Some(p) = ptrs.get(result) {
+                        *p
+                    } else {
+                        let iv = regs[result];
+                        builder.build_int_to_ptr(iv, ptr_type, "runwrap_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_result_unwrap").unwrap();
+                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_result_unwrap: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_val);
+                    // For Result<String>, the value is a pointer - also store in ptrs
+                    let as_ptr = builder.build_int_to_ptr(result_val, ptr_type, "runwrap_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), as_ptr);
+                }
+                Instruction::ResultUnwrapOr { dest, result, default } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let res_ptr = if let Some(p) = ptrs.get(result) {
+                        *p
+                    } else {
+                        let iv = regs[result];
+                        builder.build_int_to_ptr(iv, ptr_type, "runwrapor_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let default_val = regs[default];
+                    let fn_ref = llvm_module.get_function("cy_result_unwrap_or").unwrap();
+                    let call = builder.build_call(fn_ref, &[res_ptr.into(), default_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_result_unwrap_or: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_val);
+                    let as_ptr = builder.build_int_to_ptr(result_val, ptr_type, "runwrapor_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), as_ptr);
+                }
+                Instruction::ResultError { dest, result } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let res_ptr = if let Some(p) = ptrs.get(result) {
+                        *p
+                    } else {
+                        let iv = regs[result];
+                        builder.build_int_to_ptr(iv, ptr_type, "rerror_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_result_error").unwrap();
+                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_result_error: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "rerror_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::LogDebug { dest, message } | Instruction::LogInfo { dest, message } | Instruction::LogWarn { dest, message } | Instruction::LogError { dest, message } => {
                     let fn_name = match instr {

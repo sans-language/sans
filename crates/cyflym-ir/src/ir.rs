@@ -171,6 +171,14 @@ pub enum Instruction {
     JsonPush { array: Reg, value: Reg },
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
+    // Result operations
+    ResultOk { dest: Reg, value: Reg },
+    ResultErr { dest: Reg, message: Reg },
+    ResultIsOk { dest: Reg, result: Reg },
+    ResultIsErr { dest: Reg, result: Reg },
+    ResultUnwrap { dest: Reg, result: Reg },
+    ResultUnwrapOr { dest: Reg, result: Reg, default: Reg },
+    ResultError { dest: Reg, result: Reg },
     // Logging
     LogDebug { dest: Reg, message: Reg },
     LogInfo { dest: Reg, message: Reg },

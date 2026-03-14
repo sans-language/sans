@@ -393,7 +393,16 @@ impl Parser {
 
     fn parse_type_name(&mut self) -> Result<TypeName, ParseError> {
         let (name, span) = self.expect_ident()?;
-        Ok(TypeName { name, span })
+        // Handle parameterized types like Result<Int>, Result<String>
+        if self.peek().kind == TokenKind::Lt {
+            self.pos += 1; // consume <
+            let inner = self.parse_type_name()?;
+            self.expect(&TokenKind::Gt)?;
+            let full_name = format!("{}<{}>", name, inner.name);
+            Ok(TypeName { name: full_name, span })
+        } else {
+            Ok(TypeName { name, span })
+        }
     }
 
     // ─── Body / Statements ────────────────────────────────────────────────────

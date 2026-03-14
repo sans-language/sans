@@ -13,6 +13,8 @@ pub enum Type {
     Array { inner: Box<Type> },
     JsonValue,
     HttpResponse,
+    Result { inner: Box<Type> },
+    ResultErr,
 }
 
 impl std::fmt::Display for Type {
@@ -30,6 +32,8 @@ impl std::fmt::Display for Type {
             Type::Array { inner } => write!(f, "Array<{}>", inner),
             Type::JsonValue => write!(f, "JsonValue"),
             Type::HttpResponse => write!(f, "HttpResponse"),
+            Type::Result { inner } => write!(f, "Result<{}>", inner),
+            Type::ResultErr => write!(f, "Result<_>"),
             Type::Fn { params, ret } => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {

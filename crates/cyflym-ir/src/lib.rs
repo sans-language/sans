@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse }
+pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>) }
 
 pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
     use cyflym_typeck::types::Type;
@@ -19,6 +19,8 @@ pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
         Type::Array { inner } => IrType::Array(Box::new(ir_type_for_return(inner))),
         Type::JsonValue => IrType::JsonValue,
         Type::HttpResponse => IrType::HttpResponse,
+        Type::Result { inner } => IrType::Result(Box::new(ir_type_for_return(inner))),
+        Type::ResultErr => IrType::Result(Box::new(IrType::Int)), // default inner type for err
         _ => IrType::Int, // Fallback
     }
 }
@@ -64,6 +66,33 @@ pub fn lower_with_extra_structs(
         .map(|imp| imp.module_name.clone())
         .collect();
 
+    // Build local function return type map for Result/opaque type tracking
+    let mut local_fn_ret_types: HashMap<String, IrType> = HashMap::new();
+    for f in &program.functions {
+        let ret_name = &f.return_type.name;
+        let ir_type = if ret_name.starts_with("Result<") && ret_name.ends_with('>') {
+            let inner_str = &ret_name[7..ret_name.len()-1];
+            let inner = match inner_str {
+                "Int" => IrType::Int,
+                "Bool" => IrType::Bool,
+                "String" => IrType::Str,
+                _ => IrType::Int,
+            };
+            IrType::Result(Box::new(inner))
+        } else if ret_name == "JsonValue" {
+            IrType::JsonValue
+        } else if ret_name == "HttpResponse" {
+            IrType::HttpResponse
+        } else if struct_defs.contains_key(ret_name) {
+            IrType::Struct(ret_name.clone())
+        } else if enum_defs.contains_key(ret_name) {
+            IrType::Enum(ret_name.clone())
+        } else {
+            continue; // Int, Bool, String — default IrType::Int is fine
+        };
+        local_fn_ret_types.insert(f.name.clone(), ir_type);
+    }
+
     let mut functions: Vec<IrFunction> = program.functions.iter()
         .map(|f| {
             let func_name = if let Some(mod_name) = module_name {
@@ -71,7 +100,7 @@ pub fn lower_with_extra_structs(
             } else {
                 f.name.clone()
             };
-            lower_function_named(f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types)
+            lower_function_named(f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types)
         })
         .collect();
 
@@ -83,15 +112,15 @@ pub fn lower_with_extra_structs(
             } else {
                 format!("{}_{}", imp.target_type, method.name)
             };
-            functions.push(lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types));
+            functions.push(lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types));
         }
     }
 
     Module { functions }
 }
 
-fn lower_function_named(func: &cyflym_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>) -> IrFunction {
-    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone());
+fn lower_function_named(func: &cyflym_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>) -> IrFunction {
+    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone());
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -164,10 +193,11 @@ struct IrBuilder {
     enum_defs: HashMap<String, Vec<(String, usize, usize)>>,
     module_names: Vec<String>,
     module_fn_ret_types: HashMap<(String, String), IrType>,
+    local_fn_ret_types: HashMap<String, IrType>,
 }
 
 impl IrBuilder {
-    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>, module_names: Vec<String>, module_fn_ret_types: HashMap<(String, String), IrType>) -> Self {
+    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>, module_names: Vec<String>, module_fn_ret_types: HashMap<(String, String), IrType>, local_fn_ret_types: HashMap<String, IrType>) -> Self {
         IrBuilder {
             counter: 0,
             label_counter: 0,
@@ -178,6 +208,7 @@ impl IrBuilder {
             enum_defs,
             module_names,
             module_fn_ret_types,
+            local_fn_ret_types,
         }
     }
 
@@ -400,7 +431,15 @@ impl IrBuilder {
                 // Merge
                 self.instructions.push(Instruction::Label { name: merge_label.clone() });
                 let dest = self.fresh_reg();
-                let phi_type = self.reg_types.get(&then_reg).cloned().unwrap_or(IrType::Int);
+                let a_type = self.reg_types.get(&then_reg).cloned().unwrap_or(IrType::Int);
+                let b_type = self.reg_types.get(&else_reg).cloned().unwrap_or(IrType::Int);
+                // For Result types: err() produces Result(Int) as default.
+                // Prefer the branch with the real inner type (from ok()).
+                let phi_type = match (&a_type, &b_type) {
+                    (IrType::Result(a_inner), IrType::Result(b_inner))
+                        if **a_inner == IrType::Int && **b_inner != IrType::Int => b_type,
+                    _ => a_type,
+                };
                 self.instructions.push(Instruction::Phi {
                     dest: dest.clone(),
                     a_val: then_reg,
@@ -425,6 +464,7 @@ impl IrBuilder {
                         IrType::Array(_) => panic!("cannot print array"),
                         IrType::JsonValue => panic!("cannot print JsonValue"),
                         IrType::HttpResponse => panic!("cannot print HttpResponse"),
+                        IrType::Result(_) => panic!("cannot print Result"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -537,6 +577,19 @@ impl IrBuilder {
                     self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Str);
                     return dest;
+                } else if function == "ok" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let val_type = self.reg_types.get(&val_reg).cloned().unwrap_or(IrType::Int);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::ResultOk { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Result(Box::new(val_type)));
+                    return dest;
+                } else if function == "err" {
+                    let msg_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::ResultErr { dest: dest.clone(), message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Result(Box::new(IrType::Int))); // default inner
+                    return dest;
                 } else if function == "log_debug" {
                     let msg_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
@@ -590,7 +643,9 @@ impl IrBuilder {
                     function: function.clone(),
                     args: arg_regs,
                 });
-                self.reg_types.insert(dest.clone(), IrType::Int);
+                // Use tracked return type if available (for Result, struct, enum, etc.)
+                let ret_type = self.local_fn_ret_types.get(function).cloned().unwrap_or(IrType::Int);
+                self.reg_types.insert(dest.clone(), ret_type);
                 dest
             }
             Expr::StructLiteral { name, fields, .. } => {
@@ -888,6 +943,42 @@ impl IrBuilder {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::HttpOk { dest: dest.clone(), response: obj_reg });
                         self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Result(ref inner)), "is_ok") => {
+                        let _ = inner;
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultIsOk { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Result(ref inner)), "is_err") => {
+                        let _ = inner;
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultIsErr { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Result(ref inner)), "unwrap") => {
+                        let unwrap_type = *inner.clone();
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultUnwrap { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), unwrap_type);
+                        return dest;
+                    }
+                    (Some(IrType::Result(ref inner)), "unwrap_or") => {
+                        let unwrap_type = *inner.clone();
+                        let default_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultUnwrapOr { dest: dest.clone(), result: obj_reg, default: default_reg });
+                        self.reg_types.insert(dest.clone(), unwrap_type);
+                        return dest;
+                    }
+                    (Some(IrType::Result(ref inner)), "error") => {
+                        let _ = inner;
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultError { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
                     _ => {} // fall through to struct/enum handling
@@ -1725,5 +1816,32 @@ mod tests {
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::HttpBody { .. })),
             "expected HttpBody instruction");
+    }
+
+    #[test]
+    fn lower_result_ok() {
+        let program = cyflym_parser::parse("fn main() Int { let r = ok(42) \n r.unwrap() }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ResultOk { .. })),
+            "expected ResultOk instruction");
+    }
+
+    #[test]
+    fn lower_result_err() {
+        let program = cyflym_parser::parse("fn main() Int { let r = err(\"bad\") \n 0 }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ResultErr { .. })),
+            "expected ResultErr instruction");
+    }
+
+    #[test]
+    fn lower_result_unwrap() {
+        let program = cyflym_parser::parse("fn main() Int { let r = ok(42) \n r.unwrap() }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::ResultUnwrap { .. })),
+            "expected ResultUnwrap instruction");
     }
 }

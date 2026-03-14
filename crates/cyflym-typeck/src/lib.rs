@@ -44,6 +44,13 @@ impl std::fmt::Display for TypeError {
     }
 }
 
+/// Check if an actual type is compatible with an expected type.
+/// ResultErr is compatible with any Result<T>.
+fn types_compatible(actual: &Type, expected: &Type) -> bool {
+    actual == expected
+        || (matches!(actual, Type::ResultErr) && matches!(expected, Type::Result { .. }))
+}
+
 /// Resolve an AST type name string to a `Type`.
 fn resolve_type(
     name: &str,
@@ -55,6 +62,11 @@ fn resolve_type(
         "Int" => Ok(Type::Int),
         "Bool" => Ok(Type::Bool),
         "String" => Ok(Type::String),
+        _ if name.starts_with("Result<") && name.ends_with('>') => {
+            let inner_str = &name[7..name.len()-1];
+            let inner = resolve_type(inner_str, structs, enums, module_exports)?;
+            Ok(Type::Result { inner: Box::new(inner) })
+        }
         other => {
             if let Some(fields) = structs.get(other) {
                 Ok(Type::Struct { name: other.to_string(), fields: fields.clone() })
@@ -143,7 +155,7 @@ fn check_stmt(
         }
         Stmt::Return { value, .. } => {
             let ty = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-            if ty != *ret_type {
+            if !types_compatible(&ty, ret_type) {
                 return Err(TypeError::new(format!(
                     "return type mismatch: expected {} but got {}",
                     ret_type, ty
@@ -383,7 +395,7 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
                 match stmt {
                     Stmt::Expr(expr) => {
                         let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
-                        if ty != ret_type {
+                        if !types_compatible(&ty, &ret_type) {
                             return Err(TypeError::new(format!(
                                 "function '{}': return type mismatch: expected {} but got {}",
                                 func.name, ret_type, ty
@@ -428,7 +440,7 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
                     match stmt {
                         Stmt::Expr(expr) => {
                             let ty = check_expr(expr, &locals, &fn_env, &ret_type, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
-                            if ty != ret_type {
+                            if !types_compatible(&ty, &ret_type) {
                                 return Err(TypeError::new(format!(
                                     "method '{}': return type mismatch: expected {} but got {}",
                                     method.name, ret_type, ty
@@ -585,15 +597,21 @@ fn check_expr(
             check_stmts(else_body, &mut else_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
-            // Both branches must have the same type
-            if then_ty != else_ty {
-                return Err(TypeError::new(format!(
-                    "if/else branch type mismatch: then branch is {} but else branch is {}",
-                    then_ty, else_ty
-                )));
-            }
+            // Both branches must have the same type (ResultErr is compatible with any Result<T>)
+            let merged_ty = match (&then_ty, &else_ty) {
+                _ if then_ty == else_ty => then_ty,
+                (Type::ResultErr, Type::Result { .. }) => else_ty,
+                (Type::Result { .. }, Type::ResultErr) => then_ty,
+                (Type::ResultErr, Type::ResultErr) => then_ty,
+                _ => {
+                    return Err(TypeError::new(format!(
+                        "if/else branch type mismatch: then branch is {} but else branch is {}",
+                        then_ty, else_ty
+                    )));
+                }
+            };
 
-            Ok(then_ty)
+            Ok(merged_ty)
         }
 
         Expr::Call { function, args, .. } => {
@@ -766,6 +784,21 @@ fn check_expr(
                     return Err(TypeError::new(format!("log_set_level() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "ok" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("ok() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                return Ok(Type::Result { inner: Box::new(arg_ty) });
+            } else if function == "err" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("err() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("err() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::ResultErr);
             }
 
             // Check regular functions first
@@ -1319,6 +1352,43 @@ fn check_expr(
                 }
                 (Type::HttpResponse, other) => {
                     return Err(TypeError::new(format!("HttpResponse has no method '{}'", other)));
+                }
+                (Type::Result { .. } | Type::ResultErr, "is_ok") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("is_ok() takes no arguments"));
+                    }
+                    return Ok(Type::Bool);
+                }
+                (Type::Result { .. } | Type::ResultErr, "is_err") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("is_err() takes no arguments"));
+                    }
+                    return Ok(Type::Bool);
+                }
+                (Type::Result { inner }, "unwrap") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("unwrap() takes no arguments"));
+                    }
+                    return Ok(*inner.clone());
+                }
+                (Type::Result { inner }, "unwrap_or") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("unwrap_or() takes exactly 1 argument"));
+                    }
+                    let default_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if default_ty != **inner {
+                        return Err(TypeError::new(format!("unwrap_or() default must be {}, got {}", inner, default_ty)));
+                    }
+                    return Ok(*inner.clone());
+                }
+                (Type::Result { .. } | Type::ResultErr, "error") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("error() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::Result { .. }, other) => {
+                    return Err(TypeError::new(format!("Result has no method '{}'", other)));
                 }
                 _ => {}
             }
@@ -2158,5 +2228,47 @@ mod tests {
     fn check_log_info_rejects_int() {
         let err = do_check("fn main() Int { log_info(42) }").unwrap_err();
         assert!(err.message.contains("String"), "expected String error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_ok_returns_result() {
+        assert!(do_check("fn main() Int { let r = ok(42) \n r.unwrap() }").is_ok());
+    }
+
+    #[test]
+    fn check_err_returns_result() {
+        assert!(do_check("fn main() Int { let r = err(\"bad\") \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_result_is_ok_method() {
+        assert!(do_check("fn main() Int { let r = ok(42) \n if r.is_ok() { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_result_unwrap_or() {
+        assert!(do_check("fn main() Int { let r = ok(42) \n r.unwrap_or(0) }").is_ok());
+    }
+
+    #[test]
+    fn check_result_error_method() {
+        assert!(do_check("fn main() Int { let r = err(\"oops\") \n let msg = r.error() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_result_return_type() {
+        assert!(do_check("fn divide(a Int, b Int) Result<Int> { if b == 0 { err(\"div by zero\") } else { ok(a / b) } } fn main() Int { let r = divide(10, 2) \n r.unwrap() }").is_ok());
+    }
+
+    #[test]
+    fn check_err_wrong_arg_type() {
+        let err = do_check("fn main() Int { let r = err(42) \n 0 }").unwrap_err();
+        assert!(err.message.contains("String"), "expected String error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_result_if_else_compat() {
+        // err() in then, ok() in else — should be compatible
+        assert!(do_check("fn main() Int { let r = if true { err(\"bad\") } else { ok(42) } \n 0 }").is_ok());
     }
 }
