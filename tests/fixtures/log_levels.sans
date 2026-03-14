@@ -1,0 +1,8 @@
+main() {
+    a = log_set_level(2)
+    b = log_debug("should not print")
+    c = log_info("should not print")
+    d = log_warn("this prints")
+    e = log_error("this prints too")
+    a + b + c + d + e
+}

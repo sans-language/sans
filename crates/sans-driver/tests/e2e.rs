@@ -14,11 +14,11 @@ fn compile_runtime(manifest_dir: &str, tmp_dir: &std::path::Path, name: &str, fi
 
 const RUNTIME_NAMES: &[&str] = &["json", "http", "log", "result", "string_ext", "array_ext", "functional", "server"];
 
-/// Helper: compile a multi-file fixture directory and run main.cy, returning the exit code.
+/// Helper: compile a multi-file fixture directory and run main.sans, returning the exit code.
 fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let dir_path = format!("{}/../../tests/fixtures/{}", manifest_dir, fixture_dir);
-    let main_path = std::path::PathBuf::from(format!("{}/main.cy", dir_path));
+    let main_path = std::path::PathBuf::from(format!("{}/main.sans", dir_path));
 
     // Resolve imports
     let resolved_modules = sans::imports::resolve_imports(&main_path)
@@ -26,7 +26,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
 
     // Parse main
     let main_source = std::fs::read_to_string(&main_path)
-        .unwrap_or_else(|e| panic!("could not read main.cy: {}", e));
+        .unwrap_or_else(|e| panic!("could not read main.sans: {}", e));
     let main_program = sans_parser::parse(&main_source)
         .unwrap_or_else(|e| panic!("parse error: {:?}", e));
 
@@ -112,7 +112,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     run_status.code().unwrap_or(-1)
 }
 
-/// Helper: compile a .cy fixture file and run it, returning the exit code.
+/// Helper: compile a .sans fixture file and run it, returning the exit code.
 fn compile_and_run(fixture: &str) -> i32 {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let fixture_path = format!("{}/../../tests/fixtures/{}", manifest_dir, fixture);
@@ -133,7 +133,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     // Codegen to object file
     let tmp_dir = std::env::temp_dir();
     let obj_path = tmp_dir.join(format!("{}.o", fixture));
-    let bin_path = tmp_dir.join(fixture.replace(".cy", ""));
+    let bin_path = tmp_dir.join(fixture.replace(".sans", ""));
 
     sans_codegen::compile_to_object(&ir_module, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
@@ -173,97 +173,97 @@ fn compile_and_run(fixture: &str) -> i32 {
 
 #[test]
 fn e2e_struct_basic() {
-    assert_eq!(compile_and_run("struct_basic.cy"), 7);
+    assert_eq!(compile_and_run("struct_basic.sans"), 7);
 }
 
 #[test]
 fn e2e_struct_nested_access() {
-    assert_eq!(compile_and_run("struct_nested_access.cy"), 30);
+    assert_eq!(compile_and_run("struct_nested_access.sans"), 30);
 }
 
 #[test]
 fn e2e_enum_basic() {
-    assert_eq!(compile_and_run("enum_basic.cy"), 2);
+    assert_eq!(compile_and_run("enum_basic.sans"), 2);
 }
 
 #[test]
 fn e2e_enum_data() {
-    assert_eq!(compile_and_run("enum_data.cy"), 12);
+    assert_eq!(compile_and_run("enum_data.sans"), 12);
 }
 
 #[test]
 fn e2e_method_basic() {
-    assert_eq!(compile_and_run("method_basic.cy"), 7);
+    assert_eq!(compile_and_run("method_basic.sans"), 7);
 }
 
 #[test]
 fn e2e_trait_impl() {
-    assert_eq!(compile_and_run("trait_impl.cy"), 13);
+    assert_eq!(compile_and_run("trait_impl.sans"), 13);
 }
 
 #[test]
 fn e2e_generic_identity() {
-    assert_eq!(compile_and_run("generic_identity.cy"), 42);
+    assert_eq!(compile_and_run("generic_identity.sans"), 42);
 }
 
 #[test]
 fn e2e_generic_pair() {
-    assert_eq!(compile_and_run("generic_pair.cy"), 17);
+    assert_eq!(compile_and_run("generic_pair.sans"), 17);
 }
 
 #[test]
 fn e2e_spawn_join() {
-    assert_eq!(compile_and_run("spawn_join.cy"), 7);
+    assert_eq!(compile_and_run("spawn_join.sans"), 7);
 }
 
 #[test]
 fn e2e_channel_basic() {
-    assert_eq!(compile_and_run("channel_basic.cy"), 42);
+    assert_eq!(compile_and_run("channel_basic.sans"), 42);
 }
 
 #[test]
 fn e2e_spawn_channel() {
-    assert_eq!(compile_and_run("spawn_channel.cy"), 10);
+    assert_eq!(compile_and_run("spawn_channel.sans"), 10);
 }
 
 #[test]
 fn e2e_mutex_basic() {
-    assert_eq!(compile_and_run("mutex_basic.cy"), 15);
+    assert_eq!(compile_and_run("mutex_basic.sans"), 15);
 }
 
 #[test]
 fn e2e_mutex_threaded() {
-    assert_eq!(compile_and_run("mutex_threaded.cy"), 1);
+    assert_eq!(compile_and_run("mutex_threaded.sans"), 1);
 }
 
 #[test]
 fn e2e_channel_bounded() {
-    assert_eq!(compile_and_run("channel_bounded.cy"), 30);
+    assert_eq!(compile_and_run("channel_bounded.sans"), 30);
 }
 
 #[test]
 fn e2e_array_basic() {
-    assert_eq!(compile_and_run("array_basic.cy"), 28);
+    assert_eq!(compile_and_run("array_basic.sans"), 28);
 }
 
 #[test]
 fn e2e_array_literal() {
-    assert_eq!(compile_and_run("array_literal.cy"), 63);
+    assert_eq!(compile_and_run("array_literal.sans"), 63);
 }
 
 #[test]
 fn e2e_array_for_in() {
-    assert_eq!(compile_and_run("array_for_in.cy"), 10);
+    assert_eq!(compile_and_run("array_for_in.sans"), 10);
 }
 
 #[test]
 fn e2e_string_ops() {
-    assert_eq!(compile_and_run("string_ops.cy"), 18);
+    assert_eq!(compile_and_run("string_ops.sans"), 18);
 }
 
 #[test]
 fn e2e_string_conversion() {
-    assert_eq!(compile_and_run("string_conversion.cy"), 42);
+    assert_eq!(compile_and_run("string_conversion.sans"), 42);
 }
 
 #[test]
@@ -288,47 +288,47 @@ fn e2e_import_struct() {
 
 #[test]
 fn e2e_file_write_read() {
-    assert_eq!(compile_and_run("file_write_read.cy"), 11);
+    assert_eq!(compile_and_run("file_write_read.sans"), 11);
 }
 
 #[test]
 fn e2e_file_exists_check() {
-    assert_eq!(compile_and_run("file_exists_check.cy"), 1);
+    assert_eq!(compile_and_run("file_exists_check.sans"), 1);
 }
 
 #[test]
 fn e2e_json_object_stringify() {
-    assert_eq!(compile_and_run("json_object_stringify.cy"), 2);
+    assert_eq!(compile_and_run("json_object_stringify.sans"), 2);
 }
 
 #[test]
 fn e2e_json_int_roundtrip() {
-    assert_eq!(compile_and_run("json_int_roundtrip.cy"), 42);
+    assert_eq!(compile_and_run("json_int_roundtrip.sans"), 42);
 }
 
 #[test]
 fn e2e_json_build() {
-    assert_eq!(compile_and_run("json_build.cy"), 52);
+    assert_eq!(compile_and_run("json_build.sans"), 52);
 }
 
 #[test]
 fn e2e_json_parse_access() {
-    assert_eq!(compile_and_run("json_parse_access.cy"), 42);
+    assert_eq!(compile_and_run("json_parse_access.sans"), 42);
 }
 
 #[test]
 fn e2e_json_roundtrip() {
-    assert_eq!(compile_and_run("json_roundtrip.cy"), 7);
+    assert_eq!(compile_and_run("json_roundtrip.sans"), 7);
 }
 
 #[test]
 fn e2e_http_error_handling() {
-    assert_eq!(compile_and_run("http_error_handling.cy"), 1);
+    assert_eq!(compile_and_run("http_error_handling.sans"), 1);
 }
 
 #[test]
 fn e2e_log_levels() {
-    assert_eq!(compile_and_run("log_levels.cy"), 0);
+    assert_eq!(compile_and_run("log_levels.sans"), 0);
 }
 
 #[test]
@@ -344,79 +344,79 @@ fn e2e_demo_backend() {
 #[test]
 fn e2e_result_ok_unwrap() {
     // divide(10,2)=5 + divide(20,4)=5 = 10
-    assert_eq!(compile_and_run("result_ok_unwrap.cy"), 10);
+    assert_eq!(compile_and_run("result_ok_unwrap.sans"), 10);
 }
 
 #[test]
 fn e2e_result_error_handling() {
     // divide(10,0) -> err, unwrap_or(99) = 99
-    assert_eq!(compile_and_run("result_error_handling.cy"), 99);
+    assert_eq!(compile_and_run("result_error_handling.sans"), 99);
 }
 
 #[test]
 fn e2e_float_basic() {
     // float_to_int(3.14 * 2.0 * 2.0) = float_to_int(12.56) = 12
-    assert_eq!(compile_and_run("float_basic.cy"), 12);
+    assert_eq!(compile_and_run("float_basic.sans"), 12);
 }
 
 #[test]
 fn e2e_string_methods() {
-    assert_eq!(compile_and_run("string_methods.cy"), 17);
+    assert_eq!(compile_and_run("string_methods.sans"), 17);
 }
 
 #[test]
 fn e2e_array_methods() {
-    assert_eq!(compile_and_run("array_methods.cy"), 33);
+    assert_eq!(compile_and_run("array_methods.sans"), 33);
 }
 
 #[test]
 fn e2e_map_filter() {
-    assert_eq!(compile_and_run("map_filter.cy"), 21);
+    assert_eq!(compile_and_run("map_filter.sans"), 21);
 }
 
 #[test]
 fn e2e_string_replace() {
-    assert_eq!(compile_and_run("string_replace.cy"), 11);
+    assert_eq!(compile_and_run("string_replace.sans"), 11);
 }
 
 #[test]
 fn e2e_array_remove() {
-    assert_eq!(compile_and_run("array_remove.cy"), 63);
+    assert_eq!(compile_and_run("array_remove.sans"), 63);
 }
 
 #[test]
 fn e2e_multiline_string() {
-    assert_eq!(compile_and_run("multiline_string.cy"), 11);
+    assert_eq!(compile_and_run("multiline_string.sans"), 11);
 }
 
 #[test]
 fn e2e_modulo_neg() {
-    assert_eq!(compile_and_run("modulo_neg.cy"), 9);
+    assert_eq!(compile_and_run("modulo_neg.sans"), 9);
 }
 
 #[test]
 fn e2e_string_interp() {
-    assert_eq!(compile_and_run("string_interp.cy"), 13);
+    assert_eq!(compile_and_run("string_interp.sans"), 13);
 }
 
 #[test]
 fn e2e_ai_syntax() {
-    assert_eq!(compile_and_run("ai_syntax.cy"), 126);
+    assert_eq!(compile_and_run("ai_syntax.sans"), 126);
 }
 
 #[test]
 fn e2e_ai_syntax2() {
-    assert_eq!(compile_and_run("ai_syntax2.cy"), 17);
+    assert_eq!(compile_and_run("ai_syntax2.sans"), 17);
 }
 
 #[test]
 fn e2e_ai_syntax3() {
     // first=2, last=10, total=15 => 2+10+15=27
-    assert_eq!(compile_and_run("ai_syntax3.cy"), 27);
+    assert_eq!(compile_and_run("ai_syntax3.sans"), 27);
 }
 
 #[test]
 fn e2e_ai_syntax4() {
     // divide(10,2)=5
-    assert_eq!(compile_and_run("ai_syntax4.cy"), 5);
+    assert_eq!(compile_and_run("ai_syntax4.sans"), 5);
 }

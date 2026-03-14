@@ -7,7 +7,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 3 {
-        eprintln!("Usage: sans <build|run> <file.cy>");
+        eprintln!("Usage: sans <build|run> <file.sans>");
         process::exit(1);
     }
 
@@ -31,7 +31,7 @@ fn main() {
             }
         }
         other => {
-            eprintln!("unknown command '{}'. Usage: sans <build|run> <file.cy>", other);
+            eprintln!("unknown command '{}'. Usage: sans <build|run> <file.sans>", other);
             process::exit(1);
         }
     }
@@ -61,7 +61,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     // Validate extension
     if source_path.extension().and_then(|e| e.to_str()) != Some("cy") {
         return Err(format!(
-            "expected a .cy source file, got: {}",
+            "expected a .sans source file, got: {}",
             source_path.display()
         ));
     }

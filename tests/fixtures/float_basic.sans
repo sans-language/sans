@@ -1,0 +1,28 @@
+main() {
+    pi = 3.14
+    r = 2.0
+    area = pi * r * r
+    print(area)
+
+    a = 10.5
+    b = 3.2
+    sum = a + b
+    diff = a - b
+    prod = a * b
+    quot = a / b
+    print(sum)
+
+    // Comparisons
+    if a > b {
+        print("a > b")
+    }
+
+    // Conversions
+    n = float_to_int(area)
+    f = int_to_float(42)
+    s = float_to_string(pi)
+    print(s)
+    print(int_to_string(n))
+
+    n
+}

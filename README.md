@@ -25,7 +25,7 @@ ln -sf $(pwd)/target/release/sans ~/.local/bin/sans
 ### Usage
 
 ```sh
-sans build myfile.cy && ./myfile
+sans build myfile.sans && ./myfile
 ```
 
 ## Hello World

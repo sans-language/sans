@@ -1,0 +1,32 @@
+double(x:I) = x * 2
+
+is_even(x:I) B {
+    rem = x - (x / 2) * 2
+    rem == 0 ? true : false
+}
+
+main() {
+    a = array<I>()
+    a.push(1)
+    a.push(2)
+    a.push(3)
+    a.push(4)
+    a.push(5)
+
+    // Map: [1,2,3,4,5] -> [2,4,6,8,10]
+    doubled = a.map(double)
+    d_len = doubled.len()
+
+    // Filter: [1,2,3,4,5] -> [2,4]
+    evens = a.filter(is_even)
+    e_len = evens.len()
+
+    // Get values
+    d0 = doubled[0]
+    d4 = doubled[4]
+    e0 = evens[0]
+
+    // d_len=5, e_len=2, d0=2, d4=10, e0=2
+    // result = 5 + 2 + 2 + 10 + 2 = 21
+    d_len + e_len + d0 + d4 + e0
+}

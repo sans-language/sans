@@ -1,0 +1,20 @@
+bool_to_int(b:B) = b ? 1 : 0
+
+main() {
+    s = "  hello world  "
+    trimmed = s.trim()
+    tlen = trimmed.len()
+
+    greeting = "hello world"
+    sw = bool_to_int(greeting.starts_with("hello"))
+    cw = bool_to_int(greeting.contains("world"))
+    cf = bool_to_int(greeting.contains("foo"))
+
+    csv = "a,b,c,d"
+    parts = csv.split(",")
+    num_parts = parts.len()
+
+    // tlen=11, sw=1, cw=1, cf=0, num_parts=4
+    // result = 11 + 1 + 1 + 0 + 4 = 17
+    tlen + sw + cw + cf + num_parts
+}

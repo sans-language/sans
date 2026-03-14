@@ -1,0 +1,12 @@
+safe_divide(a:I b:I) R<I> {
+    if b == 0 {
+        err("division by zero")
+    } else {
+        ok(a / b)
+    }
+}
+
+main() {
+    r = safe_divide(10 0)
+    r.is_err() ? r.unwrap_or(99) : r!
+}

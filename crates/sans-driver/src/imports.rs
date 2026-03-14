@@ -6,7 +6,7 @@ use sans_parser::ast::Program;
 /// A parsed module with its metadata.
 pub struct ResolvedModule {
     pub name: String,      // module prefix, e.g., "user"
-    pub path: PathBuf,     // absolute path to .cy file
+    pub path: PathBuf,     // absolute path to .sans file
     pub program: Program,  // parsed AST
 }
 
@@ -53,7 +53,7 @@ fn resolve_import(
     in_progress: &mut HashSet<PathBuf>,
 ) -> Result<(), String> {
     // All paths resolve relative to entry point's directory (base_dir), per spec.
-    let file_path = base_dir.join(format!("{}.cy", import_path));
+    let file_path = base_dir.join(format!("{}.sans", import_path));
     let canonical = file_path.canonicalize()
         .map_err(|_| format!("module not found: {}", import_path))?;
 
