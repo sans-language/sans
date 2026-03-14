@@ -157,8 +157,19 @@ long cy_http_respond(CyHttpRequest* req, long status, const char* body) {
         "\r\n",
         status, status_text, body_len);
 
-    write(req->client_fd, header, header_len);
-    write(req->client_fd, body, body_len);
+    /* Send header and body together to avoid partial writes */
+    char* full_response = malloc(header_len + body_len + 1);
+    memcpy(full_response, header, header_len);
+    memcpy(full_response + header_len, body, body_len);
+    long total = header_len + body_len;
+    long sent = 0;
+    while (sent < total) {
+        long n = write(req->client_fd, full_response + sent, total - sent);
+        if (n <= 0) break;
+        sent += n;
+    }
+    free(full_response);
+    shutdown(req->client_fd, SHUT_RDWR);
     close(req->client_fd);
     req->client_fd = -1;
     return 1;
