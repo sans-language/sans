@@ -175,6 +175,11 @@ pub enum Instruction {
     JsonPush { array: Reg, value: Reg },
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
+    // Function references
+    FnRef { dest: Reg, name: String },
+    // Array higher-order methods
+    ArrayMap { dest: Reg, array: Reg, fn_ptr: Reg },
+    ArrayFilter { dest: Reg, array: Reg, fn_ptr: Reg },
     // String extension methods
     StringTrim { dest: Reg, string: Reg },
     StringStartsWith { dest: Reg, string: Reg, prefix: Reg },

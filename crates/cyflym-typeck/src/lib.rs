@@ -503,10 +503,14 @@ fn check_expr(
         Expr::StringLiteral { .. } => Ok(Type::String),
 
         Expr::Identifier { name, .. } => {
-            locals
-                .get(name)
-                .map(|(ty, _)| ty.clone())
-                .ok_or_else(|| TypeError::new(format!("undefined variable '{}'", name)))
+            if let Some((ty, _)) = locals.get(name) {
+                Ok(ty.clone())
+            } else if let Some((param_types, ret_type)) = fn_env.get(name) {
+                // Function reference — treat as a first-class function value
+                Ok(Type::Fn { params: param_types.clone(), ret: Box::new(ret_type.clone()) })
+            } else {
+                Err(TypeError::new(format!("undefined variable '{}'", name)))
+            }
         }
 
         Expr::BinaryOp { left, op, right, .. } => {
@@ -1265,6 +1269,34 @@ fn check_expr(
                         return Err(TypeError::new("pop() takes no arguments"));
                     }
                     return Ok(*inner.clone());
+                }
+                (Type::Array { inner }, "map") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("map() takes exactly 1 argument (function)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    match &arg_ty {
+                        Type::Fn { params, ret } if params.len() == 1 && params[0] == **inner => {
+                            return Ok(Type::Array { inner: Box::new(*ret.clone()) });
+                        }
+                        _ => {
+                            return Err(TypeError::new(format!("map() requires a function ({}) -> T, got {}", inner, arg_ty)));
+                        }
+                    }
+                }
+                (Type::Array { inner }, "filter") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("filter() takes exactly 1 argument (function)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    match &arg_ty {
+                        Type::Fn { params, ret } if params.len() == 1 && params[0] == **inner && **ret == Type::Bool => {
+                            return Ok(Type::Array { inner: inner.clone() });
+                        }
+                        _ => {
+                            return Err(TypeError::new(format!("filter() requires a function ({}) -> Bool, got {}", inner, arg_ty)));
+                        }
+                    }
                 }
                 (Type::Array { inner }, "contains") => {
                     if args.len() != 1 {

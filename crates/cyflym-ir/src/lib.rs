@@ -255,16 +255,24 @@ impl IrBuilder {
                 dest
             }
             Expr::Identifier { name, .. } => {
-                match self.locals.get(name).unwrap_or_else(|| panic!("undefined variable: {}", name)).clone() {
-                    LocalVar::Value(reg) => reg,
-                    LocalVar::Ptr(ptr) => {
-                        let dest = self.fresh_reg();
-                        self.instructions.push(Instruction::Load { dest: dest.clone(), ptr: ptr.clone() });
-                        if let Some(ty) = self.reg_types.get(&ptr).cloned() {
-                            self.reg_types.insert(dest.clone(), ty);
+                if let Some(local) = self.locals.get(name).cloned() {
+                    match local {
+                        LocalVar::Value(reg) => reg,
+                        LocalVar::Ptr(ptr) => {
+                            let dest = self.fresh_reg();
+                            self.instructions.push(Instruction::Load { dest: dest.clone(), ptr: ptr.clone() });
+                            if let Some(ty) = self.reg_types.get(&ptr).cloned() {
+                                self.reg_types.insert(dest.clone(), ty);
+                            }
+                            dest
                         }
-                        dest
                     }
+                } else {
+                    // Function reference — emit FnRef instruction
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FnRef { dest: dest.clone(), name: name.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Int); // fn pointer as i64
+                    dest
                 }
             }
             Expr::BinaryOp { left, op, right, .. } => {
@@ -886,6 +894,20 @@ impl IrBuilder {
                             array: obj_reg,
                         });
                         self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Array(ref inner)), "map") => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayMap { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(inner.clone())); // same inner type for now
+                        return dest;
+                    }
+                    (Some(IrType::Array(ref inner)), "filter") => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayFilter { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(inner.clone()));
                         return dest;
                     }
                     (Some(IrType::Array(ref inner)), "pop") => {

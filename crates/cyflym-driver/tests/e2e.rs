@@ -120,8 +120,17 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         .expect("failed to compile array_ext runtime");
     assert!(array_ext_compile.success(), "array_ext runtime compilation failed");
 
+    // Compile functional runtime
+    let functional_c_path = format!("{}/../../runtime/functional.c", manifest_dir);
+    let functional_o_path = tmp_dir.join(format!("{}_functional.o", fixture_dir));
+    let functional_compile = Command::new("cc")
+        .args(["-c", &functional_c_path, "-o", functional_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile functional runtime");
+    assert!(functional_compile.success(), "functional runtime compilation failed");
+
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -138,6 +147,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let _ = std::fs::remove_file(&result_o_path);
     let _ = std::fs::remove_file(&string_ext_o_path);
     let _ = std::fs::remove_file(&array_ext_o_path);
+    let _ = std::fs::remove_file(&functional_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -222,9 +232,18 @@ fn compile_and_run(fixture: &str) -> i32 {
         .expect("failed to compile array_ext runtime");
     assert!(array_ext_compile.success(), "array_ext runtime compilation failed");
 
+    // Compile functional runtime
+    let functional_c_path = format!("{}/../../runtime/functional.c", manifest_dir);
+    let functional_o_path = tmp_dir.join(format!("{}_functional.o", fixture));
+    let functional_compile = Command::new("cc")
+        .args(["-c", &functional_c_path, "-o", functional_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile functional runtime");
+    assert!(functional_compile.success(), "functional runtime compilation failed");
+
     // Link
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -243,6 +262,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     let _ = std::fs::remove_file(&result_o_path);
     let _ = std::fs::remove_file(&string_ext_o_path);
     let _ = std::fs::remove_file(&array_ext_o_path);
+    let _ = std::fs::remove_file(&functional_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -438,4 +458,9 @@ fn e2e_string_methods() {
 #[test]
 fn e2e_array_methods() {
     assert_eq!(compile_and_run("array_methods.cy"), 33);
+}
+
+#[test]
+fn e2e_map_filter() {
+    assert_eq!(compile_and_run("map_filter.cy"), 21);
 }
