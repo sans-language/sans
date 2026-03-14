@@ -748,6 +748,24 @@ fn check_expr(
                     return Err(TypeError::new(format!("http_post() content_type must be String, got {}", ct_ty)));
                 }
                 return Ok(Type::HttpResponse);
+            } else if function == "log_debug" || function == "log_info" || function == "log_warn" || function == "log_error" {
+                if args.len() != 1 {
+                    return Err(TypeError::new(format!("{}() takes exactly 1 argument", function)));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("{}() requires String argument, got {}", function, arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "log_set_level" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("log_set_level() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("log_set_level() requires Int argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
             }
 
             // Check regular functions first
@@ -2123,6 +2141,22 @@ mod tests {
     #[test]
     fn check_http_get_wrong_arg_type() {
         let err = do_check("fn main() Int { let r = http_get(42) \n 0 }").unwrap_err();
+        assert!(err.message.contains("String"), "expected String error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_log_info_accepts_string() {
+        assert!(do_check("fn main() Int { log_info(\"hello\") }").is_ok());
+    }
+
+    #[test]
+    fn check_log_set_level_accepts_int() {
+        assert!(do_check("fn main() Int { log_set_level(2) }").is_ok());
+    }
+
+    #[test]
+    fn check_log_info_rejects_int() {
+        let err = do_check("fn main() Int { log_info(42) }").unwrap_err();
         assert!(err.message.contains("String"), "expected String error, got: {}", err.message);
     }
 }

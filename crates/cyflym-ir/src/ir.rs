@@ -171,6 +171,12 @@ pub enum Instruction {
     JsonPush { array: Reg, value: Reg },
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
+    // Logging
+    LogDebug { dest: Reg, message: Reg },
+    LogInfo { dest: Reg, message: Reg },
+    LogWarn { dest: Reg, message: Reg },
+    LogError { dest: Reg, message: Reg },
+    LogSetLevel { dest: Reg, level: Reg },
     // HTTP operations
     HttpGet { dest: Reg, url: Reg },
     HttpPost { dest: Reg, url: Reg, body: Reg, content_type: Reg },

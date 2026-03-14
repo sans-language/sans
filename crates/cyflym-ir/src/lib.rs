@@ -537,6 +537,36 @@ impl IrBuilder {
                     self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Str);
                     return dest;
+                } else if function == "log_debug" {
+                    let msg_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::LogDebug { dest: dest.clone(), message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "log_info" {
+                    let msg_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::LogInfo { dest: dest.clone(), message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "log_warn" {
+                    let msg_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::LogWarn { dest: dest.clone(), message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "log_error" {
+                    let msg_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::LogError { dest: dest.clone(), message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "log_set_level" {
+                    let level_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::LogSetLevel { dest: dest.clone(), level: level_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "http_get" {
                     let url_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
@@ -1650,6 +1680,24 @@ mod tests {
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonGet { .. })),
             "expected JsonGet instruction");
+    }
+
+    #[test]
+    fn lower_log_info() {
+        let program = cyflym_parser::parse("fn main() Int { log_info(\"hello\") }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::LogInfo { .. })),
+            "expected LogInfo instruction");
+    }
+
+    #[test]
+    fn lower_log_set_level() {
+        let program = cyflym_parser::parse("fn main() Int { log_set_level(2) }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::LogSetLevel { .. })),
+            "expected LogSetLevel instruction");
     }
 
     #[test]

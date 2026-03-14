@@ -178,6 +178,16 @@ fn generate_llvm<'ctx>(
     let json_push_type = context.void_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_json_push", json_push_type, Some(Linkage::External));
 
+    // Declare logging runtime functions
+    let log_msg_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_log_debug", log_msg_type, Some(Linkage::External));
+    llvm_module.add_function("cy_log_info", log_msg_type, Some(Linkage::External));
+    llvm_module.add_function("cy_log_warn", log_msg_type, Some(Linkage::External));
+    llvm_module.add_function("cy_log_error", log_msg_type, Some(Linkage::External));
+
+    let log_set_level_type = i64_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("cy_log_set_level", log_set_level_type, Some(Linkage::External));
+
     // Declare HTTP runtime functions
     let http_get_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
     llvm_module.add_function("cy_http_get", http_get_type, Some(Linkage::External));
@@ -2154,6 +2164,42 @@ fn generate_llvm<'ctx>(
                     let fn_ref = llvm_module.get_function("cy_json_push").unwrap();
                     builder.build_call(fn_ref, &[arr_ptr.into(), val_ptr.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::LogDebug { dest, message } | Instruction::LogInfo { dest, message } | Instruction::LogWarn { dest, message } | Instruction::LogError { dest, message } => {
+                    let fn_name = match instr {
+                        Instruction::LogDebug { .. } => "cy_log_debug",
+                        Instruction::LogInfo { .. } => "cy_log_info",
+                        Instruction::LogWarn { .. } => "cy_log_warn",
+                        Instruction::LogError { .. } => "cy_log_error",
+                        _ => unreachable!(),
+                    };
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let msg_ptr = if let Some(p) = ptrs.get(message) {
+                        *p
+                    } else {
+                        let iv = regs[message];
+                        builder.build_int_to_ptr(iv, ptr_type, "log_mp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function(fn_name).unwrap();
+                    let call = builder.build_call(fn_ref, &[msg_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError(format!("{}: expected return", fn_name))),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::LogSetLevel { dest, level } => {
+                    let level_val = regs[level];
+                    let fn_ref = llvm_module.get_function("cy_log_set_level").unwrap();
+                    let call = builder.build_call(fn_ref, &[level_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_log_set_level: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
                 }
                 Instruction::HttpGet { dest, url } => {
                     let ptr_type = context.ptr_type(inkwell::AddressSpace::default());

@@ -129,8 +129,19 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         return Err("failed to compile http runtime".to_string());
     }
 
+    // Compile log runtime
+    let log_c_path = format!("{}/../../runtime/log.c", manifest_dir);
+    let log_o_path = tmp_dir.join("cyflym_log_runtime.o");
+    let log_compile = process::Command::new("cc")
+        .args(["-c", &log_c_path, "-o", log_o_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("failed to compile log runtime: {}", e))?;
+    if !log_compile.success() {
+        return Err("failed to compile log runtime".to_string());
+    }
+
     let link_status = process::Command::new("cc")
-        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
+        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
         .status()
         .map_err(|e| format!("failed to invoke linker: {}", e))?;
 
