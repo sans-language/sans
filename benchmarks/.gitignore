@@ -1,0 +1,15 @@
+build/
+charts/
+results.csv
+
+# Compiled binaries (Rust, Sans, Go)
+rust/json_roundtrip/target/
+rust/fib
+rust/array_ops
+rust/loop_sum
+rust/string_concat
+sans/fib
+sans/array_ops
+sans/loop_sum
+sans/string_concat
+sans/json_roundtrip

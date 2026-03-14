@@ -1,0 +1,13 @@
+[package]
+name = "json_roundtrip"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1"
+
+[[bin]]
+name = "json_roundtrip"
+path = "src/main.rs"
+
+[workspace]
