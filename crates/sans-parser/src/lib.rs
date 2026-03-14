@@ -214,7 +214,27 @@ impl Parser {
         let params = self.parse_params()?;
         self.expect(&TokenKind::RParen)?;
 
-        let return_type = self.parse_type_name()?;
+        // Check for implicit return type (default to I) when next token starts the body
+        let return_type = if self.peek().kind == TokenKind::LBrace || self.peek().kind == TokenKind::Eq {
+            TypeName { name: "I".to_string(), span: self.peek().span.clone() }
+        } else {
+            self.parse_type_name()?
+        };
+
+        // Check for single-expression body with `=`
+        if self.peek().kind == TokenKind::Eq {
+            self.pos += 1; // consume =
+            let expr = self.parse_expr(0)?;
+            let fn_end = expr_span(&expr).end;
+            return Ok(Function {
+                name,
+                type_params,
+                params,
+                return_type,
+                body: vec![Stmt::Expr(expr)],
+                span: fn_start..fn_end,
+            });
+        }
 
         self.expect(&TokenKind::LBrace)?;
         let body = self.parse_body()?;
@@ -400,6 +420,10 @@ impl Parser {
         }
         loop {
             let (name, name_span) = self.expect_ident()?;
+            // Allow optional colon between param name and type: x:I or x I
+            if self.peek().kind == TokenKind::Colon {
+                self.pos += 1; // consume optional :
+            }
             let type_name = self.parse_type_name()?;
             let end = type_name.span.end;
             params.push(Param {
@@ -485,6 +509,63 @@ impl Parser {
                         value,
                         span: name_span.start..end,
                     });
+                }
+            }
+
+            // Check for index assignment: ident[expr] = expr => ident.set(index, value)
+            if let TokenKind::Identifier(_) = &self.peek().kind {
+                if self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1].kind == TokenKind::LBracket {
+                    let saved_pos = self.pos;
+                    let (name, name_span) = self.expect_ident()?;
+                    self.pos += 1; // consume [
+                    let index = self.parse_expr(0)?;
+                    if self.peek().kind == TokenKind::RBracket {
+                        self.pos += 1; // consume ]
+                        if self.peek().kind == TokenKind::Eq {
+                            self.pos += 1; // consume =
+                            let value = self.parse_expr(0)?;
+                            let end = expr_span(&value).end;
+                            return Ok(Stmt::Expr(Expr::MethodCall {
+                                object: Box::new(Expr::Identifier { name, span: name_span.clone() }),
+                                method: "set".to_string(),
+                                args: vec![index, value],
+                                span: name_span.start..end,
+                            }));
+                        }
+                    }
+                    // Not an index assignment, backtrack
+                    self.pos = saved_pos;
+                }
+            }
+
+            // Check for compound assignment operators: ident += expr, etc.
+            if let TokenKind::Identifier(_) = &self.peek().kind {
+                if self.pos + 1 < self.tokens.len() {
+                    let compound_op = match &self.tokens[self.pos + 1].kind {
+                        TokenKind::PlusEq => Some(BinOp::Add),
+                        TokenKind::MinusEq => Some(BinOp::Sub),
+                        TokenKind::StarEq => Some(BinOp::Mul),
+                        TokenKind::SlashEq => Some(BinOp::Div),
+                        TokenKind::PercentEq => Some(BinOp::Mod),
+                        _ => None,
+                    };
+                    if let Some(op) = compound_op {
+                        let (name, name_span) = self.expect_ident()?;
+                        self.pos += 1; // consume the compound operator
+                        let rhs = self.parse_expr(0)?;
+                        let end = expr_span(&rhs).end;
+                        let value = Expr::BinaryOp {
+                            left: Box::new(Expr::Identifier { name: name.clone(), span: name_span.clone() }),
+                            op,
+                            right: Box::new(rhs),
+                            span: name_span.start..end,
+                        };
+                        return Ok(Stmt::Assign {
+                            name,
+                            value,
+                            span: name_span.start..end,
+                        });
+                    }
                 }
             }
 
@@ -688,6 +769,34 @@ impl Parser {
                         span: start..ident_span.end,
                     };
                 }
+                continue;
+            }
+
+            // Check for postfix unwrap: expr! => expr.unwrap()
+            if self.peek().kind == TokenKind::Bang {
+                self.pos += 1; // consume !
+                let span = expr_span(&lhs).start..self.tokens[self.pos - 1].span.end;
+                lhs = Expr::MethodCall {
+                    object: Box::new(lhs),
+                    method: "unwrap".to_string(),
+                    args: vec![],
+                    span,
+                };
+                continue;
+            }
+
+            // Check for index access: expr[index] => expr.get(index)
+            if self.peek().kind == TokenKind::LBracket {
+                self.pos += 1; // consume [
+                let index = self.parse_expr(0)?;
+                self.expect(&TokenKind::RBracket)?;
+                let span = expr_span(&lhs).start..self.tokens[self.pos - 1].span.end;
+                lhs = Expr::MethodCall {
+                    object: Box::new(lhs),
+                    method: "get".to_string(),
+                    args: vec![index],
+                    span,
+                };
                 continue;
             }
 

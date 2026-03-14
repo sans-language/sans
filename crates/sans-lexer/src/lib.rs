@@ -112,25 +112,50 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
 
             // Single-character tokens
             '+' => {
-                pos += 1;
-                tokens.push(Token { kind: TokenKind::Plus, span: start..pos });
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::PlusEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Plus, span: start..pos });
+                }
             }
             '-' => {
-                pos += 1;
-                tokens.push(Token { kind: TokenKind::Minus, span: start..pos });
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::MinusEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Minus, span: start..pos });
+                }
             }
             '*' => {
-                pos += 1;
-                tokens.push(Token { kind: TokenKind::Star, span: start..pos });
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::StarEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Star, span: start..pos });
+                }
             }
             '/' => {
                 // Not a line comment (handled above), so it's a slash operator
-                pos += 1;
-                tokens.push(Token { kind: TokenKind::Slash, span: start..pos });
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::SlashEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Slash, span: start..pos });
+                }
             }
             '%' => {
-                pos += 1;
-                tokens.push(Token { kind: TokenKind::Percent, span: start..pos });
+                if pos + 1 < len && bytes[pos + 1] == b'=' {
+                    pos += 2;
+                    tokens.push(Token { kind: TokenKind::PercentEq, span: start..pos });
+                } else {
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Percent, span: start..pos });
+                }
             }
             '=' => {
                 if pos + 1 < len && bytes[pos + 1] == b'=' {

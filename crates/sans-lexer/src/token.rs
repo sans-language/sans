@@ -9,6 +9,7 @@ pub enum StringPart { Literal(String), Ident(String) }
 pub enum TokenKind {
     IntLiteral(i64), FloatLiteral(f64), StringLiteral(String), InterpolatedString(Vec<StringPart>), Identifier(String),
     Fn, Let, Plus, Minus, Star, Slash, Percent, Eq,
+    PlusEq, MinusEq, StarEq, SlashEq, PercentEq,
     LParen, RParen, LBrace, RBrace, LBracket, RBracket, Comma, Colon,
     True, False, If, Else, While, Return, Mut, Struct, Enum, Match,
     Trait, Impl, For, SelfValue, SelfType, Spawn, Channel, Mutex, Array, In, Import,

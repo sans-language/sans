@@ -408,3 +408,15 @@ fn e2e_ai_syntax() {
 fn e2e_ai_syntax2() {
     assert_eq!(compile_and_run("ai_syntax2.cy"), 17);
 }
+
+#[test]
+fn e2e_ai_syntax3() {
+    // first=2, last=10, total=15 => 2+10+15=27
+    assert_eq!(compile_and_run("ai_syntax3.cy"), 27);
+}
+
+#[test]
+fn e2e_ai_syntax4() {
+    // divide(10,2)=5
+    assert_eq!(compile_and_run("ai_syntax4.cy"), 5);
+}
