@@ -1,0 +1,35 @@
+{
+  "name": "sans-lang",
+  "displayName": "Sans Language",
+  "description": "Syntax highlighting and language support for the Sans programming language",
+  "version": "0.1.0",
+  "publisher": "sans-lang",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "sans",
+        "aliases": [
+          "Sans",
+          "sans"
+        ],
+        "extensions": [
+          ".sans"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "sans",
+        "scopeName": "source.sans",
+        "path": "./syntaxes/sans.tmLanguage.json"
+      }
+    ]
+  }
+}
