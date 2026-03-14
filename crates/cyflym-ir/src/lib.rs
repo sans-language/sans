@@ -448,6 +448,46 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "file_read" {
+                    let path_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FileRead {
+                        dest: dest.clone(),
+                        path: path_reg,
+                    });
+                    self.reg_types.insert(dest.clone(), IrType::Str);
+                    return dest;
+                } else if function == "file_write" {
+                    let path_reg = self.lower_expr(&args[0]);
+                    let content_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FileWrite {
+                        dest: dest.clone(),
+                        path: path_reg,
+                        content: content_reg,
+                    });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "file_append" {
+                    let path_reg = self.lower_expr(&args[0]);
+                    let content_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FileAppend {
+                        dest: dest.clone(),
+                        path: path_reg,
+                        content: content_reg,
+                    });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "file_exists" {
+                    let path_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FileExists {
+                        dest: dest.clone(),
+                        path: path_reg,
+                    });
+                    self.reg_types.insert(dest.clone(), IrType::Bool);
+                    return dest;
                 }
 
                 let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
@@ -1403,5 +1443,27 @@ mod tests {
         });
         assert!(has_mangled_call, "expected call to 'utils__add', got: {:?}",
             func.body.iter().filter(|i| matches!(i, Instruction::Call { .. })).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn lower_file_read_instruction() {
+        let program = parse("fn main() Int { let s = file_read(\"test.txt\") 0 }");
+        let module = lower(&program, None, &HashMap::new());
+        let func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_file_read = func.body.iter().any(|i| {
+            matches!(i, Instruction::FileRead { .. })
+        });
+        assert!(has_file_read, "expected FileRead instruction, got: {:?}", func.body);
+    }
+
+    #[test]
+    fn lower_file_write_instruction() {
+        let program = parse("fn main() Int { file_write(\"test.txt\", \"hello\") }");
+        let module = lower(&program, None, &HashMap::new());
+        let func = module.functions.iter().find(|f| f.name == "main").unwrap();
+        let has_file_write = func.body.iter().any(|i| {
+            matches!(i, Instruction::FileWrite { .. })
+        });
+        assert!(has_file_write, "expected FileWrite instruction, got: {:?}", func.body);
     }
 }

@@ -1457,6 +1457,12 @@ fn generate_llvm<'ctx>(
                     };
                     regs.insert(dest.clone(), result);
                 }
+                Instruction::FileRead { .. }
+                | Instruction::FileWrite { .. }
+                | Instruction::FileAppend { .. }
+                | Instruction::FileExists { .. } => {
+                    todo!("file I/O codegen not yet implemented")
+                }
             }
         }
     }

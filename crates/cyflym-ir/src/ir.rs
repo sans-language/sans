@@ -131,6 +131,25 @@ pub enum Instruction {
         dest: Reg,
         string: Reg,
     },
+    // File I/O
+    FileRead {
+        dest: Reg,
+        path: Reg,
+    },
+    FileWrite {
+        dest: Reg,
+        path: Reg,
+        content: Reg,
+    },
+    FileAppend {
+        dest: Reg,
+        path: Reg,
+        content: Reg,
+    },
+    FileExists {
+        dest: Reg,
+        path: Reg,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
