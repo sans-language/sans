@@ -218,6 +218,14 @@ fn generate_llvm<'ctx>(
     let string_split_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_string_split", string_split_type, Some(Linkage::External));
 
+    // Declare string replace function
+    let string_replace_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_string_replace", string_replace_type, Some(Linkage::External));
+
+    // Declare array remove function
+    let array_remove_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("cy_array_remove", array_remove_type, Some(Linkage::External));
+
     // Declare result runtime functions
     let result_ok_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("cy_result_ok", result_ok_type, Some(Linkage::External));
@@ -501,6 +509,41 @@ fn generate_llvm<'ctx>(
                     let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "ss_int").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), as_int);
                     ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::StringReplace { dest, string, old, new_str } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
+                        builder.build_int_to_ptr(regs[string], ptr_type, "srep_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let old_ptr = if let Some(p) = ptrs.get(old) { *p } else {
+                        builder.build_int_to_ptr(regs[old], ptr_type, "srep_op").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let new_ptr = if let Some(p) = ptrs.get(new_str) { *p } else {
+                        builder.build_int_to_ptr(regs[new_str], ptr_type, "srep_np").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_string_replace").unwrap();
+                    let call = builder.build_call(fn_ref, &[str_ptr.into(), old_ptr.into(), new_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_string_replace: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "srep_int").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::ArrayRemove { dest, array, index } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let arr_ptr = if let Some(p) = ptrs.get(array) { *p } else {
+                        builder.build_int_to_ptr(regs[array], ptr_type, "arem_ap").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let idx_val = regs[index];
+                    let fn_ref = llvm_module.get_function("cy_array_remove").unwrap();
+                    let call = builder.build_call(fn_ref, &[arr_ptr.into(), idx_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_array_remove: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
                 }
                 Instruction::ArrayPop { dest, array } => {
                     let ptr_type = context.ptr_type(inkwell::AddressSpace::default());

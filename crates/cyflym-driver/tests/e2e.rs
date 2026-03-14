@@ -1,5 +1,19 @@
 use std::process::Command;
 
+/// Helper: compile a single C runtime file, returning the path to the object file.
+fn compile_runtime(manifest_dir: &str, tmp_dir: &std::path::Path, name: &str, fixture_id: &str) -> std::path::PathBuf {
+    let c_path = format!("{}/../../runtime/{}.c", manifest_dir, name);
+    let o_path = tmp_dir.join(format!("{}_{}.o", fixture_id, name));
+    let compile = Command::new("cc")
+        .args(["-c", &c_path, "-o", o_path.to_str().unwrap()])
+        .status()
+        .unwrap_or_else(|_| panic!("failed to compile {} runtime", name));
+    assert!(compile.success(), "{} runtime compilation failed", name);
+    o_path
+}
+
+const RUNTIME_NAMES: &[&str] = &["json", "http", "log", "result", "string_ext", "array_ext", "functional", "server"];
+
 /// Helper: compile a multi-file fixture directory and run main.cy, returning the exit code.
 fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -66,80 +80,20 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     cyflym_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
-    // Compile JSON runtime (unique names to avoid parallel test races)
-    let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
-    let json_o_path = tmp_dir.join(format!("{}_json.o", fixture_dir));
-    let json_compile = Command::new("cc")
-        .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile json runtime");
-    assert!(json_compile.success(), "json runtime compilation failed");
+    // Compile all C runtime files
+    let runtime_objs: Vec<std::path::PathBuf> = RUNTIME_NAMES
+        .iter()
+        .map(|name| compile_runtime(manifest_dir, &tmp_dir, name, fixture_dir))
+        .collect();
 
-    // Compile HTTP runtime
-    let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
-    let http_o_path = tmp_dir.join(format!("{}_http.o", fixture_dir));
-    let http_compile = Command::new("cc")
-        .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile http runtime");
-    assert!(http_compile.success(), "http runtime compilation failed");
-
-    // Compile log runtime
-    let log_c_path = format!("{}/../../runtime/log.c", manifest_dir);
-    let log_o_path = tmp_dir.join(format!("{}_log.o", fixture_dir));
-    let log_compile = Command::new("cc")
-        .args(["-c", &log_c_path, "-o", log_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile log runtime");
-    assert!(log_compile.success(), "log runtime compilation failed");
-
-    // Compile result runtime
-    let result_c_path = format!("{}/../../runtime/result.c", manifest_dir);
-    let result_o_path = tmp_dir.join(format!("{}_result.o", fixture_dir));
-    let result_compile = Command::new("cc")
-        .args(["-c", &result_c_path, "-o", result_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile result runtime");
-    assert!(result_compile.success(), "result runtime compilation failed");
-
-    // Compile string_ext runtime
-    let string_ext_c_path = format!("{}/../../runtime/string_ext.c", manifest_dir);
-    let string_ext_o_path = tmp_dir.join(format!("{}_string_ext.o", fixture_dir));
-    let string_ext_compile = Command::new("cc")
-        .args(["-c", &string_ext_c_path, "-o", string_ext_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile string_ext runtime");
-    assert!(string_ext_compile.success(), "string_ext runtime compilation failed");
-
-    // Compile array_ext runtime
-    let array_ext_c_path = format!("{}/../../runtime/array_ext.c", manifest_dir);
-    let array_ext_o_path = tmp_dir.join(format!("{}_array_ext.o", fixture_dir));
-    let array_ext_compile = Command::new("cc")
-        .args(["-c", &array_ext_c_path, "-o", array_ext_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile array_ext runtime");
-    assert!(array_ext_compile.success(), "array_ext runtime compilation failed");
-
-    // Compile functional runtime
-    let functional_c_path = format!("{}/../../runtime/functional.c", manifest_dir);
-    let functional_o_path = tmp_dir.join(format!("{}_functional.o", fixture_dir));
-    let functional_compile = Command::new("cc")
-        .args(["-c", &functional_c_path, "-o", functional_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile functional runtime");
-    assert!(functional_compile.success(), "functional runtime compilation failed");
-
-    // Compile server runtime
-    let server_c_path = format!("{}/../../runtime/server.c", manifest_dir);
-    let server_o_path = tmp_dir.join(format!("{}_server.o", fixture_dir));
-    let server_compile = Command::new("cc")
-        .args(["-c", &server_c_path, "-o", server_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile server runtime");
-    assert!(server_compile.success(), "server runtime compilation failed");
-
+    // Link
+    let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];
+    link_args.extend(runtime_objs.iter().map(|p| p.to_str().unwrap().to_string()));
+    link_args.push("-lcurl".to_string());
+    link_args.push("-o".to_string());
+    link_args.push(bin_path.to_str().unwrap().to_string());
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), server_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args(&link_args)
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -148,16 +102,12 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         .status()
         .expect("failed to run compiled binary");
 
+    // Clean up
     let _ = std::fs::remove_file(&obj_path);
     let _ = std::fs::remove_file(&bin_path);
-    let _ = std::fs::remove_file(&json_o_path);
-    let _ = std::fs::remove_file(&http_o_path);
-    let _ = std::fs::remove_file(&log_o_path);
-    let _ = std::fs::remove_file(&result_o_path);
-    let _ = std::fs::remove_file(&string_ext_o_path);
-    let _ = std::fs::remove_file(&array_ext_o_path);
-    let _ = std::fs::remove_file(&functional_o_path);
-    let _ = std::fs::remove_file(&server_o_path);
+    for p in &runtime_objs {
+        let _ = std::fs::remove_file(p);
+    }
 
     run_status.code().unwrap_or(-1)
 }
@@ -188,81 +138,20 @@ fn compile_and_run(fixture: &str) -> i32 {
     cyflym_codegen::compile_to_object(&ir_module, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
-    // Compile JSON runtime (unique names to avoid parallel test races)
-    let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
-    let json_o_path = tmp_dir.join(format!("{}_json.o", fixture));
-    let json_compile = Command::new("cc")
-        .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile json runtime");
-    assert!(json_compile.success(), "json runtime compilation failed");
-
-    // Compile HTTP runtime
-    let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
-    let http_o_path = tmp_dir.join(format!("{}_http.o", fixture));
-    let http_compile = Command::new("cc")
-        .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile http runtime");
-    assert!(http_compile.success(), "http runtime compilation failed");
-
-    // Compile log runtime
-    let log_c_path = format!("{}/../../runtime/log.c", manifest_dir);
-    let log_o_path = tmp_dir.join(format!("{}_log.o", fixture));
-    let log_compile = Command::new("cc")
-        .args(["-c", &log_c_path, "-o", log_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile log runtime");
-    assert!(log_compile.success(), "log runtime compilation failed");
-
-    // Compile result runtime
-    let result_c_path = format!("{}/../../runtime/result.c", manifest_dir);
-    let result_o_path = tmp_dir.join(format!("{}_result.o", fixture));
-    let result_compile = Command::new("cc")
-        .args(["-c", &result_c_path, "-o", result_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile result runtime");
-    assert!(result_compile.success(), "result runtime compilation failed");
-
-    // Compile string_ext runtime
-    let string_ext_c_path = format!("{}/../../runtime/string_ext.c", manifest_dir);
-    let string_ext_o_path = tmp_dir.join(format!("{}_string_ext.o", fixture));
-    let string_ext_compile = Command::new("cc")
-        .args(["-c", &string_ext_c_path, "-o", string_ext_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile string_ext runtime");
-    assert!(string_ext_compile.success(), "string_ext runtime compilation failed");
-
-    // Compile array_ext runtime
-    let array_ext_c_path = format!("{}/../../runtime/array_ext.c", manifest_dir);
-    let array_ext_o_path = tmp_dir.join(format!("{}_array_ext.o", fixture));
-    let array_ext_compile = Command::new("cc")
-        .args(["-c", &array_ext_c_path, "-o", array_ext_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile array_ext runtime");
-    assert!(array_ext_compile.success(), "array_ext runtime compilation failed");
-
-    // Compile functional runtime
-    let functional_c_path = format!("{}/../../runtime/functional.c", manifest_dir);
-    let functional_o_path = tmp_dir.join(format!("{}_functional.o", fixture));
-    let functional_compile = Command::new("cc")
-        .args(["-c", &functional_c_path, "-o", functional_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile functional runtime");
-    assert!(functional_compile.success(), "functional runtime compilation failed");
-
-    // Compile server runtime
-    let server_c_path = format!("{}/../../runtime/server.c", manifest_dir);
-    let server_o_path = tmp_dir.join(format!("{}_server.o", fixture));
-    let server_compile = Command::new("cc")
-        .args(["-c", &server_c_path, "-o", server_o_path.to_str().unwrap()])
-        .status()
-        .expect("failed to compile server runtime");
-    assert!(server_compile.success(), "server runtime compilation failed");
+    // Compile all C runtime files
+    let runtime_objs: Vec<std::path::PathBuf> = RUNTIME_NAMES
+        .iter()
+        .map(|name| compile_runtime(manifest_dir, &tmp_dir, name, fixture))
+        .collect();
 
     // Link
+    let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];
+    link_args.extend(runtime_objs.iter().map(|p| p.to_str().unwrap().to_string()));
+    link_args.push("-lcurl".to_string());
+    link_args.push("-o".to_string());
+    link_args.push(bin_path.to_str().unwrap().to_string());
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), server_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args(&link_args)
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -275,14 +164,9 @@ fn compile_and_run(fixture: &str) -> i32 {
     // Clean up
     let _ = std::fs::remove_file(&obj_path);
     let _ = std::fs::remove_file(&bin_path);
-    let _ = std::fs::remove_file(&json_o_path);
-    let _ = std::fs::remove_file(&http_o_path);
-    let _ = std::fs::remove_file(&log_o_path);
-    let _ = std::fs::remove_file(&result_o_path);
-    let _ = std::fs::remove_file(&string_ext_o_path);
-    let _ = std::fs::remove_file(&array_ext_o_path);
-    let _ = std::fs::remove_file(&functional_o_path);
-    let _ = std::fs::remove_file(&server_o_path);
+    for p in &runtime_objs {
+        let _ = std::fs::remove_file(p);
+    }
 
     run_status.code().unwrap_or(-1)
 }
@@ -483,4 +367,14 @@ fn e2e_array_methods() {
 #[test]
 fn e2e_map_filter() {
     assert_eq!(compile_and_run("map_filter.cy"), 21);
+}
+
+#[test]
+fn e2e_string_replace() {
+    assert_eq!(compile_and_run("string_replace.cy"), 11);
+}
+
+#[test]
+fn e2e_array_remove() {
+    assert_eq!(compile_and_run("array_remove.cy"), 63);
 }

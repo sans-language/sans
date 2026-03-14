@@ -193,9 +193,11 @@ pub enum Instruction {
     StringStartsWith { dest: Reg, string: Reg, prefix: Reg },
     StringContains { dest: Reg, string: Reg, needle: Reg },
     StringSplit { dest: Reg, string: Reg, delimiter: Reg },
+    StringReplace { dest: Reg, string: Reg, old: Reg, new_str: Reg },
     // Array extension methods
     ArrayPop { dest: Reg, array: Reg },
     ArrayContains { dest: Reg, array: Reg, value: Reg },
+    ArrayRemove { dest: Reg, array: Reg, index: Reg },
     // Float conversions
     IntToFloat { dest: Reg, value: Reg },
     FloatToInt { dest: Reg, value: Reg },

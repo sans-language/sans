@@ -105,98 +105,26 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         .to_str()
         .ok_or_else(|| "output path contains invalid UTF-8".to_string())?;
 
-    // Compile JSON runtime
+    // Compile all runtime C modules
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
     let tmp_dir = std::env::temp_dir();
-    let json_o_path = tmp_dir.join("cyflym_json_runtime.o");
-    let json_compile = process::Command::new("cc")
-        .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile json runtime: {}", e))?;
-    if !json_compile.success() {
-        return Err("failed to compile json runtime".to_string());
+    let runtime_modules = [
+        "json", "http", "log", "result", "string_ext", "array_ext", "functional", "server",
+    ];
+    let mut runtime_o_paths: Vec<PathBuf> = Vec::new();
+    for name in &runtime_modules {
+        let o_path = compile_runtime(manifest_dir, &tmp_dir, name)?;
+        runtime_o_paths.push(o_path);
     }
 
-    // Compile HTTP runtime
-    let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
-    let http_o_path = tmp_dir.join("cyflym_http_runtime.o");
-    let http_compile = process::Command::new("cc")
-        .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile http runtime: {}", e))?;
-    if !http_compile.success() {
-        return Err("failed to compile http runtime".to_string());
+    let mut link_args: Vec<String> = vec![obj_path_str.to_string()];
+    for o_path in &runtime_o_paths {
+        link_args.push(o_path.to_str().unwrap().to_string());
     }
-
-    // Compile log runtime
-    let log_c_path = format!("{}/../../runtime/log.c", manifest_dir);
-    let log_o_path = tmp_dir.join("cyflym_log_runtime.o");
-    let log_compile = process::Command::new("cc")
-        .args(["-c", &log_c_path, "-o", log_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile log runtime: {}", e))?;
-    if !log_compile.success() {
-        return Err("failed to compile log runtime".to_string());
-    }
-
-    // Compile result runtime
-    let result_c_path = format!("{}/../../runtime/result.c", manifest_dir);
-    let result_o_path = tmp_dir.join("cyflym_result_runtime.o");
-    let result_compile = process::Command::new("cc")
-        .args(["-c", &result_c_path, "-o", result_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile result runtime: {}", e))?;
-    if !result_compile.success() {
-        return Err("failed to compile result runtime".to_string());
-    }
-
-    // Compile string_ext runtime
-    let string_ext_c_path = format!("{}/../../runtime/string_ext.c", manifest_dir);
-    let string_ext_o_path = tmp_dir.join("cyflym_string_ext_runtime.o");
-    let string_ext_compile = process::Command::new("cc")
-        .args(["-c", &string_ext_c_path, "-o", string_ext_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile string_ext runtime: {}", e))?;
-    if !string_ext_compile.success() {
-        return Err("failed to compile string_ext runtime".to_string());
-    }
-
-    // Compile array_ext runtime
-    let array_ext_c_path = format!("{}/../../runtime/array_ext.c", manifest_dir);
-    let array_ext_o_path = tmp_dir.join("cyflym_array_ext_runtime.o");
-    let array_ext_compile = process::Command::new("cc")
-        .args(["-c", &array_ext_c_path, "-o", array_ext_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile array_ext runtime: {}", e))?;
-    if !array_ext_compile.success() {
-        return Err("failed to compile array_ext runtime".to_string());
-    }
-
-    // Compile server runtime
-    let server_c_path = format!("{}/../../runtime/server.c", manifest_dir);
-    let server_o_path = tmp_dir.join("cyflym_server_runtime.o");
-    let server_compile = process::Command::new("cc")
-        .args(["-c", &server_c_path, "-o", server_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile server runtime: {}", e))?;
-    if !server_compile.success() {
-        return Err("failed to compile server runtime".to_string());
-    }
-
-    // Compile functional runtime
-    let functional_c_path = format!("{}/../../runtime/functional.c", manifest_dir);
-    let functional_o_path = tmp_dir.join("cyflym_functional_runtime.o");
-    let functional_compile = process::Command::new("cc")
-        .args(["-c", &functional_c_path, "-o", functional_o_path.to_str().unwrap()])
-        .status()
-        .map_err(|e| format!("failed to compile functional runtime: {}", e))?;
-    if !functional_compile.success() {
-        return Err("failed to compile functional runtime".to_string());
-    }
+    link_args.extend(["-lcurl".to_string(), "-o".to_string(), output_path_str.to_string()]);
 
     let link_status = process::Command::new("cc")
-        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), functional_o_path.to_str().unwrap(), server_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
+        .args(&link_args)
         .status()
         .map_err(|e| format!("failed to invoke linker: {}", e))?;
 
@@ -214,4 +142,21 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     println!("Built: {}", output_path.display());
 
     Ok(())
+}
+
+fn compile_runtime(
+    manifest_dir: &str,
+    tmp_dir: &std::path::Path,
+    name: &str,
+) -> Result<PathBuf, String> {
+    let c_path = format!("{}/../../runtime/{}.c", manifest_dir, name);
+    let o_path = tmp_dir.join(format!("cyflym_{}_runtime.o", name));
+    let status = process::Command::new("cc")
+        .args(["-c", &c_path, "-o", o_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("failed to compile {} runtime: {}", name, e))?;
+    if !status.success() {
+        return Err(format!("failed to compile {} runtime", name));
+    }
+    Ok(o_path)
 }

@@ -79,3 +79,42 @@ void* cy_string_split(const char* s, const char* delim) {
 
     return arr;
 }
+
+/* Replace all occurrences of old with new_str. Returns malloc'd string. */
+char* cy_string_replace(const char* s, const char* old, const char* new_str) {
+    long old_len = (long)strlen(old);
+    long new_len = (long)strlen(new_str);
+    long s_len = (long)strlen(s);
+
+    if (old_len == 0) {
+        return strdup(s);
+    }
+
+    /* Count occurrences */
+    long count = 0;
+    const char* pos = s;
+    while ((pos = strstr(pos, old)) != NULL) {
+        count++;
+        pos += old_len;
+    }
+
+    long result_len = s_len + count * (new_len - old_len);
+    char* result = malloc(result_len + 1);
+    char* out = result;
+    pos = s;
+    while (1) {
+        const char* found = strstr(pos, old);
+        if (!found) {
+            strcpy(out, pos);
+            break;
+        }
+        long prefix_len = found - pos;
+        memcpy(out, pos, prefix_len);
+        out += prefix_len;
+        memcpy(out, new_str, new_len);
+        out += new_len;
+        pos = found + old_len;
+    }
+
+    return result;
+}

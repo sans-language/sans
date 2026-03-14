@@ -1291,6 +1291,16 @@ fn check_expr(
                     }
                     return Ok(*inner.clone());
                 }
+                (Type::Array { inner }, "remove") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("remove() takes exactly 1 argument (index)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::Int {
+                        return Err(TypeError::new(format!("remove() index must be Int, got {}", arg_ty)));
+                    }
+                    return Ok(*inner.clone());
+                }
                 (Type::Array { inner }, "map") => {
                     if args.len() != 1 {
                         return Err(TypeError::new("map() takes exactly 1 argument (function)"));
@@ -1384,6 +1394,20 @@ fn check_expr(
                         return Err(TypeError::new(format!("split() requires String delimiter, got {}", arg_ty)));
                     }
                     return Ok(Type::Array { inner: Box::new(Type::String) });
+                }
+                (Type::String, "replace") => {
+                    if args.len() != 2 {
+                        return Err(TypeError::new("replace() takes exactly 2 arguments (old, new)"));
+                    }
+                    let old_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if old_ty != Type::String {
+                        return Err(TypeError::new(format!("replace() first argument must be String, got {}", old_ty)));
+                    }
+                    let new_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if new_ty != Type::String {
+                        return Err(TypeError::new(format!("replace() second argument must be String, got {}", new_ty)));
+                    }
+                    return Ok(Type::String);
                 }
                 (Type::JsonValue, "get") => {
                     if args.len() != 1 {
@@ -2514,6 +2538,16 @@ mod tests {
     #[test]
     fn check_array_contains() {
         assert!(do_check("fn main() Int { let a = array<Int>() \n a.push(1) \n if a.contains(1) { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_string_replace() {
+        assert!(do_check("fn main() Int { let s = \"hello world\".replace(\"world\", \"there\") \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_array_remove() {
+        assert!(do_check("fn main() Int { let a = array<Int>() \n a.push(1) \n a.push(2) \n a.remove(0) }").is_ok());
     }
 
     #[test]

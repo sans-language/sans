@@ -942,6 +942,14 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Bool);
                         return dest;
                     }
+                    (Some(IrType::Array(ref inner)), "remove") => {
+                        let elem_type = *inner.clone();
+                        let idx_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayRemove { dest: dest.clone(), array: obj_reg, index: idx_reg });
+                        self.reg_types.insert(dest.clone(), elem_type);
+                        return dest;
+                    }
                     (Some(IrType::Str), "len") => {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::StringLen {
@@ -989,6 +997,14 @@ impl IrBuilder {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::StringSplit { dest: dest.clone(), string: obj_reg, delimiter: delim_reg });
                         self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
+                        return dest;
+                    }
+                    (Some(IrType::Str), "replace") => {
+                        let old_reg = self.lower_expr(&args[0]);
+                        let new_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringReplace { dest: dest.clone(), string: obj_reg, old: old_reg, new_str: new_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
                     (Some(IrType::JsonValue), "get") => {
