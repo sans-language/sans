@@ -18,41 +18,61 @@ typedef struct CyHttpRequest {
     char* body;
 } CyHttpRequest;
 
+static CyHttpServer* make_error_server(int port) {
+    CyHttpServer* s = malloc(sizeof(CyHttpServer));
+    s->server_fd = -1;
+    s->port = port;
+    return s;
+}
+
 CyHttpServer* cy_http_listen(long port) {
-    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) {
-        fprintf(stderr, "http_listen: socket() failed\n");
-        CyHttpServer* s = malloc(sizeof(CyHttpServer));
-        s->server_fd = -1;
-        s->port = (int)port;
-        return s;
+    /* Try IPv6 dual-stack first (browsers prefer IPv6) */
+    int server_fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (server_fd >= 0) {
+        int off = 0;
+        setsockopt(server_fd, IPPROTO_IPV6, IPV6_V6ONLY, &off, sizeof(off));
+        int opt = 1;
+        setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+        struct sockaddr_in6 addr6;
+        memset(&addr6, 0, sizeof(addr6));
+        addr6.sin6_family = AF_INET6;
+        addr6.sin6_addr = in6addr_any;
+        addr6.sin6_port = htons((uint16_t)port);
+
+        if (bind(server_fd, (struct sockaddr*)&addr6, sizeof(addr6)) < 0) {
+            close(server_fd);
+            server_fd = -1; /* fall through to IPv4 */
+        }
     }
 
-    int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    /* Fallback to IPv4 */
+    if (server_fd < 0) {
+        server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_fd < 0) {
+            fprintf(stderr, "http_listen: socket() failed\n");
+            return make_error_server((int)port);
+        }
+        int opt = 1;
+        setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons((uint16_t)port);
+        struct sockaddr_in addr4;
+        memset(&addr4, 0, sizeof(addr4));
+        addr4.sin_family = AF_INET;
+        addr4.sin_addr.s_addr = INADDR_ANY;
+        addr4.sin_port = htons((uint16_t)port);
 
-    if (bind(server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        fprintf(stderr, "http_listen: bind() failed on port %ld\n", port);
-        close(server_fd);
-        CyHttpServer* s = malloc(sizeof(CyHttpServer));
-        s->server_fd = -1;
-        s->port = (int)port;
-        return s;
+        if (bind(server_fd, (struct sockaddr*)&addr4, sizeof(addr4)) < 0) {
+            fprintf(stderr, "http_listen: bind() failed on port %ld\n", port);
+            close(server_fd);
+            return make_error_server((int)port);
+        }
     }
 
     if (listen(server_fd, 128) < 0) {
         fprintf(stderr, "http_listen: listen() failed\n");
         close(server_fd);
-        CyHttpServer* s = malloc(sizeof(CyHttpServer));
-        s->server_fd = -1;
-        s->port = (int)port;
-        return s;
+        return make_error_server((int)port);
     }
 
     CyHttpServer* s = malloc(sizeof(CyHttpServer));
@@ -61,39 +81,29 @@ CyHttpServer* cy_http_listen(long port) {
     return s;
 }
 
-CyHttpRequest* cy_http_accept(CyHttpServer* server) {
-    if (server->server_fd < 0) {
-        CyHttpRequest* req = malloc(sizeof(CyHttpRequest));
-        req->client_fd = -1;
-        req->method = strdup("");
-        req->path = strdup("");
-        req->body = strdup("");
-        return req;
-    }
+static CyHttpRequest* make_empty_request(void) {
+    CyHttpRequest* req = malloc(sizeof(CyHttpRequest));
+    req->client_fd = -1;
+    req->method = strdup("");
+    req->path = strdup("");
+    req->body = strdup("");
+    return req;
+}
 
-    struct sockaddr_in client_addr;
+CyHttpRequest* cy_http_accept(CyHttpServer* server) {
+    if (server->server_fd < 0) return make_empty_request();
+
+    struct sockaddr_storage client_addr;
     socklen_t client_len = sizeof(client_addr);
     int client_fd = accept(server->server_fd, (struct sockaddr*)&client_addr, &client_len);
-    if (client_fd < 0) {
-        CyHttpRequest* req = malloc(sizeof(CyHttpRequest));
-        req->client_fd = -1;
-        req->method = strdup("");
-        req->path = strdup("");
-        req->body = strdup("");
-        return req;
-    }
+    if (client_fd < 0) return make_empty_request();
 
     /* Read the request */
     char buf[8192];
     long n = read(client_fd, buf, sizeof(buf) - 1);
     if (n <= 0) {
         close(client_fd);
-        CyHttpRequest* req = malloc(sizeof(CyHttpRequest));
-        req->client_fd = -1;
-        req->method = strdup("");
-        req->path = strdup("");
-        req->body = strdup("");
-        return req;
+        return make_empty_request();
     }
     buf[n] = '\0';
 
@@ -115,12 +125,7 @@ CyHttpRequest* cy_http_accept(CyHttpServer* server) {
 
     /* Find body (after \r\n\r\n) */
     char* body_start = strstr(buf, "\r\n\r\n");
-    char* body;
-    if (body_start) {
-        body = strdup(body_start + 4);
-    } else {
-        body = strdup("");
-    }
+    char* body = body_start ? strdup(body_start + 4) : strdup("");
 
     CyHttpRequest* req = malloc(sizeof(CyHttpRequest));
     req->client_fd = client_fd;
@@ -130,17 +135,9 @@ CyHttpRequest* cy_http_accept(CyHttpServer* server) {
     return req;
 }
 
-char* cy_http_request_path(CyHttpRequest* req) {
-    return req->path;
-}
-
-char* cy_http_request_method(CyHttpRequest* req) {
-    return req->method;
-}
-
-char* cy_http_request_body(CyHttpRequest* req) {
-    return req->body;
-}
+char* cy_http_request_path(CyHttpRequest* req) { return req->path; }
+char* cy_http_request_method(CyHttpRequest* req) { return req->method; }
+char* cy_http_request_body(CyHttpRequest* req) { return req->body; }
 
 long cy_http_respond(CyHttpRequest* req, long status, const char* body) {
     if (req->client_fd < 0) return 0;
@@ -155,7 +152,7 @@ long cy_http_respond(CyHttpRequest* req, long status, const char* body) {
     int header_len = snprintf(header, sizeof(header),
         "HTTP/1.1 %ld %s\r\n"
         "Content-Length: %ld\r\n"
-        "Content-Type: text/plain\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
         "Connection: close\r\n"
         "\r\n",
         status, status_text, body_len);
