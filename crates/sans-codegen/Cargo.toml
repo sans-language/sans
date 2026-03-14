@@ -1,0 +1,12 @@
+[package]
+name = "sans-codegen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sans-ir = { path = "../sans-ir" }
+inkwell = { version = "0.8", features = ["llvm17-0"] }
+
+[dev-dependencies]
+sans-parser = { path = "../sans-parser" }
+sans-typeck = { path = "../sans-typeck" }

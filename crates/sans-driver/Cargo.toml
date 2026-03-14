@@ -1,0 +1,15 @@
+[package]
+name = "sans"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sans"
+path = "src/main.rs"
+
+[dependencies]
+sans-lexer = { path = "../sans-lexer" }
+sans-parser = { path = "../sans-parser" }
+sans-typeck = { path = "../sans-typeck" }
+sans-ir = { path = "../sans-ir" }
+sans-codegen = { path = "../sans-codegen" }

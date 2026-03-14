@@ -1,7 +1,7 @@
 pub mod types;
 
 use std::collections::HashMap;
-use cyflym_parser::ast::{Expr, Program, Stmt};
+use sans_parser::ast::{Expr, Program, Stmt};
 use types::Type;
 
 /// Information about a generic function, used for type inference at call sites.
@@ -514,7 +514,7 @@ fn check_expr(
         }
 
         Expr::BinaryOp { left, op, right, .. } => {
-            use cyflym_parser::ast::BinOp;
+            use sans_parser::ast::BinOp;
             let lt = check_expr(left, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             let rt = check_expr(right, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
@@ -589,7 +589,7 @@ fn check_expr(
 
         Expr::UnaryOp { op, operand, .. } => {
             match op {
-                cyflym_parser::ast::UnaryOp::Not => {
+                sans_parser::ast::UnaryOp::Not => {
                     let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if ty != Type::Bool {
                         return Err(TypeError::new(format!(
@@ -599,7 +599,7 @@ fn check_expr(
                     }
                     Ok(Type::Bool)
                 }
-                cyflym_parser::ast::UnaryOp::Neg => {
+                sans_parser::ast::UnaryOp::Neg => {
                     let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     if ty != Type::Int && ty != Type::Float {
                         return Err(TypeError::new(format!(
@@ -1080,7 +1080,7 @@ fn check_expr(
 
             let mut result_type: Option<Type> = None;
             for arm in arms {
-                let cyflym_parser::ast::Pattern::EnumVariant {
+                let sans_parser::ast::Pattern::EnumVariant {
                     enum_name: pat_enum,
                     variant_name: pat_variant,
                     bindings,
@@ -1664,7 +1664,7 @@ mod tests {
     use super::*;
 
     fn do_check(src: &str) -> Result<(), TypeError> {
-        let prog = cyflym_parser::parse(src)
+        let prog = sans_parser::parse(src)
             .expect("parse error in test input");
         check(&prog, &HashMap::new())?;
         Ok(())
@@ -2033,50 +2033,50 @@ mod tests {
 
     #[test]
     fn typeck_spawn_produces_join_handle() {
-        let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() 0 }").unwrap();
+        let program = sans_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() 0 }").unwrap();
         assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_spawn_wrong_args() {
-        let program = cyflym_parser::parse("fn worker(x Int) Int { x } fn main() Int { let h = spawn worker() 0 }").unwrap();
+        let program = sans_parser::parse("fn worker(x Int) Int { x } fn main() Int { let h = spawn worker() 0 }").unwrap();
         assert!(check(&program, &HashMap::new()).is_err());
     }
 
     #[test]
     fn typeck_channel_creates_sender_receiver() {
-        let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
         assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_send_type_mismatch() {
-        let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(true) 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(true) 0 }").unwrap();
         let err = check(&program, &HashMap::new()).unwrap_err();
         assert!(err.message.contains("mismatch"), "got: {}", err.message);
     }
 
     #[test]
     fn typeck_recv_returns_element_type() {
-        let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").unwrap();
         assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_join_on_handle() {
-        let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").unwrap();
+        let program = sans_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").unwrap();
         assert!(check(&program, &HashMap::new()).is_ok());
     }
 
     #[test]
     fn typeck_join_on_non_handle() {
-        let program = cyflym_parser::parse("fn main() Int { let x Int = 42 x.join() }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let x Int = 42 x.join() }").unwrap();
         assert!(check(&program, &HashMap::new()).is_err());
     }
 
     #[test]
     fn typeck_send_on_non_sender() {
-        let program = cyflym_parser::parse("fn main() Int { let x Int = 42 x.send(1) 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let x Int = 42 x.send(1) 0 }").unwrap();
         assert!(check(&program, &HashMap::new()).is_err());
     }
 
@@ -2184,7 +2184,7 @@ mod tests {
 
     #[test]
     fn check_cross_module_function_call() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { utils.add(1, 2) }"
         ).expect("parse error");
 
@@ -2205,7 +2205,7 @@ mod tests {
 
     #[test]
     fn check_cross_module_function_with_struct_return() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let u = models.create() u.age }"
         ).expect("parse error");
 
@@ -2235,7 +2235,7 @@ mod tests {
 
     #[test]
     fn check_unknown_function_in_module() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { utils.nonexistent() }"
         ).expect("parse error");
 
@@ -2253,7 +2253,7 @@ mod tests {
 
     #[test]
     fn check_unknown_module_prefix() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { nomod.func() }"
         ).expect("parse error");
 
@@ -2264,7 +2264,7 @@ mod tests {
 
     #[test]
     fn check_field_access_on_module_errors() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { utils.x }"
         ).expect("parse error");
 
@@ -2282,7 +2282,7 @@ mod tests {
 
     #[test]
     fn check_duplicate_import_is_ok() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { utils.add(1, 2) }"
         ).expect("parse error");
 

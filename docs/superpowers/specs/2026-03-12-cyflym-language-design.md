@@ -1,10 +1,10 @@
-# Cyflym Language Design Specification
+# Sans Language Design Specification
 
 ## Overview
 
-**Cyflym** is a speed-first, memory-safe backend programming language with automatic garbage collection, designed for building APIs, web servers, and general-purpose programs. It compiles to native machine code via LLVM, features green thread concurrency, and ships with a batteries-included standard library and all-in-one toolchain.
+**Sans** is a speed-first, memory-safe backend programming language with automatic garbage collection, designed for building APIs, web servers, and general-purpose programs. It compiles to native machine code via LLVM, features green thread concurrency, and ships with a batteries-included standard library and all-in-one toolchain.
 
-The name "Cyflym" comes from Welsh, meaning "fast."
+The name "Sans" comes from Welsh, meaning "fast."
 
 ### Design Principles
 
@@ -30,7 +30,7 @@ The name "Cyflym" comes from Welsh, meaning "fast."
 | Toolchain | All-in-one `cyflym` binary |
 | Module system | File-based + `cyflym.toml` manifest |
 | GC | Phased: generational semi-space -> concurrent tri-color |
-| Self-hosting | Long-term goal: rewrite compiler in Cyflym |
+| Self-hosting | Long-term goal: rewrite compiler in Sans |
 
 ---
 
@@ -354,7 +354,7 @@ impl AppError : From<postgres.Error> {
 
 ### String Formatting & Interpolation
 
-Cyflym supports both a `format()` function and string interpolation with `${}`.
+Sans supports both a `format()` function and string interpolation with `${}`.
 
 ```
 let name = "world"
@@ -845,8 +845,8 @@ Single `cyflym` binary.
 
 ```
 cyflym new myapp          # scaffold new project
-cyflym build              # compile to native binary
-cyflym run                # build and run
+sans build              # compile to native binary
+sans run                # build and run
 cyflym test               # run all tests
 cyflym fmt                # format code
 cyflym lint               # static analysis
@@ -935,7 +935,7 @@ let numbers = [1, 2, 3]
 let result = sum(numbers...)
 ```
 
-**Note on `Any`**: Cyflym does **not** have a top type `Any`. The database trait uses `trait SqlParam` instead of `...Any` to maintain type safety. Types that can be passed as SQL parameters implement `SqlParam`.
+**Note on `Any`**: Sans does **not** have a top type `Any`. The database trait uses `trait SqlParam` instead of `...Any` to maintain type safety. Types that can be passed as SQL parameters implement `SqlParam`.
 
 ### Database Trait
 
@@ -969,7 +969,7 @@ fn main() {
 
 ### Memory Safety
 
-Cyflym is a **GC-managed language**. The garbage collector handles all memory reclamation. There is no borrow checker or lifetime system like Rust.
+Sans is a **GC-managed language**. The garbage collector handles all memory reclamation. There is no borrow checker or lifetime system like Rust.
 
 Move semantics apply in exactly **two** cases:
 1. **Channel sends** — sending a value through a channel transfers ownership to prevent data races
@@ -1010,7 +1010,7 @@ fn main() Result<(), Error> { ... }      // allows ? operator, prints error on f
 
 ### Unsafe & FFI
 
-For interoperability with C libraries (critical for database drivers, system calls, etc.), Cyflym provides an `unsafe` block and FFI declarations.
+For interoperability with C libraries (critical for database drivers, system calls, etc.), Sans provides an `unsafe` block and FFI declarations.
 
 ```
 // FFI: declare external C functions
@@ -1092,7 +1092,7 @@ Source (.cy)
   Type Checker --> Typed AST (inference, null safety, trait resolution)
     |
     v
-  Cyflym IR --> (clean abstraction layer for self-hosting)
+  Sans IR --> (clean abstraction layer for self-hosting)
     |
     v
   LLVM IR --> (Phase 1: LLVM backend)
@@ -1101,19 +1101,19 @@ Source (.cy)
   Native Binary (x86-64, ARM64)
 ```
 
-### Cyflym IR
+### Sans IR
 
-The intermediate representation is the critical boundary between frontend and backend. It preserves Cyflym semantics (green threads, GC roots, pattern matching) while mapping cleanly to LLVM or a future custom backend.
+The intermediate representation is the critical boundary between frontend and backend. It preserves Sans semantics (green threads, GC roots, pattern matching) while mapping cleanly to LLVM or a future custom backend.
 
-When Cyflym becomes self-hosting, the compiler rewrite only needs to emit this same IR. The backend stays the same or gets swapped independently.
+When Sans becomes self-hosting, the compiler rewrite only needs to emit this same IR. The backend stays the same or gets swapped independently.
 
 ### Self-Hosting Roadmap
 
 | Phase | Compiler | Backend | Runtime | GC |
 |-------|----------|---------|---------|-----|
 | 1 — Bootstrap | Rust | LLVM | Rust | Generational semi-space |
-| 2 — Stdlib | Rust | LLVM | Cyflym + Rust | Generational semi-space |
-| 3 — Self-hosting | Cyflym | LLVM or custom | Cyflym | Concurrent tri-color |
+| 2 — Stdlib | Rust | LLVM | Sans + Rust | Generational semi-space |
+| 3 — Self-hosting | Sans | LLVM or custom | Sans | Concurrent tri-color |
 
 ---
 

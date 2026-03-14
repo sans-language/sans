@@ -10,61 +10,12 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "cc"
-version = "1.2.56"
+version = "1.2.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aebf35691d1bfb0ac386a69bac2fde4dd276fb618cf8bf4f5318fe285e821bb2"
+checksum = "7a0dd1ca384932ff3641c8718a02769f1698e7563dc6974ffd03346116310423"
 dependencies = [
  "find-msvc-tools",
  "shlex",
-]
-
-[[package]]
-name = "cyflym"
-version = "0.1.0"
-dependencies = [
- "cyflym-codegen",
- "cyflym-ir",
- "cyflym-lexer",
- "cyflym-parser",
- "cyflym-typeck",
-]
-
-[[package]]
-name = "cyflym-codegen"
-version = "0.1.0"
-dependencies = [
- "cyflym-ir",
- "cyflym-parser",
- "cyflym-typeck",
- "inkwell",
-]
-
-[[package]]
-name = "cyflym-ir"
-version = "0.1.0"
-dependencies = [
- "cyflym-lexer",
- "cyflym-parser",
- "cyflym-typeck",
-]
-
-[[package]]
-name = "cyflym-lexer"
-version = "0.1.0"
-
-[[package]]
-name = "cyflym-parser"
-version = "0.1.0"
-dependencies = [
- "cyflym-lexer",
-]
-
-[[package]]
-name = "cyflym-typeck"
-version = "0.1.0"
-dependencies = [
- "cyflym-lexer",
- "cyflym-parser",
 ]
 
 [[package]]
@@ -152,6 +103,55 @@ name = "regex-lite"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
+
+[[package]]
+name = "sans"
+version = "0.1.0"
+dependencies = [
+ "sans-codegen",
+ "sans-ir",
+ "sans-lexer",
+ "sans-parser",
+ "sans-typeck",
+]
+
+[[package]]
+name = "sans-codegen"
+version = "0.1.0"
+dependencies = [
+ "inkwell",
+ "sans-ir",
+ "sans-parser",
+ "sans-typeck",
+]
+
+[[package]]
+name = "sans-ir"
+version = "0.1.0"
+dependencies = [
+ "sans-lexer",
+ "sans-parser",
+ "sans-typeck",
+]
+
+[[package]]
+name = "sans-lexer"
+version = "0.1.0"
+
+[[package]]
+name = "sans-parser"
+version = "0.1.0"
+dependencies = [
+ "sans-lexer",
+]
+
+[[package]]
+name = "sans-typeck"
+version = "0.1.0"
+dependencies = [
+ "sans-lexer",
+ "sans-parser",
+]
 
 [[package]]
 name = "semver"

@@ -1,21 +1,21 @@
-# Cyflym Compiler - Project Rules
+# Sans Compiler - Project Rules
 
 ## Build
 - `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build`
 - `cargo test` to run all tests
 
 ## Architecture
-- 6 Rust crates under `crates/`: cyflym-lexer, cyflym-parser, cyflym-typeck, cyflym-ir, cyflym-codegen, cyflym-driver
+- 6 Rust crates under `crates/`: sans-lexer, sans-parser, sans-typeck, sans-ir, sans-codegen, sans-driver
 - 8 C runtime files under `runtime/`: json.c, http.c, log.c, result.c, string_ext.c, array_ext.c, functional.c, server.c
-- Tests: unit tests in each crate, E2E tests in `crates/cyflym-driver/tests/e2e.rs`
+- Tests: unit tests in each crate, E2E tests in `crates/sans-driver/tests/e2e.rs`
 - Test fixtures in `tests/fixtures/` (.cy files and directories for multi-module)
 
 ## Adding a New Built-in Function
 Pipeline: typeck (type check) -> IR (instruction + lowering) -> codegen (LLVM compilation) -> driver (link)
-1. Add type checking in `crates/cyflym-typeck/src/lib.rs` (in the `Expr::Call` match)
-2. Add IR instruction in `crates/cyflym-ir/src/ir.rs`
-3. Add IR lowering in `crates/cyflym-ir/src/lib.rs`
-4. Add codegen in `crates/cyflym-codegen/src/lib.rs` (declare external fn + compile instruction)
+1. Add type checking in `crates/sans-typeck/src/lib.rs` (in the `Expr::Call` match)
+2. Add IR instruction in `crates/sans-ir/src/ir.rs`
+3. Add IR lowering in `crates/sans-ir/src/lib.rs`
+4. Add codegen in `crates/sans-codegen/src/lib.rs` (declare external fn + compile instruction)
 5. If backed by C: add function to appropriate `runtime/*.c` file
 6. Add tests in each crate
 
@@ -23,10 +23,10 @@ Pipeline: typeck (type check) -> IR (instruction + lowering) -> codegen (LLVM co
 Same pipeline but use `Expr::MethodCall` match in typeck and method dispatch in IR lowering.
 
 ## Adding a New Type
-1. Add variant to `Type` enum in `crates/cyflym-typeck/src/types.rs`
+1. Add variant to `Type` enum in `crates/sans-typeck/src/types.rs`
 2. Add `Display` impl
 3. Add to `resolve_type()` in `typeck/lib.rs` if it has a name (like "Float")
-4. Add `IrType` variant in `crates/cyflym-ir/src/lib.rs`
+4. Add `IrType` variant in `crates/sans-ir/src/lib.rs`
 5. Add `ir_type_for_return` mapping
 6. Add print guard in IR lowering
 7. If opaque: add C runtime backing

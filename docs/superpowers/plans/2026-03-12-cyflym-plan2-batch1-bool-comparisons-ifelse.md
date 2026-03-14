@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add boolean type, comparison/boolean operators, and if/else expressions to the Cyflym compiler, from lexer through codegen.
+**Goal:** Add boolean type, comparison/boolean operators, and if/else expressions to the Sans compiler, from lexer through codegen.
 
 **Architecture:** Changes flow through all 6 compiler stages. Bool is represented as `i1` in LLVM IR, with `zext` to `i64` when used as a return value. If/else compiles to LLVM conditional branches with phi nodes for value merging.
 
@@ -15,8 +15,8 @@
 ### Task 1: Lexer — New tokens
 
 **Files:**
-- Modify: `crates/cyflym-lexer/src/token.rs`
-- Modify: `crates/cyflym-lexer/src/lib.rs`
+- Modify: `crates/sans-lexer/src/token.rs`
+- Modify: `crates/sans-lexer/src/lib.rs`
 
 New `TokenKind` variants:
 ```rust
@@ -44,7 +44,7 @@ Tests:
 ### Task 2: AST — New nodes
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/ast.rs`
+- Modify: `crates/sans-parser/src/ast.rs`
 
 New AST nodes:
 ```rust
@@ -70,7 +70,7 @@ Update `expr_span` in parser to handle new variants.
 ### Task 3: Parser — Parse new constructs
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/lib.rs`
+- Modify: `crates/sans-parser/src/lib.rs`
 
 Changes:
 1. **Atoms:** `true`/`false` → `BoolLiteral`, `if` → parse if/else expression
@@ -104,8 +104,8 @@ Tests:
 ### Task 4: Type checker — Bool type and rules
 
 **Files:**
-- Modify: `crates/cyflym-typeck/src/types.rs`
-- Modify: `crates/cyflym-typeck/src/lib.rs`
+- Modify: `crates/sans-typeck/src/types.rs`
+- Modify: `crates/sans-typeck/src/lib.rs`
 
 Changes:
 1. Add `Type::Bool` variant, update Display
@@ -129,8 +129,8 @@ Tests:
 ### Task 5: IR — Control flow instructions
 
 **Files:**
-- Modify: `crates/cyflym-ir/src/ir.rs`
-- Modify: `crates/cyflym-ir/src/lib.rs`
+- Modify: `crates/sans-ir/src/ir.rs`
+- Modify: `crates/sans-ir/src/lib.rs`
 
 New IR instructions:
 ```rust
@@ -171,7 +171,7 @@ Tests:
 ### Task 6: Codegen — LLVM basic blocks + comparisons
 
 **Files:**
-- Modify: `crates/cyflym-codegen/src/lib.rs`
+- Modify: `crates/sans-codegen/src/lib.rs`
 
 Changes:
 1. Two value types: `i64` for Int, `i1` for Bool. Track which registers are bool vs int.
@@ -218,4 +218,4 @@ fn main() Int {
 }
 ```
 
-Build each with `cyflym build` and verify exit codes.
+Build each with `sans build` and verify exit codes.

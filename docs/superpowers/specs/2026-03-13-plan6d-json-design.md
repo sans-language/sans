@@ -45,7 +45,7 @@ Add JSON support via an opaque `JsonValue` built-in type backed by a C runtime l
 
 ## Runtime Representation
 
-A `JsonValue` in Cyflym is a pointer (stored as i64) to a heap-allocated C struct:
+A `JsonValue` in Sans is a pointer (stored as i64) to a heap-allocated C struct:
 
 ```c
 typedef struct CyJsonValue {
@@ -69,7 +69,7 @@ typedef struct CyJsonValue {
 } CyJsonValue;
 ```
 
-The struct is entirely internal. Cyflym code only interacts with it via the C functions declared in codegen.
+The struct is entirely internal. Sans code only interacts with it via the C functions declared in codegen.
 
 ## Syntax
 
@@ -112,7 +112,7 @@ fn main() Int {
 
 ### New Type Variant
 
-Add `JsonValue` to the `Type` enum in `crates/cyflym-typeck/src/types.rs`. The `Display` impl should format it as `"JsonValue"`.
+Add `JsonValue` to the `Type` enum in `crates/sans-typeck/src/types.rs`. The `Display` impl should format it as `"JsonValue"`.
 
 ### Type Checking Rules
 
@@ -155,7 +155,7 @@ Add `JsonValue` to the `Type` enum in `crates/cyflym-typeck/src/types.rs`. The `
 IrType::JsonValue
 ```
 
-The `ir_type_for_return` helper in `crates/cyflym-ir/src/lib.rs` must map `Type::JsonValue` to `IrType::JsonValue`.
+The `ir_type_for_return` helper in `crates/sans-ir/src/lib.rs` must map `Type::JsonValue` to `IrType::JsonValue`.
 
 ### New Instructions
 
@@ -252,7 +252,7 @@ cc user.o /tmp/json.o -o binary
 
 The `runtime/` directory path is resolved relative to the `cyflym` binary's location (or the workspace root during development).
 
-**E2E test helpers:** Both `compile_and_run` and `compile_and_run_dir` in `crates/cyflym-driver/tests/e2e.rs` need updating. The `json.c` path resolves via `CARGO_MANIFEST_DIR/../../runtime/json.c`. Compile it to a temp `json.o` and include in the `cc` link step.
+**E2E test helpers:** Both `compile_and_run` and `compile_and_run_dir` in `crates/sans-driver/tests/e2e.rs` need updating. The `json.c` path resolves via `CARGO_MANIFEST_DIR/../../runtime/json.c`. Compile it to a temp `json.o` and include in the `cc` link step.
 
 ## C Runtime Library (`runtime/json.c`)
 
@@ -283,7 +283,7 @@ Returns a malloc'd null-terminated string.
 
 ### Memory
 
-All CyJsonValue nodes and strings are malloc'd. No free — consistent with the rest of Cyflym (leaked until process exit). The stringify function returns a malloc'd string that becomes a regular Cyflym String.
+All CyJsonValue nodes and strings are malloc'd. No free — consistent with the rest of Sans (leaked until process exit). The stringify function returns a malloc'd string that becomes a regular Sans String.
 
 ## Testing
 

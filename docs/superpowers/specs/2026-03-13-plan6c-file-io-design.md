@@ -17,7 +17,7 @@ Add minimal file I/O via built-in functions: `file_read`, `file_write`, `file_ap
 
 - **No new types.** File handles are internal to each C stdlib call sequence. The user never sees a file pointer.
 - **Sentinel values on error.** `file_read` returns `""` on failure. `file_write`/`file_append` return `0` on failure, `1` on success. `file_exists` returns `false` on any error.
-- **Null-terminated strings.** Cyflym strings are null-terminated C strings (char pointers). File content is read as bytes and null-terminated. Files containing null bytes will be truncated at the first null — this applies to both reading and writing (writes use `strlen` to determine content length).
+- **Null-terminated strings.** Sans strings are null-terminated C strings (char pointers). File content is read as bytes and null-terminated. Files containing null bytes will be truncated at the first null — this applies to both reading and writing (writes use `strlen` to determine content length).
 - **No size limit.** `file_read` reads the entire file into a malloc'd buffer. Large files will use large amounts of memory. No streaming.
 - **Implementation pattern.** Same as `int_to_string`/`string_to_int`: type checker recognizes function name → IR instruction → codegen emits C stdlib calls.
 - **POSIX only.** `file_exists` uses `access()` from `<unistd.h>`, which is POSIX. Windows would need `_access`. Acceptable since the compiler targets `cc` on Unix-like systems.

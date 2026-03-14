@@ -30,7 +30,7 @@ Add HTTP client support via an opaque `HttpResponse` built-in type backed by a C
 
 ## Runtime Representation
 
-An `HttpResponse` in Cyflym is a pointer (stored as i64) to a heap-allocated C struct:
+An `HttpResponse` in Sans is a pointer (stored as i64) to a heap-allocated C struct:
 
 ```c
 typedef struct CyHttpResponse {
@@ -44,7 +44,7 @@ typedef struct CyHttpResponse {
 } CyHttpResponse;
 ```
 
-The struct is entirely internal. Cyflym code only interacts with it via the C functions declared in codegen.
+The struct is entirely internal. Sans code only interacts with it via the C functions declared in codegen.
 
 ## Syntax
 
@@ -79,7 +79,7 @@ fn main() Int {
 
 ### New Type Variant
 
-Add `HttpResponse` to the `Type` enum in `crates/cyflym-typeck/src/types.rs`. The `Display` impl should format it as `"HttpResponse"`.
+Add `HttpResponse` to the `Type` enum in `crates/sans-typeck/src/types.rs`. The `Display` impl should format it as `"HttpResponse"`.
 
 ### Type Checking Rules
 
@@ -111,7 +111,7 @@ Add `HttpResponse` to the `Type` enum in `crates/cyflym-typeck/src/types.rs`. Th
 IrType::HttpResponse
 ```
 
-The `ir_type_for_return` helper in `crates/cyflym-ir/src/lib.rs` must map `Type::HttpResponse` to `IrType::HttpResponse`.
+The `ir_type_for_return` helper in `crates/sans-ir/src/lib.rs` must map `Type::HttpResponse` to `IrType::HttpResponse`.
 
 ### New Instructions
 
@@ -172,7 +172,7 @@ cc -c runtime/http.c -o /tmp/cyflym_http_runtime.o
 cc user.o /tmp/cyflym_json_runtime.o /tmp/cyflym_http_runtime.o -lcurl -o binary
 ```
 
-**E2E test helpers:** Both `compile_and_run` and `compile_and_run_dir` in `crates/cyflym-driver/tests/e2e.rs` need updating. The `http.c` path resolves via `CARGO_MANIFEST_DIR/../../runtime/http.c`. Compile it to a temp `http.o` and include in the `cc` link step with `-lcurl`.
+**E2E test helpers:** Both `compile_and_run` and `compile_and_run_dir` in `crates/sans-driver/tests/e2e.rs` need updating. The `http.c` path resolves via `CARGO_MANIFEST_DIR/../../runtime/http.c`. Compile it to a temp `http.o` and include in the `cc` link step with `-lcurl`.
 
 ## C Runtime Library (`runtime/http.c`)
 
@@ -307,7 +307,7 @@ long cy_http_ok(CyHttpResponse* resp) {
 
 ### Memory
 
-All CyHttpResponse structs, body buffers, and header strings are malloc'd. No free — consistent with the rest of Cyflym (leaked until process exit).
+All CyHttpResponse structs, body buffers, and header strings are malloc'd. No free — consistent with the rest of Sans (leaked until process exit).
 
 ## Testing
 

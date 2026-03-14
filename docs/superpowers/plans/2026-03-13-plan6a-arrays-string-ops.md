@@ -16,16 +16,16 @@
 
 | File | Action | Responsibility |
 |---|---|---|
-| `crates/cyflym-lexer/src/token.rs` | Modify | Add `Array` and `In` token variants |
-| `crates/cyflym-lexer/src/lib.rs` | Modify | Add `array` and `in` keyword mappings + 2 tests |
-| `crates/cyflym-parser/src/ast.rs` | Modify | Add `ArrayCreate` expr, `ForIn` stmt |
-| `crates/cyflym-parser/src/lib.rs` | Modify | Parse `array<T>()`, `for x in expr { }`, update `expr_span`, update `parse_block_body` + 5 tests |
-| `crates/cyflym-typeck/src/types.rs` | Modify | Add `Array` type variant + Display impl |
-| `crates/cyflym-typeck/src/lib.rs` | Modify | Type check array ops, string ops, for-in, String+String, int_to_string/string_to_int + 12 tests |
-| `crates/cyflym-ir/src/ir.rs` | Modify | Add 10 new instructions (5 array + 5 string) |
-| `crates/cyflym-ir/src/lib.rs` | Modify | Add `Array(Box<IrType>)` to IrType, lower all new ops, lower ForIn to counted loop + 4 tests |
-| `crates/cyflym-codegen/src/lib.rs` | Modify | Codegen for array (24-byte struct), string ops (strlen/memcpy/snprintf/strtol), declare C functions + 3 tests |
-| `crates/cyflym-driver/tests/e2e.rs` | Modify | Add 4 E2E test entries |
+| `crates/sans-lexer/src/token.rs` | Modify | Add `Array` and `In` token variants |
+| `crates/sans-lexer/src/lib.rs` | Modify | Add `array` and `in` keyword mappings + 2 tests |
+| `crates/sans-parser/src/ast.rs` | Modify | Add `ArrayCreate` expr, `ForIn` stmt |
+| `crates/sans-parser/src/lib.rs` | Modify | Parse `array<T>()`, `for x in expr { }`, update `expr_span`, update `parse_block_body` + 5 tests |
+| `crates/sans-typeck/src/types.rs` | Modify | Add `Array` type variant + Display impl |
+| `crates/sans-typeck/src/lib.rs` | Modify | Type check array ops, string ops, for-in, String+String, int_to_string/string_to_int + 12 tests |
+| `crates/sans-ir/src/ir.rs` | Modify | Add 10 new instructions (5 array + 5 string) |
+| `crates/sans-ir/src/lib.rs` | Modify | Add `Array(Box<IrType>)` to IrType, lower all new ops, lower ForIn to counted loop + 4 tests |
+| `crates/sans-codegen/src/lib.rs` | Modify | Codegen for array (24-byte struct), string ops (strlen/memcpy/snprintf/strtol), declare C functions + 3 tests |
+| `crates/sans-driver/tests/e2e.rs` | Modify | Add 4 E2E test entries |
 | `tests/fixtures/array_basic.cy` | Create | Array create/push/get/set/len test |
 | `tests/fixtures/array_for_in.cy` | Create | For-in iteration test |
 | `tests/fixtures/string_ops.cy` | Create | String len/concat/substring test |
@@ -38,12 +38,12 @@
 ### Task 1: Lexer — Add `array` and `in` keywords
 
 **Files:**
-- Modify: `crates/cyflym-lexer/src/token.rs:64`
-- Modify: `crates/cyflym-lexer/src/lib.rs:84` (keyword map) and tests
+- Modify: `crates/sans-lexer/src/token.rs:64`
+- Modify: `crates/sans-lexer/src/lib.rs:84` (keyword map) and tests
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-lexer/src/lib.rs`, add after the `lex_mutex_keyword` test (line ~427):
+In `crates/sans-lexer/src/lib.rs`, add after the `lex_mutex_keyword` test (line ~427):
 
 ```rust
     #[test]
@@ -61,12 +61,12 @@ In `crates/cyflym-lexer/src/lib.rs`, add after the `lex_mutex_keyword` test (lin
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer -- lex_array_keyword lex_in_keyword`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-lexer -- lex_array_keyword lex_in_keyword`
 Expected: FAIL — `Array` and `In` variants don't exist
 
 - [ ] **Step 3: Add `Array` and `In` token variants**
 
-In `crates/cyflym-lexer/src/token.rs`, add after `Mutex,` (line 64):
+In `crates/sans-lexer/src/token.rs`, add after `Mutex,` (line 64):
 
 ```rust
     Array,
@@ -75,7 +75,7 @@ In `crates/cyflym-lexer/src/token.rs`, add after `Mutex,` (line 64):
 
 - [ ] **Step 4: Add keyword mappings**
 
-In `crates/cyflym-lexer/src/lib.rs`, add after `"mutex" => TokenKind::Mutex,` (line 84):
+In `crates/sans-lexer/src/lib.rs`, add after `"mutex" => TokenKind::Mutex,` (line 84):
 
 ```rust
                     "array" => TokenKind::Array,
@@ -84,13 +84,13 @@ In `crates/cyflym-lexer/src/lib.rs`, add after `"mutex" => TokenKind::Mutex,` (l
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-lexer`
 Expected: All lexer tests PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-lexer/src/token.rs crates/cyflym-lexer/src/lib.rs
+git add crates/sans-lexer/src/token.rs crates/sans-lexer/src/lib.rs
 git commit -m "feat(lexer): add array and in keyword tokens"
 ```
 
@@ -99,12 +99,12 @@ git commit -m "feat(lexer): add array and in keyword tokens"
 ### Task 2: Parser & AST — Add `ArrayCreate` expression, `ForIn` statement, parse `array<T>()` and `for x in expr { }`
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/ast.rs:186-189` (Expr), `96-130` (Stmt)
-- Modify: `crates/cyflym-parser/src/lib.rs:362-371` (parse_stmt), `716-739` (atom parsing), `919-937` (expr_span), `861-875` (parse_block_body)
+- Modify: `crates/sans-parser/src/ast.rs:186-189` (Expr), `96-130` (Stmt)
+- Modify: `crates/sans-parser/src/lib.rs:362-371` (parse_stmt), `716-739` (atom parsing), `919-937` (expr_span), `861-875` (parse_block_body)
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-parser/src/lib.rs`, add after the `parse_lock_unlock_method_calls` test (line ~1530):
+In `crates/sans-parser/src/lib.rs`, add after the `parse_lock_unlock_method_calls` test (line ~1530):
 
 ```rust
     #[test]
@@ -166,12 +166,12 @@ In `crates/cyflym-parser/src/lib.rs`, add after the `parse_lock_unlock_method_ca
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-parser -- parse_array_create parse_for_in parse_array_push parse_int_to_string parse_string_concat`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-parser -- parse_array_create parse_for_in parse_array_push parse_int_to_string parse_string_concat`
 Expected: FAIL — `ArrayCreate` and `ForIn` variants don't exist
 
 - [ ] **Step 3: Update AST — Add ArrayCreate and ForIn**
 
-In `crates/cyflym-parser/src/ast.rs`, add after the `MutexCreate` variant (line ~189):
+In `crates/sans-parser/src/ast.rs`, add after the `MutexCreate` variant (line ~189):
 
 ```rust
     ArrayCreate {
@@ -193,7 +193,7 @@ And add to the `Stmt` enum after the `LetDestructure` variant (line ~128):
 
 - [ ] **Step 4: Update `expr_span` function**
 
-In `crates/cyflym-parser/src/lib.rs`, in the `expr_span` function (around line 935), add after the `MutexCreate` match arm:
+In `crates/sans-parser/src/lib.rs`, in the `expr_span` function (around line 935), add after the `MutexCreate` match arm:
 
 ```rust
         Expr::ArrayCreate { span, .. } => span,
@@ -201,7 +201,7 @@ In `crates/cyflym-parser/src/lib.rs`, in the `expr_span` function (around line 9
 
 - [ ] **Step 5: Add `array<T>()` parser**
 
-In `crates/cyflym-parser/src/lib.rs`, add a new arm before the `TokenKind::Mutex` arm (around line 716):
+In `crates/sans-parser/src/lib.rs`, add a new arm before the `TokenKind::Mutex` arm (around line 716):
 
 ```rust
             TokenKind::Array => {
@@ -219,7 +219,7 @@ In `crates/cyflym-parser/src/lib.rs`, add a new arm before the `TokenKind::Mutex
 
 - [ ] **Step 6: Add `for x in expr { body }` parser**
 
-In `crates/cyflym-parser/src/lib.rs`, in the `parse_stmt` function (around line 362), add a new branch. The existing code checks for `If`, `While`, `Let`, `Return`. Add before the expression fallback:
+In `crates/sans-parser/src/lib.rs`, in the `parse_stmt` function (around line 362), add a new branch. The existing code checks for `If`, `While`, `Let`, `Return`. Add before the expression fallback:
 
 ```rust
         } else if self.peek().kind == TokenKind::For {
@@ -246,7 +246,7 @@ In `crates/cyflym-parser/src/lib.rs`, in the `parse_stmt` function (around line 
 
 - [ ] **Step 7: Update `parse_block_body` for ForIn**
 
-In `crates/cyflym-parser/src/lib.rs`, the `parse_block_body` function (around line 861) checks if the last statement is a non-expression statement (Let, While, etc.) and rejects it. Add `ForIn` to the match arm that lists statement variants. Change:
+In `crates/sans-parser/src/lib.rs`, the `parse_block_body` function (around line 861) checks if the last statement is a non-expression statement (Let, While, etc.) and rejects it. Add `ForIn` to the match arm that lists statement variants. Change:
 
 ```rust
                     | Stmt::LetDestructure { span, .. } => {
@@ -261,13 +261,13 @@ To:
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-parser`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-parser`
 Expected: All parser tests PASS (existing + 5 new)
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/cyflym-parser/src/ast.rs crates/cyflym-parser/src/lib.rs
+git add crates/sans-parser/src/ast.rs crates/sans-parser/src/lib.rs
 git commit -m "feat(parser): add array<T>() and for-in syntax"
 ```
 
@@ -278,12 +278,12 @@ git commit -m "feat(parser): add array<T>() and for-in syntax"
 ### Task 3: Type System — Add `Array` type, type check array methods, string ops, for-in, String+String, built-in conversions
 
 **Files:**
-- Modify: `crates/cyflym-typeck/src/types.rs:12,26`
-- Modify: `crates/cyflym-typeck/src/lib.rs:72-175` (check_stmt), `429-447` (BinaryOp), `528` (Call/print), `824-888` (ChannelCreate/MutexCreate/MethodCall), `809` (spawn compat)
+- Modify: `crates/sans-typeck/src/types.rs:12,26`
+- Modify: `crates/sans-typeck/src/lib.rs:72-175` (check_stmt), `429-447` (BinaryOp), `528` (Call/print), `824-888` (ChannelCreate/MutexCreate/MethodCall), `809` (spawn compat)
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-typeck/src/lib.rs`, add after the last test (line ~1381):
+In `crates/sans-typeck/src/lib.rs`, add after the last test (line ~1381):
 
 ```rust
     #[test]
@@ -355,12 +355,12 @@ In `crates/cyflym-typeck/src/lib.rs`, add after the last test (line ~1381):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck -- check_array check_for_in check_string check_int_to`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-typeck -- check_array check_for_in check_string check_int_to`
 Expected: FAIL — `Array` variant doesn't exist, `ArrayCreate` not handled
 
 - [ ] **Step 3: Add `Array` type variant**
 
-In `crates/cyflym-typeck/src/types.rs`, add after `Mutex { inner: Box<Type> },` (line 12):
+In `crates/sans-typeck/src/types.rs`, add after `Mutex { inner: Box<Type> },` (line 12):
 
 ```rust
     Array { inner: Box<Type> },
@@ -374,7 +374,7 @@ And in the Display impl, add before the `Type::Fn` arm:
 
 - [ ] **Step 4: Add `ArrayCreate` expression type checking**
 
-In `crates/cyflym-typeck/src/lib.rs`, add after the `Expr::MutexCreate` arm (around line 840):
+In `crates/sans-typeck/src/lib.rs`, add after the `Expr::MutexCreate` arm (around line 840):
 
 ```rust
         Expr::ArrayCreate { element_type, .. } => {
@@ -385,7 +385,7 @@ In `crates/cyflym-typeck/src/lib.rs`, add after the `Expr::MutexCreate` arm (aro
 
 - [ ] **Step 5: Add array method type checking**
 
-In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::MethodCall` match (around line 877), add after the `Mutex` / `unlock` arm:
+In `crates/sans-typeck/src/lib.rs`, in the `Expr::MethodCall` match (around line 877), add after the `Mutex` / `unlock` arm:
 
 ```rust
                 (Type::Array { inner }, "push") => {
@@ -463,7 +463,7 @@ In the same `Expr::MethodCall` match, add:
 
 - [ ] **Step 7: Update BinaryOp::Add for String + String**
 
-In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::BinaryOp` match for `BinOp::Add` (around line 436), the current code checks that both operands are Int. Replace the Add arm to also allow String + String:
+In `crates/sans-typeck/src/lib.rs`, in the `Expr::BinaryOp` match for `BinOp::Add` (around line 436), the current code checks that both operands are Int. Replace the Add arm to also allow String + String:
 
 ```rust
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
@@ -486,7 +486,7 @@ In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::BinaryOp` match for `BinOp::
 
 - [ ] **Step 8: Add `int_to_string` and `string_to_int` built-in type checking**
 
-In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::Call` match (around line 528), the existing code special-cases `print`. Add two more special cases after the print handling:
+In `crates/sans-typeck/src/lib.rs`, in the `Expr::Call` match (around line 528), the existing code special-cases `print`. Add two more special cases after the print handling:
 
 ```rust
             "int_to_string" => {
@@ -513,7 +513,7 @@ In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::Call` match (around line 528
 
 - [ ] **Step 9: Add `ForIn` to `check_stmt`**
 
-In `crates/cyflym-typeck/src/lib.rs`, in the `check_stmt` function match (around line 84), add a new arm for `ForIn`:
+In `crates/sans-typeck/src/lib.rs`, in the `check_stmt` function match (around line 84), add a new arm for `ForIn`:
 
 ```rust
         Stmt::ForIn { var, iterable, body, .. } => {
@@ -534,13 +534,13 @@ In `crates/cyflym-typeck/src/lib.rs`, in the `check_stmt` function match (around
 
 - [ ] **Step 10: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-typeck`
 Expected: All typeck tests PASS (existing + 12 new)
 
 - [ ] **Step 11: Commit**
 
 ```bash
-git add crates/cyflym-typeck/src/types.rs crates/cyflym-typeck/src/lib.rs
+git add crates/sans-typeck/src/types.rs crates/sans-typeck/src/lib.rs
 git commit -m "feat(typeck): add Array type, for-in, string ops, String+String, int/string conversion"
 ```
 
@@ -551,17 +551,17 @@ git commit -m "feat(typeck): add Array type, for-in, string ops, String+String, 
 ### Task 4: IR — Add array and string instructions, `Array(Box<IrType>)`, lower ForIn to counted loop
 
 **Files:**
-- Modify: `crates/cyflym-ir/src/ir.rs:83-87`
-- Modify: `crates/cyflym-ir/src/lib.rs:9` (IrType), `183-278` (BinaryOp), `357` (Call/print), `450-503` (MethodCall), `653` (MutexCreate), `666-768` (lower_stmt), `85-105` (lower_function last stmt)
+- Modify: `crates/sans-ir/src/ir.rs:83-87`
+- Modify: `crates/sans-ir/src/lib.rs:9` (IrType), `183-278` (BinaryOp), `357` (Call/print), `450-503` (MethodCall), `653` (MutexCreate), `666-768` (lower_stmt), `85-105` (lower_function last stmt)
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-ir/src/lib.rs`, add after the last test (line ~1074):
+In `crates/sans-ir/src/lib.rs`, add after the last test (line ~1074):
 
 ```rust
     #[test]
     fn lower_array_create_push_get_len() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
         ).unwrap();
         let module = lower(&prog);
@@ -576,7 +576,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last test (line ~1074):
 
     #[test]
     fn lower_for_in_to_counted_loop() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(1) for x in a { print(x) } 0 }"
         ).unwrap();
         let module = lower(&prog);
@@ -589,7 +589,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last test (line ~1074):
 
     #[test]
     fn lower_string_concat() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             r#"fn main() Int { let s = "a" + "b" 0 }"#
         ).unwrap();
         let module = lower(&prog);
@@ -600,7 +600,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last test (line ~1074):
 
     #[test]
     fn lower_int_to_string_and_string_to_int() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
         ).unwrap();
         let module = lower(&prog);
@@ -614,12 +614,12 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last test (line ~1074):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-ir -- lower_array lower_for_in lower_string lower_int_to`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-ir -- lower_array lower_for_in lower_string lower_int_to`
 Expected: FAIL — new instruction variants don't exist
 
 - [ ] **Step 3: Add IR instructions**
 
-In `crates/cyflym-ir/src/ir.rs`, add after `ChannelCreateBounded` (line ~87):
+In `crates/sans-ir/src/ir.rs`, add after `ChannelCreateBounded` (line ~87):
 
 ```rust
     // Array operations
@@ -674,7 +674,7 @@ The element type is tracked via `reg_types` HashMap (not in the instruction itse
 
 - [ ] **Step 4: Update `IrType`**
 
-In `crates/cyflym-ir/src/lib.rs`, update line 9:
+In `crates/sans-ir/src/lib.rs`, update line 9:
 
 ```rust
 enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>) }
@@ -682,7 +682,7 @@ enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, Jo
 
 - [ ] **Step 5: Add `ArrayCreate` expression lowering**
 
-In `crates/cyflym-ir/src/lib.rs`, add after the `Expr::MutexCreate` arm (around line 662):
+In `crates/sans-ir/src/lib.rs`, add after the `Expr::MutexCreate` arm (around line 662):
 
 ```rust
             Expr::ArrayCreate { element_type, .. } => {
@@ -703,7 +703,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the `Expr::MutexCreate` arm (around 
 
 - [ ] **Step 6: Add array and string method lowering**
 
-In `crates/cyflym-ir/src/lib.rs`, in the `Expr::MethodCall` match (around line 493), add after the `Mutex`/`unlock` arm:
+In `crates/sans-ir/src/lib.rs`, in the `Expr::MethodCall` match (around line 493), add after the `Mutex`/`unlock` arm:
 
 ```rust
                     (Some(IrType::Array(_)), "push") => {
@@ -776,7 +776,7 @@ In `crates/cyflym-ir/src/lib.rs`, in the `Expr::MethodCall` match (around line 4
 
 - [ ] **Step 7: Update BinaryOp::Add lowering for String concat**
 
-In `crates/cyflym-ir/src/lib.rs`, in the `lower_expr` BinaryOp handling (around line 262), after lowering both operands, check if they are strings:
+In `crates/sans-ir/src/lib.rs`, in the `lower_expr` BinaryOp handling (around line 262), after lowering both operands, check if they are strings:
 
 ```rust
             Expr::BinaryOp { op, left, right, .. } => {
@@ -799,7 +799,7 @@ In `crates/cyflym-ir/src/lib.rs`, in the `lower_expr` BinaryOp handling (around 
 
 - [ ] **Step 8: Add `int_to_string` and `string_to_int` call lowering**
 
-In `crates/cyflym-ir/src/lib.rs`, in the `Expr::Call` match (around line 357), after the `print` special case, add:
+In `crates/sans-ir/src/lib.rs`, in the `Expr::Call` match (around line 357), after the `print` special case, add:
 
 ```rust
                 "int_to_string" => {
@@ -826,7 +826,7 @@ In `crates/cyflym-ir/src/lib.rs`, in the `Expr::Call` match (around line 357), a
 
 - [ ] **Step 9: Add `ForIn` to `lower_stmt`**
 
-In `crates/cyflym-ir/src/lib.rs`, in the `lower_stmt` function match (around line 666), add:
+In `crates/sans-ir/src/lib.rs`, in the `lower_stmt` function match (around line 666), add:
 
 ```rust
             Stmt::ForIn { var, iterable, body, .. } => {
@@ -912,17 +912,17 @@ In `crates/cyflym-ir/src/lib.rs`, in the `lower_stmt` function match (around lin
 
 - [ ] **Step 10: Update `lower_function` last-statement check for ForIn**
 
-In `crates/cyflym-ir/src/lib.rs`, in the `lower_function` last-statement check (around line 85-105), add `Stmt::ForIn { .. }` alongside `Stmt::While { .. }` in whatever match arm handles non-expression statements.
+In `crates/sans-ir/src/lib.rs`, in the `lower_function` last-statement check (around line 85-105), add `Stmt::ForIn { .. }` alongside `Stmt::While { .. }` in whatever match arm handles non-expression statements.
 
 - [ ] **Step 11: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-ir`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-ir`
 Expected: All IR tests PASS (existing + 4 new)
 
 - [ ] **Step 12: Commit**
 
 ```bash
-git add crates/cyflym-ir/src/ir.rs crates/cyflym-ir/src/lib.rs
+git add crates/sans-ir/src/ir.rs crates/sans-ir/src/lib.rs
 git commit -m "feat(ir): add array/string instructions and ForIn lowering"
 ```
 
@@ -933,7 +933,7 @@ git commit -m "feat(ir): add array/string instructions and ForIn lowering"
 ### Task 5: Codegen — Array operations, string operations, C function declarations
 
 **Files:**
-- Modify: `crates/cyflym-codegen/src/lib.rs:82-110` (C declarations), `890-951` (after mutex codegen)
+- Modify: `crates/sans-codegen/src/lib.rs:82-110` (C declarations), `890-951` (after mutex codegen)
 
 This is the largest task. It adds:
 1. C function declarations: `strlen`, `memcpy`, `snprintf`, `strtol`
@@ -944,16 +944,16 @@ This is the largest task. It adds:
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-codegen/src/lib.rs`, add after the last codegen test:
+In `crates/sans-codegen/src/lib.rs`, add after the last codegen test:
 
 ```rust
     #[test]
     fn codegen_array_create_push_get_len() {
-        let program = cyflym_parser::parse(
+        let program = sans_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        sans_typeck::check(&program).unwrap();
+        let ir = sans_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -961,11 +961,11 @@ In `crates/cyflym-codegen/src/lib.rs`, add after the last codegen test:
 
     #[test]
     fn codegen_string_concat() {
-        let program = cyflym_parser::parse(
+        let program = sans_parser::parse(
             r#"fn main() Int { let s = "hello" + " world" 0 }"#
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        sans_typeck::check(&program).unwrap();
+        let ir = sans_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -973,11 +973,11 @@ In `crates/cyflym-codegen/src/lib.rs`, add after the last codegen test:
 
     #[test]
     fn codegen_int_to_string_and_string_to_int() {
-        let program = cyflym_parser::parse(
+        let program = sans_parser::parse(
             r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        sans_typeck::check(&program).unwrap();
+        let ir = sans_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -986,12 +986,12 @@ In `crates/cyflym-codegen/src/lib.rs`, add after the last codegen test:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-codegen -- codegen_array codegen_string codegen_int_to`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-codegen -- codegen_array codegen_string codegen_int_to`
 Expected: FAIL — no match for `ArrayCreate` / `StringConcat` / etc in codegen
 
 - [ ] **Step 3: Add C function declarations**
 
-In `crates/cyflym-codegen/src/lib.rs`, after the existing `free` declaration (around line 110), add:
+In `crates/sans-codegen/src/lib.rs`, after the existing `free` declaration (around line 110), add:
 
 ```rust
                 // strlen
@@ -1285,13 +1285,13 @@ Add a new match arm in the instruction codegen (after the MutexUnlock arm):
 
 - [ ] **Step 9: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-codegen`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-codegen`
 Expected: All codegen tests PASS (existing + 3 new)
 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/cyflym-codegen/src/lib.rs
+git add crates/sans-codegen/src/lib.rs
 git commit -m "feat(codegen): add array ops, string ops, and C stdlib declarations"
 ```
 
@@ -1304,7 +1304,7 @@ git commit -m "feat(codegen): add array ops, string ops, and C stdlib declaratio
 - Create: `tests/fixtures/array_for_in.cy`
 - Create: `tests/fixtures/string_ops.cy`
 - Create: `tests/fixtures/string_conversion.cy`
-- Modify: `crates/cyflym-driver/tests/e2e.rs`
+- Modify: `crates/sans-driver/tests/e2e.rs`
 
 - [ ] **Step 1: Create `array_basic.cy`**
 
@@ -1372,7 +1372,7 @@ Expected exit code: 42
 
 - [ ] **Step 5: Add E2E test entries**
 
-In `crates/cyflym-driver/tests/e2e.rs`, add:
+In `crates/sans-driver/tests/e2e.rs`, add:
 
 ```rust
 #[test]
@@ -1398,7 +1398,7 @@ fn e2e_string_conversion() {
 
 - [ ] **Step 6: Run all E2E tests**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-driver`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-driver`
 Expected: All E2E tests PASS (14 existing + 4 new = 18)
 
 - [ ] **Step 7: Run full test suite**
@@ -1409,6 +1409,6 @@ Expected: ~220+ tests PASS
 - [ ] **Step 8: Commit**
 
 ```bash
-git add tests/fixtures/array_basic.cy tests/fixtures/array_for_in.cy tests/fixtures/string_ops.cy tests/fixtures/string_conversion.cy crates/cyflym-driver/tests/e2e.rs
+git add tests/fixtures/array_basic.cy tests/fixtures/array_for_in.cy tests/fixtures/string_ops.cy tests/fixtures/string_conversion.cy crates/sans-driver/tests/e2e.rs
 git commit -m "feat: add array and string E2E tests"
 ```

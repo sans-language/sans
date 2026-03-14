@@ -21,32 +21,32 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let main_path = std::path::PathBuf::from(format!("{}/main.cy", dir_path));
 
     // Resolve imports
-    let resolved_modules = cyflym::imports::resolve_imports(&main_path)
+    let resolved_modules = sans::imports::resolve_imports(&main_path)
         .unwrap_or_else(|e| panic!("import resolution error: {}", e));
 
     // Parse main
     let main_source = std::fs::read_to_string(&main_path)
         .unwrap_or_else(|e| panic!("could not read main.cy: {}", e));
-    let main_program = cyflym_parser::parse(&main_source)
+    let main_program = sans_parser::parse(&main_source)
         .unwrap_or_else(|e| panic!("parse error: {:?}", e));
 
     // Type-check in dependency order
     let mut module_exports = std::collections::HashMap::new();
     for module in &resolved_modules {
-        let exports = cyflym_typeck::check_module(&module.program, &module_exports)
+        let exports = sans_typeck::check_module(&module.program, &module_exports)
             .unwrap_or_else(|e| panic!("type error in module '{}': {}", module.name, e.message));
         module_exports.insert(module.name.clone(), exports);
     }
 
-    cyflym_typeck::check(&main_program, &module_exports)
+    sans_typeck::check(&main_program, &module_exports)
         .unwrap_or_else(|e| panic!("type error: {}", e.message));
 
     // Build module_fn_ret_types
-    let mut module_fn_ret_types: std::collections::HashMap<(String, String), cyflym_ir::IrType> =
+    let mut module_fn_ret_types: std::collections::HashMap<(String, String), sans_ir::IrType> =
         std::collections::HashMap::new();
     for (mod_name, exports) in &module_exports {
         for (func_name, sig) in &exports.functions {
-            let ir_type = cyflym_ir::ir_type_for_return(&sig.return_type);
+            let ir_type = sans_ir::ir_type_for_return(&sig.return_type);
             module_fn_ret_types.insert((mod_name.clone(), func_name.clone()), ir_type);
         }
     }
@@ -64,20 +64,20 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     // Lower + merge
     let mut all_ir_functions = Vec::new();
     for module in &resolved_modules {
-        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
+        let ir = sans_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
-    let main_ir = cyflym_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
+    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
     all_ir_functions.extend(main_ir.functions);
 
-    let merged = cyflym_ir::ir::Module { functions: all_ir_functions };
+    let merged = sans_ir::ir::Module { functions: all_ir_functions };
 
     // Codegen, link, run
     let tmp_dir = std::env::temp_dir();
     let obj_path = tmp_dir.join(format!("{}.o", fixture_dir));
     let bin_path = tmp_dir.join(fixture_dir);
 
-    cyflym_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
+    sans_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
     // Compile all C runtime files
@@ -120,22 +120,22 @@ fn compile_and_run(fixture: &str) -> i32 {
         .unwrap_or_else(|e| panic!("could not read fixture '{}': {}", fixture_path, e));
 
     // Parse
-    let program = cyflym_parser::parse(&source)
+    let program = sans_parser::parse(&source)
         .unwrap_or_else(|e| panic!("parse error: {:?}", e));
 
     // Type check
-    cyflym_typeck::check(&program, &std::collections::HashMap::new())
+    sans_typeck::check(&program, &std::collections::HashMap::new())
         .unwrap_or_else(|e| panic!("type error: {}", e.message));
 
     // Lower to IR
-    let ir_module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
+    let ir_module = sans_ir::lower(&program, None, &std::collections::HashMap::new());
 
     // Codegen to object file
     let tmp_dir = std::env::temp_dir();
     let obj_path = tmp_dir.join(format!("{}.o", fixture));
     let bin_path = tmp_dir.join(fixture.replace(".cy", ""));
 
-    cyflym_codegen::compile_to_object(&ir_module, obj_path.to_str().unwrap())
+    sans_codegen::compile_to_object(&ir_module, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
     // Compile all C runtime files

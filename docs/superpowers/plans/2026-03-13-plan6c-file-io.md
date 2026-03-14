@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add file I/O built-in functions (`file_read`, `file_write`, `file_append`, `file_exists`) to the Cyflym compiler.
+**Goal:** Add file I/O built-in functions (`file_read`, `file_write`, `file_append`, `file_exists`) to the Sans compiler.
 
 **Architecture:** Four new built-in functions follow the existing pattern: type checker recognizes function name → IR instruction → codegen emits C stdlib calls. No new types. Error handling via sentinel values. Codegen uses inkwell basic-block splits for fopen null checks.
 
@@ -26,11 +26,11 @@
 ### Task 1: Type Checker — File I/O built-in function checks
 
 **Files:**
-- Modify: `crates/cyflym-typeck/src/lib.rs`
+- Modify: `crates/sans-typeck/src/lib.rs`
 
 - [ ] **Step 1: Write the failing test for file_read type check**
 
-In `crates/cyflym-typeck/src/lib.rs`, add at the end of the `mod tests` block (before the final `}`):
+In `crates/sans-typeck/src/lib.rs`, add at the end of the `mod tests` block (before the final `}`):
 
 ```rust
 #[test]
@@ -41,7 +41,7 @@ fn check_file_read_builtin() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck check_file_read_builtin`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-typeck check_file_read_builtin`
 Expected: FAIL — `file_read` is not recognized as a function
 
 - [ ] **Step 3: Write the failing test for file_write type check**
@@ -75,7 +75,7 @@ fn check_file_read_wrong_type() {
 
 - [ ] **Step 6: Implement file I/O built-in checks**
 
-In `crates/cyflym-typeck/src/lib.rs`, find the `Expr::Call` arm in `check_expr` (around line 599). After the `string_to_int` check (around line 633), add:
+In `crates/sans-typeck/src/lib.rs`, find the `Expr::Call` arm in `check_expr` (around line 599). After the `string_to_int` check (around line 633), add:
 
 ```rust
 } else if function == "file_read" {
@@ -127,7 +127,7 @@ In `crates/cyflym-typeck/src/lib.rs`, find the `Expr::Call` arm in `check_expr` 
 
 - [ ] **Step 7: Run all type checker tests**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-typeck`
 Expected: All 89 tests pass (85 existing + 4 new)
 
 - [ ] **Step 8: Run full test suite**
@@ -138,7 +138,7 @@ Expected: All tests pass
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/cyflym-typeck/src/lib.rs
+git add crates/sans-typeck/src/lib.rs
 git commit -m "feat(typeck): add file I/O built-in function type checks"
 ```
 
@@ -147,12 +147,12 @@ git commit -m "feat(typeck): add file I/O built-in function type checks"
 ### Task 2: IR — File I/O instructions and lowering
 
 **Files:**
-- Modify: `crates/cyflym-ir/src/ir.rs`
-- Modify: `crates/cyflym-ir/src/lib.rs`
+- Modify: `crates/sans-ir/src/ir.rs`
+- Modify: `crates/sans-ir/src/lib.rs`
 
 - [ ] **Step 1: Write the failing test for file_read IR lowering**
 
-In `crates/cyflym-ir/src/lib.rs`, add at the end of the `mod tests` block:
+In `crates/sans-ir/src/lib.rs`, add at the end of the `mod tests` block:
 
 ```rust
 #[test]
@@ -184,7 +184,7 @@ fn lower_file_write_instruction() {
 
 - [ ] **Step 3: Add instruction variants to ir.rs**
 
-In `crates/cyflym-ir/src/ir.rs`, add these variants to the `Instruction` enum (after `StringToInt`, around line 133):
+In `crates/sans-ir/src/ir.rs`, add these variants to the `Instruction` enum (after `StringToInt`, around line 133):
 
 ```rust
 // File I/O
@@ -210,7 +210,7 @@ FileExists {
 
 - [ ] **Step 4: Add IR lowering for file I/O calls**
 
-In `crates/cyflym-ir/src/lib.rs`, find where `Expr::Call` is lowered (around line 412). After the `string_to_int` lowering (around line 450), add:
+In `crates/sans-ir/src/lib.rs`, find where `Expr::Call` is lowered (around line 412). After the `string_to_int` lowering (around line 450), add:
 
 ```rust
 } else if function == "file_read" {
@@ -257,7 +257,7 @@ In `crates/cyflym-ir/src/lib.rs`, find where `Expr::Call` is lowered (around lin
 
 - [ ] **Step 5: Run IR tests**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-ir`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-ir`
 Expected: All 34 tests pass (32 existing + 2 new)
 
 - [ ] **Step 6: Run full test suite**
@@ -268,7 +268,7 @@ Expected: All tests pass
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/cyflym-ir/src/ir.rs crates/cyflym-ir/src/lib.rs
+git add crates/sans-ir/src/ir.rs crates/sans-ir/src/lib.rs
 git commit -m "feat(ir): add file I/O instructions and lowering"
 ```
 
@@ -279,13 +279,13 @@ git commit -m "feat(ir): add file I/O instructions and lowering"
 ### Task 3: Codegen — File I/O instruction compilation
 
 **Files:**
-- Modify: `crates/cyflym-codegen/src/lib.rs`
+- Modify: `crates/sans-codegen/src/lib.rs`
 
 This is the largest task. Each file operation needs C stdlib function declarations and LLVM IR emission with basic-block splits for error handling.
 
 - [ ] **Step 1: Add C stdlib function declarations**
 
-In `crates/cyflym-codegen/src/lib.rs`, find the function declarations section (around lines 79-123). After the existing declarations (strtol, around line 123), add:
+In `crates/sans-codegen/src/lib.rs`, find the function declarations section (around lines 79-123). After the existing declarations (strtol, around line 123), add:
 
 ```rust
 // File I/O functions
@@ -527,7 +527,7 @@ Expected: All existing tests pass (codegen handles new instructions but no exist
 - [ ] **Step 8: Commit**
 
 ```bash
-git add crates/cyflym-codegen/src/lib.rs
+git add crates/sans-codegen/src/lib.rs
 git commit -m "feat(codegen): add file I/O instruction compilation with fopen null checks"
 ```
 
@@ -536,7 +536,7 @@ git commit -m "feat(codegen): add file I/O instruction compilation with fopen nu
 ### Task 4: E2E Tests — File I/O integration
 
 **Files:**
-- Modify: `crates/cyflym-driver/tests/e2e.rs`
+- Modify: `crates/sans-driver/tests/e2e.rs`
 - Create: `tests/fixtures/file_write_read.cy`
 - Create: `tests/fixtures/file_exists_check.cy`
 
@@ -574,7 +574,7 @@ fn main() Int {
 }
 ```
 
-Wait — Cyflym uses `let` for new bindings, not reassignment. And `if` without `else` is a statement, not an expression. Let me reconsider. The simplest approach:
+Wait — Sans uses `let` for new bindings, not reassignment. And `if` without `else` is a statement, not an expression. Let me reconsider. The simplest approach:
 
 ```cyflym
 fn main() Int {
@@ -601,7 +601,7 @@ Expected exit code: **1** (first file exists = true, second doesn't = false → 
 
 - [ ] **Step 3: Add E2E test functions**
 
-In `crates/cyflym-driver/tests/e2e.rs`, add after the last test:
+In `crates/sans-driver/tests/e2e.rs`, add after the last test:
 
 ```rust
 #[test]
@@ -628,6 +628,6 @@ Expected: All ~249 tests pass
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-driver/tests/e2e.rs tests/fixtures/file_write_read.cy tests/fixtures/file_exists_check.cy
+git add crates/sans-driver/tests/e2e.rs tests/fixtures/file_write_read.cy tests/fixtures/file_exists_check.cy
 git commit -m "feat(e2e): add file I/O end-to-end tests"
 ```

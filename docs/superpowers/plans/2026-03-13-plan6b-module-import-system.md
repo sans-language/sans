@@ -16,15 +16,15 @@
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `crates/cyflym-lexer/src/token.rs` | Modify | Add `Import` variant to `TokenKind` |
-| `crates/cyflym-lexer/src/lib.rs` | Modify | Map `"import"` keyword, add test |
-| `crates/cyflym-parser/src/ast.rs` | Modify | Add `Import` struct, add `imports` field to `Program` |
-| `crates/cyflym-parser/src/lib.rs` | Modify | Parse `import "path"` declarations, enforce placement, add tests |
-| `crates/cyflym-typeck/src/lib.rs` | Modify | Add `ModuleExports`/`FunctionSignature` types, update `check()` to accept module_exports, resolve cross-module calls in MethodCall/FieldAccess, add tests |
-| `crates/cyflym-ir/src/lib.rs` | Modify | Update `lower()` to accept module name for name mangling, resolve cross-module calls to mangled names, add tests |
-| `crates/cyflym-driver/src/imports.rs` | Create | `resolve_imports()` — recursive import resolution, cycle detection, topological sort |
-| `crates/cyflym-driver/src/main.rs` | Modify | Update `build()` to use multi-module pipeline: resolve → parse → check → lower → merge → codegen |
-| `crates/cyflym-driver/tests/e2e.rs` | Modify | Update `compile_and_run` for multi-file fixtures, add 4 E2E tests |
+| `crates/sans-lexer/src/token.rs` | Modify | Add `Import` variant to `TokenKind` |
+| `crates/sans-lexer/src/lib.rs` | Modify | Map `"import"` keyword, add test |
+| `crates/sans-parser/src/ast.rs` | Modify | Add `Import` struct, add `imports` field to `Program` |
+| `crates/sans-parser/src/lib.rs` | Modify | Parse `import "path"` declarations, enforce placement, add tests |
+| `crates/sans-typeck/src/lib.rs` | Modify | Add `ModuleExports`/`FunctionSignature` types, update `check()` to accept module_exports, resolve cross-module calls in MethodCall/FieldAccess, add tests |
+| `crates/sans-ir/src/lib.rs` | Modify | Update `lower()` to accept module name for name mangling, resolve cross-module calls to mangled names, add tests |
+| `crates/sans-driver/src/imports.rs` | Create | `resolve_imports()` — recursive import resolution, cycle detection, topological sort |
+| `crates/sans-driver/src/main.rs` | Modify | Update `build()` to use multi-module pipeline: resolve → parse → check → lower → merge → codegen |
+| `crates/sans-driver/tests/e2e.rs` | Modify | Update `compile_and_run` for multi-file fixtures, add 4 E2E tests |
 | `tests/fixtures/import_basic/` | Create | Basic import E2E fixture (main.cy + utils.cy) |
 | `tests/fixtures/import_nested/` | Create | Nested path import E2E fixture (main.cy + models/user.cy) |
 | `tests/fixtures/import_chain/` | Create | Transitive import E2E fixture (main.cy + a.cy + b.cy) |
@@ -37,12 +37,12 @@
 ### Task 1: Lexer — `import` keyword
 
 **Files:**
-- Modify: `crates/cyflym-lexer/src/token.rs`
-- Modify: `crates/cyflym-lexer/src/lib.rs`
+- Modify: `crates/sans-lexer/src/token.rs`
+- Modify: `crates/sans-lexer/src/lib.rs`
 
 - [ ] **Step 1: Write the failing test**
 
-In `crates/cyflym-lexer/src/lib.rs`, add at the end of the `mod tests` block:
+In `crates/sans-lexer/src/lib.rs`, add at the end of the `mod tests` block:
 
 ```rust
 #[test]
@@ -56,12 +56,12 @@ Also add `Import` to the `use super::*;` line's available names (it's re-exporte
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p cyflym-lexer lex_import_keyword`
+Run: `cargo test -p sans-lexer lex_import_keyword`
 Expected: FAIL — `Import` variant does not exist on `TokenKind`
 
 - [ ] **Step 3: Add `Import` token variant**
 
-In `crates/cyflym-lexer/src/token.rs`, add `Import,` after `In,` in the `TokenKind` enum, with a section comment:
+In `crates/sans-lexer/src/token.rs`, add `Import,` after `In,` in the `TokenKind` enum, with a section comment:
 
 ```rust
     Array,
@@ -73,7 +73,7 @@ In `crates/cyflym-lexer/src/token.rs`, add `Import,` after `In,` in the `TokenKi
 
 - [ ] **Step 4: Add keyword mapping**
 
-In `crates/cyflym-lexer/src/lib.rs`, add `"import"` to the keyword match block, after the `"in"` arm:
+In `crates/sans-lexer/src/lib.rs`, add `"import"` to the keyword match block, after the `"in"` arm:
 
 ```rust
                     "in" => TokenKind::In,
@@ -83,18 +83,18 @@ In `crates/cyflym-lexer/src/lib.rs`, add `"import"` to the keyword match block, 
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cargo test -p cyflym-lexer lex_import_keyword`
+Run: `cargo test -p sans-lexer lex_import_keyword`
 Expected: PASS
 
 - [ ] **Step 6: Run all lexer tests**
 
-Run: `cargo test -p cyflym-lexer`
+Run: `cargo test -p sans-lexer`
 Expected: All 29 tests pass (28 existing + 1 new)
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/cyflym-lexer/src/token.rs crates/cyflym-lexer/src/lib.rs
+git add crates/sans-lexer/src/token.rs crates/sans-lexer/src/lib.rs
 git commit -m "feat(lexer): add import keyword token"
 ```
 
@@ -103,11 +103,11 @@ git commit -m "feat(lexer): add import keyword token"
 ### Task 2: AST — Import struct and Program.imports field
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/ast.rs`
+- Modify: `crates/sans-parser/src/ast.rs`
 
 - [ ] **Step 1: Add the Import struct**
 
-In `crates/cyflym-parser/src/ast.rs`, add the `Import` struct before the `Program` struct:
+In `crates/sans-parser/src/ast.rs`, add the `Import` struct before the `Program` struct:
 
 ```rust
 #[derive(Debug, Clone, PartialEq)]
@@ -118,7 +118,7 @@ pub struct Import {
 }
 ```
 
-Add `use cyflym_lexer::token::Span;` at the top if not already present (it should already be there since `Span` is used in other AST nodes).
+Add `use sans_lexer::token::Span;` at the top if not already present (it should already be there since `Span` is used in other AST nodes).
 
 - [ ] **Step 2: Add `imports` field to `Program`**
 
@@ -138,7 +138,7 @@ pub struct Program {
 
 - [ ] **Step 3: Fix all compilation errors from adding `imports` field**
 
-The `Program` struct is constructed in `crates/cyflym-parser/src/lib.rs` line 95 in `parse_program()`. It currently returns:
+The `Program` struct is constructed in `crates/sans-parser/src/lib.rs` line 95 in `parse_program()`. It currently returns:
 
 ```rust
 Ok(Program { functions, structs, enums, traits, impls })
@@ -165,7 +165,7 @@ Expected: All 225 existing tests pass
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-parser/src/ast.rs crates/cyflym-parser/src/lib.rs
+git add crates/sans-parser/src/ast.rs crates/sans-parser/src/lib.rs
 git commit -m "feat(ast): add Import struct and Program.imports field"
 ```
 
@@ -174,11 +174,11 @@ git commit -m "feat(ast): add Import struct and Program.imports field"
 ### Task 3: Parser — Parse import declarations
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/lib.rs`
+- Modify: `crates/sans-parser/src/lib.rs`
 
 - [ ] **Step 1: Write the failing test for single import**
 
-In `crates/cyflym-parser/src/lib.rs`, add at the end of the `mod tests` block:
+In `crates/sans-parser/src/lib.rs`, add at the end of the `mod tests` block:
 
 ```rust
 #[test]
@@ -192,7 +192,7 @@ fn parse_import_declaration() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p cyflym-parser parse_import_declaration`
+Run: `cargo test -p sans-parser parse_import_declaration`
 Expected: FAIL — parser doesn't recognize `import` keyword at top level, returns parse error or empty imports
 
 - [ ] **Step 3: Write the failing test for multiple imports**
@@ -224,7 +224,7 @@ fn parse_import_after_function_errors() {
 
 - [ ] **Step 5: Implement import parsing in `parse_program()`**
 
-In `crates/cyflym-parser/src/lib.rs`, update `parse_program()` to parse imports before other declarations:
+In `crates/sans-parser/src/lib.rs`, update `parse_program()` to parse imports before other declarations:
 
 ```rust
 fn parse_program(&mut self) -> Result<Program, ParseError> {
@@ -302,12 +302,12 @@ Note: This uses `Import` from ast.rs — ensure `Import` is in scope. The `use a
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `cargo test -p cyflym-parser parse_import`
+Run: `cargo test -p sans-parser parse_import`
 Expected: All 3 new import tests pass
 
 - [ ] **Step 8: Run all parser tests**
 
-Run: `cargo test -p cyflym-parser`
+Run: `cargo test -p sans-parser`
 Expected: All 56 tests pass (53 existing + 3 new)
 
 - [ ] **Step 9: Run full test suite**
@@ -318,7 +318,7 @@ Expected: All tests pass (existing tests unaffected since they produce programs 
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/cyflym-parser/src/lib.rs
+git add crates/sans-parser/src/lib.rs
 git commit -m "feat(parser): parse import declarations with placement validation"
 ```
 
@@ -329,7 +329,7 @@ git commit -m "feat(parser): parse import declarations with placement validation
 ### Task 4: Type Checker — Module exports types and cross-module resolution
 
 **Files:**
-- Modify: `crates/cyflym-typeck/src/lib.rs`
+- Modify: `crates/sans-typeck/src/lib.rs`
 
 This is the largest task. The type checker needs:
 1. New `ModuleExports` and `FunctionSignature` types
@@ -340,12 +340,12 @@ This is the largest task. The type checker needs:
 
 - [ ] **Step 1: Write the failing test for cross-module function call**
 
-In `crates/cyflym-typeck/src/lib.rs`, add at the end of the `mod tests` block:
+In `crates/sans-typeck/src/lib.rs`, add at the end of the `mod tests` block:
 
 ```rust
 #[test]
 fn check_cross_module_function_call() {
-    let prog = cyflym_parser::parse(
+    let prog = sans_parser::parse(
         "fn main() Int { utils.add(1, 2) }"
     ).expect("parse error");
 
@@ -369,12 +369,12 @@ Note: `check()` returns `Result<ModuleExports, TypeError>` — `.is_ok()` works 
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p cyflym-typeck check_cross_module_function_call`
+Run: `cargo test -p sans-typeck check_cross_module_function_call`
 Expected: FAIL — `ModuleExports`, `FunctionSignature` don't exist yet, `check()` doesn't accept `module_exports`
 
 - [ ] **Step 3: Add `ModuleExports` and `FunctionSignature` types**
 
-In `crates/cyflym-typeck/src/lib.rs`, add after the `GenericFnInfo` struct definition (around line 12):
+In `crates/sans-typeck/src/lib.rs`, add after the `GenericFnInfo` struct definition (around line 12):
 
 ```rust
 /// Exported items from a module, available for cross-module resolution.
@@ -462,29 +462,29 @@ The body of `resolve_type` stays the same for now — module-qualified type reso
 - [ ] **Step 6: Fix all existing callers of `check()`**
 
 The `check()` function is called from:
-1. `crates/cyflym-driver/src/main.rs` line 42: `cyflym_typeck::check(&program)`
-2. `crates/cyflym-driver/tests/e2e.rs` line 15: `cyflym_typeck::check(&program)`
-3. All `do_check()` test helpers in `crates/cyflym-typeck/src/lib.rs`
+1. `crates/sans-driver/src/main.rs` line 42: `sans_typeck::check(&program)`
+2. `crates/sans-driver/tests/e2e.rs` line 15: `sans_typeck::check(&program)`
+3. All `do_check()` test helpers in `crates/sans-typeck/src/lib.rs`
 
 Update all callers to pass an empty `HashMap`:
 
-In `crates/cyflym-driver/src/main.rs`:
+In `crates/sans-driver/src/main.rs`:
 ```rust
-cyflym_typeck::check(&program, &std::collections::HashMap::new()).map_err(|e| format!("type error: {}", e.message))?;
+sans_typeck::check(&program, &std::collections::HashMap::new()).map_err(|e| format!("type error: {}", e.message))?;
 ```
 
-In `crates/cyflym-driver/tests/e2e.rs`:
+In `crates/sans-driver/tests/e2e.rs`:
 ```rust
-cyflym_typeck::check(&program, &std::collections::HashMap::new())
+sans_typeck::check(&program, &std::collections::HashMap::new())
     .unwrap_or_else(|e| panic!("type error: {}", e));
 ```
 
 Note: Both callers discard the `ModuleExports` return value for now — they'll use it in Task 6/7.
 
-In `crates/cyflym-typeck/src/lib.rs`, update the `do_check` test helper to discard the return value:
+In `crates/sans-typeck/src/lib.rs`, update the `do_check` test helper to discard the return value:
 ```rust
 fn do_check(src: &str) -> Result<(), TypeError> {
-    let prog = cyflym_parser::parse(src)
+    let prog = sans_parser::parse(src)
         .expect("parse error in test input");
     check(&prog, &HashMap::new())?;
     Ok(())
@@ -591,7 +591,7 @@ fn resolve_type(
 
 - [ ] **Step 11: Run the cross-module function call test**
 
-Run: `cargo test -p cyflym-typeck check_cross_module_function_call`
+Run: `cargo test -p sans-typeck check_cross_module_function_call`
 Expected: PASS
 
 - [ ] **Step 12: Write and run remaining type checker tests**
@@ -602,7 +602,7 @@ Add these tests to the `mod tests` block:
 #[test]
 fn check_cross_module_function_with_struct_return() {
     // Module "models" exports a struct User and a function create() -> User
-    let prog = cyflym_parser::parse(
+    let prog = sans_parser::parse(
         "fn main() Int { let u = models.create() u.age }"
     ).expect("parse error");
 
@@ -632,7 +632,7 @@ fn check_cross_module_function_with_struct_return() {
 
 #[test]
 fn check_unknown_function_in_module() {
-    let prog = cyflym_parser::parse(
+    let prog = sans_parser::parse(
         "fn main() Int { utils.nonexistent() }"
     ).expect("parse error");
 
@@ -653,7 +653,7 @@ fn check_unknown_module_prefix() {
     // "nomod" is not in module_exports, so it's treated as a variable.
     // Since "nomod" is not defined as a variable, this should produce
     // an "undefined variable" error.
-    let prog = cyflym_parser::parse(
+    let prog = sans_parser::parse(
         "fn main() Int { nomod.func() }"
     ).expect("parse error");
 
@@ -664,7 +664,7 @@ fn check_unknown_module_prefix() {
 
 #[test]
 fn check_field_access_on_module_errors() {
-    let prog = cyflym_parser::parse(
+    let prog = sans_parser::parse(
         "fn main() Int { utils.x }"
     ).expect("parse error");
 
@@ -684,7 +684,7 @@ fn check_field_access_on_module_errors() {
 fn check_duplicate_import_is_ok() {
     // Duplicate module entries in module_exports — this tests that the
     // type checker doesn't complain. (Deduplication is the driver's job.)
-    let prog = cyflym_parser::parse(
+    let prog = sans_parser::parse(
         "fn main() Int { utils.add(1, 2) }"
     ).expect("parse error");
 
@@ -704,7 +704,7 @@ fn check_duplicate_import_is_ok() {
 }
 ```
 
-Run: `cargo test -p cyflym-typeck`
+Run: `cargo test -p sans-typeck`
 Expected: All 85 tests pass (79 existing + 6 new)
 
 - [ ] **Step 13: Run full test suite**
@@ -715,7 +715,7 @@ Expected: All tests pass
 - [ ] **Step 14: Commit**
 
 ```bash
-git add crates/cyflym-typeck/src/lib.rs crates/cyflym-driver/src/main.rs crates/cyflym-driver/tests/e2e.rs
+git add crates/sans-typeck/src/lib.rs crates/sans-driver/src/main.rs crates/sans-driver/tests/e2e.rs
 git commit -m "feat(typeck): add cross-module function call resolution and module exports"
 ```
 
@@ -726,11 +726,11 @@ git commit -m "feat(typeck): add cross-module function call resolution and modul
 ### Task 5: IR — Name mangling and cross-module call lowering
 
 **Files:**
-- Modify: `crates/cyflym-ir/src/lib.rs`
+- Modify: `crates/sans-ir/src/lib.rs`
 
 - [ ] **Step 1: Write the failing test for name mangling**
 
-In `crates/cyflym-ir/src/lib.rs`, add at the end of the `mod tests` block:
+In `crates/sans-ir/src/lib.rs`, add at the end of the `mod tests` block:
 
 ```rust
 #[test]
@@ -744,7 +744,7 @@ fn lower_with_module_name_mangles_functions() {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cargo test -p cyflym-ir lower_with_module_name_mangles_functions`
+Run: `cargo test -p sans-ir lower_with_module_name_mangles_functions`
 Expected: FAIL — `lower()` doesn't accept a module name parameter
 
 - [ ] **Step 3: Write the failing test for cross-module call lowering**
@@ -854,8 +854,8 @@ Make `IrType` public by changing `enum IrType` to `pub enum IrType` in `lib.rs`.
 Add a `pub fn ir_type_for_return` helper that converts from the type checker's `Type` to `IrType`. This is used by the driver to build `module_fn_ret_types`:
 
 ```rust
-pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
-    use cyflym_typeck::types::Type;
+pub fn ir_type_for_return(ty: &sans_typeck::types::Type) -> IrType {
+    use sans_typeck::types::Type;
     match ty {
         Type::Int => IrType::Int,
         Type::Bool => IrType::Bool,
@@ -868,12 +868,12 @@ pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
 }
 ```
 
-Note: This requires adding `cyflym-typeck` as a dependency of `cyflym-ir` in `Cargo.toml`. Add to `crates/cyflym-ir/Cargo.toml`:
+Note: This requires adding `sans-typeck` as a dependency of `sans-ir` in `Cargo.toml`. Add to `crates/sans-ir/Cargo.toml`:
 
 ```toml
 [dependencies]
-cyflym-parser = { path = "../cyflym-parser" }
-cyflym-typeck = { path = "../cyflym-typeck" }
+sans-parser = { path = "../sans-parser" }
+sans-typeck = { path = "../sans-typeck" }
 ```
 
 Update `lower()` signature:
@@ -921,23 +921,23 @@ Expr::MethodCall { object, method, args, .. } => {
 - [ ] **Step 7: Fix all existing callers of `lower()`**
 
 The `lower()` function is called from:
-1. `crates/cyflym-driver/src/main.rs` line 45: `cyflym_ir::lower(&program)`
-2. `crates/cyflym-driver/tests/e2e.rs` line 19: `cyflym_ir::lower(&program)`
-3. All `parse` + `lower` test patterns in `crates/cyflym-ir/src/lib.rs`
+1. `crates/sans-driver/src/main.rs` line 45: `sans_ir::lower(&program)`
+2. `crates/sans-driver/tests/e2e.rs` line 19: `sans_ir::lower(&program)`
+3. All `parse` + `lower` test patterns in `crates/sans-ir/src/lib.rs`
 
 Update all callers to pass `None` and empty `HashMap`:
 
-In `crates/cyflym-driver/src/main.rs`:
+In `crates/sans-driver/src/main.rs`:
 ```rust
-let ir_module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
+let ir_module = sans_ir::lower(&program, None, &std::collections::HashMap::new());
 ```
 
-In `crates/cyflym-driver/tests/e2e.rs`:
+In `crates/sans-driver/tests/e2e.rs`:
 ```rust
-let ir_module = cyflym_ir::lower(&program, None, &std::collections::HashMap::new());
+let ir_module = sans_ir::lower(&program, None, &std::collections::HashMap::new());
 ```
 
-In `crates/cyflym-ir/src/lib.rs` tests, add a `lower_main` test helper:
+In `crates/sans-ir/src/lib.rs` tests, add a `lower_main` test helper:
 
 ```rust
 fn lower_main(src: &str) -> Module {
@@ -950,7 +950,7 @@ Then replace all `lower(&program)` calls in existing tests with `lower(&program,
 
 - [ ] **Step 8: Run tests**
 
-Run: `cargo test -p cyflym-ir`
+Run: `cargo test -p sans-ir`
 Expected: All 32 tests pass (30 existing + 2 new)
 
 - [ ] **Step 9: Run full test suite**
@@ -961,7 +961,7 @@ Expected: All tests pass
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/cyflym-ir/src/lib.rs crates/cyflym-driver/src/main.rs crates/cyflym-driver/tests/e2e.rs
+git add crates/sans-ir/src/lib.rs crates/sans-driver/src/main.rs crates/sans-driver/tests/e2e.rs
 git commit -m "feat(ir): add module name mangling and cross-module call lowering"
 ```
 
@@ -970,18 +970,18 @@ git commit -m "feat(ir): add module name mangling and cross-module call lowering
 ### Task 6: Driver — Import resolution module
 
 **Files:**
-- Create: `crates/cyflym-driver/src/imports.rs`
-- Modify: `crates/cyflym-driver/src/main.rs`
+- Create: `crates/sans-driver/src/imports.rs`
+- Modify: `crates/sans-driver/src/main.rs`
 
 - [ ] **Step 1: Create `imports.rs` with the `resolve_imports` function**
 
-Create `crates/cyflym-driver/src/imports.rs`:
+Create `crates/sans-driver/src/imports.rs`:
 
 ```rust
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use cyflym_parser::ast::Program;
+use sans_parser::ast::Program;
 
 /// A parsed module with its metadata.
 pub struct ResolvedModule {
@@ -1004,7 +1004,7 @@ pub fn resolve_imports(entry_point: &Path) -> Result<Vec<ResolvedModule>, String
     // Parse the entry point to get its imports
     let entry_source = std::fs::read_to_string(entry_point)
         .map_err(|e| format!("could not read '{}': {}", entry_point.display(), e))?;
-    let entry_program = cyflym_parser::parse(&entry_source)
+    let entry_program = sans_parser::parse(&entry_source)
         .map_err(|e| format!("parse error in '{}' at {}..{}: {}", entry_point.display(), e.span.start, e.span.end, e.message))?;
 
     let entry_canonical = entry_point.canonicalize()
@@ -1057,7 +1057,7 @@ fn resolve_import(
     // Read and parse the module
     let source = std::fs::read_to_string(&file_path)
         .map_err(|_| format!("module not found: {}", import_path))?;
-    let program = cyflym_parser::parse(&source)
+    let program = sans_parser::parse(&source)
         .map_err(|e| format!(
             "parse error in '{}' at {}..{}: {}",
             file_path.display(), e.span.start, e.span.end, e.message
@@ -1092,7 +1092,7 @@ fn resolve_import(
 
 - [ ] **Step 2: Register the module in `main.rs`**
 
-In `crates/cyflym-driver/src/main.rs`, add at the top:
+In `crates/sans-driver/src/main.rs`, add at the top:
 
 ```rust
 mod imports;
@@ -1100,7 +1100,7 @@ mod imports;
 
 - [ ] **Step 3: Update the `build()` function for multi-module compilation**
 
-Replace the entire `build()` function body in `crates/cyflym-driver/src/main.rs`:
+Replace the entire `build()` function body in `crates/sans-driver/src/main.rs`:
 
 ```rust
 fn build(source_path: &PathBuf) -> Result<(), String> {
@@ -1118,7 +1118,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     // Step 2: Read and parse the entry point
     let source = std::fs::read_to_string(source_path)
         .map_err(|e| format!("could not read '{}': {}", source_path.display(), e))?;
-    let main_program = cyflym_parser::parse(&source).map_err(|e| {
+    let main_program = sans_parser::parse(&source).map_err(|e| {
         format!(
             "parse error at {}..{}: {}",
             e.span.start, e.span.end, e.message
@@ -1127,25 +1127,25 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
 
     // Step 3: Type-check in dependency order, collecting module exports
     // check() returns ModuleExports as a byproduct — no duplicated type resolution
-    let mut module_exports: std::collections::HashMap<String, cyflym_typeck::ModuleExports> =
+    let mut module_exports: std::collections::HashMap<String, sans_typeck::ModuleExports> =
         std::collections::HashMap::new();
 
     for module in &resolved_modules {
-        let exports = cyflym_typeck::check(&module.program, &module_exports)
+        let exports = sans_typeck::check(&module.program, &module_exports)
             .map_err(|e| format!("type error in module '{}': {}", module.name, e.message))?;
         module_exports.insert(module.name.clone(), exports);
     }
 
     // Type-check main module
-    cyflym_typeck::check(&main_program, &module_exports)
+    sans_typeck::check(&main_program, &module_exports)
         .map_err(|e| format!("type error: {}", e.message))?;
 
     // Step 4: Build module_fn_ret_types for IR lowering (maps (module, func) → IrType)
-    let mut module_fn_ret_types: std::collections::HashMap<(String, String), cyflym_ir::IrType> =
+    let mut module_fn_ret_types: std::collections::HashMap<(String, String), sans_ir::IrType> =
         std::collections::HashMap::new();
     for (mod_name, exports) in &module_exports {
         for (func_name, sig) in &exports.functions {
-            let ir_type = cyflym_ir::ir_type_for_return(&sig.return_type);
+            let ir_type = sans_ir::ir_type_for_return(&sig.return_type);
             module_fn_ret_types.insert((mod_name.clone(), func_name.clone()), ir_type);
         }
     }
@@ -1155,14 +1155,14 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     let mut all_ir_functions = Vec::new();
 
     for module in &resolved_modules {
-        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
+        let ir = sans_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
 
-    let main_ir = cyflym_ir::lower(&main_program, None, &module_fn_ret_types);
+    let main_ir = sans_ir::lower(&main_program, None, &module_fn_ret_types);
     all_ir_functions.extend(main_ir.functions);
 
-    let merged_module = cyflym_ir::ir::Module {
+    let merged_module = sans_ir::ir::Module {
         functions: all_ir_functions,
     };
 
@@ -1172,7 +1172,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         .to_str()
         .ok_or_else(|| "object path contains invalid UTF-8".to_string())?;
 
-    cyflym_codegen::compile_to_object(&merged_module, obj_path_str)
+    sans_codegen::compile_to_object(&merged_module, obj_path_str)
         .map_err(|e| format!("codegen error: {}", e))?;
 
     // Step 7: Link
@@ -1219,7 +1219,7 @@ Expected: All existing tests pass (single-file programs still work with empty im
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-driver/src/imports.rs crates/cyflym-driver/src/main.rs
+git add crates/sans-driver/src/imports.rs crates/sans-driver/src/main.rs
 git commit -m "feat(driver): add import resolution and multi-module compilation pipeline"
 ```
 
@@ -1228,7 +1228,7 @@ git commit -m "feat(driver): add import resolution and multi-module compilation 
 ### Task 7: E2E Tests — Multi-file compilation
 
 **Files:**
-- Modify: `crates/cyflym-driver/tests/e2e.rs`
+- Modify: `crates/sans-driver/tests/e2e.rs`
 - Create: `tests/fixtures/import_basic/main.cy`
 - Create: `tests/fixtures/import_basic/utils.cy`
 - Create: `tests/fixtures/import_nested/main.cy`
@@ -1239,17 +1239,17 @@ git commit -m "feat(driver): add import resolution and multi-module compilation 
 - Create: `tests/fixtures/import_struct/main.cy`
 - Create: `tests/fixtures/import_struct/models.cy`
 
-- [ ] **Step 1: Create `crates/cyflym-driver/src/lib.rs` and update `main.rs`**
+- [ ] **Step 1: Create `crates/sans-driver/src/lib.rs` and update `main.rs`**
 
 The driver is a binary crate. To make `imports` accessible from E2E tests, create a library companion:
 
-Create `crates/cyflym-driver/src/lib.rs`:
+Create `crates/sans-driver/src/lib.rs`:
 
 ```rust
 pub mod imports;
 ```
 
-In `crates/cyflym-driver/src/main.rs`, replace `mod imports;` (added in Task 6) with:
+In `crates/sans-driver/src/main.rs`, replace `mod imports;` (added in Task 6) with:
 
 ```rust
 use cyflym::imports;
@@ -1275,26 +1275,26 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     // Parse main
     let main_source = std::fs::read_to_string(&main_path)
         .unwrap_or_else(|e| panic!("could not read main.cy: {}", e));
-    let main_program = cyflym_parser::parse(&main_source)
+    let main_program = sans_parser::parse(&main_source)
         .unwrap_or_else(|e| panic!("parse error: {:?}", e));
 
     // Type-check in dependency order, collecting exports from check() return value
     let mut module_exports = std::collections::HashMap::new();
     for module in &resolved_modules {
-        let exports = cyflym_typeck::check(&module.program, &module_exports)
+        let exports = sans_typeck::check(&module.program, &module_exports)
             .unwrap_or_else(|e| panic!("type error in module '{}': {}", module.name, e));
         module_exports.insert(module.name.clone(), exports);
     }
 
-    cyflym_typeck::check(&main_program, &module_exports)
+    sans_typeck::check(&main_program, &module_exports)
         .unwrap_or_else(|e| panic!("type error: {}", e));
 
     // Build module_fn_ret_types for IR lowering
-    let mut module_fn_ret_types: std::collections::HashMap<(String, String), cyflym_ir::IrType> =
+    let mut module_fn_ret_types: std::collections::HashMap<(String, String), sans_ir::IrType> =
         std::collections::HashMap::new();
     for (mod_name, exports) in &module_exports {
         for (func_name, sig) in &exports.functions {
-            let ir_type = cyflym_ir::ir_type_for_return(&sig.return_type);
+            let ir_type = sans_ir::ir_type_for_return(&sig.return_type);
             module_fn_ret_types.insert((mod_name.clone(), func_name.clone()), ir_type);
         }
     }
@@ -1303,20 +1303,20 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     // All modules get the full module_fn_ret_types so transitive calls resolve correctly
     let mut all_ir_functions = Vec::new();
     for module in &resolved_modules {
-        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
+        let ir = sans_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
-    let main_ir = cyflym_ir::lower(&main_program, None, &module_fn_ret_types);
+    let main_ir = sans_ir::lower(&main_program, None, &module_fn_ret_types);
     all_ir_functions.extend(main_ir.functions);
 
-    let merged = cyflym_ir::ir::Module { functions: all_ir_functions };
+    let merged = sans_ir::ir::Module { functions: all_ir_functions };
 
     // Codegen, link, run
     let tmp_dir = std::env::temp_dir();
     let obj_path = tmp_dir.join(format!("{}.o", fixture_dir));
     let bin_path = tmp_dir.join(fixture_dir);
 
-    cyflym_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
+    sans_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
     let link_status = Command::new("cc")
@@ -1454,7 +1454,7 @@ Expected exit code: **22**
 
 - [ ] **Step 7: Add E2E tests**
 
-Add to `crates/cyflym-driver/tests/e2e.rs`:
+Add to `crates/sans-driver/tests/e2e.rs`:
 
 ```rust
 #[test]
@@ -1480,7 +1480,7 @@ fn e2e_import_struct() {
 
 - [ ] **Step 8: Run all E2E tests**
 
-Run: `cargo test -p cyflym-driver`
+Run: `cargo test -p sans-driver`
 Expected: All 22 tests pass (18 existing + 4 new)
 
 - [ ] **Step 9: Run full test suite**
@@ -1491,6 +1491,6 @@ Expected: All ~243 tests pass
 - [ ] **Step 10: Commit**
 
 ```bash
-git add crates/cyflym-driver/src/lib.rs crates/cyflym-driver/src/imports.rs crates/cyflym-driver/src/main.rs crates/cyflym-driver/tests/e2e.rs tests/fixtures/import_basic/ tests/fixtures/import_nested/ tests/fixtures/import_chain/ tests/fixtures/import_struct/
+git add crates/sans-driver/src/lib.rs crates/sans-driver/src/imports.rs crates/sans-driver/src/main.rs crates/sans-driver/tests/e2e.rs tests/fixtures/import_basic/ tests/fixtures/import_nested/ tests/fixtures/import_chain/ tests/fixtures/import_struct/
 git commit -m "feat(driver): multi-module compilation pipeline with E2E tests"
 ```

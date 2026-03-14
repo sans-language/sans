@@ -1,6 +1,6 @@
-# Cyflym
+# Sans
 
-A fast, compiled programming language designed for backend and API development. Cyflym compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
+A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
 
 ## Quick Start
 
@@ -19,18 +19,18 @@ LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
 ### Install
 
 ```sh
-ln -sf $(pwd)/target/release/cyflym ~/.local/bin/cyflym
+ln -sf $(pwd)/target/release/sans ~/.local/bin/sans
 ```
 
 ### Usage
 
 ```sh
-cyflym build myfile.cy && ./myfile
+sans build myfile.cy && ./myfile
 ```
 
 ## Hello World
 
-```cyflym
+```sans
 fn add(a Int, b Int) Int {
     a + b
 }
@@ -75,7 +75,7 @@ fn main() Int {
 
 ## HTTP Server Example
 
-```cyflym
+```sans
 fn main() Int {
     log_set_level(0)
     print("Starting server on http://localhost:8080")
@@ -89,7 +89,7 @@ fn main() Int {
         log_info("request: " + path)
 
         if path == "/" {
-            req.respond(200, "Hello from Cyflym!")
+            req.respond(200, "Hello from Sans!")
         } else {
             req.respond(404, "Not Found")
         }
@@ -109,12 +109,12 @@ LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test
 
 The compiler is split into 6 Rust crates forming a pipeline:
 
-1. **cyflym-lexer** -- tokenization
-2. **cyflym-parser** -- AST construction
-3. **cyflym-typeck** -- type checking and inference
-4. **cyflym-ir** -- intermediate representation and lowering
-5. **cyflym-codegen** -- LLVM IR generation
-6. **cyflym-driver** -- CLI, linking, and orchestration
+1. **sans-lexer** -- tokenization
+2. **sans-parser** -- AST construction
+3. **sans-typeck** -- type checking and inference
+4. **sans-ir** -- intermediate representation and lowering
+5. **sans-codegen** -- LLVM IR generation
+6. **sans-driver** -- CLI, linking, and orchestration
 
 The runtime layer consists of 8 C files (`runtime/*.c`) providing built-in capabilities: strings, arrays, functional combinators, JSON, HTTP client/server, file I/O, logging, and error handling.
 

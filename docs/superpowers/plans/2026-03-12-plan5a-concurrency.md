@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add OS-thread-based concurrency to Cyflym with `spawn`, `channel<T>()`, `.send()`, `.recv()`, and `.join()`.
+**Goal:** Add OS-thread-based concurrency to Sans with `spawn`, `channel<T>()`, `.send()`, `.recv()`, and `.join()`.
 
 **Architecture:** 1:1 OS threads via pthreads, unbounded channels as mutex-guarded growable queues. New keywords, AST nodes, types, IR instructions, and LLVM codegen for pthread syscalls and channel data structures.
 
@@ -17,8 +17,8 @@
 ### Task 1: Lexer — Add `spawn` and `channel` keywords
 
 **Files:**
-- Modify: `crates/cyflym-lexer/src/token.rs`
-- Modify: `crates/cyflym-lexer/src/lib.rs`
+- Modify: `crates/sans-lexer/src/token.rs`
+- Modify: `crates/sans-lexer/src/lib.rs`
 
 **Token changes** — add to `TokenKind` enum after the `SelfType` line:
 
@@ -56,7 +56,7 @@ fn lex_channel_keyword() {
 ### Task 2: AST — Add Spawn, ChannelCreate, and LetDestructure nodes
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/ast.rs`
+- Modify: `crates/sans-parser/src/ast.rs`
 
 **Add to `Expr` enum:**
 
@@ -87,7 +87,7 @@ LetDestructure {
 ### Task 3: Parser — Parse spawn, channel, and let destructuring
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/lib.rs`
+- Modify: `crates/sans-parser/src/lib.rs`
 
 **3a: Parse `spawn f(args)` in `parse_expr_inner` (prefix position)**
 
@@ -277,8 +277,8 @@ fn parse_spawn_no_args() {
 ### Task 4: Type System — Add JoinHandle, Sender, Receiver types
 
 **Files:**
-- Modify: `crates/cyflym-typeck/src/types.rs`
-- Modify: `crates/cyflym-typeck/src/lib.rs`
+- Modify: `crates/sans-typeck/src/types.rs`
+- Modify: `crates/sans-typeck/src/lib.rs`
 
 **4a: Add new type variants** to `types.rs`:
 
@@ -485,8 +485,8 @@ fn typeck_send_on_non_sender() {
 ### Task 5: IR — Add concurrency instructions and IrType variants
 
 **Files:**
-- Modify: `crates/cyflym-ir/src/ir.rs`
-- Modify: `crates/cyflym-ir/src/lib.rs`
+- Modify: `crates/sans-ir/src/ir.rs`
+- Modify: `crates/sans-ir/src/lib.rs`
 
 **5a: Add IR instructions** to `ir.rs` Instruction enum:
 
@@ -662,7 +662,7 @@ fn lower_join() {
 ### Task 6: Codegen — LLVM codegen for concurrency instructions
 
 **Files:**
-- Modify: `crates/cyflym-codegen/src/lib.rs`
+- Modify: `crates/sans-codegen/src/lib.rs`
 
 This is the most complex task. The codegen must:
 
@@ -1068,9 +1068,9 @@ Instruction::ThreadJoin { handle } => {
 ```rust
 #[test]
 fn codegen_channel_create() {
-    let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() 0 }").expect("parse");
-    cyflym_typeck::check(&program).expect("typeck");
-    let module = cyflym_ir::lower(&program);
+    let program = sans_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() 0 }").expect("parse");
+    sans_typeck::check(&program).expect("typeck");
+    let module = sans_ir::lower(&program);
     let ir = compile_to_llvm_ir(&module).expect("codegen");
     assert!(ir.contains("malloc"), "expected malloc in:\n{}", ir);
     assert!(ir.contains("pthread_mutex_init"), "expected pthread_mutex_init in:\n{}", ir);
@@ -1078,9 +1078,9 @@ fn codegen_channel_create() {
 
 #[test]
 fn codegen_spawn() {
-    let program = cyflym_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").expect("parse");
-    cyflym_typeck::check(&program).expect("typeck");
-    let module = cyflym_ir::lower(&program);
+    let program = sans_parser::parse("fn worker() Int { 0 } fn main() Int { let h = spawn worker() h.join() }").expect("parse");
+    sans_typeck::check(&program).expect("typeck");
+    let module = sans_ir::lower(&program);
     let ir = compile_to_llvm_ir(&module).expect("codegen");
     assert!(ir.contains("pthread_create"), "expected pthread_create in:\n{}", ir);
     assert!(ir.contains("pthread_join"), "expected pthread_join in:\n{}", ir);
@@ -1089,9 +1089,9 @@ fn codegen_spawn() {
 
 #[test]
 fn codegen_send_recv() {
-    let program = cyflym_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").expect("parse");
-    cyflym_typeck::check(&program).expect("typeck");
-    let module = cyflym_ir::lower(&program);
+    let program = sans_parser::parse("fn main() Int { let (tx, rx) = channel<Int>() tx.send(42) rx.recv() }").expect("parse");
+    sans_typeck::check(&program).expect("typeck");
+    let module = sans_ir::lower(&program);
     let ir = compile_to_llvm_ir(&module).expect("codegen");
     assert!(ir.contains("pthread_mutex_lock"), "expected lock in:\n{}", ir);
     assert!(ir.contains("pthread_cond_signal"), "expected signal in:\n{}", ir);
@@ -1107,7 +1107,7 @@ fn codegen_send_recv() {
 - Create: `tests/fixtures/spawn_basic.cy`
 - Create: `tests/fixtures/spawn_join.cy`
 - Create: `tests/fixtures/channel_pingpong.cy`
-- Modify: `crates/cyflym-driver/tests/e2e.rs`
+- Modify: `crates/sans-driver/tests/e2e.rs`
 
 **E2E linking note:** The `compile_and_run` helper links with `cc`. On macOS, pthreads are included in libc automatically, so no `-lpthread` flag is needed. On Linux, `-lpthread` would be needed — for now we target macOS only.
 

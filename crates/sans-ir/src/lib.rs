@@ -2,14 +2,14 @@ pub mod ir;
 
 use std::collections::HashMap;
 
-use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
+use sans_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>), HttpServer, HttpRequest }
 
-pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
-    use cyflym_typeck::types::Type;
+pub fn ir_type_for_return(ty: &sans_typeck::types::Type) -> IrType {
+    use sans_typeck::types::Type;
     match ty {
         Type::Int => IrType::Int,
         Type::Float => IrType::Float,
@@ -125,7 +125,7 @@ pub fn lower_with_extra_structs(
     Module { functions }
 }
 
-fn lower_function_named(func: &cyflym_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>) -> IrFunction {
+fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>) -> IrFunction {
     let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone());
 
     // Map params to arg registers
@@ -442,14 +442,14 @@ impl IrBuilder {
             }
             Expr::UnaryOp { op, operand, .. } => {
                 match op {
-                    cyflym_parser::ast::UnaryOp::Not => {
+                    sans_parser::ast::UnaryOp::Not => {
                         let src_reg = self.lower_expr(operand);
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Not { dest: dest.clone(), src: src_reg });
                         self.reg_types.insert(dest.clone(), IrType::Bool);
                         dest
                     }
-                    cyflym_parser::ast::UnaryOp::Neg => {
+                    sans_parser::ast::UnaryOp::Neg => {
                         let src_reg = self.lower_expr(operand);
                         let src_type = self.reg_types.get(&src_reg).cloned().unwrap_or(IrType::Int);
                         let dest = self.fresh_reg();
@@ -1230,7 +1230,7 @@ impl IrBuilder {
                 let merge_label = self.fresh_label("match_merge");
 
                 for (arm_index, arm) in arms.iter().enumerate() {
-                    let cyflym_parser::ast::Pattern::EnumVariant {
+                    let sans_parser::ast::Pattern::EnumVariant {
                         variant_name,
                         bindings,
                         ..
@@ -1563,7 +1563,7 @@ mod tests {
     use ir::Instruction;
 
     fn parse(src: &str) -> Program {
-        cyflym_parser::parse(src).expect("parse failed")
+        sans_parser::parse(src).expect("parse failed")
     }
 
     #[test]
@@ -1827,7 +1827,7 @@ mod tests {
 
     #[test]
     fn lower_mutex_create_lock_unlock() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
         ).unwrap();
         let module = lower(&prog, None, &HashMap::new());
@@ -1842,7 +1842,7 @@ mod tests {
 
     #[test]
     fn lower_bounded_channel() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>(10) tx.send(1) rx.recv() }"
         ).unwrap();
         let module = lower(&prog, None, &HashMap::new());
@@ -1853,7 +1853,7 @@ mod tests {
 
     #[test]
     fn lower_unbounded_channel_unchanged() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>() tx.send(1) rx.recv() }"
         ).unwrap();
         let module = lower(&prog, None, &HashMap::new());
@@ -1866,7 +1866,7 @@ mod tests {
 
     #[test]
     fn lower_array_create_push_get_len() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(5) a.get(0) }"
         ).unwrap();
         let module = lower(&prog, None, &HashMap::new());
@@ -1881,7 +1881,7 @@ mod tests {
 
     #[test]
     fn lower_for_in_to_counted_loop() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let a = array<Int>() a.push(1) for x in a { print(x) } 0 }"
         ).unwrap();
         let module = lower(&prog, None, &HashMap::new());
@@ -1894,7 +1894,7 @@ mod tests {
 
     #[test]
     fn lower_string_concat() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             r#"fn main() Int { let s = "a" + "b" 0 }"#
         ).unwrap();
         let module = lower(&prog, None, &HashMap::new());
@@ -1905,7 +1905,7 @@ mod tests {
 
     #[test]
     fn lower_int_to_string_and_string_to_int() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             r#"fn main() Int { let s = int_to_string(42) string_to_int(s) }"#
         ).unwrap();
         let module = lower(&prog, None, &HashMap::new());
@@ -1960,7 +1960,7 @@ mod tests {
 
     #[test]
     fn lower_json_parse() {
-        let program = cyflym_parser::parse("fn main() Int { let v = json_parse(\"{}\") \n 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let v = json_parse(\"{}\") \n 0 }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonParse { .. })),
@@ -1969,7 +1969,7 @@ mod tests {
 
     #[test]
     fn lower_json_object() {
-        let program = cyflym_parser::parse("fn main() Int { let v = json_object() \n 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let v = json_object() \n 0 }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonObject { .. })),
@@ -1978,7 +1978,7 @@ mod tests {
 
     #[test]
     fn lower_json_stringify() {
-        let program = cyflym_parser::parse("fn main() Int { let v = json_object() \n let s = json_stringify(v) \n 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let v = json_object() \n let s = json_stringify(v) \n 0 }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonStringify { .. })),
@@ -1987,7 +1987,7 @@ mod tests {
 
     #[test]
     fn lower_json_get_method() {
-        let program = cyflym_parser::parse("fn main() Int { let v = json_parse(\"{}\") \n let inner = v.get(\"key\") \n 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let v = json_parse(\"{}\") \n let inner = v.get(\"key\") \n 0 }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonGet { .. })),
@@ -1996,7 +1996,7 @@ mod tests {
 
     #[test]
     fn lower_log_info() {
-        let program = cyflym_parser::parse("fn main() Int { log_info(\"hello\") }").unwrap();
+        let program = sans_parser::parse("fn main() Int { log_info(\"hello\") }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::LogInfo { .. })),
@@ -2005,7 +2005,7 @@ mod tests {
 
     #[test]
     fn lower_log_set_level() {
-        let program = cyflym_parser::parse("fn main() Int { log_set_level(2) }").unwrap();
+        let program = sans_parser::parse("fn main() Int { log_set_level(2) }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::LogSetLevel { .. })),
@@ -2014,7 +2014,7 @@ mod tests {
 
     #[test]
     fn lower_http_get() {
-        let program = cyflym_parser::parse("fn main() Int { let r = http_get(\"http://example.com\") \n r.status() }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let r = http_get(\"http://example.com\") \n r.status() }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::HttpGet { .. })),
@@ -2023,7 +2023,7 @@ mod tests {
 
     #[test]
     fn lower_http_post() {
-        let program = cyflym_parser::parse("fn main() Int { let r = http_post(\"http://example.com\", \"body\", \"text/plain\") \n r.status() }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let r = http_post(\"http://example.com\", \"body\", \"text/plain\") \n r.status() }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::HttpPost { .. })),
@@ -2032,7 +2032,7 @@ mod tests {
 
     #[test]
     fn lower_http_body_method() {
-        let program = cyflym_parser::parse("fn main() Int { let r = http_get(\"http://example.com\") \n let b = r.body() \n 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let r = http_get(\"http://example.com\") \n let b = r.body() \n 0 }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::HttpBody { .. })),
@@ -2041,7 +2041,7 @@ mod tests {
 
     #[test]
     fn lower_result_ok() {
-        let program = cyflym_parser::parse("fn main() Int { let r = ok(42) \n r.unwrap() }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let r = ok(42) \n r.unwrap() }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ResultOk { .. })),
@@ -2050,7 +2050,7 @@ mod tests {
 
     #[test]
     fn lower_result_err() {
-        let program = cyflym_parser::parse("fn main() Int { let r = err(\"bad\") \n 0 }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let r = err(\"bad\") \n 0 }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ResultErr { .. })),
@@ -2059,7 +2059,7 @@ mod tests {
 
     #[test]
     fn lower_result_unwrap() {
-        let program = cyflym_parser::parse("fn main() Int { let r = ok(42) \n r.unwrap() }").unwrap();
+        let program = sans_parser::parse("fn main() Int { let r = ok(42) \n r.unwrap() }").unwrap();
         let module = lower(&program, None, &std::collections::HashMap::new());
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ResultUnwrap { .. })),

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add mutex primitives and bounded channels to Cyflym's concurrency toolkit — explicit lock/unlock mutex and blocking-send bounded channels, all via direct pthread syscalls.
+Add mutex primitives and bounded channels to Sans's concurrency toolkit — explicit lock/unlock mutex and blocking-send bounded channels, all via direct pthread syscalls.
 
 ## Scope
 

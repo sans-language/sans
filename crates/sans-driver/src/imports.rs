@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use cyflym_parser::ast::Program;
+use sans_parser::ast::Program;
 
 /// A parsed module with its metadata.
 pub struct ResolvedModule {
@@ -23,7 +23,7 @@ pub fn resolve_imports(entry_point: &Path) -> Result<Vec<ResolvedModule>, String
 
     let entry_source = std::fs::read_to_string(entry_point)
         .map_err(|e| format!("could not read '{}': {}", entry_point.display(), e))?;
-    let entry_program = cyflym_parser::parse(&entry_source)
+    let entry_program = sans_parser::parse(&entry_source)
         .map_err(|e| format!("parse error in '{}' at {}..{}: {}", entry_point.display(), e.span.start, e.span.end, e.message))?;
 
     let entry_canonical = entry_point.canonicalize()
@@ -69,7 +69,7 @@ fn resolve_import(
 
     let source = std::fs::read_to_string(&file_path)
         .map_err(|_| format!("module not found: {}", import_path))?;
-    let program = cyflym_parser::parse(&source)
+    let program = sans_parser::parse(&source)
         .map_err(|e| format!(
             "parse error in '{}' at {}..{}: {}",
             file_path.display(), e.span.start, e.span.end, e.message

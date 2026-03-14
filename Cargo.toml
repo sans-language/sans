@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/cyflym-lexer",
-    "crates/cyflym-parser",
-    "crates/cyflym-typeck",
-    "crates/cyflym-ir",
-    "crates/cyflym-codegen",
-    "crates/cyflym-driver",
+    "crates/sans-lexer",
+    "crates/sans-parser",
+    "crates/sans-typeck",
+    "crates/sans-ir",
+    "crates/sans-codegen",
+    "crates/sans-driver",
 ]

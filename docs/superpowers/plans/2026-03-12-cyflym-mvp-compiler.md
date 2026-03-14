@@ -1,10 +1,10 @@
-# Cyflym MVP Compiler Implementation Plan
+# Sans MVP Compiler Implementation Plan
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build an end-to-end compiler that can lex, parse, type-check, and compile a minimal Cyflym program to a native binary via LLVM.
+**Goal:** Build an end-to-end compiler that can lex, parse, type-check, and compile a minimal Sans program to a native binary via LLVM.
 
-**Architecture:** Rust workspace with separate crates for each compiler phase: lexer, parser, type checker, IR, codegen, and driver. Each crate has a clean public API and is independently testable. The compilation pipeline is: Source → Tokens → AST → Typed AST → Cyflym IR → LLVM IR → Native Binary.
+**Architecture:** Rust workspace with separate crates for each compiler phase: lexer, parser, type checker, IR, codegen, and driver. Each crate has a clean public API and is independently testable. The compilation pipeline is: Source → Tokens → AST → Typed AST → Sans IR → LLVM IR → Native Binary.
 
 **Tech Stack:** Rust (compiler implementation), LLVM 17+ (code generation via `inkwell` crate), Cargo workspace (build system)
 
@@ -14,7 +14,7 @@
 
 ## Series Context
 
-This is **Plan 1 of 7** in the Cyflym compiler series:
+This is **Plan 1 of 7** in the Sans compiler series:
 
 1. **MVP Compiler** (this plan) — lex, parse, type-check, codegen for basic programs
 2. **Functions & Control Flow** — function calls, if/else, while, return, closures
@@ -28,7 +28,7 @@ This is **Plan 1 of 7** in the Cyflym compiler series:
 
 ## MVP Scope
 
-The MVP compiler handles this subset of Cyflym:
+The MVP compiler handles this subset of Sans:
 
 ```
 // MVP target program
@@ -87,31 +87,31 @@ source ~/.zshrc
 cyflym/
 ├── Cargo.toml                          # Workspace root
 ├── crates/
-│   ├── cyflym-lexer/
+│   ├── sans-lexer/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                  # Lexer: source → tokens
 │   │       └── token.rs                # Token enum and Span type
-│   ├── cyflym-parser/
+│   ├── sans-parser/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                  # Parser: tokens → AST
 │   │       └── ast.rs                  # AST node types
-│   ├── cyflym-typeck/
+│   ├── sans-typeck/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs                  # Type checker: AST → Typed AST
 │   │       └── types.rs                # Type representations
-│   ├── cyflym-ir/
+│   ├── sans-ir/
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   │       ├── lib.rs                  # IR generation: Typed AST → Cyflym IR
+│   │       ├── lib.rs                  # IR generation: Typed AST → Sans IR
 │   │       └── ir.rs                   # IR instruction types
-│   ├── cyflym-codegen/
+│   ├── sans-codegen/
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   │       └── lib.rs                  # LLVM codegen: Cyflym IR → LLVM IR → binary
-│   └── cyflym-driver/
+│   │       └── lib.rs                  # LLVM codegen: Sans IR → LLVM IR → binary
+│   └── sans-driver/
 │       ├── Cargo.toml
 │       └── src/
 │           └── main.rs                 # CLI: orchestrates pipeline
@@ -137,9 +137,9 @@ cyflym/
 
 **Files:**
 - Create: `Cargo.toml`
-- Create: `crates/cyflym-lexer/Cargo.toml`
-- Create: `crates/cyflym-lexer/src/lib.rs`
-- Create: `crates/cyflym-lexer/src/token.rs`
+- Create: `crates/sans-lexer/Cargo.toml`
+- Create: `crates/sans-lexer/src/lib.rs`
+- Create: `crates/sans-lexer/src/token.rs`
 
 - [ ] **Step 1: Verify Rust toolchain is installed**
 
@@ -160,27 +160,27 @@ Create `Cargo.toml` at the project root:
 [workspace]
 resolver = "2"
 members = [
-    "crates/cyflym-lexer",
-    "crates/cyflym-parser",
-    "crates/cyflym-typeck",
-    "crates/cyflym-ir",
-    "crates/cyflym-codegen",
-    "crates/cyflym-driver",
+    "crates/sans-lexer",
+    "crates/sans-parser",
+    "crates/sans-typeck",
+    "crates/sans-ir",
+    "crates/sans-codegen",
+    "crates/sans-driver",
 ]
 ```
 
 - [ ] **Step 3: Create lexer crate skeleton**
 
-Create `crates/cyflym-lexer/Cargo.toml`:
+Create `crates/sans-lexer/Cargo.toml`:
 
 ```toml
 [package]
-name = "cyflym-lexer"
+name = "sans-lexer"
 version = "0.1.0"
 edition = "2021"
 ```
 
-Create `crates/cyflym-lexer/src/token.rs`:
+Create `crates/sans-lexer/src/token.rs`:
 
 ```rust
 /// Byte offset in source code.
@@ -223,7 +223,7 @@ pub enum TokenKind {
 }
 ```
 
-Create `crates/cyflym-lexer/src/lib.rs`:
+Create `crates/sans-lexer/src/lib.rs`:
 
 ```rust
 pub mod token;
@@ -239,7 +239,7 @@ Expected: Compiles successfully (warnings about unused code are fine)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Cargo.toml crates/cyflym-lexer/
+git add Cargo.toml crates/sans-lexer/
 git commit -m "feat: initialize workspace and lexer crate skeleton"
 ```
 
@@ -248,11 +248,11 @@ git commit -m "feat: initialize workspace and lexer crate skeleton"
 ### Task 2: Implement Lexer
 
 **Files:**
-- Modify: `crates/cyflym-lexer/src/lib.rs`
+- Modify: `crates/sans-lexer/src/lib.rs`
 
 - [ ] **Step 1: Write failing tests for lexer**
 
-Add to `crates/cyflym-lexer/src/lib.rs`:
+Add to `crates/sans-lexer/src/lib.rs`:
 
 ```rust
 pub mod token;
@@ -356,12 +356,12 @@ mod tests {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p cyflym-lexer`
+Run: `cargo test -p sans-lexer`
 Expected: All tests FAIL with "not yet implemented"
 
 - [ ] **Step 3: Implement the lexer**
 
-Replace the `todo!()` in `lex()` with the full implementation in `crates/cyflym-lexer/src/lib.rs`:
+Replace the `todo!()` in `lex()` with the full implementation in `crates/sans-lexer/src/lib.rs`:
 
 ```rust
 pub mod token;
@@ -554,13 +554,13 @@ mod tests {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cargo test -p cyflym-lexer`
+Run: `cargo test -p sans-lexer`
 Expected: All 8 tests PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add crates/cyflym-lexer/
+git add crates/sans-lexer/
 git commit -m "feat: implement lexer with tokens for MVP subset"
 ```
 
@@ -571,28 +571,28 @@ git commit -m "feat: implement lexer with tokens for MVP subset"
 ### Task 3: Define AST Types
 
 **Files:**
-- Create: `crates/cyflym-parser/Cargo.toml`
-- Create: `crates/cyflym-parser/src/ast.rs`
-- Create: `crates/cyflym-parser/src/lib.rs`
+- Create: `crates/sans-parser/Cargo.toml`
+- Create: `crates/sans-parser/src/ast.rs`
+- Create: `crates/sans-parser/src/lib.rs`
 
 - [ ] **Step 1: Create parser crate with AST types**
 
-Create `crates/cyflym-parser/Cargo.toml`:
+Create `crates/sans-parser/Cargo.toml`:
 
 ```toml
 [package]
-name = "cyflym-parser"
+name = "sans-parser"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cyflym-lexer = { path = "../cyflym-lexer" }
+sans-lexer = { path = "../sans-lexer" }
 ```
 
-Create `crates/cyflym-parser/src/ast.rs`:
+Create `crates/sans-parser/src/ast.rs`:
 
 ```rust
-use cyflym_lexer::Span;
+use sans_lexer::Span;
 
 /// A complete source file.
 #[derive(Debug, Clone, PartialEq)]
@@ -676,7 +676,7 @@ pub enum BinOp {
 }
 ```
 
-Create `crates/cyflym-parser/src/lib.rs`:
+Create `crates/sans-parser/src/lib.rs`:
 
 ```rust
 pub mod ast;
@@ -686,13 +686,13 @@ pub use ast::*;
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `cargo build -p cyflym-parser`
+Run: `cargo build -p sans-parser`
 Expected: Compiles successfully
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/cyflym-parser/
+git add crates/sans-parser/
 git commit -m "feat: define AST types for MVP subset"
 ```
 
@@ -701,13 +701,13 @@ git commit -m "feat: define AST types for MVP subset"
 ### Task 4: Implement Parser
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/lib.rs`
+- Modify: `crates/sans-parser/src/lib.rs`
 
 - [ ] **Step 1: Add `Eq` token to lexer**
 
 The parser needs an `=` token for let bindings. Add it to the lexer first.
 
-In `crates/cyflym-lexer/src/token.rs`, add `Eq` to the `TokenKind` enum:
+In `crates/sans-lexer/src/token.rs`, add `Eq` to the `TokenKind` enum:
 
 ```rust
     // Operators
@@ -718,29 +718,29 @@ In `crates/cyflym-lexer/src/token.rs`, add `Eq` to the `TokenKind` enum:
     Eq,        // =
 ```
 
-In `crates/cyflym-lexer/src/lib.rs`, add to the single-character match in `lex()`:
+In `crates/sans-lexer/src/lib.rs`, add to the single-character match in `lex()`:
 
 ```rust
             b'=' => TokenKind::Eq,
 ```
 
-Run: `cargo test -p cyflym-lexer`
+Run: `cargo test -p sans-lexer`
 Expected: All existing tests still PASS
 
 - [ ] **Step 2: Write failing tests for the parser**
 
-Add to `crates/cyflym-parser/src/lib.rs`:
+Add to `crates/sans-parser/src/lib.rs`:
 
 ```rust
 pub mod ast;
 
 pub use ast::*;
-use cyflym_lexer::{Token, TokenKind, lex};
+use sans_lexer::{Token, TokenKind, lex};
 
 #[derive(Debug)]
 pub struct ParseError {
     pub message: String,
-    pub span: cyflym_lexer::Span,
+    pub span: sans_lexer::Span,
 }
 
 pub fn parse(source: &str) -> Result<Program, ParseError> {
@@ -863,12 +863,12 @@ mod tests {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cargo test -p cyflym-parser`
+Run: `cargo test -p sans-parser`
 Expected: All tests FAIL with "not yet implemented"
 
 - [ ] **Step 4: Implement the parser**
 
-Replace the `Parser` implementation in `crates/cyflym-parser/src/lib.rs` (keep tests and the `parse()` function as-is, replace only the `Parser` struct impl):
+Replace the `Parser` implementation in `crates/sans-parser/src/lib.rs` (keep tests and the `parse()` function as-is, replace only the `Parser` struct impl):
 
 ```rust
 impl Parser {
@@ -880,7 +880,7 @@ impl Parser {
         &self.tokens[self.pos].kind
     }
 
-    fn current_span(&self) -> cyflym_lexer::Span {
+    fn current_span(&self) -> sans_lexer::Span {
         self.tokens[self.pos].span.clone()
     }
 
@@ -903,7 +903,7 @@ impl Parser {
         }
     }
 
-    fn expect_identifier(&mut self) -> Result<(String, cyflym_lexer::Span), ParseError> {
+    fn expect_identifier(&mut self) -> Result<(String, sans_lexer::Span), ParseError> {
         match self.peek().clone() {
             TokenKind::Identifier(name) => {
                 let span = self.current_span();
@@ -1119,13 +1119,13 @@ fn infix_binding_power(op: BinOp) -> (u8, u8) {
 
 - [ ] **Step 5: Run all tests**
 
-Run: `cargo test -p cyflym-lexer && cargo test -p cyflym-parser`
+Run: `cargo test -p sans-lexer && cargo test -p sans-parser`
 Expected: All lexer tests PASS, all 7 parser tests PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-lexer/ crates/cyflym-parser/
+git add crates/sans-lexer/ crates/sans-parser/
 git commit -m "feat: implement parser with Pratt precedence climbing"
 ```
 
@@ -1136,26 +1136,26 @@ git commit -m "feat: implement parser with Pratt precedence climbing"
 ### Task 5: Implement Type Checker
 
 **Files:**
-- Create: `crates/cyflym-typeck/Cargo.toml`
-- Create: `crates/cyflym-typeck/src/types.rs`
-- Create: `crates/cyflym-typeck/src/lib.rs`
+- Create: `crates/sans-typeck/Cargo.toml`
+- Create: `crates/sans-typeck/src/types.rs`
+- Create: `crates/sans-typeck/src/lib.rs`
 
 - [ ] **Step 1: Create type checker crate with type definitions**
 
-Create `crates/cyflym-typeck/Cargo.toml`:
+Create `crates/sans-typeck/Cargo.toml`:
 
 ```toml
 [package]
-name = "cyflym-typeck"
+name = "sans-typeck"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cyflym-parser = { path = "../cyflym-parser" }
-cyflym-lexer = { path = "../cyflym-lexer" }
+sans-parser = { path = "../sans-parser" }
+sans-lexer = { path = "../sans-lexer" }
 ```
 
-Create `crates/cyflym-typeck/src/types.rs`:
+Create `crates/sans-typeck/src/types.rs`:
 
 ```rust
 #[derive(Debug, Clone, PartialEq)]
@@ -1187,19 +1187,19 @@ impl std::fmt::Display for Type {
 
 - [ ] **Step 2: Write failing tests for type checker**
 
-Create `crates/cyflym-typeck/src/lib.rs`:
+Create `crates/sans-typeck/src/lib.rs`:
 
 ```rust
 pub mod types;
 
 pub use types::Type;
-use cyflym_parser::*;
+use sans_parser::*;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct TypeError {
     pub message: String,
-    pub span: cyflym_lexer::Span,
+    pub span: sans_lexer::Span,
 }
 
 pub fn check(program: &Program) -> Result<(), TypeError> {
@@ -1209,7 +1209,7 @@ pub fn check(program: &Program) -> Result<(), TypeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyflym_parser::parse;
+    use sans_parser::parse;
 
     #[test]
     fn check_valid_minimal() {
@@ -1276,12 +1276,12 @@ mod tests {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cargo test -p cyflym-typeck`
+Run: `cargo test -p sans-typeck`
 Expected: All tests FAIL with "not yet implemented"
 
 - [ ] **Step 4: Implement the type checker**
 
-Replace `todo!()` and add the implementation in `crates/cyflym-typeck/src/lib.rs`. Keep tests, replace the `check` function and add supporting code:
+Replace `todo!()` and add the implementation in `crates/sans-typeck/src/lib.rs`. Keep tests, replace the `check` function and add supporting code:
 
 ```rust
 pub fn check(program: &Program) -> Result<(), TypeError> {
@@ -1486,43 +1486,43 @@ impl Checker {
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cargo test -p cyflym-typeck`
+Run: `cargo test -p sans-typeck`
 Expected: All 9 tests PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-typeck/
+git add crates/sans-typeck/
 git commit -m "feat: implement type checker with function signatures and locals"
 ```
 
 ---
 
-## Chunk 4: Cyflym IR
+## Chunk 4: Sans IR
 
-### Task 6: Implement Cyflym IR
+### Task 6: Implement Sans IR
 
 **Files:**
-- Create: `crates/cyflym-ir/Cargo.toml`
-- Create: `crates/cyflym-ir/src/ir.rs`
-- Create: `crates/cyflym-ir/src/lib.rs`
+- Create: `crates/sans-ir/Cargo.toml`
+- Create: `crates/sans-ir/src/ir.rs`
+- Create: `crates/sans-ir/src/lib.rs`
 
 - [ ] **Step 1: Create IR crate with instruction types**
 
-Create `crates/cyflym-ir/Cargo.toml`:
+Create `crates/sans-ir/Cargo.toml`:
 
 ```toml
 [package]
-name = "cyflym-ir"
+name = "sans-ir"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cyflym-parser = { path = "../cyflym-parser" }
-cyflym-lexer = { path = "../cyflym-lexer" }
+sans-parser = { path = "../sans-parser" }
+sans-lexer = { path = "../sans-lexer" }
 ```
 
-Create `crates/cyflym-ir/src/ir.rs`:
+Create `crates/sans-ir/src/ir.rs`:
 
 ```rust
 /// A complete IR module (corresponds to one source file).
@@ -1585,13 +1585,13 @@ pub enum IrBinOp {
 
 - [ ] **Step 2: Write failing tests for IR generation**
 
-Create `crates/cyflym-ir/src/lib.rs`:
+Create `crates/sans-ir/src/lib.rs`:
 
 ```rust
 pub mod ir;
 
 pub use ir::*;
-use cyflym_parser::*;
+use sans_parser::*;
 
 pub fn lower(program: &Program) -> Module {
     todo!()
@@ -1600,7 +1600,7 @@ pub fn lower(program: &Program) -> Module {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyflym_parser::parse;
+    use sans_parser::parse;
 
     #[test]
     fn lower_minimal() {
@@ -1641,12 +1641,12 @@ mod tests {
 
 - [ ] **Step 3: Run tests to verify they fail**
 
-Run: `cargo test -p cyflym-ir`
+Run: `cargo test -p sans-ir`
 Expected: All tests FAIL with "not yet implemented"
 
 - [ ] **Step 4: Implement IR lowering**
 
-Replace `todo!()` with the implementation in `crates/cyflym-ir/src/lib.rs`:
+Replace `todo!()` with the implementation in `crates/sans-ir/src/lib.rs`:
 
 ```rust
 pub fn lower(program: &Program) -> Module {
@@ -1773,13 +1773,13 @@ fn lower_function(func: &Function) -> IrFunction {
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cargo test -p cyflym-ir`
+Run: `cargo test -p sans-ir`
 Expected: All 3 tests PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-ir/
+git add crates/sans-ir/
 git commit -m "feat: implement IR lowering from AST to flat SSA instructions"
 ```
 
@@ -1790,8 +1790,8 @@ git commit -m "feat: implement IR lowering from AST to flat SSA instructions"
 ### Task 7: Implement LLVM Code Generation
 
 **Files:**
-- Create: `crates/cyflym-codegen/Cargo.toml`
-- Create: `crates/cyflym-codegen/src/lib.rs`
+- Create: `crates/sans-codegen/Cargo.toml`
+- Create: `crates/sans-codegen/src/lib.rs`
 
 - [ ] **Step 1: Verify LLVM is installed**
 
@@ -1807,25 +1807,25 @@ source ~/.zshrc
 
 - [ ] **Step 2: Create codegen crate**
 
-Create `crates/cyflym-codegen/Cargo.toml`:
+Create `crates/sans-codegen/Cargo.toml`:
 
 ```toml
 [package]
-name = "cyflym-codegen"
+name = "sans-codegen"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cyflym-ir = { path = "../cyflym-ir" }
+sans-ir = { path = "../sans-ir" }
 inkwell = { version = "0.5", features = ["llvm17-0"] }
 ```
 
 - [ ] **Step 3: Write failing tests for codegen**
 
-Create `crates/cyflym-codegen/src/lib.rs`:
+Create `crates/sans-codegen/src/lib.rs`:
 
 ```rust
-use cyflym_ir::*;
+use sans_ir::*;
 use inkwell::context::Context;
 
 #[derive(Debug)]
@@ -1846,7 +1846,7 @@ pub fn compile_to_llvm_ir(module: &Module) -> Result<String, CodegenError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyflym_ir::{Module, IrFunction, Instruction, IrBinOp};
+    use sans_ir::{Module, IrFunction, Instruction, IrBinOp};
 
     fn minimal_module() -> Module {
         Module {
@@ -1910,15 +1910,15 @@ mod tests {
 
 - [ ] **Step 4: Run tests to verify they fail**
 
-Run: `cargo test -p cyflym-codegen`
+Run: `cargo test -p sans-codegen`
 Expected: Tests FAIL with "not yet implemented"
 
 - [ ] **Step 5: Implement LLVM codegen**
 
-Replace the `todo!()` implementations in `crates/cyflym-codegen/src/lib.rs`:
+Replace the `todo!()` implementations in `crates/sans-codegen/src/lib.rs`:
 
 ```rust
-use cyflym_ir::*;
+use sans_ir::*;
 use inkwell::context::Context;
 use inkwell::module::Module as LlvmModule;
 use inkwell::builder::Builder;
@@ -2071,7 +2071,7 @@ fn generate_llvm<'ctx>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cyflym_ir::{Module, IrFunction, Instruction, IrBinOp};
+    use sans_ir::{Module, IrFunction, Instruction, IrBinOp};
 
     fn minimal_module() -> Module {
         Module {
@@ -2135,14 +2135,14 @@ mod tests {
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cargo test -p cyflym-codegen`
+Run: `cargo test -p sans-codegen`
 Expected: Both tests PASS
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add crates/cyflym-codegen/
-git commit -m "feat: implement LLVM codegen from Cyflym IR"
+git add crates/sans-codegen/
+git commit -m "feat: implement LLVM codegen from Sans IR"
 ```
 
 ---
@@ -2152,12 +2152,12 @@ git commit -m "feat: implement LLVM codegen from Cyflym IR"
 ### Task 8: Implement Driver CLI
 
 **Files:**
-- Create: `crates/cyflym-driver/Cargo.toml`
-- Create: `crates/cyflym-driver/src/main.rs`
+- Create: `crates/sans-driver/Cargo.toml`
+- Create: `crates/sans-driver/src/main.rs`
 
 - [ ] **Step 1: Create driver crate**
 
-Create `crates/cyflym-driver/Cargo.toml`:
+Create `crates/sans-driver/Cargo.toml`:
 
 ```toml
 [package]
@@ -2166,14 +2166,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cyflym-lexer = { path = "../cyflym-lexer" }
-cyflym-parser = { path = "../cyflym-parser" }
-cyflym-typeck = { path = "../cyflym-typeck" }
-cyflym-ir = { path = "../cyflym-ir" }
-cyflym-codegen = { path = "../cyflym-codegen" }
+sans-lexer = { path = "../sans-lexer" }
+sans-parser = { path = "../sans-parser" }
+sans-typeck = { path = "../sans-typeck" }
+sans-ir = { path = "../sans-ir" }
+sans-codegen = { path = "../sans-codegen" }
 ```
 
-Create `crates/cyflym-driver/src/main.rs`:
+Create `crates/sans-driver/src/main.rs`:
 
 ```rust
 use std::env;
@@ -2184,7 +2184,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 3 {
-        eprintln!("Usage: cyflym build <file.cy>");
+        eprintln!("Usage: sans build <file.cy>");
         std::process::exit(1);
     }
 
@@ -2211,19 +2211,19 @@ fn build(input_path: &str) -> Result<(), String> {
         .map_err(|e| format!("cannot read {}: {}", input_path, e))?;
 
     // Parse
-    let program = cyflym_parser::parse(&source)
+    let program = sans_parser::parse(&source)
         .map_err(|e| format!("parse error at {:?}: {}", e.span, e.message))?;
 
     // Type check
-    cyflym_typeck::check(&program)
+    sans_typeck::check(&program)
         .map_err(|e| format!("type error at {:?}: {}", e.span, e.message))?;
 
     // Lower to IR
-    let ir_module = cyflym_ir::lower(&program);
+    let ir_module = sans_ir::lower(&program);
 
     // Codegen to object file
     let obj_path = input_path.replace(".cy", ".o");
-    cyflym_codegen::compile_to_object(&ir_module, &obj_path)
+    sans_codegen::compile_to_object(&ir_module, &obj_path)
         .map_err(|e| format!("codegen error: {}", e.message))?;
 
     // Link with system linker
@@ -2253,7 +2253,7 @@ Expected: Compiles successfully
 - [ ] **Step 3: Commit**
 
 ```bash
-git add crates/cyflym-driver/
+git add crates/sans-driver/
 git commit -m "feat: implement driver CLI with build command"
 ```
 
@@ -2323,7 +2323,7 @@ Expected: Compiles successfully
 
 Run:
 ```bash
-./target/release/cyflym build tests/fixtures/minimal.cy
+./target/release/sans build tests/fixtures/minimal.cy
 ./tests/fixtures/minimal
 echo $?
 ```
@@ -2333,7 +2333,7 @@ Expected: Exit code `42`
 
 Run:
 ```bash
-./target/release/cyflym build tests/fixtures/let_binding.cy
+./target/release/sans build tests/fixtures/let_binding.cy
 ./tests/fixtures/let_binding
 echo $?
 ```
@@ -2343,7 +2343,7 @@ Expected: Exit code `42` (10 + 32 = 42)
 
 Run:
 ```bash
-./target/release/cyflym build tests/fixtures/function_call.cy
+./target/release/sans build tests/fixtures/function_call.cy
 ./tests/fixtures/function_call
 echo $?
 ```
@@ -2353,7 +2353,7 @@ Expected: Exit code `42` (20 + 22 = 42)
 
 Run:
 ```bash
-./target/release/cyflym build tests/fixtures/full_mvp.cy
+./target/release/sans build tests/fixtures/full_mvp.cy
 ./tests/fixtures/full_mvp
 echo $?
 ```
@@ -2372,13 +2372,13 @@ git commit -m "feat: add end-to-end test fixtures — MVP compiler works!"
 
 After completing all tasks, you will have:
 
-1. **Lexer** (`cyflym-lexer`) — tokenizes `.cy` source into tokens
-2. **Parser** (`cyflym-parser`) — parses tokens into an AST with operator precedence
-3. **Type Checker** (`cyflym-typeck`) — validates types, catches undefined vars/functions
-4. **IR** (`cyflym-ir`) — lowers AST to flat SSA-style intermediate representation
-5. **Codegen** (`cyflym-codegen`) — compiles Cyflym IR to native code via LLVM
-6. **Driver** (`cyflym-driver`) — `cyflym build` command that orchestrates the pipeline
+1. **Lexer** (`sans-lexer`) — tokenizes `.cy` source into tokens
+2. **Parser** (`sans-parser`) — parses tokens into an AST with operator precedence
+3. **Type Checker** (`sans-typeck`) — validates types, catches undefined vars/functions
+4. **IR** (`sans-ir`) — lowers AST to flat SSA-style intermediate representation
+5. **Codegen** (`sans-codegen`) — compiles Sans IR to native code via LLVM
+6. **Driver** (`sans-driver`) — `sans build` command that orchestrates the pipeline
 
-The Cyflym compiler can compile programs with integer arithmetic, let bindings, functions, and function calls to native binaries. This is the foundation for all subsequent plans.
+The Sans compiler can compile programs with integer arithmetic, let bindings, functions, and function calls to native binaries. This is the foundation for all subsequent plans.
 
 **Next plan:** Plan 2 will add strings, booleans, `if`/`else`, `while`, `return`, `mut`, type inference, and `print()`.

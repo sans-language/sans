@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add OS-thread-based concurrency to Cyflym with `spawn`, `channel`, and `join` — no runtime, no external dependencies beyond libc.
+Add OS-thread-based concurrency to Sans with `spawn`, `channel`, and `join` — no runtime, no external dependencies beyond libc.
 
 ## Decisions
 

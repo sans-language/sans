@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add mutex with explicit lock/unlock and bounded channels with blocking send to the Cyflym compiler.
+**Goal:** Add mutex with explicit lock/unlock and bounded channels with blocking send to the Sans compiler.
 
 **Architecture:** New `mutex` keyword and `Mutex` type flow through lexer → parser → typeck → IR → codegen, following the exact same pattern as Plan 5a's spawn/channel. Bounded channels modify `ChannelCreate` AST with optional capacity and add `ChannelCreateBounded` IR instruction. Both features codegen to pthread syscalls.
 
@@ -16,16 +16,16 @@
 
 | File | Action | Responsibility |
 |---|---|---|
-| `crates/cyflym-lexer/src/token.rs` | Modify | Add `Mutex` token variant |
-| `crates/cyflym-lexer/src/lib.rs` | Modify | Add `mutex` keyword mapping + 1 test |
-| `crates/cyflym-parser/src/ast.rs` | Modify | Add `MutexCreate` expr, add `capacity` to `ChannelCreate` |
-| `crates/cyflym-parser/src/lib.rs` | Modify | Parse `mutex(expr)`, parse `channel<T>(cap)`, update `expr_span` + 3 tests |
-| `crates/cyflym-typeck/src/types.rs` | Modify | Add `Mutex` type variant + Display impl |
-| `crates/cyflym-typeck/src/lib.rs` | Modify | Type check mutex/lock/unlock, bounded channel capacity + 5 tests |
-| `crates/cyflym-ir/src/ir.rs` | Modify | Add `MutexCreate`, `MutexLock`, `MutexUnlock`, `ChannelCreateBounded` instructions |
-| `crates/cyflym-ir/src/lib.rs` | Modify | Add `Mutex` to `IrType`, lower mutex + bounded channel + 3 tests |
-| `crates/cyflym-codegen/src/lib.rs` | Modify | Codegen for mutex (72-byte struct), update channel to 208-byte struct, bounded send/recv + 2 tests |
-| `crates/cyflym-driver/tests/e2e.rs` | Modify | Add 3 E2E test entries |
+| `crates/sans-lexer/src/token.rs` | Modify | Add `Mutex` token variant |
+| `crates/sans-lexer/src/lib.rs` | Modify | Add `mutex` keyword mapping + 1 test |
+| `crates/sans-parser/src/ast.rs` | Modify | Add `MutexCreate` expr, add `capacity` to `ChannelCreate` |
+| `crates/sans-parser/src/lib.rs` | Modify | Parse `mutex(expr)`, parse `channel<T>(cap)`, update `expr_span` + 3 tests |
+| `crates/sans-typeck/src/types.rs` | Modify | Add `Mutex` type variant + Display impl |
+| `crates/sans-typeck/src/lib.rs` | Modify | Type check mutex/lock/unlock, bounded channel capacity + 5 tests |
+| `crates/sans-ir/src/ir.rs` | Modify | Add `MutexCreate`, `MutexLock`, `MutexUnlock`, `ChannelCreateBounded` instructions |
+| `crates/sans-ir/src/lib.rs` | Modify | Add `Mutex` to `IrType`, lower mutex + bounded channel + 3 tests |
+| `crates/sans-codegen/src/lib.rs` | Modify | Codegen for mutex (72-byte struct), update channel to 208-byte struct, bounded send/recv + 2 tests |
+| `crates/sans-driver/tests/e2e.rs` | Modify | Add 3 E2E test entries |
 | `tests/fixtures/mutex_basic.cy` | Create | Single-threaded mutex test |
 | `tests/fixtures/mutex_threaded.cy` | Create | Multi-threaded mutex test |
 | `tests/fixtures/channel_bounded.cy` | Create | Bounded channel test |
@@ -37,12 +37,12 @@
 ### Task 1: Lexer — Add `mutex` keyword
 
 **Files:**
-- Modify: `crates/cyflym-lexer/src/token.rs:61-63`
-- Modify: `crates/cyflym-lexer/src/lib.rs:82-83` (keyword map) and tests
+- Modify: `crates/sans-lexer/src/token.rs:61-63`
+- Modify: `crates/sans-lexer/src/lib.rs:82-83` (keyword map) and tests
 
 - [ ] **Step 1: Write the failing test**
 
-In `crates/cyflym-lexer/src/lib.rs`, add after the `lex_channel_keyword` test (line ~420):
+In `crates/sans-lexer/src/lib.rs`, add after the `lex_channel_keyword` test (line ~420):
 
 ```rust
     #[test]
@@ -54,12 +54,12 @@ In `crates/cyflym-lexer/src/lib.rs`, add after the `lex_channel_keyword` test (l
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer -- lex_mutex_keyword`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-lexer -- lex_mutex_keyword`
 Expected: FAIL — `Mutex` variant doesn't exist
 
 - [ ] **Step 3: Add `Mutex` token variant**
 
-In `crates/cyflym-lexer/src/token.rs`, add after `Channel,` (line 63):
+In `crates/sans-lexer/src/token.rs`, add after `Channel,` (line 63):
 
 ```rust
     Mutex,
@@ -67,7 +67,7 @@ In `crates/cyflym-lexer/src/token.rs`, add after `Channel,` (line 63):
 
 - [ ] **Step 4: Add keyword mapping**
 
-In `crates/cyflym-lexer/src/lib.rs`, add after `"channel" => TokenKind::Channel,` (line 83):
+In `crates/sans-lexer/src/lib.rs`, add after `"channel" => TokenKind::Channel,` (line 83):
 
 ```rust
                     "mutex" => TokenKind::Mutex,
@@ -75,13 +75,13 @@ In `crates/cyflym-lexer/src/lib.rs`, add after `"channel" => TokenKind::Channel,
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-lexer -- lex_mutex_keyword`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-lexer -- lex_mutex_keyword`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/cyflym-lexer/src/token.rs crates/cyflym-lexer/src/lib.rs
+git add crates/sans-lexer/src/token.rs crates/sans-lexer/src/lib.rs
 git commit -m "feat(lexer): add mutex keyword token"
 ```
 
@@ -90,12 +90,12 @@ git commit -m "feat(lexer): add mutex keyword token"
 ### Task 2: Parser & AST — Add `MutexCreate` expression and bounded `ChannelCreate`
 
 **Files:**
-- Modify: `crates/cyflym-parser/src/ast.rs:181-184`
-- Modify: `crates/cyflym-parser/src/lib.rs:716-726` (channel parsing), atom parsing, `expr_span`
+- Modify: `crates/sans-parser/src/ast.rs:181-184`
+- Modify: `crates/sans-parser/src/lib.rs:716-726` (channel parsing), atom parsing, `expr_span`
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-parser/src/lib.rs`, add after the `parse_spawn_no_args` test (line ~1469):
+In `crates/sans-parser/src/lib.rs`, add after the `parse_spawn_no_args` test (line ~1469):
 
 ```rust
     #[test]
@@ -146,12 +146,12 @@ In `crates/cyflym-parser/src/lib.rs`, add after the `parse_spawn_no_args` test (
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-parser -- parse_mutex_create parse_bounded_channel parse_lock_unlock`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-parser -- parse_mutex_create parse_bounded_channel parse_lock_unlock`
 Expected: FAIL — `MutexCreate` variant doesn't exist, capacity field doesn't exist
 
 - [ ] **Step 3: Update AST**
 
-In `crates/cyflym-parser/src/ast.rs`, replace the `ChannelCreate` variant (lines 181-184):
+In `crates/sans-parser/src/ast.rs`, replace the `ChannelCreate` variant (lines 181-184):
 
 ```rust
     ChannelCreate {
@@ -167,7 +167,7 @@ In `crates/cyflym-parser/src/ast.rs`, replace the `ChannelCreate` variant (lines
 
 - [ ] **Step 4: Update `expr_span` function**
 
-In `crates/cyflym-parser/src/lib.rs`, in the `expr_span` function (around line 921), add after the `ChannelCreate` match arm:
+In `crates/sans-parser/src/lib.rs`, in the `expr_span` function (around line 921), add after the `ChannelCreate` match arm:
 
 ```rust
         Expr::MutexCreate { span, .. } => span,
@@ -175,7 +175,7 @@ In `crates/cyflym-parser/src/lib.rs`, in the `expr_span` function (around line 9
 
 - [ ] **Step 5: Update channel parser for optional capacity**
 
-In `crates/cyflym-parser/src/lib.rs`, replace the `TokenKind::Channel` arm (lines 716-726):
+In `crates/sans-parser/src/lib.rs`, replace the `TokenKind::Channel` arm (lines 716-726):
 
 ```rust
             TokenKind::Channel => {
@@ -198,7 +198,7 @@ In `crates/cyflym-parser/src/lib.rs`, replace the `TokenKind::Channel` arm (line
 
 - [ ] **Step 6: Add `mutex` parser**
 
-In `crates/cyflym-parser/src/lib.rs`, add a new arm before the `TokenKind::Channel` arm:
+In `crates/sans-parser/src/lib.rs`, add a new arm before the `TokenKind::Channel` arm:
 
 ```rust
             TokenKind::Mutex => {
@@ -220,13 +220,13 @@ Update the statement-at-end-of-block check in `parse_block_body` if it reference
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-parser`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-parser`
 Expected: All parser tests PASS (existing + 3 new)
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/cyflym-parser/src/ast.rs crates/cyflym-parser/src/lib.rs
+git add crates/sans-parser/src/ast.rs crates/sans-parser/src/lib.rs
 git commit -m "feat(parser): add mutex(expr) and channel<T>(cap) syntax"
 ```
 
@@ -235,12 +235,12 @@ git commit -m "feat(parser): add mutex(expr) and channel<T>(cap) syntax"
 ### Task 3: Type System — Add `Mutex` type, type check mutex operations and bounded channel capacity
 
 **Files:**
-- Modify: `crates/cyflym-typeck/src/types.rs:1-35`
-- Modify: `crates/cyflym-typeck/src/lib.rs:154-166` (LetDestructure), `816-819` (ChannelCreate expr), `821-851` (MethodCall)
+- Modify: `crates/sans-typeck/src/types.rs:1-35`
+- Modify: `crates/sans-typeck/src/lib.rs:154-166` (LetDestructure), `816-819` (ChannelCreate expr), `821-851` (MethodCall)
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-typeck/src/lib.rs`, add after the last concurrency test:
+In `crates/sans-typeck/src/lib.rs`, add after the last concurrency test:
 
 ```rust
     #[test]
@@ -282,12 +282,12 @@ In `crates/cyflym-typeck/src/lib.rs`, add after the last concurrency test:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck -- check_mutex`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-typeck -- check_mutex`
 Expected: FAIL — `Mutex` variant doesn't exist, `MutexCreate` not handled
 
 - [ ] **Step 3: Add `Mutex` type variant**
 
-In `crates/cyflym-typeck/src/types.rs`, add after `Receiver { inner: Box<Type> },` (line 11):
+In `crates/sans-typeck/src/types.rs`, add after `Receiver { inner: Box<Type> },` (line 11):
 
 ```rust
     Mutex { inner: Box<Type> },
@@ -301,7 +301,7 @@ And in the Display impl, add before the `Type::Fn` arm:
 
 - [ ] **Step 4: Add `MutexCreate` expression type checking**
 
-In `crates/cyflym-typeck/src/lib.rs`, add after the `Expr::ChannelCreate` arm (around line 819):
+In `crates/sans-typeck/src/lib.rs`, add after the `Expr::ChannelCreate` arm (around line 819):
 
 ```rust
         Expr::MutexCreate { value, .. } => {
@@ -312,7 +312,7 @@ In `crates/cyflym-typeck/src/lib.rs`, add after the `Expr::ChannelCreate` arm (a
 
 - [ ] **Step 5: Add mutex method type checking**
 
-In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::MethodCall` match (around line 825), add after the `JoinHandle` / `join` arm:
+In `crates/sans-typeck/src/lib.rs`, in the `Expr::MethodCall` match (around line 825), add after the `JoinHandle` / `join` arm:
 
 ```rust
                 (Type::Mutex { inner }, "lock") => {
@@ -337,7 +337,7 @@ In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::MethodCall` match (around li
 
 - [ ] **Step 6: Update `ChannelCreate` expr type checking for capacity**
 
-In `crates/cyflym-typeck/src/lib.rs`, replace the `Expr::ChannelCreate` arm (line ~816-818):
+In `crates/sans-typeck/src/lib.rs`, replace the `Expr::ChannelCreate` arm (line ~816-818):
 
 ```rust
         Expr::ChannelCreate { element_type, capacity, .. } => {
@@ -356,7 +356,7 @@ In `crates/cyflym-typeck/src/lib.rs`, replace the `Expr::ChannelCreate` arm (lin
 
 - [ ] **Step 6b: Update `LetDestructure` handler for capacity type checking**
 
-In `crates/cyflym-typeck/src/lib.rs`, replace the `Stmt::LetDestructure` arm (lines ~154-166). The existing handler pattern-matches `ChannelCreate` directly without calling `check_expr`, so the capacity is never type-checked. Fix by adding capacity validation:
+In `crates/sans-typeck/src/lib.rs`, replace the `Stmt::LetDestructure` arm (lines ~154-166). The existing handler pattern-matches `ChannelCreate` directly without calling `check_expr`, so the capacity is never type-checked. Fix by adding capacity validation:
 
 ```rust
         Stmt::LetDestructure { names, value, .. } => {
@@ -385,7 +385,7 @@ In `crates/cyflym-typeck/src/lib.rs`, replace the `Stmt::LetDestructure` arm (li
 
 - [ ] **Step 7: Update spawn compatibility for Mutex type**
 
-In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::Spawn` arm (around line 801), update the compatibility check to also allow `Mutex`:
+In `crates/sans-typeck/src/lib.rs`, in the `Expr::Spawn` arm (around line 801), update the compatibility check to also allow `Mutex`:
 
 ```rust
                     let compatible = actual == *expected
@@ -394,13 +394,13 @@ In `crates/cyflym-typeck/src/lib.rs`, in the `Expr::Spawn` arm (around line 801)
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-typeck`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-typeck`
 Expected: All typeck tests PASS (existing + 6 new)
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/cyflym-typeck/src/types.rs crates/cyflym-typeck/src/lib.rs
+git add crates/sans-typeck/src/types.rs crates/sans-typeck/src/lib.rs
 git commit -m "feat(typeck): add Mutex type with lock/unlock checking, bounded channel capacity"
 ```
 
@@ -411,17 +411,17 @@ git commit -m "feat(typeck): add Mutex type with lock/unlock checking, bounded c
 ### Task 4: IR — Add mutex instructions, `ChannelCreateBounded`, and `Mutex` IrType
 
 **Files:**
-- Modify: `crates/cyflym-ir/src/ir.rs:47-68`
-- Modify: `crates/cyflym-ir/src/lib.rs:9` (IrType), `450-484` (MethodCall lowering), `629-632` (ChannelCreate), `708-724` (LetDestructure)
+- Modify: `crates/sans-ir/src/ir.rs:47-68`
+- Modify: `crates/sans-ir/src/lib.rs:9` (IrType), `450-484` (MethodCall lowering), `629-632` (ChannelCreate), `708-724` (LetDestructure)
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-ir/src/lib.rs`, add after the last concurrency IR test:
+In `crates/sans-ir/src/lib.rs`, add after the last concurrency IR test:
 
 ```rust
     #[test]
     fn lower_mutex_create_lock_unlock() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
         ).unwrap();
         let module = lower(&prog);
@@ -436,7 +436,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last concurrency IR test:
 
     #[test]
     fn lower_bounded_channel() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>(10) tx.send(1) rx.recv() }"
         ).unwrap();
         let module = lower(&prog);
@@ -447,7 +447,7 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last concurrency IR test:
 
     #[test]
     fn lower_unbounded_channel_unchanged() {
-        let prog = cyflym_parser::parse(
+        let prog = sans_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>() tx.send(1) rx.recv() }"
         ).unwrap();
         let module = lower(&prog);
@@ -461,12 +461,12 @@ In `crates/cyflym-ir/src/lib.rs`, add after the last concurrency IR test:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-ir -- lower_mutex lower_bounded lower_unbounded`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-ir -- lower_mutex lower_bounded lower_unbounded`
 Expected: FAIL — `MutexCreate` variant doesn't exist on Instruction
 
 - [ ] **Step 3: Add IR instructions**
 
-In `crates/cyflym-ir/src/ir.rs`, add after `ChannelRecv` (line ~68):
+In `crates/sans-ir/src/ir.rs`, add after `ChannelRecv` (line ~68):
 
 ```rust
     // Mutex operations
@@ -492,7 +492,7 @@ In `crates/cyflym-ir/src/ir.rs`, add after `ChannelRecv` (line ~68):
 
 - [ ] **Step 4: Add `Mutex` to `IrType`**
 
-In `crates/cyflym-ir/src/lib.rs`, update line 9:
+In `crates/sans-ir/src/lib.rs`, update line 9:
 
 ```rust
 enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex }
@@ -500,7 +500,7 @@ enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, Jo
 
 - [ ] **Step 5: Add `MutexCreate` expression lowering**
 
-In `crates/cyflym-ir/src/lib.rs`, add before the `Expr::ChannelCreate` arm (around line 629):
+In `crates/sans-ir/src/lib.rs`, add before the `Expr::ChannelCreate` arm (around line 629):
 
 ```rust
             Expr::MutexCreate { value, .. } => {
@@ -517,7 +517,7 @@ In `crates/cyflym-ir/src/lib.rs`, add before the `Expr::ChannelCreate` arm (arou
 
 - [ ] **Step 6: Add mutex method lowering**
 
-In `crates/cyflym-ir/src/lib.rs`, in the `Expr::MethodCall` match (around line 454), add after the `JoinHandle` / `join` arm:
+In `crates/sans-ir/src/lib.rs`, in the `Expr::MethodCall` match (around line 454), add after the `JoinHandle` / `join` arm:
 
 ```rust
                     (Some(IrType::Mutex), "lock") => {
@@ -544,7 +544,7 @@ In `crates/cyflym-ir/src/lib.rs`, in the `Expr::MethodCall` match (around line 4
 
 - [ ] **Step 7: Update `LetDestructure` for bounded channels**
 
-In `crates/cyflym-ir/src/lib.rs`, replace the `Stmt::LetDestructure` arm (lines ~708-724):
+In `crates/sans-ir/src/lib.rs`, replace the `Stmt::LetDestructure` arm (lines ~708-724):
 
 ```rust
             Stmt::LetDestructure { names, value, .. } => {
@@ -577,13 +577,13 @@ In `crates/cyflym-ir/src/lib.rs`, replace the `Stmt::LetDestructure` arm (lines 
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-ir`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-ir`
 Expected: All IR tests PASS (existing + 3 new)
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/cyflym-ir/src/ir.rs crates/cyflym-ir/src/lib.rs
+git add crates/sans-ir/src/ir.rs crates/sans-ir/src/lib.rs
 git commit -m "feat(ir): add MutexCreate/Lock/Unlock and ChannelCreateBounded instructions"
 ```
 
@@ -592,7 +592,7 @@ git commit -m "feat(ir): add MutexCreate/Lock/Unlock and ChannelCreateBounded in
 ### Task 5: Codegen — Mutex operations, updated channel struct, bounded send/recv
 
 **Files:**
-- Modify: `crates/cyflym-codegen/src/lib.rs:472-651` (channel codegen), add mutex codegen
+- Modify: `crates/sans-codegen/src/lib.rs:472-651` (channel codegen), add mutex codegen
 
 This is the largest task. It modifies the codegen for:
 1. Mutex: MutexCreate (72-byte struct), MutexLock, MutexUnlock
@@ -603,16 +603,16 @@ This is the largest task. It modifies the codegen for:
 
 - [ ] **Step 1: Write the failing tests**
 
-In `crates/cyflym-codegen/src/lib.rs`, add after the last concurrency codegen test:
+In `crates/sans-codegen/src/lib.rs`, add after the last concurrency codegen test:
 
 ```rust
     #[test]
     fn codegen_mutex_create_lock_unlock() {
-        let program = cyflym_parser::parse(
+        let program = sans_parser::parse(
             "fn main() Int { let m = mutex(5) let v = m.lock() m.unlock(v) 0 }"
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        sans_typeck::check(&program).unwrap();
+        let ir = sans_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -620,11 +620,11 @@ In `crates/cyflym-codegen/src/lib.rs`, add after the last concurrency codegen te
 
     #[test]
     fn codegen_bounded_channel() {
-        let program = cyflym_parser::parse(
+        let program = sans_parser::parse(
             "fn main() Int { let (tx, rx) = channel<Int>(4) tx.send(1) rx.recv() }"
         ).unwrap();
-        cyflym_typeck::check(&program).unwrap();
-        let ir = cyflym_ir::lower(&program);
+        sans_typeck::check(&program).unwrap();
+        let ir = sans_ir::lower(&program);
         let context = Context::create();
         let result = generate_llvm(&context, &ir);
         assert!(result.is_ok(), "codegen failed: {:?}", result.err());
@@ -633,12 +633,12 @@ In `crates/cyflym-codegen/src/lib.rs`, add after the last concurrency codegen te
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-codegen -- codegen_mutex codegen_bounded`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-codegen -- codegen_mutex codegen_bounded`
 Expected: FAIL — no match for `MutexCreate` / `ChannelCreateBounded` in codegen
 
 - [ ] **Step 3: Update ChannelCreate to 208-byte layout**
 
-In `crates/cyflym-codegen/src/lib.rs`, replace the `Instruction::ChannelCreate` arm (lines ~472-539). The key changes are:
+In `crates/sans-codegen/src/lib.rs`, replace the `Instruction::ChannelCreate` arm (lines ~472-539). The key changes are:
 - Allocate 208 bytes (26 i64s) instead of 152
 - Init second condvar at offset 19
 - Set `is_bounded` to 0 at offset 25
@@ -1160,13 +1160,13 @@ Add after the `ThreadJoin` arm (before the closing `}` of the instruction match)
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-codegen`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-codegen`
 Expected: All codegen tests PASS (existing + 2 new)
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add crates/cyflym-codegen/src/lib.rs
+git add crates/sans-codegen/src/lib.rs
 git commit -m "feat(codegen): add mutex ops, bounded channels, and buffer growth for unbounded channels"
 ```
 
@@ -1178,7 +1178,7 @@ git commit -m "feat(codegen): add mutex ops, bounded channels, and buffer growth
 - Create: `tests/fixtures/mutex_basic.cy`
 - Create: `tests/fixtures/mutex_threaded.cy`
 - Create: `tests/fixtures/channel_bounded.cy`
-- Modify: `crates/cyflym-driver/tests/e2e.rs`
+- Modify: `crates/sans-driver/tests/e2e.rs`
 
 - [ ] **Step 1: Create `mutex_basic.cy`**
 
@@ -1243,7 +1243,7 @@ Expected exit code: 30
 
 - [ ] **Step 4: Add E2E test entries**
 
-In `crates/cyflym-driver/tests/e2e.rs`, add:
+In `crates/sans-driver/tests/e2e.rs`, add:
 
 ```rust
 #[test]
@@ -1264,7 +1264,7 @@ fn e2e_channel_bounded() {
 
 - [ ] **Step 5: Run all E2E tests**
 
-Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p cyflym-driver`
+Run: `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test -p sans-driver`
 Expected: All E2E tests PASS (11 existing + 3 new = 14)
 
 - [ ] **Step 6: Run full test suite**
@@ -1275,6 +1275,6 @@ Expected: ~194 tests PASS
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tests/fixtures/mutex_basic.cy tests/fixtures/mutex_threaded.cy tests/fixtures/channel_bounded.cy crates/cyflym-driver/tests/e2e.rs
+git add tests/fixtures/mutex_basic.cy tests/fixtures/mutex_threaded.cy tests/fixtures/channel_bounded.cy crates/sans-driver/tests/e2e.rs
 git commit -m "feat: add mutex and bounded channel E2E tests"
 ```

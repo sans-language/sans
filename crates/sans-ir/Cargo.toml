@@ -1,0 +1,9 @@
+[package]
+name = "sans-ir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sans-parser = { path = "../sans-parser" }
+sans-lexer = { path = "../sans-lexer" }
+sans-typeck = { path = "../sans-typeck" }

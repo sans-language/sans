@@ -18,7 +18,7 @@ Add minimal multi-file compilation via `import "path"` syntax with module-prefix
 
 ## Decisions
 
-- **Path resolution:** Relative to the directory containing the file passed to `cyflym build`. `import "utils"` resolves to `utils.cy`, `import "models/user"` resolves to `models/user.cy`.
+- **Path resolution:** Relative to the directory containing the file passed to `sans build`. `import "utils"` resolves to `utils.cy`, `import "models/user"` resolves to `models/user.cy`.
 - **Module prefix:** Last path segment. `import "models/user"` → prefix `user`. Access as `user.function()`.
 - **Visibility:** All top-level functions, structs, and enums are public. No `pub` keyword in this plan.
 - **Importable items:** Functions, structs, enums. Traits and impl blocks are NOT importable.
@@ -197,7 +197,7 @@ None. Codegen receives a flat list of IR functions with mangled names and compil
 
 ## Driver Changes
 
-The driver (`crates/cyflym-driver/src/main.rs`) is updated to:
+The driver (`crates/sans-driver/src/main.rs`) is updated to:
 
 1. Parse the entry point file.
 2. Recursively discover and parse all imported files.
@@ -210,7 +210,7 @@ The driver (`crates/cyflym-driver/src/main.rs`) is updated to:
 
 ### Import Resolution Interface
 
-Import resolution lives in a new module in the driver crate: `crates/cyflym-driver/src/imports.rs`.
+Import resolution lives in a new module in the driver crate: `crates/sans-driver/src/imports.rs`.
 
 ```rust
 pub struct ResolvedModule {

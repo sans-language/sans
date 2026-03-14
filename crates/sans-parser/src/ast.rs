@@ -1,4 +1,4 @@
-use cyflym_lexer::token::Span;
+use sans_lexer::token::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Import {

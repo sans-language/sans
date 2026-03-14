@@ -1,6 +1,6 @@
 pub mod ast;
 
-use cyflym_lexer::token::{Span, Token, TokenKind};
+use sans_lexer::token::{Span, Token, TokenKind};
 use ast::*;
 
 /// An error produced during parsing.
@@ -18,7 +18,7 @@ impl ParseError {
 
 /// Parse the given source string into a `Program`.
 pub fn parse(source: &str) -> Result<Program, ParseError> {
-    let tokens = cyflym_lexer::lex(source).map_err(|e| ParseError {
+    let tokens = sans_lexer::lex(source).map_err(|e| ParseError {
         message: e.message,
         span: e.span,
     })?;
@@ -912,8 +912,8 @@ impl Parser {
         })
     }
 
-    fn desugar_interpolated_string(&self, parts: Vec<cyflym_lexer::token::StringPart>, span: Span) -> Result<Expr, ParseError> {
-        use cyflym_lexer::token::StringPart;
+    fn desugar_interpolated_string(&self, parts: Vec<sans_lexer::token::StringPart>, span: Span) -> Result<Expr, ParseError> {
+        use sans_lexer::token::StringPart;
         let mut result: Option<Expr> = None;
         for part in parts {
             let expr = match part {

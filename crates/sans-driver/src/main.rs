@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 use std::process;
 
-use cyflym::imports;
+use sans::imports;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() < 3 {
-        eprintln!("Usage: cyflym <build|run> <file.cy>");
+        eprintln!("Usage: sans <build|run> <file.cy>");
         process::exit(1);
     }
 
@@ -31,7 +31,7 @@ fn main() {
             }
         }
         other => {
-            eprintln!("unknown command '{}'. Usage: cyflym <build|run> <file.cy>", other);
+            eprintln!("unknown command '{}'. Usage: sans <build|run> <file.cy>", other);
             process::exit(1);
         }
     }
@@ -72,7 +72,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     // Step 2: Read and parse the entry point
     let source = std::fs::read_to_string(source_path)
         .map_err(|e| format!("could not read '{}': {}", source_path.display(), e))?;
-    let main_program = cyflym_parser::parse(&source).map_err(|e| {
+    let main_program = sans_parser::parse(&source).map_err(|e| {
         format!(
             "parse error at {}..{}: {}",
             e.span.start, e.span.end, e.message
@@ -80,25 +80,25 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     })?;
 
     // Step 3: Type-check in dependency order, collecting module exports
-    let mut module_exports: std::collections::HashMap<String, cyflym_typeck::ModuleExports> =
+    let mut module_exports: std::collections::HashMap<String, sans_typeck::ModuleExports> =
         std::collections::HashMap::new();
 
     for module in &resolved_modules {
-        let exports = cyflym_typeck::check_module(&module.program, &module_exports)
+        let exports = sans_typeck::check_module(&module.program, &module_exports)
             .map_err(|e| format!("type error in module '{}': {}", module.name, e.message))?;
         module_exports.insert(module.name.clone(), exports);
     }
 
     // Type-check main module
-    cyflym_typeck::check(&main_program, &module_exports)
+    sans_typeck::check(&main_program, &module_exports)
         .map_err(|e| format!("type error: {}", e.message))?;
 
     // Step 4: Build module_fn_ret_types for IR lowering
-    let mut module_fn_ret_types: std::collections::HashMap<(String, String), cyflym_ir::IrType> =
+    let mut module_fn_ret_types: std::collections::HashMap<(String, String), sans_ir::IrType> =
         std::collections::HashMap::new();
     for (mod_name, exports) in &module_exports {
         for (func_name, sig) in &exports.functions {
-            let ir_type = cyflym_ir::ir_type_for_return(&sig.return_type);
+            let ir_type = sans_ir::ir_type_for_return(&sig.return_type);
             module_fn_ret_types.insert((mod_name.clone(), func_name.clone()), ir_type);
         }
     }
@@ -117,14 +117,14 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     let mut all_ir_functions = Vec::new();
 
     for module in &resolved_modules {
-        let ir = cyflym_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
+        let ir = sans_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
 
-    let main_ir = cyflym_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
+    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
     all_ir_functions.extend(main_ir.functions);
 
-    let merged_module = cyflym_ir::ir::Module {
+    let merged_module = sans_ir::ir::Module {
         functions: all_ir_functions,
     };
 
@@ -134,7 +134,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         .to_str()
         .ok_or_else(|| "object path contains invalid UTF-8".to_string())?;
 
-    cyflym_codegen::compile_to_object(&merged_module, obj_path_str)
+    sans_codegen::compile_to_object(&merged_module, obj_path_str)
         .map_err(|e| format!("codegen error: {}", e))?;
 
     // Step 8: Link
@@ -188,7 +188,7 @@ fn compile_runtime(
     name: &str,
 ) -> Result<PathBuf, String> {
     let c_path = format!("{}/../../runtime/{}.c", manifest_dir, name);
-    let o_path = tmp_dir.join(format!("cyflym_{}_runtime.o", name));
+    let o_path = tmp_dir.join(format!("sans_{}_runtime.o", name));
     let status = process::Command::new("cc")
         .args(["-c", &c_path, "-o", o_path.to_str().unwrap()])
         .status()
