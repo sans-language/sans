@@ -1,0 +1,173 @@
+cy_make_empty_request() I {
+  req = alloc(32)
+  store64(req, -1)
+  empty = alloc(1)
+  store8(empty, 0)
+  store64(req + 8, empty)
+  e2 = alloc(1)
+  store8(e2, 0)
+  store64(req + 16, e2)
+  e3 = alloc(1)
+  store8(e3, 0)
+  store64(req + 24, e3)
+  req
+}
+
+cy_http_accept(server:I) I {
+  sfd = load64(server)
+  sfd < 0 ? cy_make_empty_request() : cy_http_accept_inner(sfd)
+}
+
+cy_http_accept_inner(sfd:I) I {
+  cfd = saccept(sfd)
+  cfd < 0 ? cy_make_empty_request() : cy_http_accept_read(cfd)
+}
+
+cy_http_accept_read(cfd:I) I {
+  buf = alloc(8192)
+  n = srecv(cfd, buf, 8191)
+  n <= 0 ? cy_http_accept_fail(cfd, buf) : cy_http_accept_parse(cfd, buf, n)
+}
+
+cy_http_accept_fail(cfd:I buf:I) I {
+  sclose(cfd)
+  cy_make_empty_request()
+}
+
+cy_http_accept_parse(cfd:I buf:I n:I) I {
+  store8(buf + n, 0)
+  mend = cy_find_space(buf, n, 0)
+  mlen = mend
+  pstart = mend < n ? mend + 1 : mend
+  pend = cy_find_space(buf, n, pstart)
+  plen = pend - pstart
+  method = alloc(mlen + 1)
+  mlen > 0 ? mcpy(method, buf, mlen) : 0
+  store8(method + mlen, 0)
+  path = alloc(plen + 1)
+  plen > 0 ? mcpy(path, buf + pstart, plen) : 0
+  store8(path + plen, 0)
+  bstart = cy_find_body(buf, n)
+  body = cy_extract_body(buf, n, bstart)
+  req = alloc(32)
+  store64(req, cfd)
+  store64(req + 8, method)
+  store64(req + 16, path)
+  store64(req + 24, body)
+  req
+}
+
+cy_find_space(buf:I n:I start:I) I {
+  i := start
+  done := 0
+  while done == 0 {
+    if i >= n {
+      done = 1
+      0
+    } else {
+      if load8(buf + i) == 32 {
+        done = 1
+        0
+      } else {
+        i += 1
+        0
+      }
+      0
+    }
+  }
+  i
+}
+
+cy_find_body(buf:I n:I) I {
+  i := 0
+  done := 0
+  while done == 0 {
+    if i + 3 >= n {
+      done = 1
+      0
+    } else {
+      if load8(buf + i) == 13 {
+        if load8(buf + i + 1) == 10 {
+          if load8(buf + i + 2) == 13 {
+            if load8(buf + i + 3) == 10 {
+              done = 1
+              0
+            } else {
+              i += 1
+              0
+            }
+          } else {
+            i += 1
+            0
+          }
+        } else {
+          i += 1
+          0
+        }
+      } else {
+        i += 1
+        0
+      }
+    }
+  }
+  i + 3 < n ? i + 4 : n
+}
+
+cy_extract_body(buf:I n:I bstart:I) I {
+  blen = n - bstart
+  blen < 0 ? cy_empty_str() : cy_copy_str(buf + bstart, blen)
+}
+
+cy_empty_str() I {
+  s = alloc(1)
+  store8(s, 0)
+  s
+}
+
+cy_copy_str(src:I len:I) I {
+  s = alloc(len + 1)
+  len > 0 ? mcpy(s, src, len) : 0
+  store8(s + len, 0)
+  s
+}
+
+cy_http_request_path(req:I) I = load64(req + 16)
+cy_http_request_method(req:I) I = load64(req + 8)
+cy_http_request_body(req:I) I = load64(req + 24)
+
+cy_http_respond(req:I status:I body:I ct:I) I {
+  fd = load64(req)
+  fd < 0 ? 0 : cy_http_respond_inner(req, fd, status, body, ct)
+}
+
+cy_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
+  ct_str = ct == 0 ? "text/html; charset=utf-8" : ct
+  st = cy_status_text(status)
+  body_len = slen(body)
+  header = "HTTP/1.1 " + str(status) + " " + st + "\r\nContent-Length: " + str(body_len) + "\r\nContent-Type: " + ct_str + "\r\nConnection: close\r\n\r\n"
+  header_len = slen(header)
+  total = header_len + body_len
+  resp = alloc(total)
+  mcpy(resp, header, header_len)
+  body_len > 0 ? mcpy(resp + header_len, body, body_len) : 0
+  cy_send_all(fd, resp, total)
+  sclose(fd)
+  store64(req, -1)
+  1
+}
+
+cy_status_text(s:I) I {
+  s == 404 ? "Not Found" : s == 500 ? "Internal Server Error" : s == 400 ? "Bad Request" : "OK"
+}
+
+cy_send_all(fd:I data:I total:I) I {
+  sent := 0
+  ok := 1
+  while sent < total {
+    n = ssend(fd, data + sent, total - sent)
+    n <= 0 ? ok = 0 : 0
+    n <= 0 ? sent = total : sent += n
+    0
+  }
+  ok
+}

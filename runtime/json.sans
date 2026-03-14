@@ -1,0 +1,921 @@
+cy_json_alloc(tag:I) I {
+  v = alloc(16)
+  store64(v, tag)
+  store64(v + 8, 0)
+  v
+}
+
+cy_json_null() I {
+  cy_json_alloc(0)
+}
+
+cy_json_bool(b:I) I {
+  v = cy_json_alloc(1)
+  store64(v + 8, b != 0 ? 1 : 0)
+  v
+}
+
+cy_json_int(n:I) I {
+  v = cy_json_alloc(2)
+  store64(v + 8, n)
+  v
+}
+
+cy_json_string(s:I) I {
+  v = cy_json_alloc(3)
+  len = slen(s)
+  buf = alloc(len + 1)
+  mcpy(buf, s, len + 1)
+  store64(v + 8, buf)
+  v
+}
+
+cy_json_array() I {
+  v = cy_json_alloc(4)
+  arr = alloc(24)
+  items = alloc(64)
+  store64(arr, items)
+  store64(arr + 8, 0)
+  store64(arr + 16, 8)
+  store64(v + 8, arr)
+  v
+}
+
+cy_json_object() I {
+  v = cy_json_alloc(5)
+  obj = alloc(32)
+  keys = alloc(64)
+  vals = alloc(64)
+  store64(obj, keys)
+  store64(obj + 8, vals)
+  store64(obj + 16, 0)
+  store64(obj + 24, 8)
+  store64(v + 8, obj)
+  v
+}
+
+cy_json_get(o:I key:I) I {
+  tag = load64(o)
+  tag != 5 ? cy_json_null() : cy_json_get_inner(o, key)
+}
+
+cy_json_get_inner(o:I key:I) I {
+  obj = load64(o + 8)
+  keys = load64(obj)
+  vals = load64(obj + 8)
+  len = load64(obj + 16)
+  cy_json_get_loop(keys, vals, len, key, 0)
+}
+
+cy_json_get_loop(keys:I vals:I len:I key:I i:I) I {
+  i >= len ? cy_json_null() : cy_json_get_check(keys, vals, len, key, i)
+}
+
+cy_json_get_check(keys:I vals:I len:I key:I i:I) I {
+  k = load64(keys + i * 8)
+  kl = slen(k)
+  ql = slen(key)
+  if kl == ql {
+    if mcmp(k, key, kl) == 0 {
+      load64(vals + i * 8)
+    } else {
+      cy_json_get_loop(keys, vals, len, key, i + 1)
+    }
+  } else {
+    cy_json_get_loop(keys, vals, len, key, i + 1)
+  }
+}
+
+cy_json_get_index(arr:I idx:I) I {
+  tag = load64(arr)
+  tag != 4 ? cy_json_null() : cy_json_get_index_inner(arr, idx)
+}
+
+cy_json_get_index_inner(arr:I idx:I) I {
+  ad = load64(arr + 8)
+  items = load64(ad)
+  len = load64(ad + 8)
+  idx < 0 ? cy_json_null() : idx >= len ? cy_json_null() : load64(items + idx * 8)
+}
+
+cy_json_get_string(v:I) I {
+  tag = load64(v)
+  tag == 3 ? cy_json_get_string_copy(v) : cy_json_get_string_empty()
+}
+
+cy_json_get_string_copy(v:I) I {
+  src = load64(v + 8)
+  len = slen(src)
+  buf = alloc(len + 1)
+  mcpy(buf, src, len + 1)
+  buf
+}
+
+cy_json_get_string_empty() I {
+  buf = alloc(1)
+  store8(buf, 0)
+  buf
+}
+
+cy_json_get_int(v:I) I {
+  tag = load64(v)
+  tag == 2 ? load64(v + 8) : 0
+}
+
+cy_json_get_bool(v:I) I {
+  tag = load64(v)
+  tag == 1 ? load64(v + 8) : 0
+}
+
+cy_json_len(v:I) I {
+  tag = load64(v)
+  if tag == 4 {
+    ad = load64(v + 8)
+    load64(ad + 8)
+  } else {
+    if tag == 5 {
+      obj = load64(v + 8)
+      load64(obj + 16)
+    } else {
+      0
+    }
+  }
+}
+
+cy_json_type_of(v:I) I {
+  tag = load64(v)
+  cy_json_type_name(tag)
+}
+
+cy_json_type_name(tag:I) I {
+  if tag == 0 {
+    cy_json_mkstr_null()
+  } else {
+    if tag == 1 {
+      cy_json_mkstr_bool()
+    } else {
+      if tag == 2 {
+        cy_json_mkstr_int()
+      } else {
+        if tag == 3 {
+          cy_json_mkstr_string()
+        } else {
+          if tag == 4 {
+            cy_json_mkstr_array()
+          } else {
+            if tag == 5 {
+              cy_json_mkstr_object()
+            } else {
+              cy_json_mkstr_null()
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+cy_json_mkstr_null() I {
+  buf = alloc(5)
+  store8(buf, 110)
+  store8(buf + 1, 117)
+  store8(buf + 2, 108)
+  store8(buf + 3, 108)
+  store8(buf + 4, 0)
+  buf
+}
+
+cy_json_mkstr_bool() I {
+  buf = alloc(5)
+  store8(buf, 98)
+  store8(buf + 1, 111)
+  store8(buf + 2, 111)
+  store8(buf + 3, 108)
+  store8(buf + 4, 0)
+  buf
+}
+
+cy_json_mkstr_int() I {
+  buf = alloc(4)
+  store8(buf, 105)
+  store8(buf + 1, 110)
+  store8(buf + 2, 116)
+  store8(buf + 3, 0)
+  buf
+}
+
+cy_json_mkstr_string() I {
+  buf = alloc(7)
+  store8(buf, 115)
+  store8(buf + 1, 116)
+  store8(buf + 2, 114)
+  store8(buf + 3, 105)
+  store8(buf + 4, 110)
+  store8(buf + 5, 103)
+  store8(buf + 6, 0)
+  buf
+}
+
+cy_json_mkstr_array() I {
+  buf = alloc(6)
+  store8(buf, 97)
+  store8(buf + 1, 114)
+  store8(buf + 2, 114)
+  store8(buf + 3, 97)
+  store8(buf + 4, 121)
+  store8(buf + 5, 0)
+  buf
+}
+
+cy_json_mkstr_object() I {
+  buf = alloc(7)
+  store8(buf, 111)
+  store8(buf + 1, 98)
+  store8(buf + 2, 106)
+  store8(buf + 3, 101)
+  store8(buf + 4, 99)
+  store8(buf + 5, 116)
+  store8(buf + 6, 0)
+  buf
+}
+
+cy_json_set(o:I key:I val:I) I {
+  tag = load64(o)
+  tag == 5 ? cy_json_set_inner(o, key, val) : 0
+}
+
+cy_json_set_inner(o:I key:I val:I) I {
+  obj = load64(o + 8)
+  keys = load64(obj)
+  vals = load64(obj + 8)
+  len = load64(obj + 16)
+  cap = load64(obj + 24)
+  idx = cy_json_find_key(keys, len, key, 0)
+  if idx >= 0 {
+    store64(vals + idx * 8, val)
+    0
+  } else {
+    cy_json_set_append(obj, keys, vals, len, cap, key, val)
+  }
+}
+
+cy_json_find_key(keys:I len:I key:I i:I) I {
+  if i >= len {
+    0 - 1
+  } else {
+    k = load64(keys + i * 8)
+    kl = slen(k)
+    ql = slen(key)
+    if kl == ql {
+      mcmp(k, key, kl) == 0 ? i : cy_json_find_key(keys, len, key, i + 1)
+    } else {
+      cy_json_find_key(keys, len, key, i + 1)
+    }
+  }
+}
+
+cy_json_set_append(obj:I keys:I vals:I len:I cap:I key:I val:I) I {
+  if len >= cap {
+    new_cap = cap * 2
+    new_keys = alloc(new_cap * 8)
+    new_vals = alloc(new_cap * 8)
+    len > 0 ? mcpy(new_keys, keys, len * 8) : 0
+    len > 0 ? mcpy(new_vals, vals, len * 8) : 0
+    dealloc(keys)
+    dealloc(vals)
+    store64(obj, new_keys)
+    store64(obj + 8, new_vals)
+    store64(obj + 24, new_cap)
+    cy_json_set_at(obj, new_keys, new_vals, len, key, val)
+  } else {
+    cy_json_set_at(obj, keys, vals, len, key, val)
+  }
+}
+
+cy_json_set_at(obj:I keys:I vals:I len:I key:I val:I) I {
+  kl = slen(key)
+  kb = alloc(kl + 1)
+  mcpy(kb, key, kl + 1)
+  store64(keys + len * 8, kb)
+  store64(vals + len * 8, val)
+  store64(obj + 16, len + 1)
+  0
+}
+
+cy_json_push(arr:I val:I) I {
+  tag = load64(arr)
+  tag == 4 ? cy_json_push_inner(arr, val) : 0
+}
+
+cy_json_push_inner(arr:I val:I) I {
+  ad = load64(arr + 8)
+  items = load64(ad)
+  len = load64(ad + 8)
+  cap = load64(ad + 16)
+  if len >= cap {
+    new_cap = cap * 2
+    new_items = alloc(new_cap * 8)
+    len > 0 ? mcpy(new_items, items, len * 8) : 0
+    dealloc(items)
+    store64(ad, new_items)
+    store64(ad + 16, new_cap)
+    store64(new_items + len * 8, val)
+    store64(ad + 8, len + 1)
+    0
+  } else {
+    store64(items + len * 8, val)
+    store64(ad + 8, len + 1)
+    0
+  }
+}
+
+g cy_json_sb_buf = 0
+g cy_json_sb_len = 0
+g cy_json_sb_cap = 0
+
+cy_json_sb_init() I {
+  cy_json_sb_cap = 64
+  cy_json_sb_len = 0
+  cy_json_sb_buf = alloc(64)
+  store8(cy_json_sb_buf, 0)
+  0
+}
+
+cy_json_sb_grow(need:I) I {
+  new_cap := cy_json_sb_cap
+  while new_cap < cy_json_sb_len + need + 1 {
+    new_cap = new_cap * 2
+  }
+  cy_json_sb_buf = ralloc(cy_json_sb_buf, new_cap)
+  cy_json_sb_cap = new_cap
+  0
+}
+
+cy_json_sb_append_str(s:I) I {
+  sl = slen(s)
+  cy_json_sb_len + sl + 1 > cy_json_sb_cap ? cy_json_sb_grow(sl) : 0
+  mcpy(cy_json_sb_buf + cy_json_sb_len, s, sl)
+  cy_json_sb_len = cy_json_sb_len + sl
+  store8(cy_json_sb_buf + cy_json_sb_len, 0)
+  0
+}
+
+cy_json_sb_append_char(c:I) I {
+  cy_json_sb_len + 2 > cy_json_sb_cap ? cy_json_sb_grow(2) : 0
+  store8(cy_json_sb_buf + cy_json_sb_len, c)
+  cy_json_sb_len = cy_json_sb_len + 1
+  store8(cy_json_sb_buf + cy_json_sb_len, 0)
+  0
+}
+
+cy_json_sb_result() I {
+  len = cy_json_sb_len
+  buf = alloc(len + 1)
+  mcpy(buf, cy_json_sb_buf, len + 1)
+  dealloc(cy_json_sb_buf)
+  buf
+}
+
+cy_json_stringify_string(s:I) I {
+  cy_json_sb_append_char(34)
+  len = slen(s)
+  cy_json_stringify_str_loop(s, len, 0)
+  cy_json_sb_append_char(34)
+  0
+}
+
+cy_json_stringify_str_loop(s:I len:I i:I) I {
+  if i < len {
+    c = load8(s + i)
+    if c == 34 {
+      cy_json_sb_append_char(92)
+      cy_json_sb_append_char(34)
+    } else {
+      if c == 92 {
+        cy_json_sb_append_char(92)
+        cy_json_sb_append_char(92)
+      } else {
+        if c == 10 {
+          cy_json_sb_append_char(92)
+          cy_json_sb_append_char(110)
+        } else {
+          if c == 9 {
+            cy_json_sb_append_char(92)
+            cy_json_sb_append_char(116)
+          } else {
+            if c == 13 {
+              cy_json_sb_append_char(92)
+              cy_json_sb_append_char(114)
+            } else {
+              cy_json_sb_append_char(c)
+            }
+          }
+        }
+      }
+    }
+    cy_json_stringify_str_loop(s, len, i + 1)
+  } else {
+    0
+  }
+}
+
+cy_json_sb_append_int(n:I) I {
+  if n < 0 {
+    cy_json_sb_append_char(45)
+    cy_json_sb_append_uint(0 - n)
+  } else {
+    if n == 0 {
+      cy_json_sb_append_char(48)
+    } else {
+      cy_json_sb_append_uint(n)
+    }
+  }
+  0
+}
+
+cy_json_sb_append_uint(n:I) I {
+  n > 0 ? cy_json_sb_append_uint_inner(n) : 0
+}
+
+cy_json_sb_append_uint_inner(n:I) I {
+  n >= 10 ? cy_json_sb_append_uint_inner(n / 10) : 0
+  cy_json_sb_append_char(48 + n % 10)
+  0
+}
+
+cy_json_sb_append_null() I {
+  cy_json_sb_append_char(110)
+  cy_json_sb_append_char(117)
+  cy_json_sb_append_char(108)
+  cy_json_sb_append_char(108)
+  0
+}
+
+cy_json_sb_append_true() I {
+  cy_json_sb_append_char(116)
+  cy_json_sb_append_char(114)
+  cy_json_sb_append_char(117)
+  cy_json_sb_append_char(101)
+  0
+}
+
+cy_json_sb_append_false() I {
+  cy_json_sb_append_char(102)
+  cy_json_sb_append_char(97)
+  cy_json_sb_append_char(108)
+  cy_json_sb_append_char(115)
+  cy_json_sb_append_char(101)
+  0
+}
+
+cy_json_stringify_value(v:I) I {
+  tag = load64(v)
+  if tag == 0 {
+    cy_json_sb_append_null()
+  } else {
+    if tag == 1 {
+      bv = load64(v + 8)
+      bv != 0 ? cy_json_sb_append_true() : cy_json_sb_append_false()
+    } else {
+      if tag == 2 {
+        n = load64(v + 8)
+        cy_json_sb_append_int(n)
+      } else {
+        if tag == 3 {
+          s = load64(v + 8)
+          cy_json_stringify_string(s)
+        } else {
+          if tag == 4 {
+            cy_json_stringify_array(v)
+          } else {
+            if tag == 5 {
+              cy_json_stringify_object(v)
+            } else {
+              cy_json_sb_append_null()
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+cy_json_stringify_array(v:I) I {
+  ad = load64(v + 8)
+  items = load64(ad)
+  len = load64(ad + 8)
+  cy_json_sb_append_char(91)
+  cy_json_stringify_arr_loop(items, len, 0)
+  cy_json_sb_append_char(93)
+  0
+}
+
+cy_json_stringify_arr_loop(items:I len:I i:I) I {
+  if i < len {
+    i > 0 ? cy_json_sb_append_char(44) : 0
+    elem = load64(items + i * 8)
+    cy_json_stringify_value(elem)
+    cy_json_stringify_arr_loop(items, len, i + 1)
+  } else {
+    0
+  }
+}
+
+cy_json_stringify_object(v:I) I {
+  obj = load64(v + 8)
+  keys = load64(obj)
+  vals = load64(obj + 8)
+  len = load64(obj + 16)
+  cy_json_sb_append_char(123)
+  cy_json_stringify_obj_loop(keys, vals, len, 0)
+  cy_json_sb_append_char(125)
+  0
+}
+
+cy_json_stringify_obj_loop(keys:I vals:I len:I i:I) I {
+  if i < len {
+    i > 0 ? cy_json_sb_append_char(44) : 0
+    k = load64(keys + i * 8)
+    cy_json_stringify_string(k)
+    cy_json_sb_append_char(58)
+    val = load64(vals + i * 8)
+    cy_json_stringify_value(val)
+    cy_json_stringify_obj_loop(keys, vals, len, i + 1)
+  } else {
+    0
+  }
+}
+
+cy_json_stringify(v:I) I {
+  cy_json_sb_init()
+  cy_json_stringify_value(v)
+  cy_json_sb_result()
+}
+
+g cy_json_p_src = 0
+g cy_json_p_pos = 0
+
+cy_json_p_ch() I {
+  load8(cy_json_p_src + cy_json_p_pos)
+}
+
+cy_json_p_adv() I {
+  cy_json_p_pos = cy_json_p_pos + 1
+  0
+}
+
+cy_json_p_skip_ws() I {
+  c = cy_json_p_ch()
+  if c == 32 {
+    cy_json_p_adv()
+    cy_json_p_skip_ws()
+  } else {
+    if c == 9 {
+      cy_json_p_adv()
+      cy_json_p_skip_ws()
+    } else {
+      if c == 10 {
+        cy_json_p_adv()
+        cy_json_p_skip_ws()
+      } else {
+        if c == 13 {
+          cy_json_p_adv()
+          cy_json_p_skip_ws()
+        } else {
+          0
+        }
+      }
+    }
+  }
+}
+
+cy_json_p_match_true() I {
+  if load8(cy_json_p_src + cy_json_p_pos) == 116 {
+    if load8(cy_json_p_src + cy_json_p_pos + 1) == 114 {
+      if load8(cy_json_p_src + cy_json_p_pos + 2) == 117 {
+        if load8(cy_json_p_src + cy_json_p_pos + 3) == 101 {
+          cy_json_p_pos = cy_json_p_pos + 4
+          1
+        } else { 0 }
+      } else { 0 }
+    } else { 0 }
+  } else { 0 }
+}
+
+cy_json_p_match_false() I {
+  if load8(cy_json_p_src + cy_json_p_pos) == 102 {
+    if load8(cy_json_p_src + cy_json_p_pos + 1) == 97 {
+      if load8(cy_json_p_src + cy_json_p_pos + 2) == 108 {
+        if load8(cy_json_p_src + cy_json_p_pos + 3) == 115 {
+          if load8(cy_json_p_src + cy_json_p_pos + 4) == 101 {
+            cy_json_p_pos = cy_json_p_pos + 5
+            1
+          } else { 0 }
+        } else { 0 }
+      } else { 0 }
+    } else { 0 }
+  } else { 0 }
+}
+
+cy_json_p_match_null() I {
+  if load8(cy_json_p_src + cy_json_p_pos) == 110 {
+    if load8(cy_json_p_src + cy_json_p_pos + 1) == 117 {
+      if load8(cy_json_p_src + cy_json_p_pos + 2) == 108 {
+        if load8(cy_json_p_src + cy_json_p_pos + 3) == 108 {
+          cy_json_p_pos = cy_json_p_pos + 4
+          1
+        } else { 0 }
+      } else { 0 }
+    } else { 0 }
+  } else { 0 }
+}
+
+cy_json_p_string_raw() I {
+  cy_json_p_ch() != 34 ? 0 : cy_json_p_string_raw_inner()
+}
+
+cy_json_p_string_raw_inner() I {
+  cy_json_p_adv()
+  cap := 32
+  len := 0
+  buf := alloc(32)
+  r = cy_json_p_str_loop(buf, len, cap)
+  r
+}
+
+cy_json_p_str_loop(buf:I len:I cap:I) I {
+  c = cy_json_p_ch()
+  c == 0 ? cy_json_p_str_end(buf, len) : c == 34 ? cy_json_p_str_end_q(buf, len) : c == 92 ? cy_json_p_str_esc(buf, len, cap) : cy_json_p_str_char(buf, len, cap, c)
+}
+
+cy_json_p_str_end(buf:I len:I) I {
+  store8(buf + len, 0)
+  buf
+}
+
+cy_json_p_str_end_q(buf:I len:I) I {
+  cy_json_p_adv()
+  store8(buf + len, 0)
+  buf
+}
+
+cy_json_p_str_esc(buf:I len:I cap:I) I {
+  cy_json_p_adv()
+  ec = cy_json_p_escape_char()
+  cy_json_p_adv()
+  cy_json_p_str_add(buf, len, cap, ec)
+}
+
+cy_json_p_str_char(buf:I len:I cap:I c:I) I {
+  cy_json_p_adv()
+  cy_json_p_str_add(buf, len, cap, c)
+}
+
+cy_json_p_str_add(buf:I len:I cap:I ch:I) I {
+  if len + 1 >= cap {
+    nc = cap * 2
+    nb = ralloc(buf, nc)
+    store8(nb + len, ch)
+    cy_json_p_str_loop(nb, len + 1, nc)
+  } else {
+    store8(buf + len, ch)
+    cy_json_p_str_loop(buf, len + 1, cap)
+  }
+}
+
+cy_json_p_escape_char() I {
+  c = cy_json_p_ch()
+  c == 34 ? 34 : c == 92 ? 92 : c == 47 ? 47 : c == 110 ? 10 : c == 116 ? 9 : c == 114 ? 13 : c == 98 ? 8 : c == 102 ? 12 : c
+}
+
+cy_json_p_string() I {
+  s = cy_json_p_string_raw()
+  s == 0 ? 0 : cy_json_p_make_string(s)
+}
+
+cy_json_p_make_string(s:I) I {
+  v = cy_json_alloc(3)
+  store64(v + 8, s)
+  v
+}
+
+cy_json_p_number() I {
+  start = cy_json_p_pos
+  neg := 0
+  c = cy_json_p_ch()
+  if c == 45 {
+    neg = 1
+    cy_json_p_adv()
+    0
+  } else {
+    0
+  }
+  cy_json_p_num_digits()
+  c2 = cy_json_p_ch()
+  c2 == 46 ? cy_json_p_skip_frac() : 0
+  c3 = cy_json_p_ch()
+  c3 == 101 ? cy_json_p_skip_exp() : c3 == 69 ? cy_json_p_skip_exp() : 0
+  end = cy_json_p_pos
+  end == start ? 0 : cy_json_p_make_number(start, end)
+}
+
+cy_json_p_num_digits() I {
+  c = cy_json_p_ch()
+  if c >= 48 {
+    if c <= 57 {
+      cy_json_p_adv()
+      cy_json_p_num_digits()
+    } else {
+      0
+    }
+  } else {
+    0
+  }
+}
+
+cy_json_p_skip_frac() I {
+  cy_json_p_adv()
+  cy_json_p_num_digits()
+  0
+}
+
+cy_json_p_skip_exp() I {
+  cy_json_p_adv()
+  c = cy_json_p_ch()
+  c == 43 ? cy_json_p_adv() : c == 45 ? cy_json_p_adv() : 0
+  cy_json_p_num_digits()
+  0
+}
+
+cy_json_p_make_number(start:I end:I) I {
+  n = cy_json_p_atoi(start, end)
+  v = cy_json_alloc(2)
+  store64(v + 8, n)
+  v
+}
+
+cy_json_p_atoi(start:I end:I) I {
+  neg := 0
+  pos := start
+  c = load8(cy_json_p_src + pos)
+  if c == 45 {
+    neg = 1
+    pos = pos + 1
+    0
+  } else {
+    0
+  }
+  result = cy_json_p_atoi_loop(pos, end, 0)
+  neg != 0 ? 0 - result : result
+}
+
+cy_json_p_atoi_loop(pos:I end:I acc:I) I {
+  if pos >= end {
+    acc
+  } else {
+    c = load8(cy_json_p_src + pos)
+    if c >= 48 {
+      if c <= 57 {
+        cy_json_p_atoi_loop(pos + 1, end, acc * 10 + c - 48)
+      } else {
+        acc
+      }
+    } else {
+      acc
+    }
+  }
+}
+
+cy_json_p_object() I {
+  cy_json_p_adv()
+  obj = cy_json_object()
+  cy_json_p_skip_ws()
+  cy_json_p_ch() == 125 ? cy_json_p_obj_done(obj) : cy_json_p_obj_loop(obj)
+}
+
+cy_json_p_obj_done(obj:I) I {
+  cy_json_p_adv()
+  obj
+}
+
+cy_json_p_obj_loop(obj:I) I {
+  cy_json_p_skip_ws()
+  key = cy_json_p_string_raw()
+  key == 0 ? cy_json_null() : cy_json_p_obj_kv(obj, key)
+}
+
+cy_json_p_obj_kv(obj:I key:I) I {
+  cy_json_p_skip_ws()
+  if cy_json_p_ch() != 58 {
+    dealloc(key)
+    cy_json_null()
+  } else {
+    cy_json_p_adv()
+    cy_json_p_skip_ws()
+    val = cy_json_p_value()
+    if val == 0 {
+      dealloc(key)
+      cy_json_null()
+    } else {
+      cy_json_set(obj, key, val)
+      dealloc(key)
+      cy_json_p_skip_ws()
+      c = cy_json_p_ch()
+      if c == 44 {
+        cy_json_p_adv()
+        cy_json_p_obj_loop(obj)
+      } else {
+        if c == 125 {
+          cy_json_p_adv()
+          obj
+        } else {
+          cy_json_null()
+        }
+      }
+    }
+  }
+}
+
+cy_json_p_array() I {
+  cy_json_p_adv()
+  arr = cy_json_array()
+  cy_json_p_skip_ws()
+  cy_json_p_ch() == 93 ? cy_json_p_arr_done(arr) : cy_json_p_arr_loop(arr)
+}
+
+cy_json_p_arr_done(arr:I) I {
+  cy_json_p_adv()
+  arr
+}
+
+cy_json_p_arr_loop(arr:I) I {
+  cy_json_p_skip_ws()
+  val = cy_json_p_value()
+  val == 0 ? cy_json_null() : cy_json_p_arr_after(arr, val)
+}
+
+cy_json_p_arr_after(arr:I val:I) I {
+  cy_json_push(arr, val)
+  cy_json_p_skip_ws()
+  c = cy_json_p_ch()
+  if c == 44 {
+    cy_json_p_adv()
+    cy_json_p_arr_loop(arr)
+  } else {
+    if c == 93 {
+      cy_json_p_adv()
+      arr
+    } else {
+      cy_json_null()
+    }
+  }
+}
+
+cy_json_p_value() I {
+  cy_json_p_skip_ws()
+  c = cy_json_p_ch()
+  if c == 34 {
+    cy_json_p_string()
+  } else {
+    if c == 123 {
+      cy_json_p_object()
+    } else {
+      if c == 91 {
+        cy_json_p_array()
+      } else {
+        if c == 116 {
+          cy_json_p_match_true() != 0 ? cy_json_bool(1) : 0
+        } else {
+          if c == 102 {
+            cy_json_p_match_false() != 0 ? cy_json_bool(0) : 0
+          } else {
+            if c == 110 {
+              cy_json_p_match_null() != 0 ? cy_json_null() : 0
+            } else {
+              if c == 45 {
+                cy_json_p_number()
+              } else {
+                if c >= 48 {
+                  c <= 57 ? cy_json_p_number() : 0
+                } else {
+                  0
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+cy_json_parse(src:I) I {
+  src == 0 ? cy_json_null() : cy_json_parse_inner(src)
+}
+
+cy_json_parse_inner(src:I) I {
+  cy_json_p_src = src
+  cy_json_p_pos = 0
+  result = cy_json_p_value()
+  result == 0 ? cy_json_null() : result
+}

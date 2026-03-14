@@ -1,0 +1,8 @@
+cy_http_status(resp:I) I = load64(resp)
+
+cy_http_body(resp:I) I = load64(resp + 8)
+
+cy_http_ok(resp:I) I {
+  s = load64(resp)
+  s >= 200 ? s < 300 ? 1 : 0 : 0
+}

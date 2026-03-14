@@ -31,8 +31,8 @@ fn compile_sans_runtime(manifest_dir: &str, tmp_dir: &std::path::Path, name: &st
     o_path
 }
 
-const C_RUNTIME_NAMES: &[&str] = &["json", "http", "functional", "server"];
-const SANS_RUNTIME_NAMES: &[&str] = &["log", "array_ext", "string_ext", "result"];
+const C_RUNTIME_NAMES: &[&str] = &["server", "sock", "curl_helpers"];
+const SANS_RUNTIME_NAMES: &[&str] = &["log", "result", "functional", "array_ext", "string_ext", "http", "json"];
 
 /// Helper: compile a multi-file fixture directory and run main.sans, returning the exit code.
 fn compile_and_run_dir(fixture_dir: &str) -> i32 {
