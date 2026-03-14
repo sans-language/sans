@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sans - A Language Created by AI, for AI</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <div class="container nav-inner">
+      <a href="/" class="nav-brand">Sans</a>
+      <div class="nav-links">
+        <a href="/docs">Docs</a>
+        <a href="/benchmarks">Benchmarks</a>
+        <a href="https://github.com/sgordon/sans">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="container">
+      <h1>Sans</h1>
+      <p class="tagline">A general purpose language created by AI, for AI</p>
+      <p class="subtitle">Token-efficient syntax. Native LLVM speed. Built-in HTTP, JSON, and concurrency.</p>
+    </div>
+  </section>
+
+  <section class="container">
+    <div class="features">
+      <div class="feature-card">
+        <h3>Token-Efficient</h3>
+        <p>Designed for AI code generation. Short type aliases (<code>I/S/B/F</code>), compact function syntax, no unnecessary keywords. Every token counts.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Native Speed</h3>
+        <p>Compiles to machine code via LLVM. Performance on par with Rust and Go &mdash; up to 30x faster than Python on compute-heavy tasks.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Batteries Included</h3>
+        <p>Built-in HTTP server/client, JSON, file I/O, concurrency with channels and mutexes, error handling with Result types. No package manager needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container comparison">
+    <h2>Less Tokens, Same Power</h2>
+    <div class="compare-grid">
+      <div>
+        <h4>Sans</h4>
+        <pre><code><span class="fn">fib</span>(<span class="fn">n</span>:<span class="type">I</span>) <span class="type">I</span> {
+  n &lt;= <span class="num">1</span> ? n : <span class="fn">fib</span>(n - <span class="num">1</span>) + <span class="fn">fib</span>(n - <span class="num">2</span>)
+}
+
+<span class="fn">main</span>() {
+  nums = [<span class="num">1</span> <span class="num">2</span> <span class="num">3</span> <span class="num">4</span> <span class="num">5</span>]
+  total := <span class="num">0</span>
+  <span class="kw">for</span> n <span class="kw">in</span> nums { total += n }
+  <span class="fn">p</span>(<span class="fn">str</span>(total))
+  <span class="num">0</span>
+}</code></pre>
+      </div>
+      <div>
+        <h4>Equivalent (verbose)</h4>
+        <pre><code><span class="kw">fn</span> <span class="fn">fib</span>(<span class="fn">n</span>: <span class="type">Int</span>) -> <span class="type">Int</span> {
+  <span class="kw">if</span> n &lt;= <span class="num">1</span> { <span class="kw">return</span> n }
+  <span class="kw">return</span> <span class="fn">fib</span>(n - <span class="num">1</span>) + <span class="fn">fib</span>(n - <span class="num">2</span>)
+}
+
+<span class="kw">fn</span> <span class="fn">main</span>() -> <span class="type">Int</span> {
+  <span class="kw">let</span> nums: <span class="type">Array</span>&lt;<span class="type">Int</span>&gt; = [<span class="num">1</span>, <span class="num">2</span>, <span class="num">3</span>, <span class="num">4</span>, <span class="num">5</span>]
+  <span class="kw">let mut</span> total: <span class="type">Int</span> = <span class="num">0</span>
+  <span class="kw">for</span> n <span class="kw">in</span> nums { total += n }
+  <span class="fn">print</span>(<span class="fn">int_to_string</span>(total))
+  <span class="kw">return</span> <span class="num">0</span>
+}</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="container">
+    <h2>Quick Start</h2>
+    <pre><code><span class="comment"># Build from source</span>
+git clone https://github.com/sgordon/sans
+cd sans
+LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
+
+<span class="comment"># Run a program</span>
+sans run hello.sans</code></pre>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>Sans is open source. <a href="https://github.com/sgordon/sans">View on GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>

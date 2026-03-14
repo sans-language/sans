@@ -1,0 +1,38 @@
+mime(path:S) S {
+  path.ew(".html") ? "text/html; charset=utf-8" : path.ew(".css") ? "text/css" : path.ew(".js") ? "application/javascript" : path.ew(".png") ? "image/png" : path.ew(".ico") ? "image/x-icon" : "text/plain"
+}
+
+serve(req:HttpRequest, fpath:S) I {
+  exists = file_exists(fpath)
+  content = file_read(fpath)
+  ct = mime(fpath)
+  exists ? req.respond(200, content, ct) : req.respond(404, "Not Found")
+}
+
+route_static(req:HttpRequest, path:S) I {
+  is_static = path.sw("/static/")
+  is_static ? serve(req, "static/" + path.substring(8, path.len())) : req.respond(404, "Not Found")
+}
+
+route_pages(req:HttpRequest, path:S) I {
+  is_docs = path == "/docs"
+  is_bench = path == "/benchmarks"
+  is_docs ? serve(req, "static/docs.html") : is_bench ? serve(req, "static/benchmarks.html") : route_static(req, path)
+}
+
+route(req:HttpRequest, path:S) I {
+  is_root = path == "/"
+  is_root ? serve(req, "static/index.html") : route_pages(req, path)
+}
+
+main() {
+  p("Sans docs server: http://localhost:8080")
+  server = listen(8080)
+  while true {
+    req = server.accept
+    path = req.path
+    safe = !path.contains("..")
+    safe ? route(req, path) : req.respond(400, "Bad Request")
+  }
+  0
+}

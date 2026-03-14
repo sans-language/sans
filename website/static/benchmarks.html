@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sans Benchmarks</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <div class="container nav-inner">
+      <a href="/" class="nav-brand">Sans</a>
+      <div class="nav-links">
+        <a href="/docs">Docs</a>
+        <a href="/benchmarks" class="active">Benchmarks</a>
+        <a href="https://github.com/sgordon/sans">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container docs">
+    <h1>Benchmark Results</h1>
+    <p>Comparing Sans against Python, Go, Node.js, and Rust across 5 workloads. All times in milliseconds (lower is better).</p>
+
+    <h2>Results</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Benchmark</th>
+          <th>Sans (ms)</th>
+          <th>Python (ms)</th>
+          <th>Go (ms)</th>
+          <th>Node.js (ms)</th>
+          <th>Rust (ms)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>fib</td><td class="highlight">49.4</td><td>1504.7</td><td>78.2</td><td>109.7</td><td>41.8</td></tr>
+        <tr><td>loop_sum</td><td class="highlight">14.8</td><td>98.3</td><td>21.7</td><td>52.4</td><td>13.2</td></tr>
+        <tr><td>array_ops</td><td class="highlight">14.9</td><td>47.4</td><td>26.2</td><td>57.3</td><td>13.8</td></tr>
+        <tr><td>string_concat</td><td class="highlight">22.4</td><td>48.8</td><td>21.8</td><td>50.8</td><td>22.8</td></tr>
+        <tr><td>json_roundtrip</td><td>325.2</td><td>77.7</td><td>89.0</td><td>61.7</td><td class="highlight">41.4</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Speedup vs Python</h2>
+    <p>How many times faster than Python (higher is better).</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Benchmark</th>
+          <th>Sans</th>
+          <th>Python</th>
+          <th>Go</th>
+          <th>Node.js</th>
+          <th>Rust</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>fib</td><td class="highlight">30.4x</td><td>1.0x</td><td>19.3x</td><td>13.7x</td><td>36.0x</td></tr>
+        <tr><td>loop_sum</td><td class="highlight">6.6x</td><td>1.0x</td><td>4.5x</td><td>1.9x</td><td>7.5x</td></tr>
+        <tr><td>array_ops</td><td class="highlight">3.2x</td><td>1.0x</td><td>1.8x</td><td>0.8x</td><td>3.4x</td></tr>
+        <tr><td>string_concat</td><td class="highlight">2.2x</td><td>1.0x</td><td>2.2x</td><td>1.0x</td><td>2.1x</td></tr>
+        <tr><td>json_roundtrip</td><td>0.2x</td><td>1.0x</td><td>0.9x</td><td>1.3x</td><td>1.9x</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Key Takeaways</h2>
+    <ul>
+      <li><strong>Sans matches Rust</strong> on compute-heavy benchmarks (fib, loop_sum, array_ops) &mdash; both compile to optimized native code via LLVM</li>
+      <li><strong>30x faster than Python</strong> on recursive function calls</li>
+      <li><strong>Beats Go by 40-75%</strong> on tight loops and array operations</li>
+      <li><strong>JSON is a known weak spot</strong> &mdash; the C runtime JSON implementation needs optimization</li>
+    </ul>
+
+    <h2>Detailed Results</h2>
+
+    <h3>fib &mdash; Recursive fibonacci(35)</h3>
+    <table>
+      <thead><tr><th>Language</th><th>Mean (ms)</th><th>Std Dev</th><th>Min</th><th>Max</th></tr></thead>
+      <tbody>
+        <tr><td>Sans</td><td>49.4</td><td>2.5</td><td>45.2</td><td>54.5</td></tr>
+        <tr><td>Python</td><td>1504.7</td><td>32.1</td><td>1459.2</td><td>1550.1</td></tr>
+        <tr><td>Go</td><td>78.2</td><td>1.7</td><td>75.1</td><td>79.9</td></tr>
+        <tr><td>Node.js</td><td>109.7</td><td>3.2</td><td>103.5</td><td>115.2</td></tr>
+        <tr><td>Rust</td><td>41.8</td><td>3.5</td><td>37.0</td><td>49.2</td></tr>
+      </tbody>
+    </table>
+
+    <h3>loop_sum &mdash; Sum 1 to 1,000,000</h3>
+    <table>
+      <thead><tr><th>Language</th><th>Mean (ms)</th><th>Std Dev</th><th>Min</th><th>Max</th></tr></thead>
+      <tbody>
+        <tr><td>Sans</td><td>14.8</td><td>4.2</td><td>11.1</td><td>26.1</td></tr>
+        <tr><td>Python</td><td>98.3</td><td>4.9</td><td>90.5</td><td>109.8</td></tr>
+        <tr><td>Go</td><td>21.7</td><td>2.5</td><td>19.1</td><td>28.2</td></tr>
+        <tr><td>Node.js</td><td>52.4</td><td>3.5</td><td>46.5</td><td>58.7</td></tr>
+        <tr><td>Rust</td><td>13.2</td><td>3.1</td><td>9.9</td><td>18.4</td></tr>
+      </tbody>
+    </table>
+
+    <h3>array_ops &mdash; Build 100k array, map, filter, sum</h3>
+    <table>
+      <thead><tr><th>Language</th><th>Mean (ms)</th><th>Std Dev</th><th>Min</th><th>Max</th></tr></thead>
+      <tbody>
+        <tr><td>Sans</td><td>14.9</td><td>2.7</td><td>10.3</td><td>18.8</td></tr>
+        <tr><td>Python</td><td>47.4</td><td>1.9</td><td>44.9</td><td>51.5</td></tr>
+        <tr><td>Go</td><td>26.2</td><td>2.9</td><td>23.1</td><td>31.8</td></tr>
+        <tr><td>Node.js</td><td>57.3</td><td>3.8</td><td>47.2</td><td>60.5</td></tr>
+        <tr><td>Rust</td><td>13.8</td><td>2.7</td><td>10.2</td><td>19.7</td></tr>
+      </tbody>
+    </table>
+
+    <h3>string_concat &mdash; 100k string concatenations</h3>
+    <table>
+      <thead><tr><th>Language</th><th>Mean (ms)</th><th>Std Dev</th><th>Min</th><th>Max</th></tr></thead>
+      <tbody>
+        <tr><td>Sans</td><td>22.4</td><td>5.5</td><td>18.0</td><td>36.7</td></tr>
+        <tr><td>Python</td><td>48.8</td><td>2.2</td><td>45.8</td><td>52.7</td></tr>
+        <tr><td>Go</td><td>21.8</td><td>2.5</td><td>18.0</td><td>27.1</td></tr>
+        <tr><td>Node.js</td><td>50.8</td><td>2.8</td><td>45.5</td><td>55.0</td></tr>
+        <tr><td>Rust</td><td>22.8</td><td>3.5</td><td>18.1</td><td>29.4</td></tr>
+      </tbody>
+    </table>
+
+    <h3>json_roundtrip &mdash; JSON build/stringify/parse (100 iterations x 1k keys)</h3>
+    <table>
+      <thead><tr><th>Language</th><th>Mean (ms)</th><th>Std Dev</th><th>Min</th><th>Max</th></tr></thead>
+      <tbody>
+        <tr><td>Sans</td><td>325.2</td><td>3.9</td><td>320.1</td><td>332.9</td></tr>
+        <tr><td>Python</td><td>77.7</td><td>2.1</td><td>74.4</td><td>80.1</td></tr>
+        <tr><td>Go</td><td>89.0</td><td>1.3</td><td>87.2</td><td>91.2</td></tr>
+        <tr><td>Node.js</td><td>61.7</td><td>3.7</td><td>56.6</td><td>69.5</td></tr>
+        <tr><td>Rust</td><td>41.4</td><td>3.7</td><td>37.7</td><td>51.5</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Methodology</h2>
+    <ul>
+      <li>Each benchmark runs 10 times (1 warmup + 10 timed)</li>
+      <li>Wall-clock time measured via Python <code>time.perf_counter()</code></li>
+      <li>Sans, Go, and Rust are compiled ahead of time with optimizations</li>
+      <li>Python uses CPython, Node.js uses V8</li>
+      <li>All programs produce identical output for correctness verification</li>
+    </ul>
+
+    <h2>Workloads</h2>
+    <table>
+      <thead><tr><th>Benchmark</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>fib</td><td>Recursive fibonacci(35), no memoization</td></tr>
+        <tr><td>loop_sum</td><td>Sum integers 1 to 1,000,000</td></tr>
+        <tr><td>array_ops</td><td>Build 100k array, map (*2), filter (even), sum</td></tr>
+        <tr><td>string_concat</td><td>Concatenate 5 strings per iteration, 100k iterations</td></tr>
+        <tr><td>json_roundtrip</td><td>Build/stringify/parse JSON with 1k keys, 100 iterations</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <div class="container">
+      <p>Sans is open source. <a href="https://github.com/sgordon/sans">View on GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>

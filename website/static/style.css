@@ -1,0 +1,320 @@
+/* Sans Language Documentation — Dark Theme */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Layout */
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Nav */
+
+nav {
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  padding: 0;
+}
+
+nav .container {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  gap: 8px;
+}
+
+nav .brand {
+  font-weight: 700;
+  font-size: 18px;
+  color: #e6edf3;
+  margin-right: 16px;
+}
+
+nav .brand:hover {
+  text-decoration: none;
+}
+
+nav a {
+  color: #c9d1d9;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+nav a:hover {
+  background: #21262d;
+  color: #e6edf3;
+  text-decoration: none;
+}
+
+nav a.active {
+  color: #58a6ff;
+}
+
+/* Hero */
+
+.hero {
+  padding: 72px 0 56px;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: 48px;
+  font-weight: 700;
+  color: #e6edf3;
+  letter-spacing: -1px;
+  margin-bottom: 16px;
+}
+
+.hero .tagline {
+  font-size: 20px;
+  color: #8b949e;
+  margin-bottom: 32px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero .cta {
+  display: inline-block;
+  background: #238636;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hero .cta:hover {
+  background: #2ea043;
+  text-decoration: none;
+}
+
+/* Feature cards */
+
+.features {
+  padding: 48px 0;
+}
+
+.features h2 {
+  text-align: center;
+  font-size: 28px;
+  color: #e6edf3;
+  margin-bottom: 32px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+
+.card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e6edf3;
+  margin-bottom: 8px;
+}
+
+.card p {
+  font-size: 14px;
+  color: #8b949e;
+  line-height: 1.5;
+}
+
+/* Content sections */
+
+.section {
+  padding: 48px 0;
+  border-top: 1px solid #21262d;
+}
+
+.section h2 {
+  font-size: 28px;
+  color: #e6edf3;
+  margin-bottom: 16px;
+}
+
+.section h3 {
+  font-size: 18px;
+  color: #e6edf3;
+  margin-top: 32px;
+  margin-bottom: 12px;
+}
+
+.section p {
+  color: #c9d1d9;
+  margin-bottom: 16px;
+  max-width: 720px;
+}
+
+/* Code blocks */
+
+pre {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+code {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  color: #e6edf3;
+}
+
+p code, li code {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 13px;
+  color: #e6edf3;
+}
+
+/* Syntax highlighting */
+
+.kw   { color: #ff7b72; }
+.fn   { color: #d2a8ff; }
+.str  { color: #a5d6ff; }
+.num  { color: #79c0ff; }
+.comment { color: #8b949e; font-style: italic; }
+.type { color: #ffa657; }
+
+/* Tables */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+  font-size: 14px;
+}
+
+thead th {
+  color: #58a6ff;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 2px solid #30363d;
+}
+
+tbody tr:nth-child(odd) {
+  background: #161b22;
+}
+
+tbody tr:nth-child(even) {
+  background: #0d1117;
+}
+
+tbody td {
+  padding: 8px 14px;
+  border-bottom: 1px solid #21262d;
+  vertical-align: top;
+}
+
+/* Comparison section */
+
+.comparison {
+  padding: 48px 0;
+  border-top: 1px solid #21262d;
+}
+
+.comparison h2 {
+  font-size: 28px;
+  color: #e6edf3;
+  margin-bottom: 24px;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.compare-grid .label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b949e;
+  margin-bottom: 8px;
+}
+
+.compare-grid .label.sans-label {
+  color: #58a6ff;
+}
+
+/* Footer */
+
+footer {
+  border-top: 1px solid #21262d;
+  padding: 32px 0;
+  text-align: center;
+  color: #8b949e;
+  font-size: 14px;
+}
+
+footer a {
+  color: #58a6ff;
+}
+
+/* Responsive */
+
+@media (max-width: 640px) {
+  .hero h1 {
+    font-size: 32px;
+  }
+
+  .hero .tagline {
+    font-size: 16px;
+  }
+
+  .compare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  nav .container {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px 24px;
+    gap: 4px;
+  }
+
+  nav .brand {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+}

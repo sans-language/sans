@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sans Language Reference</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <div class="container nav-inner">
+      <a href="/" class="nav-brand">Sans</a>
+      <div class="nav-links">
+        <a href="/docs" class="active">Docs</a>
+        <a href="/benchmarks">Benchmarks</a>
+        <a href="https://github.com/sgordon/sans">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container docs">
+    <h1>Sans Language Reference</h1>
+    <p>Sans is a compiled programming language optimized for AI code generation. It compiles to native code via LLVM with performance comparable to C, Rust, and Go.</p>
+
+    <div class="toc">
+      <h3>Contents</h3>
+      <ul>
+        <li><a href="#types">Types</a></li>
+        <li><a href="#variables">Variables</a></li>
+        <li><a href="#functions">Functions</a></li>
+        <li><a href="#control-flow">Control Flow</a></li>
+        <li><a href="#operators">Operators</a></li>
+        <li><a href="#builtins">Built-in Functions</a></li>
+        <li><a href="#methods">Methods by Type</a></li>
+        <li><a href="#structs">Structs</a></li>
+        <li><a href="#enums">Enums</a></li>
+        <li><a href="#traits">Traits &amp; Generics</a></li>
+        <li><a href="#modules">Modules</a></li>
+        <li><a href="#concurrency">Concurrency</a></li>
+        <li><a href="#strings">String Interpolation</a></li>
+        <li><a href="#errors">Error Handling</a></li>
+      </ul>
+    </div>
+
+    <h2 id="types">Types</h2>
+    <table>
+      <thead><tr><th>Type</th><th>Short</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>Int</code></td><td><code>I</code></td><td>64-bit signed integer</td></tr>
+        <tr><td><code>Float</code></td><td><code>F</code></td><td>64-bit floating point</td></tr>
+        <tr><td><code>Bool</code></td><td><code>B</code></td><td>Boolean (<code>true</code> / <code>false</code>)</td></tr>
+        <tr><td><code>String</code></td><td><code>S</code></td><td>UTF-8 string</td></tr>
+        <tr><td><code>Array&lt;T&gt;</code></td><td>&mdash;</td><td>Dynamic growable array</td></tr>
+        <tr><td><code>Result&lt;T&gt;</code></td><td><code>R&lt;T&gt;</code></td><td>Success or error value</td></tr>
+        <tr><td><code>JsonValue</code></td><td>&mdash;</td><td>Opaque JSON value</td></tr>
+        <tr><td><code>HttpResponse</code></td><td>&mdash;</td><td>HTTP client response</td></tr>
+        <tr><td><code>HttpServer</code></td><td>&mdash;</td><td>HTTP server socket</td></tr>
+        <tr><td><code>HttpRequest</code></td><td>&mdash;</td><td>HTTP server request</td></tr>
+        <tr><td><code>Sender&lt;T&gt;</code></td><td>&mdash;</td><td>Channel sender</td></tr>
+        <tr><td><code>Receiver&lt;T&gt;</code></td><td>&mdash;</td><td>Channel receiver</td></tr>
+        <tr><td><code>Mutex&lt;T&gt;</code></td><td>&mdash;</td><td>Mutual exclusion lock</td></tr>
+        <tr><td><code>JoinHandle</code></td><td>&mdash;</td><td>Thread handle</td></tr>
+      </tbody>
+    </table>
+    <p>User-defined types: <code>struct</code>, <code>enum</code>, <code>trait</code>.</p>
+
+    <h2 id="variables">Variable Declaration</h2>
+    <pre><code>x = <span class="num">42</span>              <span class="comment">// immutable (type inferred)</span>
+x := <span class="num">0</span>              <span class="comment">// mutable</span>
+<span class="kw">let</span> x <span class="type">Int</span> = <span class="num">42</span>      <span class="comment">// explicit type (verbose, optional)</span>
+<span class="kw">let mut</span> x = <span class="num">0</span>       <span class="comment">// verbose mutable (optional)</span></code></pre>
+
+    <h2 id="functions">Function Definition</h2>
+    <pre><code><span class="comment">// Full form</span>
+<span class="kw">fn</span> <span class="fn">add</span>(a <span class="type">Int</span>, b <span class="type">Int</span>) <span class="type">Int</span> { a + b }
+
+<span class="comment">// Compact form (preferred)</span>
+<span class="fn">add</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">I</span> = a + b
+
+<span class="comment">// Implicit return type (defaults to Int)</span>
+<span class="fn">main</span>() { <span class="num">0</span> }</code></pre>
+
+    <h2 id="control-flow">Control Flow</h2>
+    <pre><code><span class="comment">// Ternary</span>
+result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -<span class="num">1</span>
+
+<span class="comment">// If-else block</span>
+<span class="kw">if</span> condition {
+    body
+} <span class="kw">else</span> {
+    body
+}
+
+<span class="comment">// While loop</span>
+<span class="kw">while</span> condition { body }
+
+<span class="comment">// For-in loop</span>
+<span class="kw">for</span> item <span class="kw">in</span> array { body }
+
+<span class="comment">// Match expression</span>
+<span class="kw">match</span> value {
+    EnumName::Variant1 => expr1,
+    EnumName::Variant2(x) => x + <span class="num">1</span>,
+}</code></pre>
+
+    <h2 id="operators">Operators</h2>
+    <table>
+      <thead><tr><th>Category</th><th>Operators</th></tr></thead>
+      <tbody>
+        <tr><td>Arithmetic</td><td><code>+</code>, <code>-</code>, <code>*</code>, <code>/</code>, <code>%</code></td></tr>
+        <tr><td>Comparison</td><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td></tr>
+        <tr><td>Boolean</td><td><code>&amp;&amp;</code>, <code>||</code>, <code>!</code></td></tr>
+        <tr><td>Assignment</td><td><code>=</code>, <code>:=</code>, <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code></td></tr>
+        <tr><td>Special</td><td><code>?:</code> (ternary), <code>!</code> (postfix unwrap), <code>[]</code> (index)</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="builtins">Built-in Functions</h2>
+
+    <h3>I/O</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>print(value)</code></td><td><code>p</code></td><td><code>(String|Int|Float|Bool) -&gt; Int</code></td></tr>
+        <tr><td><code>file_read(path)</code></td><td><code>fr</code></td><td><code>(String) -&gt; String</code></td></tr>
+        <tr><td><code>file_write(path, content)</code></td><td><code>fw</code></td><td><code>(String, String) -&gt; Int</code></td></tr>
+        <tr><td><code>file_append(path, content)</code></td><td><code>fa</code></td><td><code>(String, String) -&gt; Int</code></td></tr>
+        <tr><td><code>file_exists(path)</code></td><td><code>fe</code></td><td><code>(String) -&gt; Bool</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Type Conversion</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>int_to_string(n)</code></td><td><code>str</code></td><td><code>(Int) -&gt; String</code></td></tr>
+        <tr><td><code>string_to_int(s)</code></td><td><code>stoi</code></td><td><code>(String) -&gt; Int</code></td></tr>
+        <tr><td><code>int_to_float(n)</code></td><td><code>itof</code></td><td><code>(Int) -&gt; Float</code></td></tr>
+        <tr><td><code>float_to_int(f)</code></td><td><code>ftoi</code></td><td><code>(Float) -&gt; Int</code></td></tr>
+        <tr><td><code>float_to_string(f)</code></td><td><code>ftos</code></td><td><code>(Float) -&gt; String</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>JSON</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>json_object()</code></td><td><code>jo</code></td><td><code>() -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_array()</code></td><td><code>ja</code></td><td><code>() -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_string(s)</code></td><td><code>js</code></td><td><code>(String) -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_int(n)</code></td><td><code>ji</code></td><td><code>(Int) -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_bool(b)</code></td><td><code>jb</code></td><td><code>(Bool) -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_null()</code></td><td><code>jn</code></td><td><code>() -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_parse(s)</code></td><td><code>jp</code></td><td><code>(String) -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_stringify(v)</code></td><td><code>jfy</code></td><td><code>(JsonValue) -&gt; String</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>HTTP Client</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>http_get(url)</code></td><td><code>hg</code></td><td><code>(String) -&gt; HttpResponse</code></td></tr>
+        <tr><td><code>http_post(url, body, ct)</code></td><td><code>hp</code></td><td><code>(String, String, String) -&gt; HttpResponse</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>HTTP Server</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>http_listen(port)</code></td><td><code>listen</code></td><td><code>(Int) -&gt; HttpServer</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Logging</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>log_debug(msg)</code></td><td><code>ld</code></td><td><code>(String) -&gt; Int</code></td></tr>
+        <tr><td><code>log_info(msg)</code></td><td><code>li</code></td><td><code>(String) -&gt; Int</code></td></tr>
+        <tr><td><code>log_warn(msg)</code></td><td><code>lw</code></td><td><code>(String) -&gt; Int</code></td></tr>
+        <tr><td><code>log_error(msg)</code></td><td><code>le</code></td><td><code>(String) -&gt; Int</code></td></tr>
+        <tr><td><code>log_set_level(n)</code></td><td><code>ll</code></td><td><code>(Int) -&gt; Int</code></td></tr>
+      </tbody>
+    </table>
+    <p>Log levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR</p>
+
+    <h3>Error Handling</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>ok(value)</code></td><td><code>(T) -&gt; Result&lt;T&gt;</code></td></tr>
+        <tr><td><code>err(message)</code></td><td><code>(String) -&gt; Result&lt;_&gt;</code></td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="methods">Methods by Type</h2>
+
+    <h3>Array&lt;T&gt;</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Signature</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>push(value)</code></td><td><code>(T) -&gt; Int</code></td><td>Append element</td></tr>
+        <tr><td><code>pop</code></td><td><code>() -&gt; T</code></td><td>Remove and return last</td></tr>
+        <tr><td><code>get(index)</code> or <code>[index]</code></td><td><code>(Int) -&gt; T</code></td><td>Read element</td></tr>
+        <tr><td><code>set(index, value)</code></td><td><code>(Int, T) -&gt; Int</code></td><td>Write element</td></tr>
+        <tr><td><code>len</code></td><td><code>() -&gt; Int</code></td><td>Length</td></tr>
+        <tr><td><code>remove(index)</code></td><td><code>(Int) -&gt; T</code></td><td>Remove at index</td></tr>
+        <tr><td><code>contains(value)</code></td><td><code>(T) -&gt; Bool</code></td><td>Check membership</td></tr>
+        <tr><td><code>map(fn)</code></td><td><code>((T) -&gt; U) -&gt; Array&lt;U&gt;</code></td><td>Transform elements</td></tr>
+        <tr><td><code>filter(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; Array&lt;T&gt;</code></td><td>Filter elements</td></tr>
+      </tbody>
+    </table>
+
+    <h3>String</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Alias</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>len</code></td><td></td><td><code>() -&gt; Int</code></td></tr>
+        <tr><td><code>substring(start, end)</code></td><td></td><td><code>(Int, Int) -&gt; String</code></td></tr>
+        <tr><td><code>trim</code></td><td></td><td><code>() -&gt; String</code></td></tr>
+        <tr><td><code>starts_with(prefix)</code></td><td><code>sw</code></td><td><code>(String) -&gt; Bool</code></td></tr>
+        <tr><td><code>ends_with(suffix)</code></td><td><code>ew</code></td><td><code>(String) -&gt; Bool</code></td></tr>
+        <tr><td><code>contains(needle)</code></td><td></td><td><code>(String) -&gt; Bool</code></td></tr>
+        <tr><td><code>split(delimiter)</code></td><td></td><td><code>(String) -&gt; Array&lt;String&gt;</code></td></tr>
+        <tr><td><code>replace(old, new)</code></td><td></td><td><code>(String, String) -&gt; String</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>JsonValue</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>get(key)</code></td><td><code>(String) -&gt; JsonValue</code></td></tr>
+        <tr><td><code>get_index(index)</code></td><td><code>(Int) -&gt; JsonValue</code></td></tr>
+        <tr><td><code>get_string</code></td><td><code>() -&gt; String</code></td></tr>
+        <tr><td><code>get_int</code></td><td><code>() -&gt; Int</code></td></tr>
+        <tr><td><code>get_bool</code></td><td><code>() -&gt; Bool</code></td></tr>
+        <tr><td><code>len</code></td><td><code>() -&gt; Int</code></td></tr>
+        <tr><td><code>type_of</code></td><td><code>() -&gt; String</code></td></tr>
+        <tr><td><code>set(key, value)</code></td><td><code>(String, JsonValue) -&gt; Int</code></td></tr>
+        <tr><td><code>push(value)</code></td><td><code>(JsonValue) -&gt; Int</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>HttpResponse</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td><code>status</code></td><td><code>() -&gt; Int</code></td></tr>
+        <tr><td><code>body</code></td><td><code>() -&gt; String</code></td></tr>
+        <tr><td><code>header(name)</code></td><td><code>(String) -&gt; String</code></td></tr>
+        <tr><td><code>ok</code></td><td><code>() -&gt; Bool</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>HttpServer / HttpRequest</h3>
+    <table>
+      <thead><tr><th>Type</th><th>Method</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td>HttpServer</td><td><code>accept</code></td><td><code>() -&gt; HttpRequest</code></td></tr>
+        <tr><td>HttpRequest</td><td><code>path</code></td><td><code>() -&gt; String</code></td></tr>
+        <tr><td>HttpRequest</td><td><code>method</code></td><td><code>() -&gt; String</code></td></tr>
+        <tr><td>HttpRequest</td><td><code>body</code></td><td><code>() -&gt; String</code></td></tr>
+        <tr><td>HttpRequest</td><td><code>respond(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td></tr>
+        <tr><td>HttpRequest</td><td><code>respond(status, body, content_type)</code></td><td><code>(Int, String, String) -&gt; Int</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Result&lt;T&gt;</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Signature</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>is_ok</code></td><td><code>() -&gt; Bool</code></td><td></td></tr>
+        <tr><td><code>is_err</code></td><td><code>() -&gt; Bool</code></td><td></td></tr>
+        <tr><td><code>unwrap</code> or <code>!</code></td><td><code>() -&gt; T</code></td><td>Exits on error</td></tr>
+        <tr><td><code>unwrap_or(default)</code></td><td><code>(T) -&gt; T</code></td><td></td></tr>
+        <tr><td><code>error</code></td><td><code>() -&gt; String</code></td><td></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Concurrency Types</h3>
+    <table>
+      <thead><tr><th>Type</th><th>Method</th><th>Signature</th></tr></thead>
+      <tbody>
+        <tr><td>Sender&lt;T&gt;</td><td><code>send(value)</code></td><td><code>(T) -&gt; Int</code></td></tr>
+        <tr><td>Receiver&lt;T&gt;</td><td><code>recv</code></td><td><code>() -&gt; T</code></td></tr>
+        <tr><td>Mutex&lt;T&gt;</td><td><code>lock</code></td><td><code>() -&gt; T</code></td></tr>
+        <tr><td>Mutex&lt;T&gt;</td><td><code>unlock(value)</code></td><td><code>(T) -&gt; Int</code></td></tr>
+        <tr><td>JoinHandle</td><td><code>join</code></td><td><code>() -&gt; Int</code></td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="structs">Structs</h2>
+    <pre><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
+
+<span class="fn">make_point</span>(x:<span class="type">I</span> y:<span class="type">I</span>) <span class="type">Point</span> = <span class="type">Point</span> { x: x, y: y }
+
+<span class="fn">main</span>() {
+    pt = <span class="type">Point</span> { x: <span class="num">10</span>, y: <span class="num">20</span> }
+    <span class="fn">p</span>(<span class="fn">str</span>(pt.x + pt.y))
+    <span class="num">0</span>
+}</code></pre>
+
+    <h2 id="enums">Enums</h2>
+    <pre><code><span class="kw">enum</span> <span class="type">Shape</span> {
+    Circle(<span class="type">I</span>),
+    Rect(<span class="type">I</span>, <span class="type">I</span>),
+}
+
+<span class="fn">area</span>(s <span class="type">Shape</span>) <span class="type">I</span> = <span class="kw">match</span> s {
+    <span class="type">Shape</span>::Circle(r) => r * r * <span class="num">3</span>,
+    <span class="type">Shape</span>::Rect(w h) => w * h,
+}</code></pre>
+
+    <h2 id="traits">Traits &amp; Generics</h2>
+    <pre><code><span class="kw">trait</span> <span class="type">Describable</span> {
+    <span class="kw">fn</span> <span class="fn">describe</span>(self) <span class="type">I</span>
+}
+
+<span class="kw">impl</span> <span class="type">Describable</span> <span class="kw">for</span> <span class="type">Point</span> {
+    <span class="kw">fn</span> <span class="fn">describe</span>(self) <span class="type">I</span> { self.x + self.y }
+}
+
+<span class="fn">identity</span>&lt;T&gt;(x <span class="type">T</span>) <span class="type">T</span> = x</code></pre>
+
+    <h2 id="modules">Modules</h2>
+    <pre><code><span class="comment">// math.sans</span>
+<span class="fn">add</span>(a:<span class="type">I</span> b:<span class="type">I</span>) = a + b
+
+<span class="comment">// main.sans</span>
+<span class="kw">import</span> <span class="str">"math"</span>
+
+<span class="fn">main</span>() {
+    result = math.<span class="fn">add</span>(<span class="num">3</span> <span class="num">4</span>)
+    result
+}</code></pre>
+
+    <h2 id="concurrency">Concurrency</h2>
+    <pre><code><span class="fn">worker</span>(tx <span class="type">Sender</span>&lt;<span class="type">Int</span>&gt;) <span class="type">I</span> {
+    tx.<span class="fn">send</span>(<span class="num">42</span>)
+    <span class="num">0</span>
+}
+
+<span class="fn">main</span>() {
+    <span class="kw">let</span> (tx rx) = channel&lt;<span class="type">I</span>&gt;()
+    <span class="kw">spawn</span> <span class="fn">worker</span>(tx)
+    val = rx.recv
+    val
+}</code></pre>
+
+    <h2 id="strings">String Interpolation</h2>
+    <pre><code>name = <span class="str">"Sans"</span>
+msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hello Sans!"</span></code></pre>
+    <p>Only identifiers (not expressions) inside <code>{}</code>.</p>
+
+    <h2 id="errors">Error Handling</h2>
+    <pre><code><span class="fn">divide</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; = b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div/0"</span>) : <span class="fn">ok</span>(a / b)
+
+<span class="fn">main</span>() {
+    r = <span class="fn">divide</span>(<span class="num">10</span> <span class="num">3</span>)
+    r.is_ok ? r! : <span class="num">0</span>
+}</code></pre>
+
+    <h2>Known Limitations</h2>
+    <ul>
+      <li>No garbage collector &mdash; all heap memory leaked until process exit</li>
+      <li>No array bounds checking &mdash; out-of-bounds is undefined behavior</li>
+      <li>Multiple opaque type method calls in complex expressions may crash</li>
+      <li>String interpolation only supports identifiers, not expressions</li>
+      <li>No lambda syntax with capture &mdash; use named function references</li>
+    </ul>
+  </div>
+
+  <footer>
+    <div class="container">
+      <p>Sans is open source. <a href="https://github.com/sgordon/sans">View on GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>
