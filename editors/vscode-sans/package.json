@@ -1,8 +1,8 @@
 {
   "name": "sans-lang",
   "displayName": "Sans Language",
-  "description": "Syntax highlighting and language support for the Sans programming language",
-  "version": "0.1.0",
+  "description": "Syntax highlighting and hover docs for the Sans programming language",
+  "version": "0.2.0",
   "publisher": "sans-lang",
   "engines": {
     "vscode": "^1.75.0"
@@ -10,6 +10,10 @@
   "categories": [
     "Programming Languages"
   ],
+  "activationEvents": [
+    "onLanguage:sans"
+  ],
+  "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
@@ -31,5 +35,9 @@
         "path": "./syntaxes/sans.tmLanguage.json"
       }
     ]
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.0.0"
   }
 }
