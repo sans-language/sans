@@ -86,16 +86,24 @@ pub fn lower_with_extra_structs(
             IrType::Result(Box::new(inner))
         } else if ret_name == "Float" || ret_name == "F" {
             IrType::Float
+        } else if ret_name == "String" || ret_name == "S" {
+            IrType::Str
+        } else if ret_name == "Bool" || ret_name == "B" {
+            IrType::Bool
         } else if ret_name == "JsonValue" {
             IrType::JsonValue
         } else if ret_name == "HttpResponse" {
             IrType::HttpResponse
+        } else if ret_name == "HttpRequest" || ret_name == "HR" {
+            IrType::HttpRequest
+        } else if ret_name == "HttpServer" || ret_name == "HS" {
+            IrType::HttpServer
         } else if struct_defs.contains_key(ret_name) {
             IrType::Struct(ret_name.clone())
         } else if enum_defs.contains_key(ret_name) {
             IrType::Enum(ret_name.clone())
         } else {
-            continue; // Int, Bool, String — default IrType::Int is fine
+            continue; // Int — default IrType::Int is fine
         };
         local_fn_ret_types.insert(f.name.clone(), ir_type);
     }
@@ -137,11 +145,38 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
         .map(|(i, param)| {
             let reg = format!("arg{}", i);
             builder.locals.insert(param.name.clone(), LocalVar::Value(reg.clone()));
-            // Set type for struct/enum params
+            // Set type for all params
             if struct_defs.contains_key(&param.type_name.name) {
                 builder.reg_types.insert(reg.clone(), IrType::Struct(param.type_name.name.clone()));
             } else if enum_defs.contains_key(&param.type_name.name) {
                 builder.reg_types.insert(reg.clone(), IrType::Enum(param.type_name.name.clone()));
+            } else {
+                match param.type_name.name.as_str() {
+                    "Int" | "I" => { builder.reg_types.insert(reg.clone(), IrType::Int); }
+                    "Float" | "F" => { builder.reg_types.insert(reg.clone(), IrType::Float); }
+                    "Bool" | "B" => { builder.reg_types.insert(reg.clone(), IrType::Bool); }
+                    "String" | "S" => { builder.reg_types.insert(reg.clone(), IrType::Str); }
+                    "HttpRequest" | "HR" => { builder.reg_types.insert(reg.clone(), IrType::HttpRequest); }
+                    "HttpServer" | "HS" => { builder.reg_types.insert(reg.clone(), IrType::HttpServer); }
+                    "HttpResponse" => { builder.reg_types.insert(reg.clone(), IrType::HttpResponse); }
+                    "JsonValue" => { builder.reg_types.insert(reg.clone(), IrType::JsonValue); }
+                    _ => {
+                        // Result<T> or R<T>
+                        let n = &param.type_name.name;
+                        if (n.starts_with("Result<") || n.starts_with("R<")) && n.ends_with('>') {
+                            let prefix_len = if n.starts_with("Result<") { 7 } else { 2 };
+                            let inner_str = &n[prefix_len..n.len()-1];
+                            let inner = match inner_str {
+                                "Int" | "I" => IrType::Int,
+                                "Float" | "F" => IrType::Float,
+                                "Bool" | "B" => IrType::Bool,
+                                "String" | "S" => IrType::Str,
+                                _ => IrType::Int,
+                            };
+                            builder.reg_types.insert(reg.clone(), IrType::Result(Box::new(inner)));
+                        }
+                    }
+                }
             }
             reg
         })
@@ -201,6 +236,8 @@ struct IrBuilder {
     module_names: Vec<String>,
     module_fn_ret_types: HashMap<(String, String), IrType>,
     local_fn_ret_types: HashMap<String, IrType>,
+    /// Tracks the name of the current basic block (updated when a Label instruction is emitted)
+    current_label: Option<String>,
 }
 
 impl IrBuilder {
@@ -216,6 +253,7 @@ impl IrBuilder {
             module_names,
             module_fn_ret_types,
             local_fn_ret_types,
+            current_label: None,
         }
     }
 
@@ -229,6 +267,11 @@ impl IrBuilder {
         let label = format!("{}_{}", prefix, self.label_counter);
         self.label_counter += 1;
         label
+    }
+
+    fn emit_label(&mut self, name: String) {
+        self.current_label = Some(name.clone());
+        self.instructions.push(Instruction::Label { name });
     }
 
     fn lower_expr(&mut self, expr: &Expr) -> Reg {
@@ -486,23 +529,27 @@ impl IrBuilder {
                 });
 
                 // Then branch
-                self.instructions.push(Instruction::Label { name: then_label.clone() });
+                self.emit_label(then_label.clone());
                 for stmt in then_body {
                     self.lower_stmt(stmt);
                 }
                 let then_reg = self.lower_expr(then_expr);
+                // Capture the actual block that contains then_reg (may differ from then_label if nested)
+                let then_source_label = self.current_label.clone().unwrap_or_else(|| then_label.clone());
                 self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                 // Else branch
-                self.instructions.push(Instruction::Label { name: else_label.clone() });
+                self.emit_label(else_label.clone());
                 for stmt in else_body {
                     self.lower_stmt(stmt);
                 }
                 let else_reg = self.lower_expr(else_expr);
+                // Capture the actual block that contains else_reg (may differ from else_label if nested)
+                let else_source_label = self.current_label.clone().unwrap_or_else(|| else_label.clone());
                 self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                 // Merge
-                self.instructions.push(Instruction::Label { name: merge_label.clone() });
+                self.emit_label(merge_label.clone());
                 let dest = self.fresh_reg();
                 let a_type = self.reg_types.get(&then_reg).cloned().unwrap_or(IrType::Int);
                 let b_type = self.reg_types.get(&else_reg).cloned().unwrap_or(IrType::Int);
@@ -516,9 +563,9 @@ impl IrBuilder {
                 self.instructions.push(Instruction::Phi {
                     dest: dest.clone(),
                     a_val: then_reg,
-                    a_label: then_label,
+                    a_label: then_source_label,
                     b_val: else_reg,
-                    b_label: else_label,
+                    b_label: else_source_label,
                 });
                 self.reg_types.insert(dest.clone(), phi_type);
                 dest
@@ -1012,7 +1059,7 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
-                    (Some(IrType::Str), "starts_with") => {
+                    (Some(IrType::Str), "starts_with") | (Some(IrType::Str), "sw") => {
                         let prefix_reg = self.lower_expr(&args[0]);
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::StringStartsWith { dest: dest.clone(), string: obj_reg, prefix: prefix_reg });

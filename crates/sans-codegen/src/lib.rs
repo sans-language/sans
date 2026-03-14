@@ -918,6 +918,10 @@ fn generate_llvm<'ctx>(
                     global.set_unnamed_addr(true);
                     let ptr = global.as_pointer_value();
                     ptrs.insert(dest.clone(), ptr);
+                    // Also store as i64 in regs so Phi nodes can reference string constants
+                    let as_int = builder.build_ptr_to_int(ptr, i64_type, &format!("str_int_{}", dest))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
                 }
                 Instruction::PrintInt { value } => {
                     let val = regs[value];
@@ -931,7 +935,13 @@ fn generate_llvm<'ctx>(
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
                 Instruction::PrintString { value } => {
-                    let str_ptr = ptrs[value];
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let str_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        builder.build_int_to_ptr(regs[value], ptr_type, "ps_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
                     let fmt_str = context.const_string(b"%s\n", true);
                     let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.str.{}", value));
                     fmt_global.set_initializer(&fmt_str);
