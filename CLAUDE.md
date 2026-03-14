@@ -68,10 +68,27 @@ Sans is designed for AI generation, not human readability. All new features, syn
 
 **Rule: A feature is not done until docs, hover docs, syntax highlighting, and examples are updated.** Do not split docs into a separate PR — ship them with the feature.
 
+## Versioning
+All version numbers must stay in sync and follow semver (`x.y.z`). When bumping, increment the **patch** version (`x.x.+1`) unless a breaking change warrants minor/major.
+
+**Files that must have matching versions:**
+- `crates/sans-driver/Cargo.toml` (and all other `crates/*/Cargo.toml`)
+- `editors/vscode-sans/package.json`
+- `website/static/index.html` (footer)
+- `website/static/docs.html` (footer)
+- `website/static/benchmarks.html` (footer)
+
+The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
+
+**Current version: `0.2.0`**
+
+**Rule:** Every release or version bump must update ALL version files together in a single commit. Never let them drift.
+
 ## Rules
 - **NEVER commit compiled binaries** (.o files, executables, Mach-O binaries). Use .gitignore to prevent this.
 - **All new syntax/features must be AI-optimized** — use the fewest tokens possible.
 - **All new features must include documentation updates** — see [Documentation Update Checklist](#documentation-update-checklist).
+- **Version numbers must stay in sync** — see [Versioning](#versioning). Always increment patch (`x.x.+1`) minimum.
 
 ## Conventions
 - All values are stored as i64 in the IR/codegen register map

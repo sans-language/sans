@@ -6,8 +6,14 @@ use sans::imports;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    if args.len() >= 2 && (args[1] == "--version" || args[1] == "-V") {
+        println!("sans {}", env!("CARGO_PKG_VERSION"));
+        process::exit(0);
+    }
+
     if args.len() < 3 {
         eprintln!("Usage: sans <build|run> <file.sans>");
+        eprintln!("       sans --version");
         process::exit(1);
     }
 
