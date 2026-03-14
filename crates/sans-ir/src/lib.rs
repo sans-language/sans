@@ -65,6 +65,26 @@ pub fn lower_with_extra_structs(
         enum_defs.insert(e.name.clone(), variants);
     }
 
+    // Process global variable definitions
+    let mut globals: Vec<(String, i64)> = Vec::new();
+    let mut global_names: HashMap<String, IrType> = HashMap::new();
+    for gdef in &program.globals {
+        let init_value = match &gdef.value {
+            Expr::IntLiteral { value, .. } => *value,
+            Expr::BoolLiteral { value, .. } => if *value { 1 } else { 0 },
+            _ => 0, // default for non-constant init
+        };
+        let ir_type = match &gdef.value {
+            Expr::IntLiteral { .. } => IrType::Int,
+            Expr::FloatLiteral { .. } => IrType::Float,
+            Expr::BoolLiteral { .. } => IrType::Bool,
+            Expr::StringLiteral { .. } => IrType::Str,
+            _ => IrType::Int,
+        };
+        globals.push((gdef.name.clone(), init_value));
+        global_names.insert(gdef.name.clone(), ir_type);
+    }
+
     let module_names: Vec<String> = program.imports.iter()
         .map(|imp| imp.module_name.clone())
         .collect();
@@ -115,7 +135,7 @@ pub fn lower_with_extra_structs(
             } else {
                 f.name.clone()
             };
-            lower_function_named(f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types)
+            lower_function_named(f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names)
         })
         .collect();
 
@@ -127,15 +147,15 @@ pub fn lower_with_extra_structs(
             } else {
                 format!("{}_{}", imp.target_type, method.name)
             };
-            functions.push(lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types));
+            functions.push(lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names));
         }
     }
 
-    Module { functions }
+    Module { globals, functions }
 }
 
-fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>) -> IrFunction {
-    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone());
+fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>) -> IrFunction {
+    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone(), global_names.clone());
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -236,12 +256,13 @@ struct IrBuilder {
     module_names: Vec<String>,
     module_fn_ret_types: HashMap<(String, String), IrType>,
     local_fn_ret_types: HashMap<String, IrType>,
+    global_names: HashMap<String, IrType>,
     /// Tracks the name of the current basic block (updated when a Label instruction is emitted)
     current_label: Option<String>,
 }
 
 impl IrBuilder {
-    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>, module_names: Vec<String>, module_fn_ret_types: HashMap<(String, String), IrType>, local_fn_ret_types: HashMap<String, IrType>) -> Self {
+    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>, module_names: Vec<String>, module_fn_ret_types: HashMap<(String, String), IrType>, local_fn_ret_types: HashMap<String, IrType>, global_names: HashMap<String, IrType>) -> Self {
         IrBuilder {
             counter: 0,
             label_counter: 0,
@@ -253,6 +274,7 @@ impl IrBuilder {
             module_names,
             module_fn_ret_types,
             local_fn_ret_types,
+            global_names,
             current_label: None,
         }
     }
@@ -313,6 +335,12 @@ impl IrBuilder {
                             dest
                         }
                     }
+                } else if let Some(ir_type) = self.global_names.get(name).cloned() {
+                    // Global variable — emit GlobalLoad
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::GlobalLoad { dest: dest.clone(), name: name.clone() });
+                    self.reg_types.insert(dest.clone(), ir_type);
+                    dest
                 } else {
                     // Function reference — emit FnRef instruction
                     let dest = self.fresh_reg();
@@ -771,6 +799,13 @@ impl IrBuilder {
                     let msg_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::PrintErr { dest: dest.clone(), message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "wfd" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let msg_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::WriteFd { dest: dest.clone(), fd: fd_reg, message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "get_log_level" {
@@ -1491,6 +1526,9 @@ impl IrBuilder {
                     } else {
                         panic!("cannot assign to immutable variable: {}", name);
                     }
+                } else if self.global_names.contains_key(name) {
+                    // Global variable — emit GlobalStore
+                    self.instructions.push(Instruction::GlobalStore { name: name.clone(), value: val_reg });
                 } else {
                     // Bare assignment creating a new immutable binding
                     self.locals.insert(name.clone(), LocalVar::Value(val_reg));

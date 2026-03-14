@@ -1,21 +1,22 @@
+g cy_log_level = 0
+
 cy_log_debug(msg:S) I {
-  lvl = get_log_level()
-  lvl <= 0 ? print_err("[DEBUG] " + msg) : 0
+  cy_log_level <= 0 ? wfd(2, "[DEBUG] " + msg + "\n") : 0
 }
 
 cy_log_info(msg:S) I {
-  lvl = get_log_level()
-  lvl <= 1 ? print_err("[INFO] " + msg) : 0
+  cy_log_level <= 1 ? wfd(2, "[INFO] " + msg + "\n") : 0
 }
 
 cy_log_warn(msg:S) I {
-  lvl = get_log_level()
-  lvl <= 2 ? print_err("[WARN] " + msg) : 0
+  cy_log_level <= 2 ? wfd(2, "[WARN] " + msg + "\n") : 0
 }
 
 cy_log_error(msg:S) I {
-  lvl = get_log_level()
-  lvl <= 3 ? print_err("[ERROR] " + msg) : 0
+  cy_log_level <= 3 ? wfd(2, "[ERROR] " + msg + "\n") : 0
 }
 
-cy_log_set_level(level:I) I = set_log_level(level)
+cy_log_set_level(level:I) I {
+  cy_log_level = level
+  0
+}

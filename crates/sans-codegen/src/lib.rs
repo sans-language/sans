@@ -122,6 +122,10 @@ fn generate_llvm<'ctx>(
     let strtol_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("strtol", strtol_type, Some(Linkage::External));
 
+    // libc write(fd, buf, len) -> ssize_t
+    let write_type = i64_type.fn_type(&[i64_type.into(), i8_ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("write", write_type, Some(Linkage::External));
+
     // File I/O functions
     let fopen_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("fopen", fopen_type, Some(Linkage::External));
@@ -281,6 +285,13 @@ fn generate_llvm<'ctx>(
 
     let http_header_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_http_header", http_header_type, Some(Linkage::External));
+
+    // Create LLVM global variables
+    for (name, init_value) in &module.globals {
+        let global = llvm_module.add_global(i64_type, None, name);
+        global.set_initializer(&i64_type.const_int(*init_value as u64, true));
+        global.set_linkage(Linkage::Internal);
+    }
 
     // First pass: declare all functions
     for func in &module.functions {
@@ -977,6 +988,23 @@ fn generate_llvm<'ctx>(
 
                     let printf_fn = llvm_module.get_function("printf").unwrap();
                     builder.build_call(printf_fn, &[selected.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::GlobalLoad { dest, name } => {
+                    let global = llvm_module.get_global(name)
+                        .ok_or_else(|| CodegenError::LlvmError(format!("global '{}' not found", name)))?;
+                    let loaded = builder
+                        .build_load(i64_type, global.as_pointer_value(), dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), loaded);
+                }
+                Instruction::GlobalStore { name, value } => {
+                    let global = llvm_module.get_global(name)
+                        .ok_or_else(|| CodegenError::LlvmError(format!("global '{}' not found", name)))?;
+                    let val = regs[value];
+                    builder
+                        .build_store(global.as_pointer_value(), val)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
                 Instruction::Alloca { dest } => {
@@ -2865,6 +2893,31 @@ fn generate_llvm<'ctx>(
                     };
                     regs.insert(dest.clone(), result);
                 }
+                Instruction::WriteFd { dest, fd, message } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let fd_val = regs[fd];
+                    let msg_ptr = if let Some(p) = ptrs.get(message) {
+                        *p
+                    } else {
+                        builder.build_int_to_ptr(regs[message], ptr_type, "wfd_mp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let strlen_fn = llvm_module.get_function("strlen").unwrap();
+                    let len_call = builder.build_call(strlen_fn, &[msg_ptr.into()], "wfd_len")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len_val = match len_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strlen: expected return".into())),
+                    };
+                    let write_fn = llvm_module.get_function("write").unwrap();
+                    let call = builder.build_call(write_fn, &[fd_val.into(), msg_ptr.into(), len_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("write: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
                 Instruction::GetLogLevel { dest } => {
                     let fn_ref = llvm_module.get_function("cy_get_log_level").unwrap();
                     let call = builder.build_call(fn_ref, &[], dest)
@@ -3063,6 +3116,7 @@ mod tests {
     #[test]
     fn codegen_produces_llvm_ir() {
         let module = Module {
+            globals: vec![],
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],
@@ -3087,6 +3141,7 @@ mod tests {
     #[test]
     fn codegen_arithmetic() {
         let module = Module {
+            globals: vec![],
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],
@@ -3128,6 +3183,7 @@ mod tests {
     fn codegen_if_else() {
         // Equivalent to: if true { 1 } else { 2 }
         let module = Module {
+            globals: vec![],
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],
@@ -3218,6 +3274,7 @@ mod tests {
     fn codegen_comparison() {
         // Equivalent to: 1 == 2 (returns bool, zext to i64 for return)
         let module = Module {
+            globals: vec![],
             functions: vec![IrFunction {
                 name: "main".to_string(),
                 params: vec![],

@@ -1,0 +1,13 @@
+g counter = 0
+
+inc() I {
+  counter = counter + 1
+  counter
+}
+
+main() I {
+  inc()
+  inc()
+  inc()
+  counter
+}

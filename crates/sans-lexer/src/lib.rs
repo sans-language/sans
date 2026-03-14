@@ -102,6 +102,7 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "array" => TokenKind::Array,
                     "in" => TokenKind::In,
                     "import" => TokenKind::Import,
+                    "g" => TokenKind::Global,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {

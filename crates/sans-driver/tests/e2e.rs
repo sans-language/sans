@@ -68,9 +68,10 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         all_ir_functions.extend(ir.functions);
     }
     let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
+    let all_globals = main_ir.globals;
     all_ir_functions.extend(main_ir.functions);
 
-    let merged = sans_ir::ir::Module { functions: all_ir_functions };
+    let merged = sans_ir::ir::Module { globals: all_globals, functions: all_ir_functions };
 
     // Codegen, link, run
     let tmp_dir = std::env::temp_dir();
@@ -430,4 +431,10 @@ fn e2e_ai_syntax4() {
 fn e2e_ai_syntax5() {
     // a.len without parens = 3
     assert_eq!(compile_and_run("ai_syntax5.sans"), 3);
+}
+
+#[test]
+fn e2e_global_var() {
+    // g counter = 0; inc 3 times; counter = 3
+    assert_eq!(compile_and_run("global_var.sans"), 3);
 }

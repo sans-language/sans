@@ -75,6 +75,7 @@ impl Parser {
 
     fn parse_program(&mut self) -> Result<Program, ParseError> {
         let mut imports = Vec::new();
+        let mut globals = Vec::new();
         let mut functions = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
@@ -91,6 +92,9 @@ impl Parser {
                     ));
                 }
                 imports.push(self.parse_import()?);
+            } else if self.peek().kind == TokenKind::Global {
+                has_declarations = true;
+                globals.push(self.parse_global_def()?);
             } else {
                 has_declarations = true;
                 if self.peek().kind == TokenKind::Enum {
@@ -126,7 +130,16 @@ impl Parser {
                 }
             }
         }
-        Ok(Program { imports, functions, structs, enums, traits, impls })
+        Ok(Program { imports, globals, functions, structs, enums, traits, impls })
+    }
+
+    fn parse_global_def(&mut self) -> Result<GlobalDef, ParseError> {
+        let start = self.expect(&TokenKind::Global)?.span.start;
+        let (name, _) = self.expect_ident()?;
+        self.expect(&TokenKind::Eq)?;
+        let value = self.parse_expr(0)?;
+        let end = expr_span(&value).end;
+        Ok(GlobalDef { name, value, span: start..end })
     }
 
     fn parse_import(&mut self) -> Result<Import, ParseError> {

@@ -370,6 +370,17 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
         }
     }
 
+    // Pass 1b: type-check global variable definitions.
+    let mut global_types: HashMap<String, Type> = HashMap::new();
+    {
+        let mut global_locals: HashMap<String, (Type, bool)> = HashMap::new();
+        for gdef in &program.globals {
+            let ty = check_expr(&gdef.value, &global_locals, &fn_env, &Type::Int, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
+            global_types.insert(gdef.name.clone(), ty.clone());
+            global_locals.insert(gdef.name.clone(), (ty, true));
+        }
+    }
+
     // Require a `main` function (unless checking a library module).
     if require_main && !fn_env.contains_key("main") {
         return Err(TypeError::new("missing 'main' function"));
@@ -386,6 +397,10 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
         let ret_type = ret_type.clone();
 
         let mut locals: HashMap<String, (Type, bool)> = HashMap::new();
+        // Inject globals as mutable locals
+        for (gname, gty) in &global_types {
+            locals.insert(gname.clone(), (gty.clone(), true));
+        }
         for param in &func.params {
             let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry, module_exports)?;
             locals.insert(param.name.clone(), (ty, false));
@@ -432,6 +447,10 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
             let ret_type = resolve_type(&method.return_type.name, &struct_registry, &enum_registry, module_exports)?;
 
             let mut locals: HashMap<String, (Type, bool)> = HashMap::new();
+            // Inject globals as mutable locals
+            for (gname, gty) in &global_types {
+                locals.insert(gname.clone(), (gty.clone(), true));
+            }
             for param in &method.params {
                 let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry, module_exports)?;
                 locals.insert(param.name.clone(), (ty, false));
@@ -862,6 +881,19 @@ fn check_expr(
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if arg_ty != Type::String {
                     return Err(TypeError::new(format!("print_err() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "wfd" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("wfd() takes exactly 2 arguments (fd, msg)"));
+                }
+                let fd_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if fd_ty != Type::Int {
+                    return Err(TypeError::new(format!("wfd() fd must be Int, got {}", fd_ty)));
+                }
+                let msg_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if msg_ty != Type::String {
+                    return Err(TypeError::new(format!("wfd() msg must be String, got {}", msg_ty)));
                 }
                 return Ok(Type::Int);
             } else if function == "get_log_level" {

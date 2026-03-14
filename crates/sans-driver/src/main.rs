@@ -130,9 +130,11 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     }
 
     let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
+    let all_globals = main_ir.globals;
     all_ir_functions.extend(main_ir.functions);
 
     let merged_module = sans_ir::ir::Module {
+        globals: all_globals,
         functions: all_ir_functions,
     };
 
@@ -155,7 +157,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let tmp_dir = std::env::temp_dir();
     let c_runtime_modules = [
-        "json", "http", "kernel", "result", "string_ext", "array_ext", "functional", "server",
+        "json", "http", "result", "string_ext", "array_ext", "functional", "server",
     ];
     let sans_runtime_modules = [
         "log",

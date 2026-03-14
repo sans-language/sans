@@ -8,8 +8,16 @@ pub struct Import {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct GlobalDef {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub imports: Vec<Import>,
+    pub globals: Vec<GlobalDef>,
     pub functions: Vec<Function>,
     pub structs: Vec<StructDef>,
     pub enums: Vec<EnumDef>,

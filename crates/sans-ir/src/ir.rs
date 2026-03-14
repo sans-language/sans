@@ -1,5 +1,6 @@
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub globals: Vec<(String, i64)>,
     pub functions: Vec<IrFunction>,
 }
 
@@ -38,6 +39,9 @@ pub enum Instruction {
     Branch { cond: Reg, then_label: String, else_label: String },
     Jump { target: String },
     Phi { dest: Reg, a_val: Reg, a_label: String, b_val: Reg, b_label: String },
+    // Global variable operations
+    GlobalLoad { dest: Reg, name: String },
+    GlobalStore { name: String, value: Reg },
     // Memory operations for mutable variables
     Alloca { dest: Reg },
     Store { ptr: Reg, value: Reg },
@@ -221,6 +225,7 @@ pub enum Instruction {
     LogSetLevel { dest: Reg, level: Reg },
     // Kernel functions
     PrintErr { dest: Reg, message: Reg },
+    WriteFd { dest: Reg, fd: Reg, message: Reg },
     GetLogLevel { dest: Reg },
     SetLogLevel { dest: Reg, level: Reg },
     // HTTP operations

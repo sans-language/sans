@@ -12,6 +12,6 @@ pub enum TokenKind {
     PlusEq, MinusEq, StarEq, SlashEq, PercentEq,
     LParen, RParen, LBrace, RBrace, LBracket, RBracket, Comma, Colon,
     True, False, If, Else, While, Return, Mut, Struct, Enum, Match,
-    Trait, Impl, For, SelfValue, SelfType, Spawn, Channel, Mutex, Array, In, Import,
+    Trait, Impl, For, SelfValue, SelfType, Spawn, Channel, Mutex, Array, In, Import, Global,
     Dot, ColonColon, ColonEq, FatArrow, EqEq, NotEq, Lt, Gt, LtEq, GtEq, And, Or, Bang, Question, Eof,
 }
