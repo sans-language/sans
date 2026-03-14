@@ -341,3 +341,13 @@ fn e2e_http_error_handling() {
 fn e2e_log_levels() {
     assert_eq!(compile_and_run("log_levels.cy"), 0);
 }
+
+#[test]
+fn e2e_demo_backend() {
+    // Clean up any leftover output file
+    let _ = std::fs::remove_file("demo_output.txt");
+    let result = compile_and_run_dir("demo_backend");
+    // Clean up output file created by the demo
+    let _ = std::fs::remove_file("demo_output.txt");
+    assert_eq!(result, 30);
+}

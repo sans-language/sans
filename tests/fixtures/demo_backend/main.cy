@@ -1,0 +1,65 @@
+import "math"
+
+fn main() Int {
+    log_set_level(1)
+    log_info("demo starting")
+
+    // 1. Cross-module math
+    let sum = math.add(10, 20)
+    let product = math.multiply(3, 5)
+    let clamped = math.clamp(100, 0, 50)
+    log_info("math done")
+
+    // 2. Strings
+    let greeting = "Hello" + " " + "Cyflym"
+    let sub = greeting.substring(6, 12)
+    let sub_len = sub.len()
+    log_info("strings done")
+
+    // 3. String conversions
+    let s = int_to_string(sum)
+    let back = string_to_int(s)
+    log_info("conversions done")
+
+    // 4. JSON build + parse
+    let obj = json_object()
+    obj.set("name", json_string("cyflym"))
+    obj.set("count", json_int(5))
+    obj.set("ok", json_bool(true))
+    let json_str = json_stringify(obj)
+    let parsed = json_parse(json_str)
+    let count = parsed.get("count").get_int()
+    let ok = parsed.get("ok").get_bool()
+    log_info("json done")
+
+    // 5. JSON array
+    let arr = json_array()
+    arr.push(json_int(1))
+    arr.push(json_int(2))
+    arr.push(json_int(3))
+    let arr_len = arr.len()
+    let first = arr.get_index(0).get_int()
+    log_info("json array done")
+
+    // 6. File I/O
+    let report = "sum=" + int_to_string(sum) + " product=" + int_to_string(product) + "\n"
+    file_write("demo_output.txt", report)
+    file_append("demo_output.txt", "count=" + int_to_string(count) + "\n")
+    log_info("wrote files")
+
+    // 7. Verify
+    if file_exists("demo_output.txt") {
+        log_info("file verified")
+
+        // Compute final result from all components
+        // sum=30, product=15, clamped=50, sub_len=6, back=30, count=5, arr_len=3, first=1
+        // We need result < 256 for exit code
+        // result = sub_len(6) + count(5) + arr_len(3) + first(1) + product(15) = 30
+        let result = sub_len + count + arr_len + first + product
+        log_info("demo complete")
+        result
+    } else {
+        log_error("no file")
+        0
+    }
+}
