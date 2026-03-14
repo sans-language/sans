@@ -1,4 +1,4 @@
-cy_make_empty_request() I {
+sans_make_empty_request() I {
   req = alloc(32)
   store64(req, -1)
   empty = alloc(1)
@@ -13,33 +13,33 @@ cy_make_empty_request() I {
   req
 }
 
-cy_http_accept(server:I) I {
+sans_http_accept(server:I) I {
   sfd = load64(server)
-  sfd < 0 ? cy_make_empty_request() : cy_http_accept_inner(sfd)
+  sfd < 0 ? sans_make_empty_request() : sans_http_accept_inner(sfd)
 }
 
-cy_http_accept_inner(sfd:I) I {
+sans_http_accept_inner(sfd:I) I {
   cfd = saccept(sfd)
-  cfd < 0 ? cy_make_empty_request() : cy_http_accept_read(cfd)
+  cfd < 0 ? sans_make_empty_request() : sans_http_accept_read(cfd)
 }
 
-cy_http_accept_read(cfd:I) I {
+sans_http_accept_read(cfd:I) I {
   buf = alloc(8192)
   n = srecv(cfd, buf, 8191)
-  n <= 0 ? cy_http_accept_fail(cfd, buf) : cy_http_accept_parse(cfd, buf, n)
+  n <= 0 ? sans_http_accept_fail(cfd, buf) : sans_http_accept_parse(cfd, buf, n)
 }
 
-cy_http_accept_fail(cfd:I buf:I) I {
+sans_http_accept_fail(cfd:I buf:I) I {
   sclose(cfd)
-  cy_make_empty_request()
+  sans_make_empty_request()
 }
 
-cy_http_accept_parse(cfd:I buf:I n:I) I {
+sans_http_accept_parse(cfd:I buf:I n:I) I {
   store8(buf + n, 0)
-  mend = cy_find_space(buf, n, 0)
+  mend = sans_find_space(buf, n, 0)
   mlen = mend
   pstart = mend < n ? mend + 1 : mend
-  pend = cy_find_space(buf, n, pstart)
+  pend = sans_find_space(buf, n, pstart)
   plen = pend - pstart
   method = alloc(mlen + 1)
   mlen > 0 ? mcpy(method, buf, mlen) : 0
@@ -47,8 +47,8 @@ cy_http_accept_parse(cfd:I buf:I n:I) I {
   path = alloc(plen + 1)
   plen > 0 ? mcpy(path, buf + pstart, plen) : 0
   store8(path + plen, 0)
-  bstart = cy_find_body(buf, n)
-  body = cy_extract_body(buf, n, bstart)
+  bstart = sans_find_body(buf, n)
+  body = sans_extract_body(buf, n, bstart)
   req = alloc(32)
   store64(req, cfd)
   store64(req + 8, method)
@@ -57,7 +57,7 @@ cy_http_accept_parse(cfd:I buf:I n:I) I {
   req
 }
 
-cy_find_space(buf:I n:I start:I) I {
+sans_find_space(buf:I n:I start:I) I {
   i := start
   done := 0
   while done == 0 {
@@ -78,7 +78,7 @@ cy_find_space(buf:I n:I start:I) I {
   i
 }
 
-cy_find_body(buf:I n:I) I {
+sans_find_body(buf:I n:I) I {
   i := 0
   done := 0
   while done == 0 {
@@ -113,82 +113,82 @@ cy_find_body(buf:I n:I) I {
   i + 3 < n ? i + 4 : n
 }
 
-cy_extract_body(buf:I n:I bstart:I) I {
+sans_extract_body(buf:I n:I bstart:I) I {
   blen = n - bstart
-  blen < 0 ? cy_empty_str() : cy_copy_str(buf + bstart, blen)
+  blen < 0 ? sans_empty_str() : sans_copy_str(buf + bstart, blen)
 }
 
-cy_empty_str() I {
+sans_empty_str() I {
   s = alloc(1)
   store8(s, 0)
   s
 }
 
-cy_copy_str(src:I len:I) I {
+sans_copy_str(src:I len:I) I {
   s = alloc(len + 1)
   len > 0 ? mcpy(s, src, len) : 0
   store8(s + len, 0)
   s
 }
 
-cy_http_request_path(req:I) I = load64(req + 16)
-cy_http_request_method(req:I) I = load64(req + 8)
-cy_http_request_body(req:I) I = load64(req + 24)
+sans_http_request_path(req:I) I = load64(req + 16)
+sans_http_request_method(req:I) I = load64(req + 8)
+sans_http_request_body(req:I) I = load64(req + 24)
 
-cy_http_respond(req:I status:I body:I ct:I) I {
+sans_http_respond(req:I status:I body:I ct:I) I {
   fd = load64(req)
-  fd < 0 ? 0 : cy_http_respond_inner(req, fd, status, body, ct)
+  fd < 0 ? 0 : sans_http_respond_inner(req, fd, status, body, ct)
 }
 
-cy_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
+sans_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
   body_len = slen(body)
-  status_str = cy_int_to_buf(status)
+  status_str = sans_int_to_buf(status)
   status_str_len = slen(status_str)
-  blen_str = cy_int_to_buf(body_len)
+  blen_str = sans_int_to_buf(body_len)
   blen_str_len = slen(blen_str)
-  st = cy_status_text(status)
+  st = sans_status_text(status)
   st_len = slen(st)
   ct_len = slen(ct)
   header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + 23
   buf = alloc(header_len + 1)
   pos := 0
-  pos = cy_buf_write(buf, pos, cy_lit_http11(), 9)
-  pos = cy_buf_write(buf, pos, status_str, status_str_len)
-  pos = cy_buf_write(buf, pos, cy_lit_space(), 1)
-  pos = cy_buf_write(buf, pos, st, st_len)
-  pos = cy_buf_write(buf, pos, cy_lit_content_length(), 18)
-  pos = cy_buf_write(buf, pos, blen_str, blen_str_len)
-  pos = cy_buf_write(buf, pos, cy_lit_content_type(), 16)
-  pos = cy_buf_write(buf, pos, ct, ct_len)
-  pos = cy_buf_write(buf, pos, cy_lit_conn_close(), 23)
+  pos = sans_buf_write(buf, pos, sans_lit_http11(), 9)
+  pos = sans_buf_write(buf, pos, status_str, status_str_len)
+  pos = sans_buf_write(buf, pos, sans_lit_space(), 1)
+  pos = sans_buf_write(buf, pos, st, st_len)
+  pos = sans_buf_write(buf, pos, sans_lit_content_length(), 18)
+  pos = sans_buf_write(buf, pos, blen_str, blen_str_len)
+  pos = sans_buf_write(buf, pos, sans_lit_content_type(), 16)
+  pos = sans_buf_write(buf, pos, ct, ct_len)
+  pos = sans_buf_write(buf, pos, sans_lit_conn_close(), 23)
   store8(buf + pos, 0)
   total = header_len + body_len
   resp = alloc(total)
   mcpy(resp, buf, header_len)
   body_len > 0 ? mcpy(resp + header_len, body, body_len) : 0
-  cy_send_all(fd, resp, total)
+  sans_send_all(fd, resp, total)
   sclose(fd)
   store64(req, -1)
   1
 }
 
-cy_buf_write(buf:I pos:I src:I len:I) I {
+sans_buf_write(buf:I pos:I src:I len:I) I {
   len > 0 ? mcpy(buf + pos, src, len) : 0
   pos + len
 }
 
-cy_int_to_buf(n:I) I {
-  n == 0 ? cy_int_zero_str() : cy_int_to_buf_pos(n)
+sans_int_to_buf(n:I) I {
+  n == 0 ? sans_int_zero_str() : sans_int_to_buf_pos(n)
 }
 
-cy_int_zero_str() I {
+sans_int_zero_str() I {
   buf = alloc(2)
   store8(buf, 48)
   store8(buf + 1, 0)
   buf
 }
 
-cy_int_to_buf_pos(n:I) I {
+sans_int_to_buf_pos(n:I) I {
   digits := 0
   tmp := n
   while tmp > 0 {
@@ -207,11 +207,11 @@ cy_int_to_buf_pos(n:I) I {
   buf
 }
 
-cy_status_text(s:I) I {
-  s == 404 ? cy_st_not_found() : s == 500 ? cy_st_internal_error() : s == 400 ? cy_st_bad_request() : cy_st_ok()
+sans_status_text(s:I) I {
+  s == 404 ? sans_st_not_found() : s == 500 ? sans_st_internal_error() : s == 400 ? sans_st_bad_request() : sans_st_ok()
 }
 
-cy_st_ok() I {
+sans_st_ok() I {
   buf = alloc(3)
   store8(buf, 79)
   store8(buf + 1, 75)
@@ -219,7 +219,7 @@ cy_st_ok() I {
   buf
 }
 
-cy_st_not_found() I {
+sans_st_not_found() I {
   buf = alloc(10)
   store8(buf, 78)
   store8(buf + 1, 111)
@@ -234,7 +234,7 @@ cy_st_not_found() I {
   buf
 }
 
-cy_st_internal_error() I {
+sans_st_internal_error() I {
   buf = alloc(22)
   store8(buf, 73)
   store8(buf + 1, 110)
@@ -261,7 +261,7 @@ cy_st_internal_error() I {
   buf
 }
 
-cy_st_bad_request() I {
+sans_st_bad_request() I {
   buf = alloc(12)
   store8(buf, 66)
   store8(buf + 1, 97)
@@ -278,7 +278,7 @@ cy_st_bad_request() I {
   buf
 }
 
-cy_lit_http11() I {
+sans_lit_http11() I {
   buf = alloc(10)
   store8(buf, 72)
   store8(buf + 1, 84)
@@ -293,14 +293,14 @@ cy_lit_http11() I {
   buf
 }
 
-cy_lit_space() I {
+sans_lit_space() I {
   buf = alloc(2)
   store8(buf, 32)
   store8(buf + 1, 0)
   buf
 }
 
-cy_lit_content_length() I {
+sans_lit_content_length() I {
   // "\r\nContent-Length: " = 18 bytes
   buf = alloc(19)
   store8(buf, 13)
@@ -325,7 +325,7 @@ cy_lit_content_length() I {
   buf
 }
 
-cy_lit_content_type() I {
+sans_lit_content_type() I {
   // "\r\nContent-Type: " = 16 bytes
   buf = alloc(17)
   store8(buf, 13)
@@ -348,7 +348,7 @@ cy_lit_content_type() I {
   buf
 }
 
-cy_lit_conn_close() I {
+sans_lit_conn_close() I {
   // "\r\nConnection: close\r\n\r\n" = 23 bytes
   buf = alloc(24)
   store8(buf, 13)
@@ -378,7 +378,7 @@ cy_lit_conn_close() I {
   buf
 }
 
-cy_send_all(fd:I data:I total:I) I {
+sans_send_all(fd:I data:I total:I) I {
   sent := 0
   ok := 1
   while sent < total {

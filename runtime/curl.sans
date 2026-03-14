@@ -13,7 +13,7 @@ g CURLOPT_HTTPHEADER = 10023
 g CURLINFO_RESPONSE_CODE = 2097154
 
 // Write callback - appends data to a WriteBuffer {data_ptr, size, cap}
-cy_write_cb(ptr:I size:I nmemb:I userdata:I) I {
+sans_write_cb(ptr:I size:I nmemb:I userdata:I) I {
   bytes = size * nmemb
   buf_data = load64(userdata)
   buf_size = load64(userdata + 8)
@@ -34,14 +34,14 @@ cy_write_cb(ptr:I size:I nmemb:I userdata:I) I {
 }
 
 // Header callback - parses "Name: Value\r\n" and stores in response struct
-cy_header_cb(buffer:I size:I nitems:I userdata:I) I {
+sans_header_cb(buffer:I size:I nitems:I userdata:I) I {
   len = size * nitems
   // Find colon
-  colon := cy_find_colon(buffer, len)
-  colon < 0 ? len : cy_header_cb_parse(buffer, len, colon, userdata)
+  colon := sans_find_colon(buffer, len)
+  colon < 0 ? len : sans_header_cb_parse(buffer, len, colon, userdata)
 }
 
-cy_find_colon(buf:I len:I) I {
+sans_find_colon(buf:I len:I) I {
   i := 0
   result := -1
   done := 0
@@ -63,7 +63,7 @@ cy_find_colon(buf:I len:I) I {
   result
 }
 
-cy_header_cb_parse(buffer:I len:I colon:I resp:I) I {
+sans_header_cb_parse(buffer:I len:I colon:I resp:I) I {
   // Extract name (lowercase)
   name = alloc(colon + 1)
   i := 0
@@ -109,11 +109,11 @@ cy_header_cb_parse(buffer:I len:I colon:I resp:I) I {
   store8(val + vlen, 0)
 
   // Add to response headers
-  cy_add_header(resp, name, val)
+  sans_add_header(resp, name, val)
   len
 }
 
-cy_add_header(resp:I name:I val:I) I {
+sans_add_header(resp:I name:I val:I) I {
   count = load64(resp + 32)
   cap = load64(resp + 40)
   if count >= cap {
@@ -138,7 +138,7 @@ cy_add_header(resp:I name:I val:I) I {
 
 // HTTP response struct: {status(i64), body(i64), header_names(i64), header_values(i64), header_count(i64), header_cap(i64)} = 48 bytes
 
-cy_make_error_resp() I {
+sans_make_error_resp() I {
   resp = alloc(48)
   store64(resp, 0)
   empty = alloc(1)
@@ -151,12 +151,12 @@ cy_make_error_resp() I {
   resp
 }
 
-cy_http_get(url:I) I {
+sans_http_get(url:I) I {
   curl = cinit()
-  curl == 0 ? cy_make_error_resp() : cy_http_get_inner(curl, url)
+  curl == 0 ? sans_make_error_resp() : sans_http_get_inner(curl, url)
 }
 
-cy_http_get_inner(curl:I url:I) I {
+sans_http_get_inner(curl:I url:I) I {
   resp = alloc(48)
   store64(resp, 0)
   store64(resp + 8, 0)
@@ -174,21 +174,21 @@ cy_http_get_inner(curl:I url:I) I {
   cseti(curl, CURLOPT_URL, url)
   cseti(curl, CURLOPT_FOLLOWLOCATION, 1)
   cseti(curl, CURLOPT_MAXREDIRS, 10)
-  cseti(curl, CURLOPT_WRITEFUNCTION, fptr("cy_write_cb"))
+  cseti(curl, CURLOPT_WRITEFUNCTION, fptr("sans_write_cb"))
   cseti(curl, CURLOPT_WRITEDATA, wbuf)
-  cseti(curl, CURLOPT_HEADERFUNCTION, fptr("cy_header_cb"))
+  cseti(curl, CURLOPT_HEADERFUNCTION, fptr("sans_header_cb"))
   cseti(curl, CURLOPT_HEADERDATA, resp)
 
   res = cperf(curl)
-  res != 0 ? cy_http_get_fail(curl, wbuf, resp) : cy_http_get_ok(curl, wbuf, resp)
+  res != 0 ? sans_http_get_fail(curl, wbuf, resp) : sans_http_get_ok(curl, wbuf, resp)
 }
 
-cy_http_get_fail(curl:I wbuf:I resp:I) I {
+sans_http_get_fail(curl:I wbuf:I resp:I) I {
   cclean(curl)
-  cy_make_error_resp()
+  sans_make_error_resp()
 }
 
-cy_http_get_ok(curl:I wbuf:I resp:I) I {
+sans_http_get_ok(curl:I wbuf:I resp:I) I {
   // Get status code
   status_buf = alloc(8)
   cinfo(curl, CURLINFO_RESPONSE_CODE, status_buf)
@@ -211,12 +211,12 @@ cy_http_get_ok(curl:I wbuf:I resp:I) I {
   resp
 }
 
-cy_http_post(url:I body:I ct:I) I {
+sans_http_post(url:I body:I ct:I) I {
   curl = cinit()
-  curl == 0 ? cy_make_error_resp() : cy_http_post_inner(curl, url, body, ct)
+  curl == 0 ? sans_make_error_resp() : sans_http_post_inner(curl, url, body, ct)
 }
 
-cy_http_post_inner(curl:I url:I body:I ct:I) I {
+sans_http_post_inner(curl:I url:I body:I ct:I) I {
   resp = alloc(48)
   store64(resp, 0)
   store64(resp + 8, 0)
@@ -236,23 +236,23 @@ cy_http_post_inner(curl:I url:I body:I ct:I) I {
   cseti(curl, CURLOPT_POST, 1)
   cseti(curl, CURLOPT_POSTFIELDS, body)
   cseti(curl, CURLOPT_POSTFIELDSIZE, slen(body))
-  cseti(curl, CURLOPT_WRITEFUNCTION, fptr("cy_write_cb"))
+  cseti(curl, CURLOPT_WRITEFUNCTION, fptr("sans_write_cb"))
   cseti(curl, CURLOPT_WRITEDATA, wbuf)
-  cseti(curl, CURLOPT_HEADERFUNCTION, fptr("cy_header_cb"))
+  cseti(curl, CURLOPT_HEADERFUNCTION, fptr("sans_header_cb"))
   cseti(curl, CURLOPT_HEADERDATA, resp)
 
   // Build "Content-Type: X" header
-  ct_hdr = cy_build_ct_header(ct)
+  ct_hdr = sans_build_ct_header(ct)
   slist := 0
   slist = curl_slist_append(slist, ct_hdr)
   cseti(curl, CURLOPT_HTTPHEADER, slist)
 
   res = cperf(curl)
   curl_slist_free(slist)
-  res != 0 ? cy_http_get_fail(curl, wbuf, resp) : cy_http_get_ok(curl, wbuf, resp)
+  res != 0 ? sans_http_get_fail(curl, wbuf, resp) : sans_http_get_ok(curl, wbuf, resp)
 }
 
-cy_build_ct_header(ct:I) I {
+sans_build_ct_header(ct:I) I {
   // Build "Content-Type: " + ct manually
   prefix_len = 14
   ct_len = slen(ct)
@@ -278,7 +278,7 @@ cy_build_ct_header(ct:I) I {
 }
 
 // Header lookup
-cy_http_header(resp:I name:I) I {
+sans_http_header(resp:I name:I) I {
   names = load64(resp + 16)
   vals = load64(resp + 24)
   count = load64(resp + 32)
@@ -292,10 +292,10 @@ cy_http_header(resp:I name:I) I {
   }
   store8(lower + name_len, 0)
   // Search
-  cy_header_search(names, vals, count, lower, name_len)
+  sans_header_search(names, vals, count, lower, name_len)
 }
 
-cy_header_search(names:I vals:I count:I lower:I name_len:I) I {
+sans_header_search(names:I vals:I count:I lower:I name_len:I) I {
   i := 0
   result := 0
   found := 0
@@ -312,10 +312,10 @@ cy_header_search(names:I vals:I count:I lower:I name_len:I) I {
     } else { 0 }
     i = i + 1
   }
-  found == 0 ? cy_empty_header() : result
+  found == 0 ? sans_empty_header() : result
 }
 
-cy_empty_header() I {
+sans_empty_header() I {
   buf = alloc(1)
   store8(buf, 0)
   buf

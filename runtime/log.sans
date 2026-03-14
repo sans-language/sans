@@ -1,26 +1,26 @@
-g cy_log_level = 0
+g sans_log_level = 0
 
-cy_log_debug(msg:S) I {
-  if cy_log_level <= 0 { wfd(2, "[DEBUG] " + msg + "\n") }
+sans_log_debug(msg:S) I {
+  if sans_log_level <= 0 { wfd(2, "[DEBUG] " + msg + "\n") }
   0
 }
 
-cy_log_info(msg:S) I {
-  if cy_log_level <= 1 { wfd(2, "[INFO] " + msg + "\n") }
+sans_log_info(msg:S) I {
+  if sans_log_level <= 1 { wfd(2, "[INFO] " + msg + "\n") }
   0
 }
 
-cy_log_warn(msg:S) I {
-  if cy_log_level <= 2 { wfd(2, "[WARN] " + msg + "\n") }
+sans_log_warn(msg:S) I {
+  if sans_log_level <= 2 { wfd(2, "[WARN] " + msg + "\n") }
   0
 }
 
-cy_log_error(msg:S) I {
-  if cy_log_level <= 3 { wfd(2, "[ERROR] " + msg + "\n") }
+sans_log_error(msg:S) I {
+  if sans_log_level <= 3 { wfd(2, "[ERROR] " + msg + "\n") }
   0
 }
 
-cy_log_set_level(level:I) I {
-  cy_log_level = level
+sans_log_set_level(level:I) I {
+  sans_log_level = level
   0
 }

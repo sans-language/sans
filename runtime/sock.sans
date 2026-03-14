@@ -1,4 +1,4 @@
-cy_bind_port(fd:I port:I) I {
+sans_bind_port(fd:I port:I) I {
   addr = alloc(16)
   store8(addr, 16)
   store8(addr + 1, 2)
@@ -11,37 +11,37 @@ cy_bind_port(fd:I port:I) I {
   rbind(fd, addr, 16)
 }
 
-cy_http_listen(port:I) I {
+sans_http_listen(port:I) I {
   fd = sock(2, 1, 0)
-  fd < 0 ? cy_make_error_server(port) : cy_http_listen_try(fd, port)
+  fd < 0 ? sans_make_error_server(port) : sans_http_listen_try(fd, port)
 }
 
-cy_http_listen_try(fd:I port:I) I {
-  r = cy_bind_port(fd, port)
+sans_http_listen_try(fd:I port:I) I {
+  r = sans_bind_port(fd, port)
   if r < 0 {
     wfd(2, "http_listen: bind() failed on port\n")
     sclose(fd)
-    cy_make_error_server(port)
+    sans_make_error_server(port)
   } else {
     lr = slisten(fd, 128)
     if lr < 0 {
       wfd(2, "http_listen: listen() failed\n")
       sclose(fd)
-      cy_make_error_server(port)
+      sans_make_error_server(port)
     } else {
-      cy_make_server(fd, port)
+      sans_make_server(fd, port)
     }
   }
 }
 
-cy_make_server(fd:I port:I) I {
+sans_make_server(fd:I port:I) I {
   s = alloc(16)
   store64(s, fd)
   store64(s + 8, port)
   s
 }
 
-cy_make_error_server(port:I) I {
+sans_make_error_server(port:I) I {
   s = alloc(16)
   store64(s, -1)
   store64(s + 8, port)

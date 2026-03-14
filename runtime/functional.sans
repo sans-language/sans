@@ -1,4 +1,4 @@
-cy_array_map(arr:I fn_p:I) I {
+sans_array_map(arr:I fn_p:I) I {
   data = load64(arr)
   len = load64(arr + 8)
   result = alloc(24)
@@ -17,7 +17,7 @@ cy_array_map(arr:I fn_p:I) I {
   result
 }
 
-cy_array_filter(arr:I fn_p:I) I {
+sans_array_filter(arr:I fn_p:I) I {
   data = load64(arr)
   len = load64(arr + 8)
   result = alloc(24)

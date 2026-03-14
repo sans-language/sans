@@ -1,4 +1,4 @@
-cy_array_contains(arr:I value:I) I {
+sans_array_contains(arr:I value:I) I {
   data = load64(arr)
   len = load64(arr + 8)
   i := 0
@@ -11,24 +11,24 @@ cy_array_contains(arr:I value:I) I {
   found
 }
 
-cy_array_pop(arr:I) I {
+sans_array_pop(arr:I) I {
   len = load64(arr + 8)
-  len <= 0 ? 0 : cy_array_pop_inner(arr, len)
+  len <= 0 ? 0 : sans_array_pop_inner(arr, len)
 }
 
-cy_array_pop_inner(arr:I len:I) I {
+sans_array_pop_inner(arr:I len:I) I {
   new_len = len - 1
   store64(arr + 8, new_len)
   data = load64(arr)
   load64(data + new_len * 8)
 }
 
-cy_array_remove(arr:I index:I) I {
+sans_array_remove(arr:I index:I) I {
   len = load64(arr + 8)
-  index < 0 ? 0 : index >= len ? 0 : cy_array_remove_inner(arr, index, len)
+  index < 0 ? 0 : index >= len ? 0 : sans_array_remove_inner(arr, index, len)
 }
 
-cy_array_remove_inner(arr:I index:I len:I) I {
+sans_array_remove_inner(arr:I index:I len:I) I {
   data = load64(arr)
   value = load64(data + index * 8)
   remaining = len - index - 1

@@ -1,4 +1,4 @@
-cy_result_ok(value:I) I {
+sans_result_ok(value:I) I {
   r = alloc(24)
   store64(r, 0)
   store64(r + 8, value)
@@ -6,7 +6,7 @@ cy_result_ok(value:I) I {
   r
 }
 
-cy_result_err(msg:I) I {
+sans_result_err(msg:I) I {
   r = alloc(24)
   store64(r, 1)
   store64(r + 8, 0)
@@ -17,27 +17,27 @@ cy_result_err(msg:I) I {
   r
 }
 
-cy_result_is_ok(r:I) I {
+sans_result_is_ok(r:I) I {
   tag = load64(r)
   tag == 0 ? 1 : 0
 }
 
-cy_result_is_err(r:I) I {
+sans_result_is_err(r:I) I {
   tag = load64(r)
   tag == 1 ? 1 : 0
 }
 
-cy_result_unwrap(r:I) I {
+sans_result_unwrap(r:I) I {
   tag = load64(r)
   tag == 0 ? load64(r + 8) : exit(1)
 }
 
-cy_result_unwrap_or(r:I default_val:I) I {
+sans_result_unwrap_or(r:I default_val:I) I {
   tag = load64(r)
   tag == 0 ? load64(r + 8) : default_val
 }
 
-cy_result_error(r:I) I {
+sans_result_error(r:I) I {
   tag = load64(r)
   err_ptr = load64(r + 16)
   if tag == 1 {
