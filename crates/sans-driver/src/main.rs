@@ -41,8 +41,10 @@ fn run(source_path: &PathBuf) -> Result<i32, String> {
     // Build the binary
     build(source_path)?;
 
-    // Run the binary
+    // Run the binary (canonicalize to absolute path so it's found without ./)
     let output_path = source_path.with_extension("");
+    let output_path = std::fs::canonicalize(&output_path)
+        .unwrap_or(output_path);
     let output_path_str = output_path
         .to_str()
         .ok_or_else(|| "output path contains invalid UTF-8".to_string())?;
