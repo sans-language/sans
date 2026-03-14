@@ -105,8 +105,21 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         .to_str()
         .ok_or_else(|| "output path contains invalid UTF-8".to_string())?;
 
+    // Compile JSON runtime
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
+    let tmp_dir = std::env::temp_dir();
+    let json_o_path = tmp_dir.join("cyflym_json_runtime.o");
+    let json_compile = process::Command::new("cc")
+        .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("failed to compile json runtime: {}", e))?;
+    if !json_compile.success() {
+        return Err("failed to compile json runtime".to_string());
+    }
+
     let link_status = process::Command::new("cc")
-        .args([obj_path_str, "-o", output_path_str])
+        .args([obj_path_str, json_o_path.to_str().unwrap(), "-o", output_path_str])
         .status()
         .map_err(|e| format!("failed to invoke linker: {}", e))?;
 

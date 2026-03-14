@@ -66,8 +66,17 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     cyflym_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
+    // Compile JSON runtime
+    let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
+    let json_o_path = tmp_dir.join("cyflym_json_runtime.o");
+    let json_compile = Command::new("cc")
+        .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile json runtime");
+    assert!(json_compile.success(), "json runtime compilation failed");
+
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -78,6 +87,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
 
     let _ = std::fs::remove_file(&obj_path);
     let _ = std::fs::remove_file(&bin_path);
+    let _ = std::fs::remove_file(&json_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -108,9 +118,18 @@ fn compile_and_run(fixture: &str) -> i32 {
     cyflym_codegen::compile_to_object(&ir_module, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
+    // Compile JSON runtime
+    let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
+    let json_o_path = tmp_dir.join("cyflym_json_runtime.o");
+    let json_compile = Command::new("cc")
+        .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile json runtime");
+    assert!(json_compile.success(), "json runtime compilation failed");
+
     // Link
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -123,6 +142,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     // Clean up
     let _ = std::fs::remove_file(&obj_path);
     let _ = std::fs::remove_file(&bin_path);
+    let _ = std::fs::remove_file(&json_o_path);
 
     run_status.code().unwrap_or(-1)
 }
