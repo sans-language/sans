@@ -662,6 +662,66 @@ fn check_expr(
                     return Err(TypeError::new(format!("file_exists() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Bool);
+            } else if function == "json_parse" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("json_parse() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("json_parse() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::JsonValue);
+            } else if function == "json_object" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("json_object() takes 0 arguments"));
+                }
+                return Ok(Type::JsonValue);
+            } else if function == "json_array" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("json_array() takes 0 arguments"));
+                }
+                return Ok(Type::JsonValue);
+            } else if function == "json_string" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("json_string() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("json_string() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::JsonValue);
+            } else if function == "json_int" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("json_int() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("json_int() requires Int argument, got {}", arg_ty)));
+                }
+                return Ok(Type::JsonValue);
+            } else if function == "json_bool" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("json_bool() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Bool {
+                    return Err(TypeError::new(format!("json_bool() requires Bool argument, got {}", arg_ty)));
+                }
+                return Ok(Type::JsonValue);
+            } else if function == "json_null" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("json_null() takes 0 arguments"));
+                }
+                return Ok(Type::JsonValue);
+            } else if function == "json_stringify" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("json_stringify() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::JsonValue {
+                    return Err(TypeError::new(format!("json_stringify() requires JsonValue argument, got {}", arg_ty)));
+                }
+                return Ok(Type::String);
             }
 
             // Check regular functions first
@@ -1107,6 +1167,83 @@ fn check_expr(
                         return Err(TypeError::new(format!("substring() end must be Int, got {}", end_ty)));
                     }
                     return Ok(Type::String);
+                }
+                (Type::JsonValue, "get") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("get() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("get() key must be String, got {}", arg_ty)));
+                    }
+                    return Ok(Type::JsonValue);
+                }
+                (Type::JsonValue, "get_index") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("get_index() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::Int {
+                        return Err(TypeError::new(format!("get_index() index must be Int, got {}", arg_ty)));
+                    }
+                    return Ok(Type::JsonValue);
+                }
+                (Type::JsonValue, "get_string") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("get_string() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::JsonValue, "get_int") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("get_int() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::JsonValue, "get_bool") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("get_bool() takes no arguments"));
+                    }
+                    return Ok(Type::Bool);
+                }
+                (Type::JsonValue, "len") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("len() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::JsonValue, "type_of") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("type_of() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::JsonValue, "set") => {
+                    if args.len() != 2 {
+                        return Err(TypeError::new("set() takes exactly 2 arguments (key, value)"));
+                    }
+                    let key_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if key_ty != Type::String {
+                        return Err(TypeError::new(format!("set() key must be String, got {}", key_ty)));
+                    }
+                    let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if val_ty != Type::JsonValue {
+                        return Err(TypeError::new(format!("set() value must be JsonValue, got {}", val_ty)));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::JsonValue, "push") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("push() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::JsonValue {
+                        return Err(TypeError::new(format!("push() requires JsonValue argument, got {}", arg_ty)));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::JsonValue, other) => {
+                    return Err(TypeError::new(format!("JsonValue has no method '{}'", other)));
                 }
                 _ => {}
             }
@@ -1807,5 +1944,102 @@ mod tests {
         let err = do_check("fn main() Int { let s = file_read(42) 0 }").unwrap_err();
         assert!(err.message.contains("String"),
             "expected type error mentioning String, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_json_parse_returns_json_value() {
+        assert!(do_check("fn main() Int { let v = json_parse(\"{}\") \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_object_returns_json_value() {
+        assert!(do_check("fn main() Int { let v = json_object() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_array_returns_json_value() {
+        assert!(do_check("fn main() Int { let v = json_array() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_string_accepts_string() {
+        assert!(do_check("fn main() Int { let v = json_string(\"hi\") \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_int_accepts_int() {
+        assert!(do_check("fn main() Int { let v = json_int(42) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_bool_accepts_bool() {
+        assert!(do_check("fn main() Int { let v = json_bool(true) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_null_no_args() {
+        assert!(do_check("fn main() Int { let v = json_null() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_stringify_accepts_json_value() {
+        assert!(do_check("fn main() Int { let v = json_object() \n let s = json_stringify(v) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_parse_rejects_int() {
+        let err = do_check("fn main() Int { let v = json_parse(42) \n 0 }").unwrap_err();
+        assert!(err.message.contains("String"), "expected String error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_json_stringify_rejects_string() {
+        let err = do_check("fn main() Int { let s = json_stringify(\"hello\") \n 0 }").unwrap_err();
+        assert!(err.message.contains("JsonValue"), "expected JsonValue error, got: {}", err.message);
+    }
+
+    #[test]
+    fn check_json_get_method() {
+        assert!(do_check("fn main() Int { let v = json_parse(\"{}\") \n let inner = v.get(\"key\") \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_get_index_method() {
+        assert!(do_check("fn main() Int { let v = json_array() \n let inner = v.get_index(0) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_get_string_method() {
+        assert!(do_check("fn main() Int { let v = json_string(\"hi\") \n let s = v.get_string() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_get_int_method() {
+        assert!(do_check("fn main() Int { let v = json_int(5) \n let n = v.get_int() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_get_bool_method() {
+        assert!(do_check("fn main() Int { let v = json_bool(true) \n let b = v.get_bool() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_len_method() {
+        assert!(do_check("fn main() Int { let v = json_array() \n v.len() }").is_ok());
+    }
+
+    #[test]
+    fn check_json_type_of_method() {
+        assert!(do_check("fn main() Int { let v = json_null() \n let t = v.type_of() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_set_method() {
+        assert!(do_check("fn main() Int { let obj = json_object() \n let v = json_int(1) \n obj.set(\"k\", v) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_json_push_method() {
+        assert!(do_check("fn main() Int { let arr = json_array() \n let v = json_int(1) \n arr.push(v) \n 0 }").is_ok());
     }
 }
