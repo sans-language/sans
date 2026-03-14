@@ -144,6 +144,40 @@ fn generate_llvm<'ctx>(
     let access_type = i32_type.fn_type(&[i8_ptr_type.into(), i32_type.into()], false);
     llvm_module.add_function("access", access_type, Some(Linkage::External));
 
+    // Declare JSON runtime functions
+    let json_ptr_from_ptr_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_json_parse", json_ptr_from_ptr_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_stringify", json_ptr_from_ptr_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_get_string", json_ptr_from_ptr_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_type_of", json_ptr_from_ptr_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_string", json_ptr_from_ptr_type, Some(Linkage::External));
+
+    let json_noarg_type = i8_ptr_type.fn_type(&[], false);
+    llvm_module.add_function("cy_json_object", json_noarg_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_array", json_noarg_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_null", json_noarg_type, Some(Linkage::External));
+
+    let json_int_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("cy_json_int", json_int_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_bool", json_int_type, Some(Linkage::External));
+
+    let json_get_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_json_get", json_get_type, Some(Linkage::External));
+
+    let json_get_index_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("cy_json_get_index", json_get_index_type, Some(Linkage::External));
+
+    let json_get_int_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_json_get_int", json_get_int_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_get_bool", json_get_int_type, Some(Linkage::External));
+    llvm_module.add_function("cy_json_len", json_get_int_type, Some(Linkage::External));
+
+    let json_set_type = context.void_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_json_set", json_set_type, Some(Linkage::External));
+
+    let json_push_type = context.void_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_json_push", json_push_type, Some(Linkage::External));
+
     // First pass: declare all functions
     for func in &module.functions {
         let param_types: Vec<inkwell::types::BasicMetadataTypeEnum> =
@@ -1780,6 +1814,329 @@ fn generate_llvm<'ctx>(
                         (&i64_type.const_int(1, false), ok_end_bb),
                     ]);
                     regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
+                }
+                Instruction::JsonParse { dest, source } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let src_ptr = if let Some(p) = ptrs.get(source) {
+                        *p
+                    } else {
+                        let iv = regs[source];
+                        builder.build_int_to_ptr(iv, ptr_type, "jp_sp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_parse").unwrap();
+                    let call = builder.build_call(fn_ref, &[src_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_parse: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jp_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonObject { dest } => {
+                    let fn_ref = llvm_module.get_function("cy_json_object").unwrap();
+                    let call = builder.build_call(fn_ref, &[], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_object: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jo_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonArray { dest } => {
+                    let fn_ref = llvm_module.get_function("cy_json_array").unwrap();
+                    let call = builder.build_call(fn_ref, &[], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_array: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "ja_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonString { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jstr_sp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_string").unwrap();
+                    let call = builder.build_call(fn_ref, &[val_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_string: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jstr_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonInt { dest, value } => {
+                    let val = regs[value];
+                    let fn_ref = llvm_module.get_function("cy_json_int").unwrap();
+                    let call = builder.build_call(fn_ref, &[val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_int: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jint_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonBool { dest, value } => {
+                    let val = regs[value];
+                    let fn_ref = llvm_module.get_function("cy_json_bool").unwrap();
+                    let call = builder.build_call(fn_ref, &[val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_bool: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jbool_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonNull { dest } => {
+                    let fn_ref = llvm_module.get_function("cy_json_null").unwrap();
+                    let call = builder.build_call(fn_ref, &[], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_null: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jnull_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonStringify { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jsfy_sp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_stringify").unwrap();
+                    let call = builder.build_call(fn_ref, &[val_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_stringify: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jsfy_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonGet { dest, object, key } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let obj_ptr = if let Some(p) = ptrs.get(object) {
+                        *p
+                    } else {
+                        let iv = regs[object];
+                        builder.build_int_to_ptr(iv, ptr_type, "jget_op")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let key_ptr = if let Some(p) = ptrs.get(key) {
+                        *p
+                    } else {
+                        let iv = regs[key];
+                        builder.build_int_to_ptr(iv, ptr_type, "jget_kp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_get").unwrap();
+                    let call = builder.build_call(fn_ref, &[obj_ptr.into(), key_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_get: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jget_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonGetIndex { dest, array, index } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let arr_ptr = if let Some(p) = ptrs.get(array) {
+                        *p
+                    } else {
+                        let iv = regs[array];
+                        builder.build_int_to_ptr(iv, ptr_type, "jgi_ap")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let idx_val = regs[index];
+                    let fn_ref = llvm_module.get_function("cy_json_get_index").unwrap();
+                    let call = builder.build_call(fn_ref, &[arr_ptr.into(), idx_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_get_index: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jgi_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonGetString { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jgs_vp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_get_string").unwrap();
+                    let call = builder.build_call(fn_ref, &[val_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_get_string: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jgs_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonGetInt { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jgi_vp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_get_int").unwrap();
+                    let call = builder.build_call(fn_ref, &[val_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_get_int: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::JsonGetBool { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jgb_vp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_get_bool").unwrap();
+                    let call = builder.build_call(fn_ref, &[val_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_get_bool: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::JsonLen { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jlen_vp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_len").unwrap();
+                    let call = builder.build_call(fn_ref, &[val_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_len: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::JsonTypeOf { dest, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jto_vp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_type_of").unwrap();
+                    let call = builder.build_call(fn_ref, &[val_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_json_type_of: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "jto_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::JsonSet { object, key, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let obj_ptr = if let Some(p) = ptrs.get(object) {
+                        *p
+                    } else {
+                        let iv = regs[object];
+                        builder.build_int_to_ptr(iv, ptr_type, "jset_op")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let key_ptr = if let Some(p) = ptrs.get(key) {
+                        *p
+                    } else {
+                        let iv = regs[key];
+                        builder.build_int_to_ptr(iv, ptr_type, "jset_kp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jset_vp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_set").unwrap();
+                    builder.build_call(fn_ref, &[obj_ptr.into(), key_ptr.into(), val_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::JsonPush { array, value } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let arr_ptr = if let Some(p) = ptrs.get(array) {
+                        *p
+                    } else {
+                        let iv = regs[array];
+                        builder.build_int_to_ptr(iv, ptr_type, "jpush_ap")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let val_ptr = if let Some(p) = ptrs.get(value) {
+                        *p
+                    } else {
+                        let iv = regs[value];
+                        builder.build_int_to_ptr(iv, ptr_type, "jpush_vp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_json_push").unwrap();
+                    builder.build_call(fn_ref, &[arr_ptr.into(), val_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
             }
         }
