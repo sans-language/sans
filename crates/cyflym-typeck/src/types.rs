@@ -12,6 +12,7 @@ pub enum Type {
     Mutex { inner: Box<Type> },
     Array { inner: Box<Type> },
     JsonValue,
+    HttpResponse,
 }
 
 impl std::fmt::Display for Type {
@@ -28,6 +29,7 @@ impl std::fmt::Display for Type {
             Type::Mutex { inner } => write!(f, "Mutex<{}>", inner),
             Type::Array { inner } => write!(f, "Array<{}>", inner),
             Type::JsonValue => write!(f, "JsonValue"),
+            Type::HttpResponse => write!(f, "HttpResponse"),
             Type::Fn { params, ret } => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {

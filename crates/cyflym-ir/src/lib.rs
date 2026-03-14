@@ -6,7 +6,7 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue }
+pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse }
 
 pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
     use cyflym_typeck::types::Type;
@@ -18,6 +18,7 @@ pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
         Type::Enum { name, .. } => IrType::Enum(name.clone()),
         Type::Array { inner } => IrType::Array(Box::new(ir_type_for_return(inner))),
         Type::JsonValue => IrType::JsonValue,
+        Type::HttpResponse => IrType::HttpResponse,
         _ => IrType::Int, // Fallback
     }
 }
@@ -423,6 +424,7 @@ impl IrBuilder {
                         IrType::Sender | IrType::Receiver | IrType::JoinHandle | IrType::Mutex => panic!("cannot print concurrency type"),
                         IrType::Array(_) => panic!("cannot print array"),
                         IrType::JsonValue => panic!("cannot print JsonValue"),
+                        IrType::HttpResponse => panic!("cannot print HttpResponse"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -534,6 +536,20 @@ impl IrBuilder {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Str);
+                    return dest;
+                } else if function == "http_get" {
+                    let url_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::HttpGet { dest: dest.clone(), url: url_reg });
+                    self.reg_types.insert(dest.clone(), IrType::HttpResponse);
+                    return dest;
+                } else if function == "http_post" {
+                    let url_reg = self.lower_expr(&args[0]);
+                    let body_reg = self.lower_expr(&args[1]);
+                    let ct_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::HttpPost { dest: dest.clone(), url: url_reg, body: body_reg, content_type: ct_reg });
+                    self.reg_types.insert(dest.clone(), IrType::HttpResponse);
                     return dest;
                 }
 
@@ -817,6 +833,31 @@ impl IrBuilder {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
                         self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::HttpResponse), "status") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpStatus { dest: dest.clone(), response: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::HttpResponse), "body") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpBody { dest: dest.clone(), response: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::HttpResponse), "header") => {
+                        let name_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpHeader { dest: dest.clone(), response: obj_reg, name: name_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::HttpResponse), "ok") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpOk { dest: dest.clone(), response: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
                         return dest;
                     }
                     _ => {} // fall through to struct/enum handling
@@ -1609,5 +1650,32 @@ mod tests {
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::JsonGet { .. })),
             "expected JsonGet instruction");
+    }
+
+    #[test]
+    fn lower_http_get() {
+        let program = cyflym_parser::parse("fn main() Int { let r = http_get(\"http://example.com\") \n r.status() }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::HttpGet { .. })),
+            "expected HttpGet instruction");
+    }
+
+    #[test]
+    fn lower_http_post() {
+        let program = cyflym_parser::parse("fn main() Int { let r = http_post(\"http://example.com\", \"body\", \"text/plain\") \n r.status() }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::HttpPost { .. })),
+            "expected HttpPost instruction");
+    }
+
+    #[test]
+    fn lower_http_body_method() {
+        let program = cyflym_parser::parse("fn main() Int { let r = http_get(\"http://example.com\") \n let b = r.body() \n 0 }").unwrap();
+        let module = lower(&program, None, &std::collections::HashMap::new());
+        let instrs = &module.functions[0].body;
+        assert!(instrs.iter().any(|i| matches!(i, Instruction::HttpBody { .. })),
+            "expected HttpBody instruction");
     }
 }

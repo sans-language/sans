@@ -178,6 +178,23 @@ fn generate_llvm<'ctx>(
     let json_push_type = context.void_type().fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_json_push", json_push_type, Some(Linkage::External));
 
+    // Declare HTTP runtime functions
+    let http_get_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_http_get", http_get_type, Some(Linkage::External));
+
+    let http_post_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_http_post", http_post_type, Some(Linkage::External));
+
+    let http_status_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_http_status", http_status_type, Some(Linkage::External));
+    llvm_module.add_function("cy_http_ok", http_status_type, Some(Linkage::External));
+
+    let http_body_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_http_body", http_body_type, Some(Linkage::External));
+
+    let http_header_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("cy_http_header", http_header_type, Some(Linkage::External));
+
     // First pass: declare all functions
     for func in &module.functions {
         let param_types: Vec<inkwell::types::BasicMetadataTypeEnum> =
@@ -2137,6 +2154,147 @@ fn generate_llvm<'ctx>(
                     let fn_ref = llvm_module.get_function("cy_json_push").unwrap();
                     builder.build_call(fn_ref, &[arr_ptr.into(), val_ptr.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::HttpGet { dest, url } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let url_ptr = if let Some(p) = ptrs.get(url) {
+                        *p
+                    } else {
+                        let iv = regs[url];
+                        builder.build_int_to_ptr(iv, ptr_type, "hget_up")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_http_get").unwrap();
+                    let call = builder.build_call(fn_ref, &[url_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_http_get: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "hget_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::HttpPost { dest, url, body, content_type } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let url_ptr = if let Some(p) = ptrs.get(url) {
+                        *p
+                    } else {
+                        let iv = regs[url];
+                        builder.build_int_to_ptr(iv, ptr_type, "hpost_up")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let body_ptr = if let Some(p) = ptrs.get(body) {
+                        *p
+                    } else {
+                        let iv = regs[body];
+                        builder.build_int_to_ptr(iv, ptr_type, "hpost_bp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let ct_ptr = if let Some(p) = ptrs.get(content_type) {
+                        *p
+                    } else {
+                        let iv = regs[content_type];
+                        builder.build_int_to_ptr(iv, ptr_type, "hpost_cp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_http_post").unwrap();
+                    let call = builder.build_call(fn_ref, &[url_ptr.into(), body_ptr.into(), ct_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_http_post: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "hpost_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::HttpStatus { dest, response } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let resp_ptr = if let Some(p) = ptrs.get(response) {
+                        *p
+                    } else {
+                        let iv = regs[response];
+                        builder.build_int_to_ptr(iv, ptr_type, "hstat_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_http_status").unwrap();
+                    let call = builder.build_call(fn_ref, &[resp_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_http_status: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::HttpBody { dest, response } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let resp_ptr = if let Some(p) = ptrs.get(response) {
+                        *p
+                    } else {
+                        let iv = regs[response];
+                        builder.build_int_to_ptr(iv, ptr_type, "hbody_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_http_body").unwrap();
+                    let call = builder.build_call(fn_ref, &[resp_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_http_body: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "hbody_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::HttpHeader { dest, response, name } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let resp_ptr = if let Some(p) = ptrs.get(response) {
+                        *p
+                    } else {
+                        let iv = regs[response];
+                        builder.build_int_to_ptr(iv, ptr_type, "hhdr_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let name_ptr = if let Some(p) = ptrs.get(name) {
+                        *p
+                    } else {
+                        let iv = regs[name];
+                        builder.build_int_to_ptr(iv, ptr_type, "hhdr_np")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_http_header").unwrap();
+                    let call = builder.build_call(fn_ref, &[resp_ptr.into(), name_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr_val = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_http_header: expected return".into())),
+                    };
+                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "hhdr_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::HttpOk { dest, response } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let resp_ptr = if let Some(p) = ptrs.get(response) {
+                        *p
+                    } else {
+                        let iv = regs[response];
+                        builder.build_int_to_ptr(iv, ptr_type, "hok_rp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("cy_http_ok").unwrap();
+                    let call = builder.build_call(fn_ref, &[resp_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("cy_http_ok: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
                 }
             }
         }

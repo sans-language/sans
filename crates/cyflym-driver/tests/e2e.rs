@@ -75,8 +75,17 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         .expect("failed to compile json runtime");
     assert!(json_compile.success(), "json runtime compilation failed");
 
+    // Compile HTTP runtime
+    let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
+    let http_o_path = tmp_dir.join("cyflym_http_runtime.o");
+    let http_compile = Command::new("cc")
+        .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile http runtime");
+    assert!(http_compile.success(), "http runtime compilation failed");
+
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -88,6 +97,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let _ = std::fs::remove_file(&obj_path);
     let _ = std::fs::remove_file(&bin_path);
     let _ = std::fs::remove_file(&json_o_path);
+    let _ = std::fs::remove_file(&http_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -127,9 +137,18 @@ fn compile_and_run(fixture: &str) -> i32 {
         .expect("failed to compile json runtime");
     assert!(json_compile.success(), "json runtime compilation failed");
 
+    // Compile HTTP runtime
+    let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
+    let http_o_path = tmp_dir.join("cyflym_http_runtime.o");
+    let http_compile = Command::new("cc")
+        .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile http runtime");
+    assert!(http_compile.success(), "http runtime compilation failed");
+
     // Link
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -143,6 +162,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     let _ = std::fs::remove_file(&obj_path);
     let _ = std::fs::remove_file(&bin_path);
     let _ = std::fs::remove_file(&json_o_path);
+    let _ = std::fs::remove_file(&http_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -290,4 +310,9 @@ fn e2e_json_parse_access() {
 #[test]
 fn e2e_json_roundtrip() {
     assert_eq!(compile_and_run("json_roundtrip.cy"), 7);
+}
+
+#[test]
+fn e2e_http_error_handling() {
+    assert_eq!(compile_and_run("http_error_handling.cy"), 1);
 }

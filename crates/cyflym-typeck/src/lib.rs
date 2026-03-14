@@ -722,6 +722,32 @@ fn check_expr(
                     return Err(TypeError::new(format!("json_stringify() requires JsonValue argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
+            } else if function == "http_get" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("http_get() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("http_get() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::HttpResponse);
+            } else if function == "http_post" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("http_post() takes exactly 3 arguments (url, body, content_type)"));
+                }
+                let url_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if url_ty != Type::String {
+                    return Err(TypeError::new(format!("http_post() url must be String, got {}", url_ty)));
+                }
+                let body_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if body_ty != Type::String {
+                    return Err(TypeError::new(format!("http_post() body must be String, got {}", body_ty)));
+                }
+                let ct_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ct_ty != Type::String {
+                    return Err(TypeError::new(format!("http_post() content_type must be String, got {}", ct_ty)));
+                }
+                return Ok(Type::HttpResponse);
             }
 
             // Check regular functions first
@@ -1244,6 +1270,37 @@ fn check_expr(
                 }
                 (Type::JsonValue, other) => {
                     return Err(TypeError::new(format!("JsonValue has no method '{}'", other)));
+                }
+                (Type::HttpResponse, "status") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("status() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::HttpResponse, "body") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("body() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::HttpResponse, "header") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("header() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("header() name must be String, got {}", arg_ty)));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::HttpResponse, "ok") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("ok() takes no arguments"));
+                    }
+                    return Ok(Type::Bool);
+                }
+                (Type::HttpResponse, other) => {
+                    return Err(TypeError::new(format!("HttpResponse has no method '{}'", other)));
                 }
                 _ => {}
             }
@@ -2041,5 +2098,31 @@ mod tests {
     #[test]
     fn check_json_push_method() {
         assert!(do_check("fn main() Int { let arr = json_array() \n let v = json_int(1) \n arr.push(v) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_http_get_returns_http_response() {
+        assert!(do_check("fn main() Int { let r = http_get(\"http://example.com\") \n r.status() }").is_ok());
+    }
+
+    #[test]
+    fn check_http_post_returns_http_response() {
+        assert!(do_check("fn main() Int { let r = http_post(\"http://example.com\", \"body\", \"text/plain\") \n r.status() }").is_ok());
+    }
+
+    #[test]
+    fn check_http_response_methods() {
+        assert!(do_check("fn main() Int { let r = http_get(\"http://example.com\") \n let s = r.status() \n let b = r.body() \n let h = r.header(\"content-type\") \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_http_response_ok_method() {
+        assert!(do_check("fn main() Int { let r = http_get(\"http://example.com\") \n if r.ok() { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_http_get_wrong_arg_type() {
+        let err = do_check("fn main() Int { let r = http_get(42) \n 0 }").unwrap_err();
+        assert!(err.message.contains("String"), "expected String error, got: {}", err.message);
     }
 }

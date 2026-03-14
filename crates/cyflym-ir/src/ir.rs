@@ -171,6 +171,13 @@ pub enum Instruction {
     JsonPush { array: Reg, value: Reg },
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
+    // HTTP operations
+    HttpGet { dest: Reg, url: Reg },
+    HttpPost { dest: Reg, url: Reg, body: Reg, content_type: Reg },
+    HttpStatus { dest: Reg, response: Reg },
+    HttpBody { dest: Reg, response: Reg },
+    HttpHeader { dest: Reg, response: Reg, name: Reg },
+    HttpOk { dest: Reg, response: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

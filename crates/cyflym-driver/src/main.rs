@@ -118,8 +118,19 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         return Err("failed to compile json runtime".to_string());
     }
 
+    // Compile HTTP runtime
+    let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
+    let http_o_path = tmp_dir.join("cyflym_http_runtime.o");
+    let http_compile = process::Command::new("cc")
+        .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("failed to compile http runtime: {}", e))?;
+    if !http_compile.success() {
+        return Err("failed to compile http runtime".to_string());
+    }
+
     let link_status = process::Command::new("cc")
-        .args([obj_path_str, json_o_path.to_str().unwrap(), "-o", output_path_str])
+        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
         .status()
         .map_err(|e| format!("failed to invoke linker: {}", e))?;
 
