@@ -64,26 +64,8 @@ sans_json_get_inner(o:I key:I) I {
   keys = load64(obj)
   vals = load64(obj + 8)
   len = load64(obj + 16)
-  sans_json_get_loop(keys, vals, len, key, 0)
-}
-
-sans_json_get_loop(keys:I vals:I len:I key:I i:I) I {
-  i >= len ? sans_json_null() : sans_json_get_check(keys, vals, len, key, i)
-}
-
-sans_json_get_check(keys:I vals:I len:I key:I i:I) I {
-  k = load64(keys + i * 8)
-  kl = slen(k)
-  ql = slen(key)
-  if kl == ql {
-    if mcmp(k, key, kl) == 0 {
-      load64(vals + i * 8)
-    } else {
-      sans_json_get_loop(keys, vals, len, key, i + 1)
-    }
-  } else {
-    sans_json_get_loop(keys, vals, len, key, i + 1)
-  }
+  idx = sans_json_find_key(keys, len, key)
+  idx >= 0 ? load64(vals + idx * 8) : sans_json_null()
 }
 
 sans_json_get_index(arr:I idx:I) I {
@@ -250,7 +232,7 @@ sans_json_set_inner(o:I key:I val:I) I {
   vals = load64(obj + 8)
   len = load64(obj + 16)
   cap = load64(obj + 24)
-  idx = sans_json_find_key(keys, len, key, 0)
+  idx = sans_json_find_key(keys, len, key)
   if idx >= 0 {
     store64(vals + idx * 8, val)
     0
@@ -259,30 +241,73 @@ sans_json_set_inner(o:I key:I val:I) I {
   }
 }
 
-sans_json_find_key(keys:I len:I key:I i:I) I {
-  if i >= len {
-    0 - 1
-  } else {
+sans_json_find_key(keys:I len:I key:I) I {
+  ql = slen(key)
+  ql <= 7 ? sans_json_find_key_short(keys, len, key, ql) : sans_json_find_key_long(keys, len, key, ql)
+}
+
+sans_json_find_key_short(keys:I len:I key:I ql:I) I {
+  fb = load8(key)
+  i := 0
+  result := 0 - 1
+  while i < len {
     k = load64(keys + i * 8)
-    kl = slen(k)
-    ql = slen(key)
-    if kl == ql {
-      mcmp(k, key, kl) == 0 ? i : sans_json_find_key(keys, len, key, i + 1)
+    if load8(k) == fb {
+      if load8(k + ql) == 0 {
+        if ql <= 1 {
+          result = i
+          i = len
+          0
+        } else {
+          if mcmp(k + 1, key + 1, ql - 1) == 0 {
+            result = i
+            i = len
+            0
+          } else {
+            i = i + 1
+            0
+          }
+        }
+      } else {
+        i = i + 1
+        0
+      }
     } else {
-      sans_json_find_key(keys, len, key, i + 1)
+      i = i + 1
+      0
     }
   }
+  result
+}
+
+sans_json_find_key_long(keys:I len:I key:I ql:I) I {
+  i := 0
+  result := 0 - 1
+  while i < len {
+    k = load64(keys + i * 8)
+    kl = slen(k)
+    if kl == ql {
+      if mcmp(k, key, kl) == 0 {
+        result = i
+        i = len
+        0
+      } else {
+        i = i + 1
+        0
+      }
+    } else {
+      i = i + 1
+      0
+    }
+  }
+  result
 }
 
 sans_json_set_append(obj:I keys:I vals:I len:I cap:I key:I val:I) I {
   if len >= cap {
     new_cap = cap * 2
-    new_keys = alloc(new_cap * 8)
-    new_vals = alloc(new_cap * 8)
-    len > 0 ? mcpy(new_keys, keys, len * 8) : 0
-    len > 0 ? mcpy(new_vals, vals, len * 8) : 0
-    dealloc(keys)
-    dealloc(vals)
+    new_keys = ralloc(keys, new_cap * 8)
+    new_vals = ralloc(vals, new_cap * 8)
     store64(obj, new_keys)
     store64(obj + 8, new_vals)
     store64(obj + 24, new_cap)
@@ -302,6 +327,31 @@ sans_json_set_at(obj:I keys:I vals:I len:I key:I val:I) I {
   0
 }
 
+sans_json_obj_append(o:I key:I val:I) I {
+  obj = load64(o + 8)
+  keys = load64(obj)
+  vals = load64(obj + 8)
+  len = load64(obj + 16)
+  cap = load64(obj + 24)
+  if len >= cap {
+    new_cap = cap * 2
+    new_keys = ralloc(keys, new_cap * 8)
+    new_vals = ralloc(vals, new_cap * 8)
+    store64(obj, new_keys)
+    store64(obj + 8, new_vals)
+    store64(obj + 24, new_cap)
+    store64(new_keys + len * 8, key)
+    store64(new_vals + len * 8, val)
+    store64(obj + 16, len + 1)
+    0
+  } else {
+    store64(keys + len * 8, key)
+    store64(vals + len * 8, val)
+    store64(obj + 16, len + 1)
+    0
+  }
+}
+
 sans_json_push(arr:I val:I) I {
   tag = load64(arr)
   tag == 4 ? sans_json_push_inner(arr, val) : 0
@@ -314,9 +364,7 @@ sans_json_push_inner(arr:I val:I) I {
   cap = load64(ad + 16)
   if len >= cap {
     new_cap = cap * 2
-    new_items = alloc(new_cap * 8)
-    len > 0 ? mcpy(new_items, items, len * 8) : 0
-    dealloc(items)
+    new_items = ralloc(items, new_cap * 8)
     store64(ad, new_items)
     store64(ad + 16, new_cap)
     store64(new_items + len * 8, val)
@@ -329,272 +377,406 @@ sans_json_push_inner(arr:I val:I) I {
   }
 }
 
-g sans_json_sb_buf = 0
-g sans_json_sb_len = 0
-g sans_json_sb_cap = 0
-
 sans_json_sb_init() I {
-  sans_json_sb_cap = 64
-  sans_json_sb_len = 0
-  sans_json_sb_buf = alloc(64)
-  store8(sans_json_sb_buf, 0)
-  0
+  cx = alloc(24)
+  store64(cx + 16, 4096)
+  store64(cx + 8, 0)
+  store64(cx, alloc(4096))
+  store8(load64(cx), 0)
+  cx
 }
 
-sans_json_sb_grow(need:I) I {
-  new_cap := sans_json_sb_cap
-  while new_cap < sans_json_sb_len + need + 1 {
+sans_json_sb_ensure(cx:I need:I) I {
+  load64(cx + 8) + need + 1 > load64(cx + 16) ? sans_json_sb_grow(cx, need) : 0
+}
+
+sans_json_sb_grow(cx:I need:I) I {
+  new_cap := load64(cx + 16)
+  tgt = load64(cx + 8) + need + 1
+  while new_cap < tgt {
     new_cap = new_cap * 2
   }
-  sans_json_sb_buf = ralloc(sans_json_sb_buf, new_cap)
-  sans_json_sb_cap = new_cap
+  store64(cx, ralloc(load64(cx), new_cap))
+  store64(cx + 16, new_cap)
   0
 }
 
-sans_json_sb_append_str(s:I) I {
+sans_json_sb_append_bytes(cx:I src:I n:I) I {
+  sans_json_sb_ensure(cx, n)
+  sb_buf = load64(cx)
+  sb_len = load64(cx + 8)
+  mcpy(sb_buf + sb_len, src, n)
+  store64(cx + 8, sb_len + n)
+  store8(sb_buf + sb_len + n, 0)
+  0
+}
+
+sans_json_sb_append_str(cx:I s:I) I {
   sl = slen(s)
-  sans_json_sb_len + sl + 1 > sans_json_sb_cap ? sans_json_sb_grow(sl) : 0
-  mcpy(sans_json_sb_buf + sans_json_sb_len, s, sl)
-  sans_json_sb_len = sans_json_sb_len + sl
-  store8(sans_json_sb_buf + sans_json_sb_len, 0)
+  sans_json_sb_append_bytes(cx, s, sl)
+}
+
+sans_json_sb_append_char(cx:I c:I) I {
+  sans_json_sb_ensure(cx, 1)
+  sb_buf = load64(cx)
+  sb_len = load64(cx + 8)
+  store8(sb_buf + sb_len, c)
+  store64(cx + 8, sb_len + 1)
+  store8(sb_buf + sb_len + 1, 0)
   0
 }
 
-sans_json_sb_append_char(c:I) I {
-  sans_json_sb_len + 2 > sans_json_sb_cap ? sans_json_sb_grow(2) : 0
-  store8(sans_json_sb_buf + sans_json_sb_len, c)
-  sans_json_sb_len = sans_json_sb_len + 1
-  store8(sans_json_sb_buf + sans_json_sb_len, 0)
-  0
-}
-
-sans_json_sb_result() I {
-  len = sans_json_sb_len
+sans_json_sb_result(cx:I) I {
+  len = load64(cx + 8)
+  sb_buf = load64(cx)
   buf = alloc(len + 1)
-  mcpy(buf, sans_json_sb_buf, len + 1)
-  dealloc(sans_json_sb_buf)
+  mcpy(buf, sb_buf, len + 1)
+  dealloc(sb_buf)
+  dealloc(cx)
   buf
 }
 
-sans_json_stringify_string(s:I) I {
-  sans_json_sb_append_char(34)
+sans_json_stringify_string(cx:I s:I) I {
   len = slen(s)
-  sans_json_stringify_str_loop(s, len, 0)
-  sans_json_sb_append_char(34)
+  sans_json_sb_ensure(cx, len + 2)
+  needs_escape = sans_json_needs_escape(s, len)
+  needs_escape != 0 ? sans_json_stringify_string_slow(cx, s, len) : sans_json_stringify_string_fast(cx, s, len)
+}
+
+sans_json_stringify_string_fast(cx:I s:I len:I) I {
+  sb_buf = load64(cx)
+  sb_len = load64(cx + 8)
+  store8(sb_buf + sb_len, 34)
+  mcpy(sb_buf + sb_len + 1, s, len)
+  store8(sb_buf + sb_len + 1 + len, 34)
+  store64(cx + 8, sb_len + len + 2)
+  store8(sb_buf + sb_len + len + 2, 0)
   0
 }
 
-sans_json_stringify_str_loop(s:I len:I i:I) I {
-  if i < len {
+sans_json_needs_escape(s:I len:I) I {
+  i := 0
+  found := 0
+  while i < len {
     c = load8(s + i)
     if c == 34 {
-      sans_json_sb_append_char(92)
-      sans_json_sb_append_char(34)
+      found = 1
+      i = len
+      0
     } else {
       if c == 92 {
-        sans_json_sb_append_char(92)
-        sans_json_sb_append_char(92)
+        found = 1
+        i = len
+        0
       } else {
-        if c == 10 {
-          sans_json_sb_append_char(92)
-          sans_json_sb_append_char(110)
+        if c < 32 {
+          found = 1
+          i = len
+          0
         } else {
-          if c == 9 {
-            sans_json_sb_append_char(92)
-            sans_json_sb_append_char(116)
-          } else {
-            if c == 13 {
-              sans_json_sb_append_char(92)
-              sans_json_sb_append_char(114)
-            } else {
-              sans_json_sb_append_char(c)
-            }
-          }
-        }
-      }
-    }
-    sans_json_stringify_str_loop(s, len, i + 1)
-  } else {
-    0
-  }
-}
-
-sans_json_sb_append_int(n:I) I {
-  if n < 0 {
-    sans_json_sb_append_char(45)
-    sans_json_sb_append_uint(0 - n)
-  } else {
-    if n == 0 {
-      sans_json_sb_append_char(48)
-    } else {
-      sans_json_sb_append_uint(n)
-    }
-  }
-  0
-}
-
-sans_json_sb_append_uint(n:I) I {
-  n > 0 ? sans_json_sb_append_uint_inner(n) : 0
-}
-
-sans_json_sb_append_uint_inner(n:I) I {
-  n >= 10 ? sans_json_sb_append_uint_inner(n / 10) : 0
-  sans_json_sb_append_char(48 + n % 10)
-  0
-}
-
-sans_json_sb_append_null() I {
-  sans_json_sb_append_char(110)
-  sans_json_sb_append_char(117)
-  sans_json_sb_append_char(108)
-  sans_json_sb_append_char(108)
-  0
-}
-
-sans_json_sb_append_true() I {
-  sans_json_sb_append_char(116)
-  sans_json_sb_append_char(114)
-  sans_json_sb_append_char(117)
-  sans_json_sb_append_char(101)
-  0
-}
-
-sans_json_sb_append_false() I {
-  sans_json_sb_append_char(102)
-  sans_json_sb_append_char(97)
-  sans_json_sb_append_char(108)
-  sans_json_sb_append_char(115)
-  sans_json_sb_append_char(101)
-  0
-}
-
-sans_json_stringify_value(v:I) I {
-  tag = load64(v)
-  if tag == 0 {
-    sans_json_sb_append_null()
-  } else {
-    if tag == 1 {
-      bv = load64(v + 8)
-      bv != 0 ? sans_json_sb_append_true() : sans_json_sb_append_false()
-    } else {
-      if tag == 2 {
-        n = load64(v + 8)
-        sans_json_sb_append_int(n)
-      } else {
-        if tag == 3 {
-          s = load64(v + 8)
-          sans_json_stringify_string(s)
-        } else {
-          if tag == 4 {
-            sans_json_stringify_array(v)
-          } else {
-            if tag == 5 {
-              sans_json_stringify_object(v)
-            } else {
-              sans_json_sb_append_null()
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-sans_json_stringify_array(v:I) I {
-  ad = load64(v + 8)
-  items = load64(ad)
-  len = load64(ad + 8)
-  sans_json_sb_append_char(91)
-  sans_json_stringify_arr_loop(items, len, 0)
-  sans_json_sb_append_char(93)
-  0
-}
-
-sans_json_stringify_arr_loop(items:I len:I i:I) I {
-  if i < len {
-    i > 0 ? sans_json_sb_append_char(44) : 0
-    elem = load64(items + i * 8)
-    sans_json_stringify_value(elem)
-    sans_json_stringify_arr_loop(items, len, i + 1)
-  } else {
-    0
-  }
-}
-
-sans_json_stringify_object(v:I) I {
-  obj = load64(v + 8)
-  keys = load64(obj)
-  vals = load64(obj + 8)
-  len = load64(obj + 16)
-  sans_json_sb_append_char(123)
-  sans_json_stringify_obj_loop(keys, vals, len, 0)
-  sans_json_sb_append_char(125)
-  0
-}
-
-sans_json_stringify_obj_loop(keys:I vals:I len:I i:I) I {
-  if i < len {
-    i > 0 ? sans_json_sb_append_char(44) : 0
-    k = load64(keys + i * 8)
-    sans_json_stringify_string(k)
-    sans_json_sb_append_char(58)
-    val = load64(vals + i * 8)
-    sans_json_stringify_value(val)
-    sans_json_stringify_obj_loop(keys, vals, len, i + 1)
-  } else {
-    0
-  }
-}
-
-sans_json_stringify(v:I) I {
-  sans_json_sb_init()
-  sans_json_stringify_value(v)
-  sans_json_sb_result()
-}
-
-g sans_json_p_src = 0
-g sans_json_p_pos = 0
-
-sans_json_p_ch() I {
-  load8(sans_json_p_src + sans_json_p_pos)
-}
-
-sans_json_p_adv() I {
-  sans_json_p_pos = sans_json_p_pos + 1
-  0
-}
-
-sans_json_p_skip_ws() I {
-  c = sans_json_p_ch()
-  if c == 32 {
-    sans_json_p_adv()
-    sans_json_p_skip_ws()
-  } else {
-    if c == 9 {
-      sans_json_p_adv()
-      sans_json_p_skip_ws()
-    } else {
-      if c == 10 {
-        sans_json_p_adv()
-        sans_json_p_skip_ws()
-      } else {
-        if c == 13 {
-          sans_json_p_adv()
-          sans_json_p_skip_ws()
-        } else {
+          i = i + 1
           0
         }
       }
     }
   }
+  found
 }
 
-sans_json_p_match_true() I {
-  if load8(sans_json_p_src + sans_json_p_pos) == 116 {
-    if load8(sans_json_p_src + sans_json_p_pos + 1) == 114 {
-      if load8(sans_json_p_src + sans_json_p_pos + 2) == 117 {
-        if load8(sans_json_p_src + sans_json_p_pos + 3) == 101 {
-          sans_json_p_pos = sans_json_p_pos + 4
+sans_json_stringify_string_slow(cx:I s:I len:I) I {
+  store8(load64(cx) + load64(cx + 8), 34)
+  store64(cx + 8, load64(cx + 8) + 1)
+  start := 0
+  i := 0
+  while i < len {
+    c = load8(s + i)
+    if c == 34 {
+      if i > start {
+        sans_json_sb_append_bytes(cx, s + start, i - start)
+        0
+      } else { 0 }
+      sans_json_sb_append_char(cx, 92)
+      sans_json_sb_append_char(cx, 34)
+      start = i + 1
+      i = i + 1
+      0
+    } else {
+      if c == 92 {
+        if i > start {
+          sans_json_sb_append_bytes(cx, s + start, i - start)
+          0
+        } else { 0 }
+        sans_json_sb_append_char(cx, 92)
+        sans_json_sb_append_char(cx, 92)
+        start = i + 1
+        i = i + 1
+        0
+      } else {
+        if c == 10 {
+          if i > start {
+            sans_json_sb_append_bytes(cx, s + start, i - start)
+            0
+          } else { 0 }
+          sans_json_sb_append_char(cx, 92)
+          sans_json_sb_append_char(cx, 110)
+          start = i + 1
+          i = i + 1
+          0
+        } else {
+          if c == 9 {
+            if i > start {
+              sans_json_sb_append_bytes(cx, s + start, i - start)
+              0
+            } else { 0 }
+            sans_json_sb_append_char(cx, 92)
+            sans_json_sb_append_char(cx, 116)
+            start = i + 1
+            i = i + 1
+            0
+          } else {
+            if c == 13 {
+              if i > start {
+                sans_json_sb_append_bytes(cx, s + start, i - start)
+                0
+              } else { 0 }
+              sans_json_sb_append_char(cx, 92)
+              sans_json_sb_append_char(cx, 114)
+              start = i + 1
+              i = i + 1
+              0
+            } else {
+              i = i + 1
+              0
+            }
+          }
+        }
+      }
+    }
+  }
+  if i > start {
+    sans_json_sb_append_bytes(cx, s + start, i - start)
+    0
+  } else { 0 }
+  sans_json_sb_ensure(cx, 1)
+  store8(load64(cx) + load64(cx + 8), 34)
+  store64(cx + 8, load64(cx + 8) + 1)
+  store8(load64(cx) + load64(cx + 8), 0)
+  0
+}
+
+sans_json_sb_append_int(cx:I n:I) I {
+  if n < 0 {
+    sans_json_sb_append_char(cx, 45)
+    sans_json_sb_append_uint(cx, 0 - n)
+  } else {
+    if n == 0 {
+      sans_json_sb_append_char(cx, 48)
+    } else {
+      sans_json_sb_append_uint(cx, n)
+    }
+  }
+  0
+}
+
+sans_json_sb_append_uint(cx:I n:I) I {
+  sans_json_sb_ensure(cx, 20)
+  sb_buf = load64(cx)
+  sb_len = load64(cx + 8)
+  pos := sb_len + 20
+  rem := n
+  while rem > 0 {
+    pos = pos - 1
+    store8(sb_buf + pos, 48 + rem % 10)
+    rem = rem / 10
+    0
+  }
+  digs = sb_len + 20 - pos
+  if pos > sb_len {
+    mcpy(sb_buf + sb_len, sb_buf + pos, digs)
+    0
+  } else { 0 }
+  store64(cx + 8, sb_len + digs)
+  store8(sb_buf + sb_len + digs, 0)
+  0
+}
+
+sans_json_sb_append_null(cx:I) I {
+  sans_json_sb_ensure(cx, 4)
+  sb_buf = load64(cx)
+  sb_len = load64(cx + 8)
+  store8(sb_buf + sb_len, 110)
+  store8(sb_buf + sb_len + 1, 117)
+  store8(sb_buf + sb_len + 2, 108)
+  store8(sb_buf + sb_len + 3, 108)
+  store64(cx + 8, sb_len + 4)
+  store8(sb_buf + sb_len + 4, 0)
+  0
+}
+
+sans_json_sb_append_true(cx:I) I {
+  sans_json_sb_ensure(cx, 4)
+  sb_buf = load64(cx)
+  sb_len = load64(cx + 8)
+  store8(sb_buf + sb_len, 116)
+  store8(sb_buf + sb_len + 1, 114)
+  store8(sb_buf + sb_len + 2, 117)
+  store8(sb_buf + sb_len + 3, 101)
+  store64(cx + 8, sb_len + 4)
+  store8(sb_buf + sb_len + 4, 0)
+  0
+}
+
+sans_json_sb_append_false(cx:I) I {
+  sans_json_sb_ensure(cx, 5)
+  sb_buf = load64(cx)
+  sb_len = load64(cx + 8)
+  store8(sb_buf + sb_len, 102)
+  store8(sb_buf + sb_len + 1, 97)
+  store8(sb_buf + sb_len + 2, 108)
+  store8(sb_buf + sb_len + 3, 115)
+  store8(sb_buf + sb_len + 4, 101)
+  store64(cx + 8, sb_len + 5)
+  store8(sb_buf + sb_len + 5, 0)
+  0
+}
+
+sans_json_stringify_value(cx:I v:I) I {
+  tag = load64(v)
+  if tag == 0 {
+    sans_json_sb_append_null(cx)
+  } else {
+    if tag == 1 {
+      bv = load64(v + 8)
+      bv != 0 ? sans_json_sb_append_true(cx) : sans_json_sb_append_false(cx)
+    } else {
+      if tag == 2 {
+        n = load64(v + 8)
+        sans_json_sb_append_int(cx, n)
+      } else {
+        if tag == 3 {
+          s = load64(v + 8)
+          sans_json_stringify_string(cx, s)
+        } else {
+          if tag == 4 {
+            sans_json_stringify_array(cx, v)
+          } else {
+            if tag == 5 {
+              sans_json_stringify_object(cx, v)
+            } else {
+              sans_json_sb_append_null(cx)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+sans_json_stringify_array(cx:I v:I) I {
+  ad = load64(v + 8)
+  items = load64(ad)
+  len = load64(ad + 8)
+  sans_json_sb_append_char(cx, 91)
+  i := 0
+  while i < len {
+    i > 0 ? sans_json_sb_append_char(cx, 44) : 0
+    elem = load64(items + i * 8)
+    sans_json_stringify_value(cx, elem)
+    i = i + 1
+    0
+  }
+  sans_json_sb_append_char(cx, 93)
+  0
+}
+
+sans_json_stringify_object(cx:I v:I) I {
+  obj = load64(v + 8)
+  keys = load64(obj)
+  vals = load64(obj + 8)
+  len = load64(obj + 16)
+  sans_json_sb_append_char(cx, 123)
+  i := 0
+  while i < len {
+    if i > 0 {
+      sans_json_sb_ensure(cx, 1)
+      sb_buf = load64(cx)
+      sb_len = load64(cx + 8)
+      store8(sb_buf + sb_len, 44)
+      store64(cx + 8, sb_len + 1)
+      0
+    } else { 0 }
+    k = load64(keys + i * 8)
+    sans_json_stringify_string(cx, k)
+    sans_json_sb_ensure(cx, 1)
+    sb_buf2 = load64(cx)
+    sb_len2 = load64(cx + 8)
+    store8(sb_buf2 + sb_len2, 58)
+    store64(cx + 8, sb_len2 + 1)
+    val = load64(vals + i * 8)
+    sans_json_stringify_value(cx, val)
+    i = i + 1
+    0
+  }
+  sans_json_sb_append_char(cx, 125)
+  0
+}
+
+sans_json_stringify(v:I) I {
+  cx = sans_json_sb_init()
+  sans_json_stringify_value(cx, v)
+  sans_json_sb_result(cx)
+}
+
+sans_json_p_ch(px:I) I {
+  load8(load64(px) + load64(px + 8))
+}
+
+sans_json_p_adv(px:I) I {
+  store64(px + 8, load64(px + 8) + 1)
+  0
+}
+
+sans_json_p_skip_ws(px:I) I {
+  src = load64(px)
+  pos := load64(px + 8)
+  done := 0
+  while done == 0 {
+    c = load8(src + pos)
+    if c == 32 {
+      pos = pos + 1
+      0
+    } else {
+      if c == 9 {
+        pos = pos + 1
+        0
+      } else {
+        if c == 10 {
+          pos = pos + 1
+          0
+        } else {
+          if c == 13 {
+            pos = pos + 1
+            0
+          } else {
+            done = 1
+            0
+          }
+        }
+      }
+    }
+  }
+  store64(px + 8, pos)
+  0
+}
+
+sans_json_p_match_true(px:I) I {
+  src = load64(px)
+  pos = load64(px + 8)
+  if load8(src + pos) == 116 {
+    if load8(src + pos + 1) == 114 {
+      if load8(src + pos + 2) == 117 {
+        if load8(src + pos + 3) == 101 {
+          store64(px + 8, pos + 4)
           1
         } else { 0 }
       } else { 0 }
@@ -602,13 +784,15 @@ sans_json_p_match_true() I {
   } else { 0 }
 }
 
-sans_json_p_match_false() I {
-  if load8(sans_json_p_src + sans_json_p_pos) == 102 {
-    if load8(sans_json_p_src + sans_json_p_pos + 1) == 97 {
-      if load8(sans_json_p_src + sans_json_p_pos + 2) == 108 {
-        if load8(sans_json_p_src + sans_json_p_pos + 3) == 115 {
-          if load8(sans_json_p_src + sans_json_p_pos + 4) == 101 {
-            sans_json_p_pos = sans_json_p_pos + 5
+sans_json_p_match_false(px:I) I {
+  src = load64(px)
+  pos = load64(px + 8)
+  if load8(src + pos) == 102 {
+    if load8(src + pos + 1) == 97 {
+      if load8(src + pos + 2) == 108 {
+        if load8(src + pos + 3) == 115 {
+          if load8(src + pos + 4) == 101 {
+            store64(px + 8, pos + 5)
             1
           } else { 0 }
         } else { 0 }
@@ -617,12 +801,14 @@ sans_json_p_match_false() I {
   } else { 0 }
 }
 
-sans_json_p_match_null() I {
-  if load8(sans_json_p_src + sans_json_p_pos) == 110 {
-    if load8(sans_json_p_src + sans_json_p_pos + 1) == 117 {
-      if load8(sans_json_p_src + sans_json_p_pos + 2) == 108 {
-        if load8(sans_json_p_src + sans_json_p_pos + 3) == 108 {
-          sans_json_p_pos = sans_json_p_pos + 4
+sans_json_p_match_null(px:I) I {
+  src = load64(px)
+  pos = load64(px + 8)
+  if load8(src + pos) == 110 {
+    if load8(src + pos + 1) == 117 {
+      if load8(src + pos + 2) == 108 {
+        if load8(src + pos + 3) == 108 {
+          store64(px + 8, pos + 4)
           1
         } else { 0 }
       } else { 0 }
@@ -630,66 +816,66 @@ sans_json_p_match_null() I {
   } else { 0 }
 }
 
-sans_json_p_string_raw() I {
-  sans_json_p_ch() != 34 ? 0 : sans_json_p_string_raw_inner()
+sans_json_p_string_raw(px:I) I {
+  sans_json_p_ch(px) != 34 ? 0 : sans_json_p_string_body(px)
 }
 
-sans_json_p_string_raw_inner() I {
-  sans_json_p_adv()
-  cap := 32
+sans_json_p_string_body(px:I) I {
+  sans_json_p_adv(px)
+  src = load64(px)
+  cap := 64
   len := 0
-  buf := alloc(32)
-  r = sans_json_p_str_loop(buf, len, cap)
-  r
-}
-
-sans_json_p_str_loop(buf:I len:I cap:I) I {
-  c = sans_json_p_ch()
-  c == 0 ? sans_json_p_str_end(buf, len) : c == 34 ? sans_json_p_str_end_q(buf, len) : c == 92 ? sans_json_p_str_esc(buf, len, cap) : sans_json_p_str_char(buf, len, cap, c)
-}
-
-sans_json_p_str_end(buf:I len:I) I {
-  store8(buf + len, 0)
-  buf
-}
-
-sans_json_p_str_end_q(buf:I len:I) I {
-  sans_json_p_adv()
-  store8(buf + len, 0)
-  buf
-}
-
-sans_json_p_str_esc(buf:I len:I cap:I) I {
-  sans_json_p_adv()
-  ec = sans_json_p_escape_char()
-  sans_json_p_adv()
-  sans_json_p_str_add(buf, len, cap, ec)
-}
-
-sans_json_p_str_char(buf:I len:I cap:I c:I) I {
-  sans_json_p_adv()
-  sans_json_p_str_add(buf, len, cap, c)
-}
-
-sans_json_p_str_add(buf:I len:I cap:I ch:I) I {
-  if len + 1 >= cap {
-    nc = cap * 2
-    nb = ralloc(buf, nc)
-    store8(nb + len, ch)
-    sans_json_p_str_loop(nb, len + 1, nc)
-  } else {
-    store8(buf + len, ch)
-    sans_json_p_str_loop(buf, len + 1, cap)
+  buf := alloc(64)
+  done := 0
+  while done == 0 {
+    pos = load64(px + 8)
+    c = load8(src + pos)
+    if c == 0 {
+      done = 1
+      0
+    } else {
+      if c == 34 {
+        store64(px + 8, pos + 1)
+        done = 1
+        0
+      } else {
+        if c == 92 {
+          store64(px + 8, pos + 1)
+          ec = sans_json_p_escape_char(px)
+          store64(px + 8, load64(px + 8) + 1)
+          if len + 1 >= cap {
+            cap = cap * 2
+            buf = ralloc(buf, cap)
+            0
+          } else { 0 }
+          store8(buf + len, ec)
+          len = len + 1
+          0
+        } else {
+          if len + 1 >= cap {
+            cap = cap * 2
+            buf = ralloc(buf, cap)
+            0
+          } else { 0 }
+          store8(buf + len, c)
+          len = len + 1
+          store64(px + 8, pos + 1)
+          0
+        }
+      }
+    }
   }
+  store8(buf + len, 0)
+  buf
 }
 
-sans_json_p_escape_char() I {
-  c = sans_json_p_ch()
+sans_json_p_escape_char(px:I) I {
+  c = sans_json_p_ch(px)
   c == 34 ? 34 : c == 92 ? 92 : c == 47 ? 47 : c == 110 ? 10 : c == 116 ? 9 : c == 114 ? 13 : c == 98 ? 8 : c == 102 ? 12 : c
 }
 
-sans_json_p_string() I {
-  s = sans_json_p_string_raw()
+sans_json_p_string(px:I) I {
+  s = sans_json_p_string_raw(px)
   s == 0 ? 0 : sans_json_p_make_string(s)
 }
 
@@ -699,65 +885,75 @@ sans_json_p_make_string(s:I) I {
   v
 }
 
-sans_json_p_number() I {
-  start = sans_json_p_pos
+sans_json_p_number(px:I) I {
+  start = load64(px + 8)
   neg := 0
-  c = sans_json_p_ch()
+  c = sans_json_p_ch(px)
   if c == 45 {
     neg = 1
-    sans_json_p_adv()
+    sans_json_p_adv(px)
     0
   } else {
     0
   }
-  sans_json_p_num_digits()
-  c2 = sans_json_p_ch()
-  c2 == 46 ? sans_json_p_skip_frac() : 0
-  c3 = sans_json_p_ch()
-  c3 == 101 ? sans_json_p_skip_exp() : c3 == 69 ? sans_json_p_skip_exp() : 0
-  end = sans_json_p_pos
-  end == start ? 0 : sans_json_p_make_number(start, end)
+  sans_json_p_num_digits(px)
+  c2 = sans_json_p_ch(px)
+  c2 == 46 ? sans_json_p_skip_frac(px) : 0
+  c3 = sans_json_p_ch(px)
+  c3 == 101 ? sans_json_p_skip_exp(px) : c3 == 69 ? sans_json_p_skip_exp(px) : 0
+  end = load64(px + 8)
+  end == start ? 0 : sans_json_p_make_number(px, start, end)
 }
 
-sans_json_p_num_digits() I {
-  c = sans_json_p_ch()
-  if c >= 48 {
-    if c <= 57 {
-      sans_json_p_adv()
-      sans_json_p_num_digits()
+sans_json_p_num_digits(px:I) I {
+  src = load64(px)
+  pos := load64(px + 8)
+  done := 0
+  while done == 0 {
+    c = load8(src + pos)
+    if c >= 48 {
+      if c <= 57 {
+        pos = pos + 1
+        0
+      } else {
+        done = 1
+        0
+      }
     } else {
+      done = 1
       0
     }
-  } else {
-    0
   }
-}
-
-sans_json_p_skip_frac() I {
-  sans_json_p_adv()
-  sans_json_p_num_digits()
+  store64(px + 8, pos)
   0
 }
 
-sans_json_p_skip_exp() I {
-  sans_json_p_adv()
-  c = sans_json_p_ch()
-  c == 43 ? sans_json_p_adv() : c == 45 ? sans_json_p_adv() : 0
-  sans_json_p_num_digits()
+sans_json_p_skip_frac(px:I) I {
+  sans_json_p_adv(px)
+  sans_json_p_num_digits(px)
   0
 }
 
-sans_json_p_make_number(start:I end:I) I {
-  n = sans_json_p_atoi(start, end)
+sans_json_p_skip_exp(px:I) I {
+  sans_json_p_adv(px)
+  c = sans_json_p_ch(px)
+  c == 43 ? sans_json_p_adv(px) : c == 45 ? sans_json_p_adv(px) : 0
+  sans_json_p_num_digits(px)
+  0
+}
+
+sans_json_p_make_number(px:I start:I end:I) I {
+  n = sans_json_p_atoi(px, start, end)
   v = sans_json_alloc(2)
   store64(v + 8, n)
   v
 }
 
-sans_json_p_atoi(start:I end:I) I {
+sans_json_p_atoi(px:I start:I end:I) I {
+  src = load64(px)
   neg := 0
   pos := start
-  c = load8(sans_json_p_src + pos)
+  c = load8(src + pos)
   if c == 45 {
     neg = 1
     pos = pos + 1
@@ -765,138 +961,162 @@ sans_json_p_atoi(start:I end:I) I {
   } else {
     0
   }
-  result = sans_json_p_atoi_loop(pos, end, 0)
-  neg != 0 ? 0 - result : result
-}
-
-sans_json_p_atoi_loop(pos:I end:I acc:I) I {
-  if pos >= end {
-    acc
-  } else {
-    c = load8(sans_json_p_src + pos)
-    if c >= 48 {
-      if c <= 57 {
-        sans_json_p_atoi_loop(pos + 1, end, acc * 10 + c - 48)
+  acc := 0
+  while pos < end {
+    c2 = load8(src + pos)
+    if c2 >= 48 {
+      if c2 <= 57 {
+        acc = acc * 10 + c2 - 48
+        pos = pos + 1
+        0
       } else {
-        acc
+        pos = end
+        0
       }
     } else {
-      acc
+      pos = end
+      0
     }
+  }
+  neg != 0 ? 0 - acc : acc
+}
+
+sans_json_p_object(px:I) I {
+  sans_json_p_adv(px)
+  obj = sans_json_object()
+  sans_json_p_skip_ws(px)
+  if sans_json_p_ch(px) == 125 {
+    sans_json_p_adv(px)
+    obj
+  } else {
+    sans_json_p_obj_loop(px, obj)
   }
 }
 
-sans_json_p_object() I {
-  sans_json_p_adv()
-  obj = sans_json_object()
-  sans_json_p_skip_ws()
-  sans_json_p_ch() == 125 ? sans_json_p_obj_done(obj) : sans_json_p_obj_loop(obj)
-}
-
-sans_json_p_obj_done(obj:I) I {
-  sans_json_p_adv()
-  obj
-}
-
-sans_json_p_obj_loop(obj:I) I {
-  sans_json_p_skip_ws()
-  key = sans_json_p_string_raw()
-  key == 0 ? sans_json_null() : sans_json_p_obj_kv(obj, key)
-}
-
-sans_json_p_obj_kv(obj:I key:I) I {
-  sans_json_p_skip_ws()
-  if sans_json_p_ch() != 58 {
-    dealloc(key)
-    sans_json_null()
-  } else {
-    sans_json_p_adv()
-    sans_json_p_skip_ws()
-    val = sans_json_p_value()
-    if val == 0 {
-      dealloc(key)
-      sans_json_null()
+sans_json_p_obj_loop(px:I obj:I) I {
+  done := 0
+  result := obj
+  while done == 0 {
+    sans_json_p_skip_ws(px)
+    key = sans_json_p_string_raw(px)
+    if key == 0 {
+      result = sans_json_null()
+      done = 1
+      0
     } else {
-      sans_json_set(obj, key, val)
-      dealloc(key)
-      sans_json_p_skip_ws()
-      c = sans_json_p_ch()
-      if c == 44 {
-        sans_json_p_adv()
-        sans_json_p_obj_loop(obj)
+      sans_json_p_skip_ws(px)
+      if sans_json_p_ch(px) != 58 {
+        dealloc(key)
+        result = sans_json_null()
+        done = 1
+        0
       } else {
-        if c == 125 {
-          sans_json_p_adv()
-          obj
+        sans_json_p_adv(px)
+        sans_json_p_skip_ws(px)
+        val = sans_json_p_value(px)
+        if val == 0 {
+          dealloc(key)
+          result = sans_json_null()
+          done = 1
+          0
         } else {
-          sans_json_null()
+          sans_json_obj_append(obj, key, val)
+          sans_json_p_skip_ws(px)
+          c = sans_json_p_ch(px)
+          if c == 44 {
+            sans_json_p_adv(px)
+            0
+          } else {
+            if c == 125 {
+              sans_json_p_adv(px)
+              result = obj
+              done = 1
+              0
+            } else {
+              result = sans_json_null()
+              done = 1
+              0
+            }
+          }
         }
       }
     }
   }
+  result
 }
 
-sans_json_p_array() I {
-  sans_json_p_adv()
+sans_json_p_array(px:I) I {
+  sans_json_p_adv(px)
   arr = sans_json_array()
-  sans_json_p_skip_ws()
-  sans_json_p_ch() == 93 ? sans_json_p_arr_done(arr) : sans_json_p_arr_loop(arr)
-}
-
-sans_json_p_arr_done(arr:I) I {
-  sans_json_p_adv()
-  arr
-}
-
-sans_json_p_arr_loop(arr:I) I {
-  sans_json_p_skip_ws()
-  val = sans_json_p_value()
-  val == 0 ? sans_json_null() : sans_json_p_arr_after(arr, val)
-}
-
-sans_json_p_arr_after(arr:I val:I) I {
-  sans_json_push(arr, val)
-  sans_json_p_skip_ws()
-  c = sans_json_p_ch()
-  if c == 44 {
-    sans_json_p_adv()
-    sans_json_p_arr_loop(arr)
+  sans_json_p_skip_ws(px)
+  if sans_json_p_ch(px) == 93 {
+    sans_json_p_adv(px)
+    arr
   } else {
-    if c == 93 {
-      sans_json_p_adv()
-      arr
-    } else {
-      sans_json_null()
-    }
+    sans_json_p_arr_loop(px, arr)
   }
 }
 
-sans_json_p_value() I {
-  sans_json_p_skip_ws()
-  c = sans_json_p_ch()
+sans_json_p_arr_loop(px:I arr:I) I {
+  done := 0
+  result := arr
+  while done == 0 {
+    sans_json_p_skip_ws(px)
+    val = sans_json_p_value(px)
+    if val == 0 {
+      result = sans_json_null()
+      done = 1
+      0
+    } else {
+      sans_json_push(arr, val)
+      sans_json_p_skip_ws(px)
+      c = sans_json_p_ch(px)
+      if c == 44 {
+        sans_json_p_adv(px)
+        0
+      } else {
+        if c == 93 {
+          sans_json_p_adv(px)
+          result = arr
+          done = 1
+          0
+        } else {
+          result = sans_json_null()
+          done = 1
+          0
+        }
+      }
+    }
+  }
+  result
+}
+
+sans_json_p_value(px:I) I {
+  sans_json_p_skip_ws(px)
+  c = sans_json_p_ch(px)
   if c == 34 {
-    sans_json_p_string()
+    sans_json_p_string(px)
   } else {
     if c == 123 {
-      sans_json_p_object()
+      sans_json_p_object(px)
     } else {
       if c == 91 {
-        sans_json_p_array()
+        sans_json_p_array(px)
       } else {
         if c == 116 {
-          sans_json_p_match_true() != 0 ? sans_json_bool(1) : 0
+          sans_json_p_match_true(px) != 0 ? sans_json_bool(1) : 0
         } else {
           if c == 102 {
-            sans_json_p_match_false() != 0 ? sans_json_bool(0) : 0
+            sans_json_p_match_false(px) != 0 ? sans_json_bool(0) : 0
           } else {
             if c == 110 {
-              sans_json_p_match_null() != 0 ? sans_json_null() : 0
+              sans_json_p_match_null(px) != 0 ? sans_json_null() : 0
             } else {
               if c == 45 {
-                sans_json_p_number()
+                sans_json_p_number(px)
               } else {
                 if c >= 48 {
-                  c <= 57 ? sans_json_p_number() : 0
+                  c <= 57 ? sans_json_p_number(px) : 0
                 } else {
                   0
                 }
@@ -914,8 +1134,10 @@ sans_json_parse(src:I) I {
 }
 
 sans_json_parse_inner(src:I) I {
-  sans_json_p_src = src
-  sans_json_p_pos = 0
-  result = sans_json_p_value()
+  px = alloc(16)
+  store64(px, src)
+  store64(px + 8, 0)
+  result = sans_json_p_value(px)
+  dealloc(px)
   result == 0 ? sans_json_null() : result
 }
