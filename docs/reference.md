@@ -55,6 +55,19 @@ let x Int = 42      // explicit type (verbose, optional)
 let mut x = 0       // verbose mutable (optional)
 ```
 
+## Global Variables
+
+```sans
+g counter = 0       // global mutable variable
+
+inc() I {
+  counter = counter + 1
+  counter
+}
+```
+
+Globals are mutable and accessible from any function. Declared at the top level with `g`.
+
 ## Function Definition
 
 ```sans
@@ -172,6 +185,59 @@ String comparison (`==`, `!=`) is supported.
 | `log_set_level(n)` | `ll` | `(Int) -> Int` |
 
 Log levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR
+
+### Low-Level Primitives
+
+These enable Sans to replace its own C runtime. Pointers are stored as Int (i64).
+
+#### Memory
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `alloc(size)` | `(Int) -> Int` | malloc, returns pointer |
+| `dealloc(ptr)` | `(Int) -> Int` | free |
+| `ralloc(ptr, size)` | `(Int, Int) -> Int` | realloc |
+| `mcpy(dst, src, n)` | `(Int, Int, Int) -> Int` | memcpy |
+| `mcmp(a, b, n)` | `(Int, Int, Int) -> Int` | memcmp |
+| `slen(ptr)` | `(Int) -> Int` | strlen on raw pointer |
+| `load8(ptr)` | `(Int) -> Int` | load byte (0-255) |
+| `store8(ptr, val)` | `(Int, Int) -> Int` | store byte |
+
+#### I/O
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `wfd(fd, msg)` | `(Int, String) -> Int` | write string to file descriptor |
+
+#### Sockets
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `sock(domain, type, proto)` | `(Int, Int, Int) -> Int` | socket() |
+| `sbind(fd, port)` | `(Int, Int) -> Int` | bind to port |
+| `slisten(fd, backlog)` | `(Int, Int) -> Int` | listen() |
+| `saccept(fd)` | `(Int) -> Int` | accept() |
+| `srecv(fd, buf, len)` | `(Int, Int, Int) -> Int` | recv() |
+| `ssend(fd, buf, len)` | `(Int, Int, Int) -> Int` | send() |
+| `sclose(fd)` | `(Int) -> Int` | close() |
+
+#### Curl
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `cinit()` | `() -> Int` | curl_easy_init |
+| `csets(h, opt, val)` | `(Int, Int, String) -> Int` | setopt with string |
+| `cseti(h, opt, val)` | `(Int, Int, Int) -> Int` | setopt with long |
+| `cperf(h)` | `(Int) -> Int` | curl_easy_perform |
+| `cclean(h)` | `(Int) -> Int` | curl_easy_cleanup |
+| `cinfo(h, info, buf)` | `(Int, Int, Int) -> Int` | curl_easy_getinfo |
+
+#### Function Pointers
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `fptr("name")` | `(String) -> Int` | get pointer to named function |
+| `fcall(ptr, arg)` | `(Int, Int) -> Int` | call function pointer with 1 arg |
 
 ### Error Handling
 

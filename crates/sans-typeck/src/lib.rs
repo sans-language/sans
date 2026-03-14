@@ -883,6 +883,28 @@ fn check_expr(
                     return Err(TypeError::new(format!("print_err() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "fptr" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("fptr() takes exactly 1 argument (function name)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("fptr() requires String argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "fcall" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("fcall() takes exactly 2 arguments (fn_ptr, arg)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall() fn_ptr must be Int, got {}", ptr_ty)));
+                }
+                let arg_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall() arg must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "wfd" {
                 if args.len() != 2 {
                     return Err(TypeError::new("wfd() takes exactly 2 arguments (fd, msg)"));
@@ -894,6 +916,237 @@ fn check_expr(
                 let msg_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 if msg_ty != Type::String {
                     return Err(TypeError::new(format!("wfd() msg must be String, got {}", msg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "alloc" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("alloc() takes exactly 1 argument (size)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("alloc() size must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "dealloc" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("dealloc() takes exactly 1 argument (ptr)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("dealloc() ptr must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "ralloc" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("ralloc() takes exactly 2 arguments (ptr, size)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("ralloc() ptr must be Int, got {}", ptr_ty)));
+                }
+                let size_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if size_ty != Type::Int {
+                    return Err(TypeError::new(format!("ralloc() size must be Int, got {}", size_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "mcpy" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("mcpy() takes exactly 3 arguments (dst, src, n)"));
+                }
+                let dst_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if dst_ty != Type::Int {
+                    return Err(TypeError::new(format!("mcpy() dst must be Int, got {}", dst_ty)));
+                }
+                let src_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if src_ty != Type::Int {
+                    return Err(TypeError::new(format!("mcpy() src must be Int, got {}", src_ty)));
+                }
+                let n_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if n_ty != Type::Int {
+                    return Err(TypeError::new(format!("mcpy() n must be Int, got {}", n_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "mcmp" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("mcmp() takes exactly 3 arguments (a, b, n)"));
+                }
+                let a_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if a_ty != Type::Int {
+                    return Err(TypeError::new(format!("mcmp() a must be Int, got {}", a_ty)));
+                }
+                let b_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if b_ty != Type::Int {
+                    return Err(TypeError::new(format!("mcmp() b must be Int, got {}", b_ty)));
+                }
+                let n_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if n_ty != Type::Int {
+                    return Err(TypeError::new(format!("mcmp() n must be Int, got {}", n_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "slen" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("slen() takes exactly 1 argument (ptr)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("slen() ptr must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "load8" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("load8() takes exactly 1 argument (ptr)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("load8() ptr must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "store8" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("store8() takes exactly 2 arguments (ptr, val)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("store8() ptr must be Int, got {}", ptr_ty)));
+                }
+                let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if val_ty != Type::Int {
+                    return Err(TypeError::new(format!("store8() val must be Int, got {}", val_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "sock" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("sock() takes exactly 3 arguments (domain, type, proto)"));
+                }
+                for (i, label) in ["domain", "type", "proto"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("sock() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "sbind" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("sbind() takes exactly 2 arguments (fd, port)"));
+                }
+                for (i, label) in ["fd", "port"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("sbind() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "slisten" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("slisten() takes exactly 2 arguments (fd, backlog)"));
+                }
+                for (i, label) in ["fd", "backlog"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("slisten() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "saccept" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("saccept() takes exactly 1 argument (fd)"));
+                }
+                let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if t != Type::Int {
+                    return Err(TypeError::new(format!("saccept() fd must be Int, got {}", t)));
+                }
+                return Ok(Type::Int);
+            } else if function == "srecv" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("srecv() takes exactly 3 arguments (fd, buf, len)"));
+                }
+                for (i, label) in ["fd", "buf", "len"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("srecv() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "ssend" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("ssend() takes exactly 3 arguments (fd, buf, len)"));
+                }
+                for (i, label) in ["fd", "buf", "len"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("ssend() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "sclose" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("sclose() takes exactly 1 argument (fd)"));
+                }
+                let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if t != Type::Int {
+                    return Err(TypeError::new(format!("sclose() fd must be Int, got {}", t)));
+                }
+                return Ok(Type::Int);
+            } else if function == "cinit" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("cinit() takes no arguments"));
+                }
+                return Ok(Type::Int);
+            } else if function == "csets" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("csets() takes exactly 3 arguments (handle, opt, val)"));
+                }
+                let handle_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if handle_ty != Type::Int {
+                    return Err(TypeError::new(format!("csets() handle must be Int, got {}", handle_ty)));
+                }
+                let opt_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if opt_ty != Type::Int {
+                    return Err(TypeError::new(format!("csets() opt must be Int, got {}", opt_ty)));
+                }
+                let val_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if val_ty != Type::String {
+                    return Err(TypeError::new(format!("csets() val must be String, got {}", val_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "cseti" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("cseti() takes exactly 3 arguments (handle, opt, val)"));
+                }
+                for (i, label) in ["handle", "opt", "val"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("cseti() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
+            } else if function == "cperf" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("cperf() takes exactly 1 argument (handle)"));
+                }
+                let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if t != Type::Int {
+                    return Err(TypeError::new(format!("cperf() handle must be Int, got {}", t)));
+                }
+                return Ok(Type::Int);
+            } else if function == "cclean" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("cclean() takes exactly 1 argument (handle)"));
+                }
+                let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if t != Type::Int {
+                    return Err(TypeError::new(format!("cclean() handle must be Int, got {}", t)));
+                }
+                return Ok(Type::Int);
+            } else if function == "cinfo" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("cinfo() takes exactly 3 arguments (handle, info, buf)"));
+                }
+                for (i, label) in ["handle", "info", "buf"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if t != Type::Int {
+                        return Err(TypeError::new(format!("cinfo() {} must be Int, got {}", label, t)));
+                    }
                 }
                 return Ok(Type::Int);
             } else if function == "get_log_level" {

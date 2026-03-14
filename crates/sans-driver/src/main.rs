@@ -157,7 +157,8 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let tmp_dir = std::env::temp_dir();
     let c_runtime_modules = [
-        "json", "http", "result", "string_ext", "array_ext", "functional", "server",
+        "json", "http", "result", "string_ext", "array_ext", "functional", "server", "sock",
+        "curl_helpers",
     ];
     let sans_runtime_modules = [
         "log",

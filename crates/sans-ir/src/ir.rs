@@ -191,6 +191,8 @@ pub enum Instruction {
     HttpRespondWithContentType { dest: Reg, request: Reg, status: Reg, body: Reg, content_type: Reg },
     // Function references
     FnRef { dest: Reg, name: String },
+    FptrNamed { dest: Reg, func_name: String },
+    Fcall { dest: Reg, fn_ptr: Reg, arg: Reg },
     // Array higher-order methods
     ArrayMap { dest: Reg, array: Reg, fn_ptr: Reg },
     ArrayFilter { dest: Reg, array: Reg, fn_ptr: Reg },
@@ -226,6 +228,15 @@ pub enum Instruction {
     // Kernel functions
     PrintErr { dest: Reg, message: Reg },
     WriteFd { dest: Reg, fd: Reg, message: Reg },
+    // Memory primitives
+    Alloc { dest: Reg, size: Reg },
+    Dealloc { dest: Reg, ptr: Reg },
+    Ralloc { dest: Reg, ptr: Reg, size: Reg },
+    Mcpy { dest: Reg, dst_ptr: Reg, src_ptr: Reg, len: Reg },
+    Mcmp { dest: Reg, a_ptr: Reg, b_ptr: Reg, len: Reg },
+    Slen { dest: Reg, ptr: Reg },
+    Load8 { dest: Reg, ptr: Reg },
+    Store8 { dest: Reg, ptr: Reg, val: Reg },
     GetLogLevel { dest: Reg },
     SetLogLevel { dest: Reg, level: Reg },
     // HTTP operations
@@ -235,6 +246,21 @@ pub enum Instruction {
     HttpBody { dest: Reg, response: Reg },
     HttpHeader { dest: Reg, response: Reg, name: Reg },
     HttpOk { dest: Reg, response: Reg },
+    // Socket primitives
+    Sock { dest: Reg, domain: Reg, sock_type: Reg, proto: Reg },
+    Sbind { dest: Reg, fd: Reg, port: Reg },
+    Slisten { dest: Reg, fd: Reg, backlog: Reg },
+    Saccept { dest: Reg, fd: Reg },
+    Srecv { dest: Reg, fd: Reg, buf: Reg, len: Reg },
+    Ssend { dest: Reg, fd: Reg, buf: Reg, len: Reg },
+    Sclose { dest: Reg, fd: Reg },
+    // libcurl primitives
+    Cinit { dest: Reg },
+    Csets { dest: Reg, handle: Reg, opt: Reg, val: Reg },
+    Cseti { dest: Reg, handle: Reg, opt: Reg, val: Reg },
+    Cperf { dest: Reg, handle: Reg },
+    Cclean { dest: Reg, handle: Reg },
+    Cinfo { dest: Reg, handle: Reg, info: Reg, buf: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

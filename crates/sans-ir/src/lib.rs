@@ -801,11 +801,172 @@ impl IrBuilder {
                     self.instructions.push(Instruction::PrintErr { dest: dest.clone(), message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "fptr" {
+                    let dest = self.fresh_reg();
+                    if let Expr::StringLiteral { value: name, .. } = &args[0] {
+                        self.instructions.push(Instruction::FptrNamed { dest: dest.clone(), func_name: name.clone() });
+                    } else {
+                        panic!("fptr() requires a string literal argument");
+                    }
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "fcall" {
+                    let fn_ptr_reg = self.lower_expr(&args[0]);
+                    let arg_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Fcall { dest: dest.clone(), fn_ptr: fn_ptr_reg, arg: arg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "wfd" {
                     let fd_reg = self.lower_expr(&args[0]);
                     let msg_reg = self.lower_expr(&args[1]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::WriteFd { dest: dest.clone(), fd: fd_reg, message: msg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "alloc" {
+                    let size_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Alloc { dest: dest.clone(), size: size_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "dealloc" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Dealloc { dest: dest.clone(), ptr: ptr_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "ralloc" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let size_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Ralloc { dest: dest.clone(), ptr: ptr_reg, size: size_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "mcpy" {
+                    let dst_reg = self.lower_expr(&args[0]);
+                    let src_reg = self.lower_expr(&args[1]);
+                    let len_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Mcpy { dest: dest.clone(), dst_ptr: dst_reg, src_ptr: src_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "mcmp" {
+                    let a_reg = self.lower_expr(&args[0]);
+                    let b_reg = self.lower_expr(&args[1]);
+                    let len_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Mcmp { dest: dest.clone(), a_ptr: a_reg, b_ptr: b_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "slen" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Slen { dest: dest.clone(), ptr: ptr_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "load8" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Load8 { dest: dest.clone(), ptr: ptr_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "store8" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let val_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Store8 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "sock" {
+                    let domain_reg = self.lower_expr(&args[0]);
+                    let type_reg = self.lower_expr(&args[1]);
+                    let proto_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Sock { dest: dest.clone(), domain: domain_reg, sock_type: type_reg, proto: proto_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "sbind" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let port_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Sbind { dest: dest.clone(), fd: fd_reg, port: port_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "slisten" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let backlog_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Slisten { dest: dest.clone(), fd: fd_reg, backlog: backlog_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "saccept" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Saccept { dest: dest.clone(), fd: fd_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "srecv" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let buf_reg = self.lower_expr(&args[1]);
+                    let len_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Srecv { dest: dest.clone(), fd: fd_reg, buf: buf_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "ssend" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let buf_reg = self.lower_expr(&args[1]);
+                    let len_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Ssend { dest: dest.clone(), fd: fd_reg, buf: buf_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "sclose" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Sclose { dest: dest.clone(), fd: fd_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "cinit" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Cinit { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "csets" {
+                    let handle_reg = self.lower_expr(&args[0]);
+                    let opt_reg = self.lower_expr(&args[1]);
+                    let val_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Csets { dest: dest.clone(), handle: handle_reg, opt: opt_reg, val: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "cseti" {
+                    let handle_reg = self.lower_expr(&args[0]);
+                    let opt_reg = self.lower_expr(&args[1]);
+                    let val_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Cseti { dest: dest.clone(), handle: handle_reg, opt: opt_reg, val: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "cperf" {
+                    let handle_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Cperf { dest: dest.clone(), handle: handle_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "cclean" {
+                    let handle_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Cclean { dest: dest.clone(), handle: handle_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "cinfo" {
+                    let handle_reg = self.lower_expr(&args[0]);
+                    let info_reg = self.lower_expr(&args[1]);
+                    let buf_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Cinfo { dest: dest.clone(), handle: handle_reg, info: info_reg, buf: buf_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "get_log_level" {

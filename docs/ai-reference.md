@@ -14,6 +14,7 @@ f(x:I) = x*2              // expression function (no braces)
 main() { 0 }              // return type defaults to I
 x = 42                     // immutable (no let)
 x := 0                     // mutable (no let mut)
+g x = 0                    // global mutable variable
 x += 1                     // compound assign (+= -= *= /= %=)
 [1 2 3]                    // array literal (commas optional)
 a[0]                       // index read (= a.get(0))
@@ -67,6 +68,38 @@ le(msg)           log_error(msg)        S -> I
 ll(level)         log_set_level(n)      I -> I
 ok(v)                                   T -> R<T>
 err(msg)                                S -> R<_>
+
+// Low-level primitives (pointers as I)
+alloc(n)                                I -> I (malloc)
+dealloc(p)                              I -> I (free)
+ralloc(p n)                             I I -> I (realloc)
+mcpy(d s n)                             I I I -> I (memcpy)
+mcmp(a b n)                             I I I -> I (memcmp)
+slen(p)                                 I -> I (strlen)
+load8(p)                                I -> I (load byte)
+store8(p v)                             I I -> I (store byte)
+wfd(fd msg)                             I S -> I (write to fd)
+
+// Sockets
+sock(d t p)                             I I I -> I (socket)
+sbind(fd port)                          I I -> I (bind)
+slisten(fd b)                           I I -> I (listen)
+saccept(fd)                             I -> I (accept)
+srecv(fd buf len)                       I I I -> I (recv)
+ssend(fd buf len)                       I I I -> I (send)
+sclose(fd)                              I -> I (close)
+
+// Curl
+cinit()                                 -> I (curl init)
+csets(h opt val)                        I I S -> I (setopt str)
+cseti(h opt val)                        I I I -> I (setopt long)
+cperf(h)                                I -> I (perform)
+cclean(h)                               I -> I (cleanup)
+cinfo(h info buf)                       I I I -> I (getinfo)
+
+// Function pointers
+fptr("name")                            S -> I (get fn pointer)
+fcall(ptr arg)                          I I -> I (call fn ptr)
 ```
 
 ## Methods
