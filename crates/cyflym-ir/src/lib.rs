@@ -888,6 +888,20 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
+                    (Some(IrType::Array(ref inner)), "pop") => {
+                        let elem_type = *inner.clone();
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayPop { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), elem_type);
+                        return dest;
+                    }
+                    (Some(IrType::Array(_)), "contains") => {
+                        let val_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayContains { dest: dest.clone(), array: obj_reg, value: val_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
                     (Some(IrType::Str), "len") => {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::StringLen {
@@ -908,6 +922,33 @@ impl IrBuilder {
                             end: end_reg,
                         });
                         self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Str), "trim") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringTrim { dest: dest.clone(), string: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Str), "starts_with") => {
+                        let prefix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringStartsWith { dest: dest.clone(), string: obj_reg, prefix: prefix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Str), "contains") => {
+                        let needle_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringContains { dest: dest.clone(), string: obj_reg, needle: needle_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Str), "split") => {
+                        let delim_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringSplit { dest: dest.clone(), string: obj_reg, delimiter: delim_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
                         return dest;
                     }
                     (Some(IrType::JsonValue), "get") => {

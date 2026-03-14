@@ -102,8 +102,26 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         .expect("failed to compile result runtime");
     assert!(result_compile.success(), "result runtime compilation failed");
 
+    // Compile string_ext runtime
+    let string_ext_c_path = format!("{}/../../runtime/string_ext.c", manifest_dir);
+    let string_ext_o_path = tmp_dir.join(format!("{}_string_ext.o", fixture_dir));
+    let string_ext_compile = Command::new("cc")
+        .args(["-c", &string_ext_c_path, "-o", string_ext_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile string_ext runtime");
+    assert!(string_ext_compile.success(), "string_ext runtime compilation failed");
+
+    // Compile array_ext runtime
+    let array_ext_c_path = format!("{}/../../runtime/array_ext.c", manifest_dir);
+    let array_ext_o_path = tmp_dir.join(format!("{}_array_ext.o", fixture_dir));
+    let array_ext_compile = Command::new("cc")
+        .args(["-c", &array_ext_c_path, "-o", array_ext_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile array_ext runtime");
+    assert!(array_ext_compile.success(), "array_ext runtime compilation failed");
+
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -118,6 +136,8 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let _ = std::fs::remove_file(&http_o_path);
     let _ = std::fs::remove_file(&log_o_path);
     let _ = std::fs::remove_file(&result_o_path);
+    let _ = std::fs::remove_file(&string_ext_o_path);
+    let _ = std::fs::remove_file(&array_ext_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -184,9 +204,27 @@ fn compile_and_run(fixture: &str) -> i32 {
         .expect("failed to compile result runtime");
     assert!(result_compile.success(), "result runtime compilation failed");
 
+    // Compile string_ext runtime
+    let string_ext_c_path = format!("{}/../../runtime/string_ext.c", manifest_dir);
+    let string_ext_o_path = tmp_dir.join(format!("{}_string_ext.o", fixture));
+    let string_ext_compile = Command::new("cc")
+        .args(["-c", &string_ext_c_path, "-o", string_ext_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile string_ext runtime");
+    assert!(string_ext_compile.success(), "string_ext runtime compilation failed");
+
+    // Compile array_ext runtime
+    let array_ext_c_path = format!("{}/../../runtime/array_ext.c", manifest_dir);
+    let array_ext_o_path = tmp_dir.join(format!("{}_array_ext.o", fixture));
+    let array_ext_compile = Command::new("cc")
+        .args(["-c", &array_ext_c_path, "-o", array_ext_o_path.to_str().unwrap()])
+        .status()
+        .expect("failed to compile array_ext runtime");
+    assert!(array_ext_compile.success(), "array_ext runtime compilation failed");
+
     // Link
     let link_status = Command::new("cc")
-        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
+        .args([obj_path.to_str().unwrap(), json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), "-lcurl", "-o", bin_path.to_str().unwrap()])
         .status()
         .expect("failed to invoke linker");
     assert!(link_status.success(), "linker failed");
@@ -203,6 +241,8 @@ fn compile_and_run(fixture: &str) -> i32 {
     let _ = std::fs::remove_file(&http_o_path);
     let _ = std::fs::remove_file(&log_o_path);
     let _ = std::fs::remove_file(&result_o_path);
+    let _ = std::fs::remove_file(&string_ext_o_path);
+    let _ = std::fs::remove_file(&array_ext_o_path);
 
     run_status.code().unwrap_or(-1)
 }
@@ -388,4 +428,14 @@ fn e2e_result_error_handling() {
 fn e2e_float_basic() {
     // float_to_int(3.14 * 2.0 * 2.0) = float_to_int(12.56) = 12
     assert_eq!(compile_and_run("float_basic.cy"), 12);
+}
+
+#[test]
+fn e2e_string_methods() {
+    assert_eq!(compile_and_run("string_methods.cy"), 17);
+}
+
+#[test]
+fn e2e_array_methods() {
+    assert_eq!(compile_and_run("array_methods.cy"), 33);
 }

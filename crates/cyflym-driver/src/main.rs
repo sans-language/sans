@@ -151,8 +151,30 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         return Err("failed to compile result runtime".to_string());
     }
 
+    // Compile string_ext runtime
+    let string_ext_c_path = format!("{}/../../runtime/string_ext.c", manifest_dir);
+    let string_ext_o_path = tmp_dir.join("cyflym_string_ext_runtime.o");
+    let string_ext_compile = process::Command::new("cc")
+        .args(["-c", &string_ext_c_path, "-o", string_ext_o_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("failed to compile string_ext runtime: {}", e))?;
+    if !string_ext_compile.success() {
+        return Err("failed to compile string_ext runtime".to_string());
+    }
+
+    // Compile array_ext runtime
+    let array_ext_c_path = format!("{}/../../runtime/array_ext.c", manifest_dir);
+    let array_ext_o_path = tmp_dir.join("cyflym_array_ext_runtime.o");
+    let array_ext_compile = process::Command::new("cc")
+        .args(["-c", &array_ext_c_path, "-o", array_ext_o_path.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("failed to compile array_ext runtime: {}", e))?;
+    if !array_ext_compile.success() {
+        return Err("failed to compile array_ext runtime".to_string());
+    }
+
     let link_status = process::Command::new("cc")
-        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
+        .args([obj_path_str, json_o_path.to_str().unwrap(), http_o_path.to_str().unwrap(), log_o_path.to_str().unwrap(), result_o_path.to_str().unwrap(), string_ext_o_path.to_str().unwrap(), array_ext_o_path.to_str().unwrap(), "-lcurl", "-o", output_path_str])
         .status()
         .map_err(|e| format!("failed to invoke linker: {}", e))?;
 

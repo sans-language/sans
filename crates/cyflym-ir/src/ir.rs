@@ -175,6 +175,14 @@ pub enum Instruction {
     JsonPush { array: Reg, value: Reg },
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
+    // String extension methods
+    StringTrim { dest: Reg, string: Reg },
+    StringStartsWith { dest: Reg, string: Reg, prefix: Reg },
+    StringContains { dest: Reg, string: Reg, needle: Reg },
+    StringSplit { dest: Reg, string: Reg, delimiter: Reg },
+    // Array extension methods
+    ArrayPop { dest: Reg, array: Reg },
+    ArrayContains { dest: Reg, array: Reg, value: Reg },
     // Float conversions
     IntToFloat { dest: Reg, value: Reg },
     FloatToInt { dest: Reg, value: Reg },

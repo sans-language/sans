@@ -1260,6 +1260,22 @@ fn check_expr(
                     }
                     return Ok(Type::Int);
                 }
+                (Type::Array { inner }, "pop") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("pop() takes no arguments"));
+                    }
+                    return Ok(*inner.clone());
+                }
+                (Type::Array { inner }, "contains") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("contains() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != **inner {
+                        return Err(TypeError::new(format!("contains() argument must be {}, got {}", inner, arg_ty)));
+                    }
+                    return Ok(Type::Bool);
+                }
                 (Type::String, "len") => {
                     if !args.is_empty() {
                         return Err(TypeError::new("len() takes no arguments"));
@@ -1279,6 +1295,42 @@ fn check_expr(
                         return Err(TypeError::new(format!("substring() end must be Int, got {}", end_ty)));
                     }
                     return Ok(Type::String);
+                }
+                (Type::String, "trim") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("trim() takes no arguments"));
+                    }
+                    return Ok(Type::String);
+                }
+                (Type::String, "starts_with") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("starts_with() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("starts_with() requires String argument, got {}", arg_ty)));
+                    }
+                    return Ok(Type::Bool);
+                }
+                (Type::String, "contains") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("contains() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("contains() requires String argument, got {}", arg_ty)));
+                    }
+                    return Ok(Type::Bool);
+                }
+                (Type::String, "split") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("split() takes exactly 1 argument (delimiter)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("split() requires String delimiter, got {}", arg_ty)));
+                    }
+                    return Ok(Type::Array { inner: Box::new(Type::String) });
                 }
                 (Type::JsonValue, "get") => {
                     if args.len() != 1 {
@@ -2335,5 +2387,35 @@ mod tests {
     #[test]
     fn check_float_to_string() {
         assert!(do_check("fn main() Int { let s = float_to_string(3.14) \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_string_trim() {
+        assert!(do_check("fn main() Int { let s = \"hello\".trim() \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_string_starts_with() {
+        assert!(do_check("fn main() Int { if \"hello\".starts_with(\"he\") { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_string_contains() {
+        assert!(do_check("fn main() Int { if \"hello\".contains(\"ll\") { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_string_split() {
+        assert!(do_check("fn main() Int { let parts = \"a,b,c\".split(\",\") \n parts.len() }").is_ok());
+    }
+
+    #[test]
+    fn check_array_pop() {
+        assert!(do_check("fn main() Int { let a = array<Int>() \n a.push(1) \n a.pop() }").is_ok());
+    }
+
+    #[test]
+    fn check_array_contains() {
+        assert!(do_check("fn main() Int { let a = array<Int>() \n a.push(1) \n if a.contains(1) { 1 } else { 0 } }").is_ok());
     }
 }
