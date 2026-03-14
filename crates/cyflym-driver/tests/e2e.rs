@@ -383,3 +383,9 @@ fn e2e_result_error_handling() {
     // divide(10,0) -> err, unwrap_or(99) = 99
     assert_eq!(compile_and_run("result_error_handling.cy"), 99);
 }
+
+#[test]
+fn e2e_float_basic() {
+    // float_to_int(3.14 * 2.0 * 2.0) = float_to_int(12.56) = 12
+    assert_eq!(compile_and_run("float_basic.cy"), 12);
+}

@@ -6,12 +6,13 @@ use cyflym_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum IrType { Int, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>) }
+pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>) }
 
 pub fn ir_type_for_return(ty: &cyflym_typeck::types::Type) -> IrType {
     use cyflym_typeck::types::Type;
     match ty {
         Type::Int => IrType::Int,
+        Type::Float => IrType::Float,
         Type::Bool => IrType::Bool,
         Type::String => IrType::Str,
         Type::Struct { name, .. } => IrType::Struct(name.clone()),
@@ -74,11 +75,14 @@ pub fn lower_with_extra_structs(
             let inner_str = &ret_name[7..ret_name.len()-1];
             let inner = match inner_str {
                 "Int" => IrType::Int,
+                "Float" => IrType::Float,
                 "Bool" => IrType::Bool,
                 "String" => IrType::Str,
                 _ => IrType::Int,
             };
             IrType::Result(Box::new(inner))
+        } else if ret_name == "Float" {
+            IrType::Float
         } else if ret_name == "JsonValue" {
             IrType::JsonValue
         } else if ret_name == "HttpResponse" {
@@ -232,6 +236,12 @@ impl IrBuilder {
                 self.reg_types.insert(dest.clone(), IrType::Int);
                 dest
             }
+            Expr::FloatLiteral { value, .. } => {
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::FloatConst { dest: dest.clone(), value: *value });
+                self.reg_types.insert(dest.clone(), IrType::Float);
+                dest
+            }
             Expr::BoolLiteral { value, .. } => {
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::BoolConst { dest: dest.clone(), value: *value });
@@ -347,6 +357,9 @@ impl IrBuilder {
                     return dest;
                 }
 
+                // Check if this is a float operation
+                let is_float = self.reg_types.get(&left_reg) == Some(&IrType::Float);
+
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                         let dest = self.fresh_reg();
@@ -357,13 +370,23 @@ impl IrBuilder {
                             BinOp::Div => IrBinOp::Div,
                             _ => unreachable!(),
                         };
-                        self.instructions.push(Instruction::BinOp {
-                            dest: dest.clone(),
-                            op: ir_op,
-                            left: left_reg,
-                            right: right_reg,
-                        });
-                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        if is_float {
+                            self.instructions.push(Instruction::FloatBinOp {
+                                dest: dest.clone(),
+                                op: ir_op,
+                                left: left_reg,
+                                right: right_reg,
+                            });
+                            self.reg_types.insert(dest.clone(), IrType::Float);
+                        } else {
+                            self.instructions.push(Instruction::BinOp {
+                                dest: dest.clone(),
+                                op: ir_op,
+                                left: left_reg,
+                                right: right_reg,
+                            });
+                            self.reg_types.insert(dest.clone(), IrType::Int);
+                        }
                         dest
                     }
                     BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
@@ -377,12 +400,21 @@ impl IrBuilder {
                             BinOp::GtEq => IrCmpOp::GtEq,
                             _ => unreachable!(),
                         };
-                        self.instructions.push(Instruction::CmpOp {
-                            dest: dest.clone(),
-                            op: cmp_op,
-                            left: left_reg,
-                            right: right_reg,
-                        });
+                        if is_float {
+                            self.instructions.push(Instruction::FloatCmpOp {
+                                dest: dest.clone(),
+                                op: cmp_op,
+                                left: left_reg,
+                                right: right_reg,
+                            });
+                        } else {
+                            self.instructions.push(Instruction::CmpOp {
+                                dest: dest.clone(),
+                                op: cmp_op,
+                                left: left_reg,
+                                right: right_reg,
+                            });
+                        }
                         self.reg_types.insert(dest.clone(), IrType::Bool);
                         dest
                     }
@@ -463,6 +495,7 @@ impl IrBuilder {
                         IrType::Sender | IrType::Receiver | IrType::JoinHandle | IrType::Mutex => panic!("cannot print concurrency type"),
                         IrType::Array(_) => panic!("cannot print array"),
                         IrType::JsonValue => panic!("cannot print JsonValue"),
+                        IrType::Float => self.instructions.push(Instruction::PrintFloat { value: arg_reg }),
                         IrType::HttpResponse => panic!("cannot print HttpResponse"),
                         IrType::Result(_) => panic!("cannot print Result"),
                     }
@@ -575,6 +608,24 @@ impl IrBuilder {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Str);
+                    return dest;
+                } else if function == "int_to_float" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::IntToFloat { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Float);
+                    return dest;
+                } else if function == "float_to_int" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FloatToInt { dest: dest.clone(), value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "float_to_string" {
+                    let val_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FloatToString { dest: dest.clone(), value: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Str);
                     return dest;
                 } else if function == "ok" {

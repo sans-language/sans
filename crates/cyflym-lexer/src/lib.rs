@@ -37,20 +37,37 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                 }
             }
 
-            // Integer literals
+            // Numeric literals (integer or float)
             '0'..='9' => {
                 while pos < len && (bytes[pos] as char).is_ascii_digit() {
                     pos += 1;
                 }
-                let text = &source[start..pos];
-                let value: i64 = text.parse().map_err(|_| LexError {
-                    message: format!("integer literal '{}' overflows i64", text),
-                    span: start..pos,
-                })?;
-                tokens.push(Token {
-                    kind: TokenKind::IntLiteral(value),
-                    span: start..pos,
-                });
+                // Check for decimal point (float literal)
+                if pos < len && bytes[pos] == b'.' && pos + 1 < len && (bytes[pos + 1] as char).is_ascii_digit() {
+                    pos += 1; // consume '.'
+                    while pos < len && (bytes[pos] as char).is_ascii_digit() {
+                        pos += 1;
+                    }
+                    let text = &source[start..pos];
+                    let value: f64 = text.parse().map_err(|_| LexError {
+                        message: format!("float literal '{}' is invalid", text),
+                        span: start..pos,
+                    })?;
+                    tokens.push(Token {
+                        kind: TokenKind::FloatLiteral(value),
+                        span: start..pos,
+                    });
+                } else {
+                    let text = &source[start..pos];
+                    let value: i64 = text.parse().map_err(|_| LexError {
+                        message: format!("integer literal '{}' overflows i64", text),
+                        span: start..pos,
+                    })?;
+                    tokens.push(Token {
+                        kind: TokenKind::IntLiteral(value),
+                        span: start..pos,
+                    });
+                }
             }
 
             // Identifiers and keywords

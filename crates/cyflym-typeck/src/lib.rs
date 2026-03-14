@@ -60,6 +60,7 @@ fn resolve_type(
 ) -> Result<Type, TypeError> {
     match name {
         "Int" => Ok(Type::Int),
+        "Float" => Ok(Type::Float),
         "Bool" => Ok(Type::Bool),
         "String" => Ok(Type::String),
         _ if name.starts_with("Result<") && name.ends_with('>') => {
@@ -498,6 +499,7 @@ fn check_expr(
 ) -> Result<Type, TypeError> {
     match expr {
         Expr::IntLiteral { .. } => Ok(Type::Int),
+        Expr::FloatLiteral { .. } => Ok(Type::Float),
         Expr::StringLiteral { .. } => Ok(Type::String),
 
         Expr::Identifier { name, .. } => {
@@ -513,10 +515,13 @@ fn check_expr(
             let rt = check_expr(right, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
             match op {
-                // Arithmetic: Int x Int -> Int
+                // Arithmetic: Int x Int -> Int, Float x Float -> Float, String + String -> String
                 BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                     if op == &BinOp::Add && lt == Type::String && rt == Type::String {
                         return Ok(Type::String);
+                    }
+                    if lt == Type::Float && rt == Type::Float {
+                        return Ok(Type::Float);
                     }
                     if lt != Type::Int {
                         return Err(TypeError::new(format!(
@@ -530,8 +535,11 @@ fn check_expr(
                     }
                     Ok(Type::Int)
                 }
-                // Comparison: Int x Int -> Bool
+                // Comparison: Int x Int -> Bool, Float x Float -> Bool
                 BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
+                    if lt == Type::Float && rt == Type::Float {
+                        return Ok(Type::Bool);
+                    }
                     if lt != Type::Int {
                         return Err(TypeError::new(format!(
                             "comparison operator requires Int operands, left operand is {}", lt
@@ -623,7 +631,7 @@ fn check_expr(
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 match arg_ty {
-                    Type::String | Type::Int | Type::Bool => {}
+                    Type::String | Type::Int | Type::Float | Type::Bool => {}
                     other => {
                         return Err(TypeError::new(format!(
                             "print() cannot print type {}", other
@@ -649,6 +657,33 @@ fn check_expr(
                     return Err(TypeError::new(format!("string_to_int() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "int_to_float" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("int_to_float() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("int_to_float() requires Int argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Float);
+            } else if function == "float_to_int" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("float_to_int() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Float {
+                    return Err(TypeError::new(format!("float_to_int() requires Float argument, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "float_to_string" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("float_to_string() takes exactly 1 argument"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Float {
+                    return Err(TypeError::new(format!("float_to_string() requires Float argument, got {}", arg_ty)));
+                }
+                return Ok(Type::String);
             } else if function == "file_read" {
                 if args.len() != 1 {
                     return Err(TypeError::new("file_read() takes exactly 1 argument"));
@@ -2270,5 +2305,35 @@ mod tests {
     fn check_result_if_else_compat() {
         // err() in then, ok() in else — should be compatible
         assert!(do_check("fn main() Int { let r = if true { err(\"bad\") } else { ok(42) } \n 0 }").is_ok());
+    }
+
+    #[test]
+    fn check_float_literal() {
+        assert!(do_check("fn main() Float { 3.14 }").is_ok());
+    }
+
+    #[test]
+    fn check_float_arithmetic() {
+        assert!(do_check("fn main() Float { let a = 1.5 \n let b = 2.5 \n a + b }").is_ok());
+    }
+
+    #[test]
+    fn check_float_comparison() {
+        assert!(do_check("fn main() Int { let a = 1.5 \n let b = 2.5 \n if a < b { 1 } else { 0 } }").is_ok());
+    }
+
+    #[test]
+    fn check_int_to_float() {
+        assert!(do_check("fn main() Float { int_to_float(42) }").is_ok());
+    }
+
+    #[test]
+    fn check_float_to_int() {
+        assert!(do_check("fn main() Int { float_to_int(3.14) }").is_ok());
+    }
+
+    #[test]
+    fn check_float_to_string() {
+        assert!(do_check("fn main() Int { let s = float_to_string(3.14) \n 0 }").is_ok());
     }
 }

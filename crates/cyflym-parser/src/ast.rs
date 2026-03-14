@@ -146,6 +146,7 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     IntLiteral { value: i64, span: Span },
+    FloatLiteral { value: f64, span: Span },
     BoolLiteral { value: bool, span: Span },
     StringLiteral { value: String, span: Span },
     Identifier { name: String, span: Span },

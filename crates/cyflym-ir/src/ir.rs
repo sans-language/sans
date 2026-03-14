@@ -16,12 +16,16 @@ pub type Reg = String;
 #[derive(Debug, Clone)]
 pub enum Instruction {
     Const { dest: Reg, value: i64 },
+    FloatConst { dest: Reg, value: f64 },
     BoolConst { dest: Reg, value: bool },
     StringConst { dest: Reg, value: String },
     PrintInt { value: Reg },
+    PrintFloat { value: Reg },
     PrintString { value: Reg },
     PrintBool { value: Reg },
     BinOp { dest: Reg, op: IrBinOp, left: Reg, right: Reg },
+    FloatBinOp { dest: Reg, op: IrBinOp, left: Reg, right: Reg },
+    FloatCmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
     CmpOp { dest: Reg, op: IrCmpOp, left: Reg, right: Reg },
     Not { dest: Reg, src: Reg },
     Copy { dest: Reg, src: Reg },
@@ -171,6 +175,10 @@ pub enum Instruction {
     JsonPush { array: Reg, value: Reg },
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
+    // Float conversions
+    IntToFloat { dest: Reg, value: Reg },
+    FloatToInt { dest: Reg, value: Reg },
+    FloatToString { dest: Reg, value: Reg },
     // Result operations
     ResultOk { dest: Reg, value: Reg },
     ResultErr { dest: Reg, message: Reg },

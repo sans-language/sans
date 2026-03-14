@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int,
+    Float,
     Bool,
     String,
     Fn { params: Vec<Type>, ret: Box<Type> },
@@ -21,6 +22,7 @@ impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Int => write!(f, "Int"),
+            Type::Float => write!(f, "Float"),
             Type::Bool => write!(f, "Bool"),
             Type::String => write!(f, "String"),
             Type::Struct { name, .. } => write!(f, "{}", name),

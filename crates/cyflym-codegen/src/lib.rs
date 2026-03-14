@@ -282,6 +282,111 @@ fn generate_llvm<'ctx>(
                     let val = i64_type.const_int(*value as u64, true);
                     regs.insert(dest.clone(), val);
                 }
+                Instruction::FloatConst { dest, value } => {
+                    let f64_type = context.f64_type();
+                    let float_val = f64_type.const_float(*value);
+                    let as_int = builder.build_bit_cast(float_val, i64_type, "fconst_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), as_int);
+                }
+                Instruction::PrintFloat { value } => {
+                    let f64_type = context.f64_type();
+                    let val = regs[value];
+                    let float_val = builder.build_bit_cast(val, f64_type, "pf_cast")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_float_value();
+                    let fmt_str = context.const_string(b"%g\n", true);
+                    let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.float.{}", value));
+                    fmt_global.set_initializer(&fmt_str);
+                    fmt_global.set_constant(true);
+                    let fmt_ptr = fmt_global.as_pointer_value();
+                    let printf_fn = llvm_module.get_function("printf").unwrap();
+                    builder.build_call(printf_fn, &[fmt_ptr.into(), float_val.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::FloatBinOp { dest, op, left, right } => {
+                    let f64_type = context.f64_type();
+                    let lhs = builder.build_bit_cast(regs[left], f64_type, "fbo_l")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_float_value();
+                    let rhs = builder.build_bit_cast(regs[right], f64_type, "fbo_r")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_float_value();
+                    let result = match op {
+                        IrBinOp::Add => builder.build_float_add(lhs, rhs, dest)
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
+                        IrBinOp::Sub => builder.build_float_sub(lhs, rhs, dest)
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
+                        IrBinOp::Mul => builder.build_float_mul(lhs, rhs, dest)
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
+                        IrBinOp::Div => builder.build_float_div(lhs, rhs, dest)
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?,
+                    };
+                    let as_int = builder.build_bit_cast(result, i64_type, "fbo_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    regs.insert(dest.clone(), as_int);
+                }
+                Instruction::FloatCmpOp { dest, op, left, right } => {
+                    let f64_type = context.f64_type();
+                    let lhs = builder.build_bit_cast(regs[left], f64_type, "fco_l")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_float_value();
+                    let rhs = builder.build_bit_cast(regs[right], f64_type, "fco_r")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_float_value();
+                    use inkwell::FloatPredicate;
+                    let predicate = match op {
+                        IrCmpOp::Eq => FloatPredicate::OEQ,
+                        IrCmpOp::NotEq => FloatPredicate::ONE,
+                        IrCmpOp::Lt => FloatPredicate::OLT,
+                        IrCmpOp::Gt => FloatPredicate::OGT,
+                        IrCmpOp::LtEq => FloatPredicate::OLE,
+                        IrCmpOp::GtEq => FloatPredicate::OGE,
+                    };
+                    let cmp = builder.build_float_compare(predicate, lhs, rhs, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = builder.build_int_z_extend(cmp, i64_type, &format!("{}_ext", dest))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::IntToFloat { dest, value } => {
+                    let f64_type = context.f64_type();
+                    let int_val = regs[value];
+                    let float_val = builder.build_signed_int_to_float(int_val, f64_type, "i2f")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let as_int = builder.build_bit_cast(float_val, i64_type, "i2f_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    regs.insert(dest.clone(), as_int);
+                }
+                Instruction::FloatToInt { dest, value } => {
+                    let f64_type = context.f64_type();
+                    let float_val = builder.build_bit_cast(regs[value], f64_type, "f2i_cast")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_float_value();
+                    let int_val = builder.build_float_to_signed_int(float_val, i64_type, "f2i")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), int_val);
+                }
+                Instruction::FloatToString { dest, value } => {
+                    let f64_type = context.f64_type();
+                    let float_val = builder.build_bit_cast(regs[value], f64_type, "f2s_cast")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_float_value();
+                    let snprintf_fn = llvm_module.get_function("snprintf").unwrap();
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let buf_size = i64_type.const_int(32, false);
+                    let buf_call = builder.build_call(malloc_fn, &[buf_size.into()], "f2s_buf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_ptr = match buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc failed".into())),
+                    };
+                    let fmt_str = context.const_string(b"%g", true);
+                    let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.f2s.{}", value));
+                    fmt_global.set_initializer(&fmt_str);
+                    fmt_global.set_constant(true);
+                    builder.build_call(snprintf_fn, &[buf_ptr.into(), buf_size.into(), fmt_global.as_pointer_value().into(), float_val.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let as_int = builder.build_ptr_to_int(buf_ptr, i64_type, "f2s_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
+                    ptrs.insert(dest.clone(), buf_ptr);
+                }
                 Instruction::BinOp {
                     dest,
                     op,

@@ -679,6 +679,12 @@ impl Parser {
                 self.pos += 1;
                 Ok(Expr::IntLiteral { value, span })
             }
+            TokenKind::FloatLiteral(v) => {
+                let value = *v;
+                let span = tok.span.clone();
+                self.pos += 1;
+                Ok(Expr::FloatLiteral { value, span })
+            }
             TokenKind::Identifier(_) => {
                 let (name, name_span) = self.expect_ident()?;
                 // Check for enum variant: identifier followed by `::`
@@ -1007,6 +1013,7 @@ fn infix_binding_power(kind: &TokenKind) -> Option<(u8, u8, BinOp)> {
 fn expr_span(expr: &Expr) -> &Span {
     match expr {
         Expr::IntLiteral { span, .. } => span,
+        Expr::FloatLiteral { span, .. } => span,
         Expr::BoolLiteral { span, .. } => span,
         Expr::StringLiteral { span, .. } => span,
         Expr::Identifier { span, .. } => span,
