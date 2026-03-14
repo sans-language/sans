@@ -122,6 +122,28 @@ fn generate_llvm<'ctx>(
     let strtol_type = i64_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("strtol", strtol_type, Some(Linkage::External));
 
+    // File I/O functions
+    let fopen_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("fopen", fopen_type, Some(Linkage::External));
+
+    let fclose_type = i32_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("fclose", fclose_type, Some(Linkage::External));
+
+    let fread_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into(), i64_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("fread", fread_type, Some(Linkage::External));
+
+    let fwrite_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into(), i64_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("fwrite", fwrite_type, Some(Linkage::External));
+
+    let fseek_type = i32_type.fn_type(&[i8_ptr_type.into(), i64_type.into(), i32_type.into()], false);
+    llvm_module.add_function("fseek", fseek_type, Some(Linkage::External));
+
+    let ftell_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    llvm_module.add_function("ftell", ftell_type, Some(Linkage::External));
+
+    let access_type = i32_type.fn_type(&[i8_ptr_type.into(), i32_type.into()], false);
+    llvm_module.add_function("access", access_type, Some(Linkage::External));
+
     // First pass: declare all functions
     for func in &module.functions {
         let param_types: Vec<inkwell::types::BasicMetadataTypeEnum> =
@@ -1457,11 +1479,307 @@ fn generate_llvm<'ctx>(
                     };
                     regs.insert(dest.clone(), result);
                 }
-                Instruction::FileRead { .. }
-                | Instruction::FileWrite { .. }
-                | Instruction::FileAppend { .. }
-                | Instruction::FileExists { .. } => {
-                    todo!("file I/O codegen not yet implemented")
+                Instruction::FileExists { dest, path } => {
+                    let access_fn = llvm_module.get_function("access").unwrap();
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+
+                    // Get path pointer
+                    let path_ptr = if let Some(p) = ptrs.get(path) {
+                        *p
+                    } else {
+                        let pi = regs[path];
+                        builder.build_int_to_ptr(pi, ptr_type, "fep")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    // Call access(path, 0) — F_OK = 0
+                    let zero_i32 = i32_type.const_int(0, false);
+                    let access_call = builder.build_call(access_fn, &[path_ptr.into(), zero_i32.into()], "access_ret")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let access_ret = match access_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("access returned void".into())),
+                    };
+
+                    // result = (access_ret == 0) ? 1 : 0
+                    let is_ok = builder.build_int_compare(inkwell::IntPredicate::EQ, access_ret, zero_i32, "fe_ok")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = builder.build_int_z_extend(is_ok, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::FileRead { dest, path } => {
+                    let fopen_fn = llvm_module.get_function("fopen").unwrap();
+                    let fclose_fn = llvm_module.get_function("fclose").unwrap();
+                    let fread_fn = llvm_module.get_function("fread").unwrap();
+                    let fseek_fn = llvm_module.get_function("fseek").unwrap();
+                    let ftell_fn = llvm_module.get_function("ftell").unwrap();
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let i8_type = context.i8_type();
+
+                    // Get path pointer
+                    let path_ptr = if let Some(p) = ptrs.get(path) {
+                        *p
+                    } else {
+                        let pi = regs[path];
+                        builder.build_int_to_ptr(pi, ptr_type, "frp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    // Build mode string "r"
+                    let read_mode = builder.build_global_string_ptr("r", "read_mode")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Call fopen(path, "r")
+                    let fopen_call = builder.build_call(fopen_fn, &[path_ptr.into(), read_mode.as_pointer_value().into()], "file_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let file_ptr = match fopen_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("fopen returned void".into())),
+                    };
+
+                    // Check if null
+                    let file_int = builder.build_ptr_to_int(file_ptr, i64_type, "file_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let null_int = builder.build_ptr_to_int(ptr_type.const_null(), i64_type, "null_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let is_null = builder.build_int_compare(inkwell::IntPredicate::EQ, file_int, null_int, "is_null")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let pre_branch_bb = builder.get_insert_block().unwrap();
+                    let then_bb = context.append_basic_block(llvm_fn, "fr_ok");
+                    let error_bb = context.append_basic_block(llvm_fn, "fr_err");
+                    let merge_bb = context.append_basic_block(llvm_fn, "fr_merge");
+
+                    builder.build_conditional_branch(is_null, error_bb, then_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Error path: return empty string
+                    builder.position_at_end(error_bb);
+                    let empty_call = builder.build_call(malloc_fn, &[i64_type.const_int(1, false).into()], "empty_buf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let empty_ptr = match empty_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+                    builder.build_store(empty_ptr, i8_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let empty_int = builder.build_ptr_to_int(empty_ptr, i64_type, "empty_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let error_end_bb = builder.get_insert_block().unwrap();
+
+                    // Success path: fseek/ftell/fread
+                    builder.position_at_end(then_bb);
+                    let seek_end = i32_type.const_int(2, false); // SEEK_END
+                    let seek_set = i32_type.const_int(0, false); // SEEK_SET
+                    builder.build_call(fseek_fn, &[file_ptr.into(), i64_type.const_int(0, false).into(), seek_end.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ftell_call = builder.build_call(ftell_fn, &[file_ptr.into()], "fsize")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let file_size = match ftell_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("ftell returned void".into())),
+                    };
+                    builder.build_call(fseek_fn, &[file_ptr.into(), i64_type.const_int(0, false).into(), seek_set.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // malloc(size + 1) for buffer
+                    let buf_size = builder.build_int_add(file_size, i64_type.const_int(1, false), "buf_size")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_call = builder.build_call(malloc_fn, &[buf_size.into()], "frbuf")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let buf_ptr = match buf_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+                    };
+
+                    // fread(buf, 1, size, file)
+                    builder.build_call(fread_fn, &[buf_ptr.into(), i64_type.const_int(1, false).into(), file_size.into(), file_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Null-terminate: buf[size] = 0
+                    let end_ptr = unsafe { builder.build_gep(i8_type, buf_ptr, &[file_size], "endp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(end_ptr, i8_type.const_int(0, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // fclose(file)
+                    builder.build_call(fclose_fn, &[file_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let buf_int = builder.build_ptr_to_int(buf_ptr, i64_type, "buf_int")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let then_end_bb = builder.get_insert_block().unwrap();
+
+                    // Merge: phi node
+                    builder.position_at_end(merge_bb);
+                    let phi = builder.build_phi(i64_type, "read_result")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    phi.add_incoming(&[(&empty_int, error_end_bb), (&buf_int, then_end_bb)]);
+                    let result_int = phi.as_basic_value().into_int_value();
+                    let result_ptr = builder.build_int_to_ptr(result_int, ptr_type, "fr_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result_int);
+                    ptrs.insert(dest.clone(), result_ptr);
+
+                    let _ = pre_branch_bb; // suppress unused warning
+                }
+                Instruction::FileWrite { dest, path, content } => {
+                    let fopen_fn = llvm_module.get_function("fopen").unwrap();
+                    let fclose_fn = llvm_module.get_function("fclose").unwrap();
+                    let fwrite_fn = llvm_module.get_function("fwrite").unwrap();
+                    let strlen_fn = llvm_module.get_function("strlen").unwrap();
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+
+                    // Get path and content pointers
+                    let path_ptr = if let Some(p) = ptrs.get(path) {
+                        *p
+                    } else {
+                        let pi = regs[path];
+                        builder.build_int_to_ptr(pi, ptr_type, "fwpp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let content_ptr = if let Some(p) = ptrs.get(content) {
+                        *p
+                    } else {
+                        let ci = regs[content];
+                        builder.build_int_to_ptr(ci, ptr_type, "fwcp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    // strlen(content)
+                    let strlen_call = builder.build_call(strlen_fn, &[content_ptr.into()], "fw_len")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let content_len = match strlen_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strlen returned void".into())),
+                    };
+
+                    // fopen(path, "w")
+                    let write_mode = builder.build_global_string_ptr("w", "write_mode")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let fopen_call = builder.build_call(fopen_fn, &[path_ptr.into(), write_mode.as_pointer_value().into()], "fw_file")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let file_ptr = match fopen_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("fopen returned void".into())),
+                    };
+
+                    // Null check
+                    let file_int = builder.build_ptr_to_int(file_ptr, i64_type, "fw_fi")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let null_int = builder.build_ptr_to_int(ptr_type.const_null(), i64_type, "fw_ni")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let is_null = builder.build_int_compare(inkwell::IntPredicate::EQ, file_int, null_int, "fw_null")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let pre_branch_bb = builder.get_insert_block().unwrap();
+                    let ok_bb = context.append_basic_block(llvm_fn, "fw_ok");
+                    let merge_bb = context.append_basic_block(llvm_fn, "fw_merge");
+
+                    builder.build_conditional_branch(is_null, merge_bb, ok_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Success path: fwrite + fclose
+                    builder.position_at_end(ok_bb);
+                    builder.build_call(fwrite_fn, &[content_ptr.into(), i64_type.const_int(1, false).into(), content_len.into(), file_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(fclose_fn, &[file_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ok_end_bb = builder.get_insert_block().unwrap();
+
+                    // Merge: phi(0 on null, 1 on success)
+                    builder.position_at_end(merge_bb);
+                    let phi = builder.build_phi(i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    phi.add_incoming(&[
+                        (&i64_type.const_int(0, false), pre_branch_bb),
+                        (&i64_type.const_int(1, false), ok_end_bb),
+                    ]);
+                    regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
+                }
+                Instruction::FileAppend { dest, path, content } => {
+                    let fopen_fn = llvm_module.get_function("fopen").unwrap();
+                    let fclose_fn = llvm_module.get_function("fclose").unwrap();
+                    let fwrite_fn = llvm_module.get_function("fwrite").unwrap();
+                    let strlen_fn = llvm_module.get_function("strlen").unwrap();
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+
+                    // Get path and content pointers
+                    let path_ptr = if let Some(p) = ptrs.get(path) {
+                        *p
+                    } else {
+                        let pi = regs[path];
+                        builder.build_int_to_ptr(pi, ptr_type, "fapp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let content_ptr = if let Some(p) = ptrs.get(content) {
+                        *p
+                    } else {
+                        let ci = regs[content];
+                        builder.build_int_to_ptr(ci, ptr_type, "facp")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+
+                    // strlen(content)
+                    let strlen_call = builder.build_call(strlen_fn, &[content_ptr.into()], "fa_len")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let content_len = match strlen_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("strlen returned void".into())),
+                    };
+
+                    // fopen(path, "a")
+                    let append_mode = builder.build_global_string_ptr("a", "append_mode")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let fopen_call = builder.build_call(fopen_fn, &[path_ptr.into(), append_mode.as_pointer_value().into()], "fa_file")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let file_ptr = match fopen_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("fopen returned void".into())),
+                    };
+
+                    // Null check
+                    let file_int = builder.build_ptr_to_int(file_ptr, i64_type, "fa_fi")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let null_int = builder.build_ptr_to_int(ptr_type.const_null(), i64_type, "fa_ni")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let is_null = builder.build_int_compare(inkwell::IntPredicate::EQ, file_int, null_int, "fa_null")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let pre_branch_bb = builder.get_insert_block().unwrap();
+                    let ok_bb = context.append_basic_block(llvm_fn, "fa_ok");
+                    let merge_bb = context.append_basic_block(llvm_fn, "fa_merge");
+
+                    builder.build_conditional_branch(is_null, merge_bb, ok_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Success path: fwrite + fclose
+                    builder.position_at_end(ok_bb);
+                    builder.build_call(fwrite_fn, &[content_ptr.into(), i64_type.const_int(1, false).into(), content_len.into(), file_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_call(fclose_fn, &[file_ptr.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ok_end_bb = builder.get_insert_block().unwrap();
+
+                    // Merge: phi(0 on null, 1 on success)
+                    builder.position_at_end(merge_bb);
+                    let phi = builder.build_phi(i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    phi.add_incoming(&[
+                        (&i64_type.const_int(0, false), pre_branch_bb),
+                        (&i64_type.const_int(1, false), ok_end_bb),
+                    ]);
+                    regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
                 }
             }
         }
