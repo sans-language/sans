@@ -31,8 +31,8 @@ main() {
   while true {
     req = server.accept
     path = req.path
-    safe = !path.contains("..")
-    safe ? route(req, path) : req.respond(400, "Bad Request")
+    bad = path.contains("..")
+    bad ? req.respond(400, "Bad Request") : route(req, path)
   }
   0
 }
