@@ -66,9 +66,9 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     cyflym_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
-    // Compile JSON runtime
+    // Compile JSON runtime (unique names to avoid parallel test races)
     let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
-    let json_o_path = tmp_dir.join("cyflym_json_runtime.o");
+    let json_o_path = tmp_dir.join(format!("{}_json.o", fixture_dir));
     let json_compile = Command::new("cc")
         .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
         .status()
@@ -77,7 +77,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
 
     // Compile HTTP runtime
     let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
-    let http_o_path = tmp_dir.join("cyflym_http_runtime.o");
+    let http_o_path = tmp_dir.join(format!("{}_http.o", fixture_dir));
     let http_compile = Command::new("cc")
         .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
         .status()
@@ -86,7 +86,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
 
     // Compile log runtime
     let log_c_path = format!("{}/../../runtime/log.c", manifest_dir);
-    let log_o_path = tmp_dir.join("cyflym_log_runtime.o");
+    let log_o_path = tmp_dir.join(format!("{}_log.o", fixture_dir));
     let log_compile = Command::new("cc")
         .args(["-c", &log_c_path, "-o", log_o_path.to_str().unwrap()])
         .status()
@@ -138,9 +138,9 @@ fn compile_and_run(fixture: &str) -> i32 {
     cyflym_codegen::compile_to_object(&ir_module, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
-    // Compile JSON runtime
+    // Compile JSON runtime (unique names to avoid parallel test races)
     let json_c_path = format!("{}/../../runtime/json.c", manifest_dir);
-    let json_o_path = tmp_dir.join("cyflym_json_runtime.o");
+    let json_o_path = tmp_dir.join(format!("{}_json.o", fixture));
     let json_compile = Command::new("cc")
         .args(["-c", &json_c_path, "-o", json_o_path.to_str().unwrap()])
         .status()
@@ -149,7 +149,7 @@ fn compile_and_run(fixture: &str) -> i32 {
 
     // Compile HTTP runtime
     let http_c_path = format!("{}/../../runtime/http.c", manifest_dir);
-    let http_o_path = tmp_dir.join("cyflym_http_runtime.o");
+    let http_o_path = tmp_dir.join(format!("{}_http.o", fixture));
     let http_compile = Command::new("cc")
         .args(["-c", &http_c_path, "-o", http_o_path.to_str().unwrap()])
         .status()
@@ -158,7 +158,7 @@ fn compile_and_run(fixture: &str) -> i32 {
 
     // Compile log runtime
     let log_c_path = format!("{}/../../runtime/log.c", manifest_dir);
-    let log_o_path = tmp_dir.join("cyflym_log_runtime.o");
+    let log_o_path = tmp_dir.join(format!("{}_log.o", fixture));
     let log_compile = Command::new("cc")
         .args(["-c", &log_c_path, "-o", log_o_path.to_str().unwrap()])
         .status()
