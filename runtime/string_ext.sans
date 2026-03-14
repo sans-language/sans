@@ -1,0 +1,191 @@
+cy_string_is_space(c:I) I {
+  c == 32 ? 1 : c == 9 ? 1 : c == 10 ? 1 : c == 13 ? 1 : 0
+}
+
+cy_string_starts_with(s:I prefix:I) I {
+  pl = slen(prefix)
+  sl = slen(s)
+  pl > sl ? 0 : mcmp(s, prefix, pl) == 0 ? 1 : 0
+}
+
+cy_string_ends_with(s:I suffix:I) I {
+  sl = slen(s)
+  xl = slen(suffix)
+  xl > sl ? 0 : mcmp(s + sl - xl, suffix, xl) == 0 ? 1 : 0
+}
+
+cy_string_contains(s:I needle:I) I {
+  r = strstr(s, needle)
+  r != 0 ? 1 : 0
+}
+
+cy_string_trim_start(s:I len:I) I {
+  i := 0
+  done := 0
+  while done == 0 {
+    if i >= len {
+      done = 1
+      0
+    } else {
+      if cy_string_is_space(load8(s + i)) != 0 {
+        i += 1
+        0
+      } else {
+        done = 1
+        0
+      }
+    }
+  }
+  i
+}
+
+cy_string_trim_end(s:I start:I len:I) I {
+  e := len
+  done := 0
+  while done == 0 {
+    if e <= start {
+      done = 1
+      0
+    } else {
+      if cy_string_is_space(load8(s + e - 1)) != 0 {
+        e -= 1
+        0
+      } else {
+        done = 1
+        0
+      }
+    }
+  }
+  e
+}
+
+cy_string_trim(s:I) I {
+  len = slen(s)
+  start = cy_string_trim_start(s, len)
+  end = cy_string_trim_end(s, start, len)
+  new_len = end - start
+  result = alloc(new_len + 1)
+  new_len > 0 ? mcpy(result, s + start, new_len) : 0
+  store8(result + new_len, 0)
+  result
+}
+
+cy_string_split_single(arr:I s:I) I {
+  len = slen(s)
+  copy = alloc(len + 1)
+  mcpy(copy, s, len + 1)
+  data = load64(arr)
+  store64(data, copy)
+  store64(arr + 8, 1)
+  0
+}
+
+cy_string_split_grow(arr:I) I {
+  data = load64(arr)
+  cap = load64(arr + 16)
+  new_cap = cap * 2
+  new_data = ralloc(data, new_cap * 8)
+  store64(arr, new_data)
+  store64(arr + 16, new_cap)
+  0
+}
+
+cy_string_split_loop(arr:I s:I delim:I dl:I) I {
+  pos := s
+  done := 0
+  while done == 0 {
+    found = strstr(pos, delim)
+    part_len = found != 0 ? found - pos : slen(pos)
+    len = load64(arr + 8)
+    cap = load64(arr + 16)
+    len >= cap ? cy_string_split_grow(arr) : 0
+    part = alloc(part_len + 1)
+    part_len > 0 ? mcpy(part, pos, part_len) : 0
+    store8(part + part_len, 0)
+    data = load64(arr)
+    store64(data + len * 8, part)
+    store64(arr + 8, len + 1)
+    if found == 0 {
+      done = 1
+      0
+    } else {
+      pos = found + dl
+      0
+    }
+  }
+  0
+}
+
+cy_string_split(s:I delim:I) I {
+  dl = slen(delim)
+  arr = alloc(24)
+  store64(arr + 8, 0)
+  store64(arr + 16, 8)
+  data = alloc(8 * 8)
+  store64(arr, data)
+  dl == 0 ? cy_string_split_single(arr, s) : cy_string_split_loop(arr, s, delim, dl)
+  arr
+}
+
+cy_string_dup(s:I len:I) I {
+  r = alloc(len + 1)
+  mcpy(r, s, len + 1)
+  r
+}
+
+cy_string_replace_rest(out:I pos:I) I {
+  len = slen(pos)
+  mcpy(out, pos, len + 1)
+  0
+}
+
+cy_string_replace_part(out:I pos:I found:I new_s:I nl:I) I {
+  prefix_len = found - pos
+  prefix_len > 0 ? mcpy(out, pos, prefix_len) : 0
+  out2 = out + prefix_len
+  nl > 0 ? mcpy(out2, new_s, nl) : 0
+  out2 + nl
+}
+
+cy_string_replace_inner(s:I old:I new_s:I ol:I nl:I sl:I) I {
+  count := 0
+  pos := s
+  done := 0
+  found := 0
+  while done == 0 {
+    found = strstr(pos, old)
+    if found != 0 {
+      count += 1
+      pos = found + ol
+      0
+    } else {
+      done = 1
+      0
+    }
+  }
+  result_len = sl + count * (nl - ol)
+  result = alloc(result_len + 1)
+  out := result
+  pos = s
+  done = 0
+  while done == 0 {
+    found = strstr(pos, old)
+    if found == 0 {
+      cy_string_replace_rest(out, pos)
+      done = 1
+      0
+    } else {
+      out = cy_string_replace_part(out, pos, found, new_s, nl)
+      pos = found + ol
+      0
+    }
+  }
+  result
+}
+
+cy_string_replace(s:I old:I new_s:I) I {
+  ol = slen(old)
+  nl = slen(new_s)
+  sl = slen(s)
+  ol == 0 ? cy_string_dup(s, sl) : cy_string_replace_inner(s, old, new_s, ol, nl, sl)
+}

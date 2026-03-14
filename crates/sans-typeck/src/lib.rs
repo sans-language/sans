@@ -1014,6 +1014,50 @@ fn check_expr(
                     return Err(TypeError::new(format!("store8() val must be Int, got {}", val_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "load64" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("load64() takes exactly 1 argument (ptr)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("load64() ptr must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "store64" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("store64() takes exactly 2 arguments (ptr, val)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("store64() ptr must be Int, got {}", ptr_ty)));
+                }
+                let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if val_ty != Type::Int {
+                    return Err(TypeError::new(format!("store64() val must be Int, got {}", val_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "strstr" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("strstr() takes exactly 2 arguments (haystack, needle)"));
+                }
+                let haystack_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if haystack_ty != Type::Int {
+                    return Err(TypeError::new(format!("strstr() haystack must be Int, got {}", haystack_ty)));
+                }
+                let needle_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if needle_ty != Type::Int {
+                    return Err(TypeError::new(format!("strstr() needle must be Int, got {}", needle_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "exit" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("exit() takes exactly 1 argument (code)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("exit() code must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "sock" {
                 if args.len() != 3 {
                     return Err(TypeError::new("sock() takes exactly 3 arguments (domain, type, proto)"));

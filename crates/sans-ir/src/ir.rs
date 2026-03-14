@@ -237,6 +237,10 @@ pub enum Instruction {
     Slen { dest: Reg, ptr: Reg },
     Load8 { dest: Reg, ptr: Reg },
     Store8 { dest: Reg, ptr: Reg, val: Reg },
+    Load64 { dest: Reg, ptr: Reg },
+    Store64 { dest: Reg, ptr: Reg, val: Reg },
+    Strstr { dest: Reg, haystack: Reg, needle: Reg },
+    Exit { dest: Reg, code: Reg },
     GetLogLevel { dest: Reg },
     SetLogLevel { dest: Reg, level: Reg },
     // HTTP operations

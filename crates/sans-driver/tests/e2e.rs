@@ -12,7 +12,27 @@ fn compile_runtime(manifest_dir: &str, tmp_dir: &std::path::Path, name: &str, fi
     o_path
 }
 
-const RUNTIME_NAMES: &[&str] = &["json", "http", "log", "result", "string_ext", "array_ext", "functional", "server"];
+/// Helper: compile a single Sans runtime file, returning the path to the object file.
+fn compile_sans_runtime(manifest_dir: &str, tmp_dir: &std::path::Path, name: &str, fixture_id: &str) -> std::path::PathBuf {
+    let sans_path = format!("{}/../../runtime/{}.sans", manifest_dir, name);
+    let o_path = tmp_dir.join(format!("{}_{}.o", fixture_id, name));
+
+    let source = std::fs::read_to_string(&sans_path)
+        .unwrap_or_else(|e| panic!("could not read runtime {}.sans: {}", name, e));
+    let program = sans_parser::parse(&source)
+        .unwrap_or_else(|e| panic!("parse error in runtime {}: {}", name, e.message));
+    let module_exports = std::collections::HashMap::new();
+    sans_typeck::check_module(&program, &module_exports)
+        .unwrap_or_else(|e| panic!("type error in runtime {}: {}", name, e.message));
+    let module_fn_ret_types = std::collections::HashMap::new();
+    let ir = sans_ir::lower(&program, None, &module_fn_ret_types);
+    sans_codegen::compile_to_object(&ir, o_path.to_str().unwrap())
+        .unwrap_or_else(|e| panic!("codegen error in runtime {}: {}", name, e));
+    o_path
+}
+
+const C_RUNTIME_NAMES: &[&str] = &["json", "http", "functional", "server"];
+const SANS_RUNTIME_NAMES: &[&str] = &["log", "array_ext", "string_ext", "result"];
 
 /// Helper: compile a multi-file fixture directory and run main.sans, returning the exit code.
 fn compile_and_run_dir(fixture_dir: &str) -> i32 {
@@ -81,11 +101,14 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     sans_codegen::compile_to_object(&merged, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
-    // Compile all C runtime files
-    let runtime_objs: Vec<std::path::PathBuf> = RUNTIME_NAMES
+    // Compile runtime files (C and Sans)
+    let mut runtime_objs: Vec<std::path::PathBuf> = C_RUNTIME_NAMES
         .iter()
         .map(|name| compile_runtime(manifest_dir, &tmp_dir, name, fixture_dir))
         .collect();
+    runtime_objs.extend(SANS_RUNTIME_NAMES
+        .iter()
+        .map(|name| compile_sans_runtime(manifest_dir, &tmp_dir, name, fixture_dir)));
 
     // Link
     let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];
@@ -139,11 +162,14 @@ fn compile_and_run(fixture: &str) -> i32 {
     sans_codegen::compile_to_object(&ir_module, obj_path.to_str().unwrap())
         .unwrap_or_else(|e| panic!("codegen error: {}", e));
 
-    // Compile all C runtime files
-    let runtime_objs: Vec<std::path::PathBuf> = RUNTIME_NAMES
+    // Compile runtime files (C and Sans)
+    let mut runtime_objs: Vec<std::path::PathBuf> = C_RUNTIME_NAMES
         .iter()
         .map(|name| compile_runtime(manifest_dir, &tmp_dir, name, fixture))
         .collect();
+    runtime_objs.extend(SANS_RUNTIME_NAMES
+        .iter()
+        .map(|name| compile_sans_runtime(manifest_dir, &tmp_dir, name, fixture)));
 
     // Link
     let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];

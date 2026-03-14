@@ -113,6 +113,12 @@ fn generate_llvm<'ctx>(
     let strlen_type = i64_type.fn_type(&[ptr_type.into()], false);
     llvm_module.add_function("strlen", strlen_type, Some(Linkage::External));
 
+    let strstr_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    llvm_module.add_function("strstr", strstr_type, Some(Linkage::External));
+
+    let exit_type = context.void_type().fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("exit", exit_type, Some(Linkage::External));
+
     let memcpy_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("memcpy", memcpy_type, Some(Linkage::External));
 
@@ -206,58 +212,52 @@ fn generate_llvm<'ctx>(
     let http_respond_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into(), i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("cy_http_respond", http_respond_type, Some(Linkage::External));
 
-    // Declare functional runtime functions (map/filter)
-    let array_map_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    // Declare functional runtime functions (map/filter) - use i64 to match Sans implementation
+    let array_map_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("cy_array_map", array_map_type, Some(Linkage::External));
     llvm_module.add_function("cy_array_filter", array_map_type, Some(Linkage::External));
 
     // Declare array extension runtime functions
-    let array_contains_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+    let array_contains_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("cy_array_contains", array_contains_type, Some(Linkage::External));
 
-    let array_pop_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    let array_pop_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("cy_array_pop", array_pop_type, Some(Linkage::External));
 
-    // Declare string extension runtime functions
-    let string_trim_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
+    // Declare string extension runtime functions - use i64 to match Sans implementation
+    let string_trim_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("cy_string_trim", string_trim_type, Some(Linkage::External));
 
-    let string_check_type = i64_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    let string_check_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("cy_string_starts_with", string_check_type, Some(Linkage::External));
     llvm_module.add_function("cy_string_ends_with", string_check_type, Some(Linkage::External));
     llvm_module.add_function("cy_string_contains", string_check_type, Some(Linkage::External));
 
-    let string_split_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
+    let string_split_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("cy_string_split", string_split_type, Some(Linkage::External));
 
     // Declare string replace function
-    let string_replace_type = i8_ptr_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into(), i8_ptr_type.into()], false);
+    let string_replace_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("cy_string_replace", string_replace_type, Some(Linkage::External));
 
     // Declare array remove function
-    let array_remove_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+    let array_remove_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("cy_array_remove", array_remove_type, Some(Linkage::External));
 
-    // Declare result runtime functions
-    let result_ok_type = i8_ptr_type.fn_type(&[i64_type.into()], false);
-    llvm_module.add_function("cy_result_ok", result_ok_type, Some(Linkage::External));
+    // Declare result runtime functions (all i64 — Sans ABI)
+    let result_i64_i64_type = i64_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("cy_result_ok", result_i64_i64_type, Some(Linkage::External));
+    llvm_module.add_function("cy_result_err", result_i64_i64_type, Some(Linkage::External));
+    llvm_module.add_function("cy_result_is_ok", result_i64_i64_type, Some(Linkage::External));
+    llvm_module.add_function("cy_result_is_err", result_i64_i64_type, Some(Linkage::External));
+    llvm_module.add_function("cy_result_unwrap", result_i64_i64_type, Some(Linkage::External));
+    llvm_module.add_function("cy_result_error", result_i64_i64_type, Some(Linkage::External));
 
-    let result_err_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
-    llvm_module.add_function("cy_result_err", result_err_type, Some(Linkage::External));
-
-    let result_check_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
-    llvm_module.add_function("cy_result_is_ok", result_check_type, Some(Linkage::External));
-    llvm_module.add_function("cy_result_is_err", result_check_type, Some(Linkage::External));
-    llvm_module.add_function("cy_result_unwrap", result_check_type, Some(Linkage::External));
-
-    let result_unwrap_or_type = i64_type.fn_type(&[i8_ptr_type.into(), i64_type.into()], false);
+    let result_unwrap_or_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("cy_result_unwrap_or", result_unwrap_or_type, Some(Linkage::External));
 
-    let result_error_type = i8_ptr_type.fn_type(&[i8_ptr_type.into()], false);
-    llvm_module.add_function("cy_result_error", result_error_type, Some(Linkage::External));
-
-    // Declare logging runtime functions
-    let log_msg_type = i64_type.fn_type(&[i8_ptr_type.into()], false);
+    // Declare logging runtime functions (all i64 — Sans ABI)
+    let log_msg_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("cy_log_debug", log_msg_type, Some(Linkage::External));
     llvm_module.add_function("cy_log_info", log_msg_type, Some(Linkage::External));
     llvm_module.add_function("cy_log_warn", log_msg_type, Some(Linkage::External));
@@ -521,70 +521,55 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::ArrayMap { dest, array, fn_ptr } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let arr_ptr = if let Some(p) = ptrs.get(array) { *p } else {
-                        builder.build_int_to_ptr(regs[array], ptr_type, "amap_ap").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let fp = if let Some(p) = ptrs.get(fn_ptr) { *p } else {
-                        builder.build_int_to_ptr(regs[fn_ptr], ptr_type, "amap_fp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let arr_int = regs[array];
+                    let fp_int = regs[fn_ptr];
                     let fn_ref = llvm_module.get_function("cy_array_map").unwrap();
-                    let call = builder.build_call(fn_ref, &[arr_ptr.into(), fp.into()], dest)
+                    let call = builder.build_call(fn_ref, &[arr_int.into(), fp_int.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_array_map: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "amap_int")
+                    regs.insert(dest.clone(), result_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "amap_ptr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    regs.insert(dest.clone(), as_int);
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::ArrayFilter { dest, array, fn_ptr } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let arr_ptr = if let Some(p) = ptrs.get(array) { *p } else {
-                        builder.build_int_to_ptr(regs[array], ptr_type, "afilt_ap").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let fp = if let Some(p) = ptrs.get(fn_ptr) { *p } else {
-                        builder.build_int_to_ptr(regs[fn_ptr], ptr_type, "afilt_fp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let arr_int = regs[array];
+                    let fp_int = regs[fn_ptr];
                     let fn_ref = llvm_module.get_function("cy_array_filter").unwrap();
-                    let call = builder.build_call(fn_ref, &[arr_ptr.into(), fp.into()], dest)
+                    let call = builder.build_call(fn_ref, &[arr_int.into(), fp_int.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_array_filter: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "afilt_int")
+                    regs.insert(dest.clone(), result_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "afilt_ptr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    regs.insert(dest.clone(), as_int);
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::StringTrim { dest, string } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
-                        builder.build_int_to_ptr(regs[string], ptr_type, "trim_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let str_int = regs[string];
                     let fn_ref = llvm_module.get_function("cy_string_trim").unwrap();
-                    let call = builder.build_call(fn_ref, &[str_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let call = builder.build_call(fn_ref, &[str_int.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_string_trim: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "trim_int").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    regs.insert(dest.clone(), as_int);
+                    regs.insert(dest.clone(), result_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "trim_ptr").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::StringStartsWith { dest, string, prefix } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
-                        builder.build_int_to_ptr(regs[string], ptr_type, "sw_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let pfx_ptr = if let Some(p) = ptrs.get(prefix) { *p } else {
-                        builder.build_int_to_ptr(regs[prefix], ptr_type, "sw_pp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let str_int = regs[string];
+                    let pfx_int = regs[prefix];
                     let fn_ref = llvm_module.get_function("cy_string_starts_with").unwrap();
-                    let call = builder.build_call(fn_ref, &[str_ptr.into(), pfx_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let call = builder.build_call(fn_ref, &[str_int.into(), pfx_int.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_string_starts_with: expected return".into())),
@@ -592,15 +577,10 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::StringEndsWith { dest, string, suffix } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
-                        builder.build_int_to_ptr(regs[string], ptr_type, "ew_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let sfx_ptr = if let Some(p) = ptrs.get(suffix) { *p } else {
-                        builder.build_int_to_ptr(regs[suffix], ptr_type, "ew_pp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let str_int = regs[string];
+                    let sfx_int = regs[suffix];
                     let fn_ref = llvm_module.get_function("cy_string_ends_with").unwrap();
-                    let call = builder.build_call(fn_ref, &[str_ptr.into(), sfx_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let call = builder.build_call(fn_ref, &[str_int.into(), sfx_int.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_string_ends_with: expected return".into())),
@@ -608,15 +588,10 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::StringContains { dest, string, needle } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
-                        builder.build_int_to_ptr(regs[string], ptr_type, "sc_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let ndl_ptr = if let Some(p) = ptrs.get(needle) { *p } else {
-                        builder.build_int_to_ptr(regs[needle], ptr_type, "sc_np").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let str_int = regs[string];
+                    let ndl_int = regs[needle];
                     let fn_ref = llvm_module.get_function("cy_string_contains").unwrap();
-                    let call = builder.build_call(fn_ref, &[str_ptr.into(), ndl_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let call = builder.build_call(fn_ref, &[str_int.into(), ndl_int.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_string_contains: expected return".into())),
@@ -624,52 +599,39 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::StringSplit { dest, string, delimiter } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
-                        builder.build_int_to_ptr(regs[string], ptr_type, "ss_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let dlm_ptr = if let Some(p) = ptrs.get(delimiter) { *p } else {
-                        builder.build_int_to_ptr(regs[delimiter], ptr_type, "ss_dp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let str_int = regs[string];
+                    let dlm_int = regs[delimiter];
                     let fn_ref = llvm_module.get_function("cy_string_split").unwrap();
-                    let call = builder.build_call(fn_ref, &[str_ptr.into(), dlm_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let call = builder.build_call(fn_ref, &[str_int.into(), dlm_int.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_string_split: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "ss_int").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    regs.insert(dest.clone(), as_int);
+                    regs.insert(dest.clone(), result_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "ss_ptr").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::StringReplace { dest, string, old, new_str } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let str_ptr = if let Some(p) = ptrs.get(string) { *p } else {
-                        builder.build_int_to_ptr(regs[string], ptr_type, "srep_sp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let old_ptr = if let Some(p) = ptrs.get(old) { *p } else {
-                        builder.build_int_to_ptr(regs[old], ptr_type, "srep_op").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
-                    let new_ptr = if let Some(p) = ptrs.get(new_str) { *p } else {
-                        builder.build_int_to_ptr(regs[new_str], ptr_type, "srep_np").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let str_int = regs[string];
+                    let old_int = regs[old];
+                    let new_int = regs[new_str];
                     let fn_ref = llvm_module.get_function("cy_string_replace").unwrap();
-                    let call = builder.build_call(fn_ref, &[str_ptr.into(), old_ptr.into(), new_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let call = builder.build_call(fn_ref, &[str_int.into(), old_int.into(), new_int.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_string_replace: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "srep_int").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    regs.insert(dest.clone(), as_int);
+                    regs.insert(dest.clone(), result_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "srep_ptr").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::ArrayRemove { dest, array, index } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let arr_ptr = if let Some(p) = ptrs.get(array) { *p } else {
-                        builder.build_int_to_ptr(regs[array], ptr_type, "arem_ap").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let arr_val = regs[array];
                     let idx_val = regs[index];
                     let fn_ref = llvm_module.get_function("cy_array_remove").unwrap();
-                    let call = builder.build_call(fn_ref, &[arr_ptr.into(), idx_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let call = builder.build_call(fn_ref, &[arr_val.into(), idx_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_array_remove: expected return".into())),
@@ -677,12 +639,9 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::ArrayPop { dest, array } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let arr_ptr = if let Some(p) = ptrs.get(array) { *p } else {
-                        builder.build_int_to_ptr(regs[array], ptr_type, "apop_ap").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let arr_val = regs[array];
                     let fn_ref = llvm_module.get_function("cy_array_pop").unwrap();
-                    let call = builder.build_call(fn_ref, &[arr_ptr.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let call = builder.build_call(fn_ref, &[arr_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_array_pop: expected return".into())),
@@ -690,13 +649,10 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::ArrayContains { dest, array, value } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let arr_ptr = if let Some(p) = ptrs.get(array) { *p } else {
-                        builder.build_int_to_ptr(regs[array], ptr_type, "ac_ap").map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let arr_val = regs[array];
                     let search_val = regs[value];
                     let fn_ref = llvm_module.get_function("cy_array_contains").unwrap();
-                    let call = builder.build_call(fn_ref, &[arr_ptr.into(), search_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let call = builder.build_call(fn_ref, &[arr_val.into(), search_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_array_contains: expected return".into())),
@@ -721,6 +677,7 @@ fn generate_llvm<'ctx>(
                     let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.float.{}", value));
                     fmt_global.set_initializer(&fmt_str);
                     fmt_global.set_constant(true);
+                    fmt_global.set_linkage(Linkage::Private);
                     let fmt_ptr = fmt_global.as_pointer_value();
                     let printf_fn = llvm_module.get_function("printf").unwrap();
                     builder.build_call(printf_fn, &[fmt_ptr.into(), float_val.into()], "")
@@ -803,6 +760,7 @@ fn generate_llvm<'ctx>(
                     let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.f2s.{}", value));
                     fmt_global.set_initializer(&fmt_str);
                     fmt_global.set_constant(true);
+                    fmt_global.set_linkage(Linkage::Private);
                     builder.build_call(snprintf_fn, &[buf_ptr.into(), buf_size.into(), fmt_global.as_pointer_value().into(), float_val.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let as_int = builder.build_ptr_to_int(buf_ptr, i64_type, "f2s_int")
@@ -1005,10 +963,17 @@ fn generate_llvm<'ctx>(
                 }
                 Instruction::StringConst { dest, value } => {
                     let string_val = context.const_string(value.as_bytes(), true);
-                    let global = llvm_module.add_global(string_val.get_type(), None, &format!("str.{}", dest));
+                    // Use content hash prefix to avoid duplicate symbol errors when linking
+                    // multiple object files that each have string constants.
+                    let hash: u64 = value.bytes().enumerate()
+                        .fold(0xcbf29ce484222325u64, |h, (i, b)| {
+                            h.wrapping_mul(0x100000001b3).wrapping_add(b as u64).wrapping_add(i as u64)
+                        });
+                    let global = llvm_module.add_global(string_val.get_type(), None, &format!("str.{:x}.{}", hash, dest));
                     global.set_initializer(&string_val);
                     global.set_constant(true);
                     global.set_unnamed_addr(true);
+                    global.set_linkage(Linkage::Private);
                     let ptr = global.as_pointer_value();
                     ptrs.insert(dest.clone(), ptr);
                     // Also store as i64 in regs so Phi nodes can reference string constants
@@ -1022,6 +987,7 @@ fn generate_llvm<'ctx>(
                     let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.int.{}", value));
                     fmt_global.set_initializer(&fmt_str);
                     fmt_global.set_constant(true);
+                    fmt_global.set_linkage(Linkage::Private);
                     let fmt_ptr = fmt_global.as_pointer_value();
                     let printf_fn = llvm_module.get_function("printf").unwrap();
                     builder.build_call(printf_fn, &[fmt_ptr.into(), val.into()], "")
@@ -1039,6 +1005,7 @@ fn generate_llvm<'ctx>(
                     let fmt_global = llvm_module.add_global(fmt_str.get_type(), None, &format!("fmt.str.{}", value));
                     fmt_global.set_initializer(&fmt_str);
                     fmt_global.set_constant(true);
+                    fmt_global.set_linkage(Linkage::Private);
                     let fmt_ptr = fmt_global.as_pointer_value();
                     let printf_fn = llvm_module.get_function("printf").unwrap();
                     builder.build_call(printf_fn, &[fmt_ptr.into(), str_ptr.into()], "")
@@ -1051,9 +1018,11 @@ fn generate_llvm<'ctx>(
                     let tg = llvm_module.add_global(true_str.get_type(), None, &format!("bool.t.{}", value));
                     tg.set_initializer(&true_str);
                     tg.set_constant(true);
+                    tg.set_linkage(Linkage::Private);
                     let fg = llvm_module.add_global(false_str.get_type(), None, &format!("bool.f.{}", value));
                     fg.set_initializer(&false_str);
                     fg.set_constant(true);
+                    fg.set_linkage(Linkage::Private);
 
                     let selected = builder.build_select(val, tg.as_pointer_value(), fg.as_pointer_value(), "boolstr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
@@ -2780,47 +2749,33 @@ fn generate_llvm<'ctx>(
                     let fn_ref = llvm_module.get_function("cy_result_ok").unwrap();
                     let call = builder.build_call(fn_ref, &[val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let as_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_result_ok: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "rok_int")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), as_int);
+                    let ptr_val = builder.build_int_to_ptr(as_int, context.ptr_type(inkwell::AddressSpace::default()), "rok_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::ResultErr { dest, message } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let msg_ptr = if let Some(p) = ptrs.get(message) {
-                        *p
-                    } else {
-                        let iv = regs[message];
-                        builder.build_int_to_ptr(iv, ptr_type, "rerr_mp")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let msg_val = regs[message];
                     let fn_ref = llvm_module.get_function("cy_result_err").unwrap();
-                    let call = builder.build_call(fn_ref, &[msg_ptr.into()], dest)
+                    let call = builder.build_call(fn_ref, &[msg_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let as_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_result_err: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "rerr_int")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), as_int);
+                    let ptr_val = builder.build_int_to_ptr(as_int, context.ptr_type(inkwell::AddressSpace::default()), "rerr_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::ResultIsOk { dest, result } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let res_ptr = if let Some(p) = ptrs.get(result) {
-                        *p
-                    } else {
-                        let iv = regs[result];
-                        builder.build_int_to_ptr(iv, ptr_type, "risok_rp")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let res_val = regs[result];
                     let fn_ref = llvm_module.get_function("cy_result_is_ok").unwrap();
-                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                    let call = builder.build_call(fn_ref, &[res_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result_val = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
@@ -2829,16 +2784,9 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result_val);
                 }
                 Instruction::ResultIsErr { dest, result } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let res_ptr = if let Some(p) = ptrs.get(result) {
-                        *p
-                    } else {
-                        let iv = regs[result];
-                        builder.build_int_to_ptr(iv, ptr_type, "riserr_rp")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let res_val = regs[result];
                     let fn_ref = llvm_module.get_function("cy_result_is_err").unwrap();
-                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                    let call = builder.build_call(fn_ref, &[res_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result_val = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
@@ -2847,16 +2795,9 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result_val);
                 }
                 Instruction::ResultUnwrap { dest, result } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let res_ptr = if let Some(p) = ptrs.get(result) {
-                        *p
-                    } else {
-                        let iv = regs[result];
-                        builder.build_int_to_ptr(iv, ptr_type, "runwrap_rp")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let res_val = regs[result];
                     let fn_ref = llvm_module.get_function("cy_result_unwrap").unwrap();
-                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                    let call = builder.build_call(fn_ref, &[res_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result_val = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
@@ -2864,51 +2805,40 @@ fn generate_llvm<'ctx>(
                     };
                     regs.insert(dest.clone(), result_val);
                     // For Result<String>, the value is a pointer - also store in ptrs
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
                     let as_ptr = builder.build_int_to_ptr(result_val, ptr_type, "runwrap_ptr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), as_ptr);
                 }
                 Instruction::ResultUnwrapOr { dest, result, default } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let res_ptr = if let Some(p) = ptrs.get(result) {
-                        *p
-                    } else {
-                        let iv = regs[result];
-                        builder.build_int_to_ptr(iv, ptr_type, "runwrapor_rp")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let res_val = regs[result];
                     let default_val = regs[default];
                     let fn_ref = llvm_module.get_function("cy_result_unwrap_or").unwrap();
-                    let call = builder.build_call(fn_ref, &[res_ptr.into(), default_val.into()], dest)
+                    let call = builder.build_call(fn_ref, &[res_val.into(), default_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result_val = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_result_unwrap_or: expected return".into())),
                     };
                     regs.insert(dest.clone(), result_val);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
                     let as_ptr = builder.build_int_to_ptr(result_val, ptr_type, "runwrapor_ptr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), as_ptr);
                 }
                 Instruction::ResultError { dest, result } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let res_ptr = if let Some(p) = ptrs.get(result) {
-                        *p
-                    } else {
-                        let iv = regs[result];
-                        builder.build_int_to_ptr(iv, ptr_type, "rerror_rp")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let res_val = regs[result];
                     let fn_ref = llvm_module.get_function("cy_result_error").unwrap();
-                    let call = builder.build_call(fn_ref, &[res_ptr.into()], dest)
+                    let call = builder.build_call(fn_ref, &[res_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ptr_val = match call.try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                    let as_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("cy_result_error: expected return".into())),
                     };
-                    let as_int = builder.build_ptr_to_int(ptr_val, i64_type, "rerror_int")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), as_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(as_int, ptr_type, "rerror_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::LogDebug { dest, message } | Instruction::LogInfo { dest, message } | Instruction::LogWarn { dest, message } | Instruction::LogError { dest, message } => {
@@ -2919,16 +2849,9 @@ fn generate_llvm<'ctx>(
                         Instruction::LogError { .. } => "cy_log_error",
                         _ => unreachable!(),
                     };
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
-                    let msg_ptr = if let Some(p) = ptrs.get(message) {
-                        *p
-                    } else {
-                        let iv = regs[message];
-                        builder.build_int_to_ptr(iv, ptr_type, "log_mp")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    };
+                    let msg_val = regs[message];
                     let fn_ref = llvm_module.get_function(fn_name).unwrap();
-                    let call = builder.build_call(fn_ref, &[msg_ptr.into()], dest)
+                    let call = builder.build_call(fn_ref, &[msg_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
@@ -3090,6 +3013,45 @@ fn generate_llvm<'ctx>(
                     let byte = builder.build_int_truncate(regs[val], i8_type, "st8_v")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     builder.build_store(p, byte)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), i64_type.const_int(0, false));
+                }
+                Instruction::Load64 { dest, ptr } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let p = builder.build_int_to_ptr(regs[ptr], ptr_type, "ld64_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let val = builder.build_load(i64_type, p, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    regs.insert(dest.clone(), val);
+                }
+                Instruction::Store64 { dest, ptr, val } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let p = builder.build_int_to_ptr(regs[ptr], ptr_type, "st64_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(p, regs[val])
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), i64_type.const_int(0, false));
+                }
+                Instruction::Strstr { dest, haystack, needle } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let hp = builder.build_int_to_ptr(regs[haystack], ptr_type, "ss_h")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let np = builder.build_int_to_ptr(regs[needle], ptr_type, "ss_n")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let fn_ref = llvm_module.get_function("strstr").unwrap();
+                    let call = builder.build_call(fn_ref, &[hp.into(), np.into()], "ss_r")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("strstr: expected return".into())),
+                    };
+                    let int_val = builder.build_ptr_to_int(result, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), int_val);
+                }
+                Instruction::Exit { dest, code } => {
+                    let fn_ref = llvm_module.get_function("exit").unwrap();
+                    builder.build_call(fn_ref, &[regs[code].into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), i64_type.const_int(0, false));
                 }

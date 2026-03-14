@@ -157,11 +157,10 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let tmp_dir = std::env::temp_dir();
     let c_runtime_modules = [
-        "json", "http", "result", "string_ext", "array_ext", "functional", "server", "sock",
-        "curl_helpers",
+        "json", "http", "server", "sock", "curl_helpers",
     ];
     let sans_runtime_modules = [
-        "log",
+        "log", "result", "functional", "array_ext", "string_ext",
     ];
     let mut runtime_o_paths: Vec<PathBuf> = Vec::new();
     for name in &c_runtime_modules {

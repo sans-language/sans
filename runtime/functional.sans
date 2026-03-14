@@ -1,0 +1,39 @@
+cy_array_map(arr:I fn_p:I) I {
+  data = load64(arr)
+  len = load64(arr + 8)
+  result = alloc(24)
+  cap = len > 0 ? len : 1
+  new_data = alloc(cap * 8)
+  i := 0
+  while i < len {
+    elem = load64(data + i * 8)
+    mapped = fcall(fn_p, elem)
+    store64(new_data + i * 8, mapped)
+    i += 1
+  }
+  store64(result, new_data)
+  store64(result + 8, len)
+  store64(result + 16, cap)
+  result
+}
+
+cy_array_filter(arr:I fn_p:I) I {
+  data = load64(arr)
+  len = load64(arr + 8)
+  result = alloc(24)
+  cap = len > 0 ? len : 1
+  new_data = alloc(cap * 8)
+  new_len := 0
+  i := 0
+  while i < len {
+    elem = load64(data + i * 8)
+    keep = fcall(fn_p, elem)
+    keep != 0 ? store64(new_data + new_len * 8, elem) : 0
+    new_len = keep != 0 ? new_len + 1 : new_len
+    i += 1
+  }
+  store64(result, new_data)
+  store64(result + 8, new_len)
+  store64(result + 16, cap)
+  result
+}

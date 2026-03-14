@@ -878,6 +878,32 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Store8 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "load64" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Load64 { dest: dest.clone(), ptr: ptr_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "store64" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let val_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Store64 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "strstr" {
+                    let haystack_reg = self.lower_expr(&args[0]);
+                    let needle_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Strstr { dest: dest.clone(), haystack: haystack_reg, needle: needle_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "exit" {
+                    let code_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Exit { dest: dest.clone(), code: code_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "sock" {
                     let domain_reg = self.lower_expr(&args[0]);
                     let type_reg = self.lower_expr(&args[1]);

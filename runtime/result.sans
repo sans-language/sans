@@ -1,0 +1,50 @@
+cy_result_ok(value:I) I {
+  r = alloc(24)
+  store64(r, 0)
+  store64(r + 8, value)
+  store64(r + 16, 0)
+  r
+}
+
+cy_result_err(msg:I) I {
+  r = alloc(24)
+  store64(r, 1)
+  store64(r + 8, 0)
+  len = slen(msg)
+  buf = alloc(len + 1)
+  mcpy(buf, msg, len + 1)
+  store64(r + 16, buf)
+  r
+}
+
+cy_result_is_ok(r:I) I {
+  tag = load64(r)
+  tag == 0 ? 1 : 0
+}
+
+cy_result_is_err(r:I) I {
+  tag = load64(r)
+  tag == 1 ? 1 : 0
+}
+
+cy_result_unwrap(r:I) I {
+  tag = load64(r)
+  tag == 0 ? load64(r + 8) : exit(1)
+}
+
+cy_result_unwrap_or(r:I default_val:I) I {
+  tag = load64(r)
+  tag == 0 ? load64(r + 8) : default_val
+}
+
+cy_result_error(r:I) I {
+  tag = load64(r)
+  err_ptr = load64(r + 16)
+  if tag == 1 {
+    err_ptr
+  } else {
+    empty = alloc(1)
+    store8(empty, 0)
+    empty
+  }
+}
