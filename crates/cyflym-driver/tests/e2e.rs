@@ -266,3 +266,28 @@ fn e2e_file_write_read() {
 fn e2e_file_exists_check() {
     assert_eq!(compile_and_run("file_exists_check.cy"), 1);
 }
+
+#[test]
+fn e2e_json_object_stringify() {
+    assert_eq!(compile_and_run("json_object_stringify.cy"), 2);
+}
+
+#[test]
+fn e2e_json_int_roundtrip() {
+    assert_eq!(compile_and_run("json_int_roundtrip.cy"), 42);
+}
+
+#[test]
+fn e2e_json_build() {
+    assert_eq!(compile_and_run("json_build.cy"), 52);
+}
+
+#[test]
+fn e2e_json_parse_access() {
+    assert_eq!(compile_and_run("json_parse_access.cy"), 42);
+}
+
+#[test]
+fn e2e_json_roundtrip() {
+    assert_eq!(compile_and_run("json_roundtrip.cy"), 7);
+}
