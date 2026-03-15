@@ -1,0 +1,7 @@
+double(x:I) I = x * 2
+
+main() I {
+  a = [1 2 3 4 5]
+  b = a.map(|x:I| I { x * 3 })
+  b.get(2)
+}

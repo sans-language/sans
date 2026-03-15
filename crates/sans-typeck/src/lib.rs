@@ -1456,6 +1456,28 @@ fn check_expr(
                 return Ok(result_type);
             }
 
+            // Check if the function name is a local variable holding a lambda/function
+            if let Some((Type::Fn { params: fn_params, ret }, _)) = locals.get(function) {
+                if args.len() != fn_params.len() {
+                    return Err(TypeError::new(format!(
+                        "wrong argument count calling '{}': expected {} argument(s) but got {}",
+                        function, fn_params.len(), args.len()
+                    )));
+                }
+                let fn_params = fn_params.clone();
+                let ret = *ret.clone();
+                for (i, (arg, expected)) in args.iter().zip(fn_params.iter()).enumerate() {
+                    let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if actual != *expected {
+                        return Err(TypeError::new(format!(
+                            "argument {} to '{}': expected {} but got {}",
+                            i + 1, function, expected, actual
+                        )));
+                    }
+                }
+                return Ok(ret);
+            }
+
             Err(TypeError::new(format!("undefined function '{}'", function)))
         }
 

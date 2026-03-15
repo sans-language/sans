@@ -479,3 +479,18 @@ fn e2e_tuple_return() {
 fn e2e_tuple_three() {
     assert_eq!(compile_and_run("tuple_three.sans"), 42);
 }
+
+#[test]
+fn e2e_lambda_basic() {
+    assert_eq!(compile_and_run("lambda_basic.sans"), 15);
+}
+
+#[test]
+fn e2e_lambda_map() {
+    assert_eq!(compile_and_run("lambda_map.sans"), 9);
+}
+
+#[test]
+fn e2e_lambda_capture() {
+    assert_eq!(compile_and_run("lambda_capture.sans"), 15);
+}
