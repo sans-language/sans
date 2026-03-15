@@ -969,6 +969,25 @@ fn check_expr(
                 }
                 check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 return Ok(Type::Int);
+            } else if function == "arena_begin" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("arena_begin() takes 0 arguments"));
+                }
+                return Ok(Type::Int);
+            } else if function == "arena_alloc" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("arena_alloc() takes 1 argument (size)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::Int {
+                    return Err(TypeError::new(format!("arena_alloc() size must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "arena_end" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("arena_end() takes 0 arguments"));
+                }
+                return Ok(Type::Int);
             } else if function == "alloc" {
                 if args.len() != 1 {
                     return Err(TypeError::new("alloc() takes exactly 1 argument (size)"));

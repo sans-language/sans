@@ -130,7 +130,7 @@
         },
         {
           "name": "support.function.memory.sans",
-          "match": "\\b(load16|store16|load32|store32|load64|store64|strstr|bswap16|exit)\\b"
+          "match": "\\b(load16|store16|load32|store32|load64|store64|strstr|bswap16|exit|arena_begin|arena_alloc|arena_end)\\b"
         },
         {
           "name": "support.function.socket.sans",

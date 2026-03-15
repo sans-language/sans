@@ -121,7 +121,7 @@ The runtime layer consists of 8 C files (`runtime/*.c`) providing built-in capab
 
 ## Known Limitations
 
-- No garbage collector -- all heap memory is leaked until process exit.
+- No garbage collector -- use `arena_begin()`/`arena_alloc(n)`/`arena_end()` for phase-based bulk deallocation.
 - No bounds checking on array access.
 - Multiple opaque type method calls in complex expressions may crash.
 - No lambda/closure syntax yet (use named function references).

@@ -32,7 +32,7 @@ fn compile_sans_runtime(manifest_dir: &str, tmp_dir: &std::path::Path, name: &st
 }
 
 const C_RUNTIME_NAMES: &[&str] = &[];
-const SANS_RUNTIME_NAMES: &[&str] = &["log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl", "map"];
+const SANS_RUNTIME_NAMES: &[&str] = &["log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl", "map", "arena"];
 
 /// Helper: compile a multi-file fixture directory and run main.sans, returning the exit code.
 fn compile_and_run_dir(fixture_dir: &str) -> i32 {
@@ -603,4 +603,14 @@ fn e2e_tuple_return_typed() {
 #[test]
 fn e2e_tuple_array() {
     assert_eq!(compile_and_run("tuple_array.sans"), 3);
+}
+
+#[test]
+fn e2e_arena_basic() {
+    assert_eq!(compile_and_run("arena_basic.sans"), 100);
+}
+
+#[test]
+fn e2e_arena_nested() {
+    assert_eq!(compile_and_run("arena_nested.sans"), 141);
 }

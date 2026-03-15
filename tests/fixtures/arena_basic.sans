@@ -1,0 +1,16 @@
+main() I {
+  arena_begin()
+
+  a = arena_alloc(16)
+  store64(a, 10)
+  store64(a + 8, 20)
+
+  b = arena_alloc(16)
+  store64(b, 30)
+  store64(b + 8, 40)
+
+  result = load64(a) + load64(a + 8) + load64(b) + load64(b + 8)
+
+  arena_end()
+  result
+}

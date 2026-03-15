@@ -223,6 +223,23 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `bswap16(val)` | `(Int) -> Int` | byte-swap 16-bit (htons) |
 | `exit(code)` | `(Int) -> Int` | exit process |
 
+#### Arena Allocator
+
+Phase-based bump allocator. All allocations between `arena_begin()` and `arena_end()` are freed at once. Arenas can be nested up to 8 deep.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `arena_begin()` | `() -> Int` | Push a new arena onto the stack |
+| `arena_alloc(size)` | `(Int) -> Int` | Bump-allocate from the current arena (8-byte aligned) |
+| `arena_end()` | `() -> Int` | Pop and free all memory in the current arena |
+
+```sans
+arena_begin()
+a = arena_alloc(16)
+store64(a, 42)
+arena_end()  // frees everything at once
+```
+
 #### I/O
 
 | Function | Signature | Description |

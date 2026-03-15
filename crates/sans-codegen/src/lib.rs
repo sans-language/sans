@@ -300,6 +300,16 @@ fn generate_llvm<'ctx>(
     let set_log_level_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("sans_set_log_level", set_log_level_type, Some(Linkage::External));
 
+    // Declare arena allocator runtime functions
+    let arena_begin_type = i64_type.fn_type(&[], false);
+    llvm_module.add_function("sans_arena_begin", arena_begin_type, Some(Linkage::External));
+
+    let arena_alloc_type = i64_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("sans_arena_alloc", arena_alloc_type, Some(Linkage::External));
+
+    let arena_end_type = i64_type.fn_type(&[], false);
+    llvm_module.add_function("sans_arena_end", arena_end_type, Some(Linkage::External));
+
     // Declare HTTP runtime functions (all i64 — Sans ABI)
     let http_get_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("sans_http_get", http_get_type, Some(Linkage::External));
@@ -3255,6 +3265,37 @@ fn generate_llvm<'ctx>(
                     let result = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("write: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::ArenaBegin { dest } => {
+                    let fn_ref = llvm_module.get_function("sans_arena_begin").unwrap();
+                    let call = builder.build_call(fn_ref, &[], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_arena_begin: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::ArenaAlloc { dest, size } => {
+                    let size_val = regs[size];
+                    let fn_ref = llvm_module.get_function("sans_arena_alloc").unwrap();
+                    let call = builder.build_call(fn_ref, &[size_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_arena_alloc: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::ArenaEnd { dest } => {
+                    let fn_ref = llvm_module.get_function("sans_arena_end").unwrap();
+                    let call = builder.build_call(fn_ref, &[], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_arena_end: expected return".into())),
                     };
                     regs.insert(dest.clone(), result);
                 }

@@ -1,0 +1,79 @@
+// Arena allocator — linked list of 64KB chunks with bump pointer
+// Global arena stack (up to 8 deep)
+//
+// Each arena: { chunk_head_ptr, chunk_offset, chunk_cap }
+// Each chunk: { next_chunk_ptr, data... }
+// Chunk size: 65536 bytes (64KB)
+
+g arena_stack_ptr = 0
+g arena_depth = 0
+
+sans_arena_init() I {
+  arena_stack_ptr = alloc(64)
+  mzero(arena_stack_ptr, 64)
+  0
+}
+
+sans_arena_begin() I {
+  if arena_stack_ptr == 0 { sans_arena_init() } else { 0 }
+  if arena_depth >= 8 {
+    0
+  } else {
+    arena = alloc(24)
+    chunk_size = 65536
+    chunk = alloc(8 + chunk_size)
+    store64(chunk, 0)
+    store64(arena, chunk)
+    store64(arena + 8, 0)
+    store64(arena + 16, chunk_size)
+    store64(arena_stack_ptr + arena_depth * 8, arena)
+    arena_depth = arena_depth + 1
+    0
+  }
+}
+
+sans_arena_alloc(size:I) I {
+  if arena_depth == 0 {
+    alloc(size)
+  } else {
+    arena = load64(arena_stack_ptr + (arena_depth - 1) * 8)
+    offset = load64(arena + 8)
+    cap = load64(arena + 16)
+    aligned = (size + 7) / 8 * 8
+
+    if offset + aligned > cap {
+      chunk = load64(arena)
+      new_cap = aligned > cap ? aligned : cap
+      new_chunk = alloc(8 + new_cap)
+      store64(new_chunk, chunk)
+      store64(arena, new_chunk)
+      store64(arena + 8, 0)
+      store64(arena + 16, new_cap)
+      0
+    } else { 0 }
+
+    cur_chunk = load64(arena)
+    cur_offset = load64(arena + 8)
+    result = cur_chunk + 8 + cur_offset
+    store64(arena + 8, cur_offset + aligned)
+    result
+  }
+}
+
+sans_arena_end() I {
+  if arena_depth == 0 {
+    0
+  } else {
+    arena_depth = arena_depth - 1
+    arena = load64(arena_stack_ptr + arena_depth * 8)
+    chunk := load64(arena)
+    while chunk != 0 {
+      next = load64(chunk)
+      dealloc(chunk)
+      chunk = next
+      0
+    }
+    dealloc(arena)
+    0
+  }
+}

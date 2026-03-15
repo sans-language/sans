@@ -1,0 +1,16 @@
+main() I {
+  arena_begin()
+  a = arena_alloc(8)
+  store64(a, 42)
+
+  arena_begin()  // nested arena
+  b = arena_alloc(8)
+  store64(b, 99)
+  inner = load64(b)
+  arena_end()  // frees inner arena only
+
+  outer = load64(a)  // still valid
+  arena_end()  // frees outer arena
+
+  outer + inner
+}

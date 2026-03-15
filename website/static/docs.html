@@ -229,6 +229,17 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       </tbody>
     </table>
 
+    <h4>Arena Allocator</h4>
+    <p>Phase-based bump allocator. All allocations between <code>arena_begin()</code> and <code>arena_end()</code> are freed at once. Arenas nest up to 8 deep.</p>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>arena_begin()</code></td><td><code>() -&gt; Int</code></td><td>Push a new arena onto the stack</td></tr>
+        <tr><td><code>arena_alloc(size)</code></td><td><code>(Int) -&gt; Int</code></td><td>Bump-allocate from the current arena (8-byte aligned)</td></tr>
+        <tr><td><code>arena_end()</code></td><td><code>() -&gt; Int</code></td><td>Pop and free all memory in the current arena</td></tr>
+      </tbody>
+    </table>
+
     <h4>I/O</h4>
     <table>
       <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
@@ -563,7 +574,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.24 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.25 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

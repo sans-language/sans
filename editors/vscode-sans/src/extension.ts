@@ -99,6 +99,11 @@ const HOVER_DATA: Record<string, string> = {
     'bswap16': '**bswap16**(n: Int) -> Int\n\nByte-swap a 16-bit integer (reverse byte order).\n\nUsage: `be = bswap16(le)`',
     'exit': '**exit**(code: Int) -> Int\n\nTerminate the process with the given exit code.\n\nUsage: `exit(1)`',
 
+    // Arena allocator
+    'arena_begin': '**arena_begin**() -> Int\n\nPush a new arena onto the stack. All subsequent `arena_alloc()` calls allocate from this arena until `arena_end()`. Nestable up to 8 deep.\n\nUsage: `arena_begin()`',
+    'arena_alloc': '**arena_alloc**(size: Int) -> Int\n\nBump-allocate `size` bytes (8-byte aligned) from the current arena. Falls back to `alloc()` if no arena is active.\n\nUsage: `ptr = arena_alloc(24)`',
+    'arena_end': '**arena_end**() -> Int\n\nPop the current arena and free all its memory at once.\n\nUsage: `arena_end()`',
+
     // Sockets
     'rbind': '**rbind**(port: Int) -> Int\n\nCreate and bind a raw TCP socket to port. Returns socket fd, or -1 on error.\n\nUsage: `fd = rbind(8080)`',
     'rsetsockopt': '**rsetsockopt**(fd: Int, opt: Int, val: Int) -> Int\n\nSet a socket option on fd. Returns 0 on success.\n\nUsage: `rsetsockopt(fd, 1, 1)`',

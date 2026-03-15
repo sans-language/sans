@@ -289,6 +289,10 @@ pub enum Instruction {
     MapLen { dest: Reg, map: Reg },
     MapKeys { dest: Reg, map: Reg },
     MapVals { dest: Reg, map: Reg },
+    // Arena allocator
+    ArenaBegin { dest: Reg },
+    ArenaAlloc { dest: Reg, size: Reg },
+    ArenaEnd { dest: Reg },
     // Command-line args
     Args { dest: Reg },
 }

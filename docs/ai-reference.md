@@ -104,6 +104,11 @@ bswap16(v)                              I -> I (byte swap 16)
 exit(code)                              I -> I (exit process)
 wfd(fd msg)                             I S -> I (write to fd)
 
+// Arena allocator (phase-based, stackable up to 8 deep)
+arena_begin()                           -> I (push new arena)
+arena_alloc(n)                          I -> I (bump alloc from arena)
+arena_end()                             -> I (free all arena memory)
+
 // Sockets
 sock(d t p)                             I I I -> I (socket)
 sbind(fd port)                          I I -> I (bind)

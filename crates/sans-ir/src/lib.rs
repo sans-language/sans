@@ -1161,6 +1161,22 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Copy { dest: dest.clone(), src: arg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "arena_begin" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::ArenaBegin { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "arena_alloc" {
+                    let size_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::ArenaAlloc { dest: dest.clone(), size: size_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "arena_end" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::ArenaEnd { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "alloc" {
                     let size_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
