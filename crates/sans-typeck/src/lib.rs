@@ -697,15 +697,8 @@ fn check_expr(
                         "print() takes exactly 1 argument, got {}", args.len()
                     )));
                 }
-                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                match arg_ty {
-                    Type::String | Type::Int | Type::Float | Type::Bool => {}
-                    other => {
-                        return Err(TypeError::new(format!(
-                            "print() cannot print type {}", other
-                        )));
-                    }
-                }
+                let _arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                // Accept any type — non-primitives print raw i64 (pointer value)
                 return Ok(Type::Int);
             } else if function == "int_to_string" || function == "str" || function == "itos" {
                 if args.len() != 1 {
