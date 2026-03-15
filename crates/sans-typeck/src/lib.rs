@@ -2175,6 +2175,21 @@ fn check_expr(
             }
             Ok(call_ret_type.clone())
         }
+
+        Expr::Lambda { params, return_type, body, .. } => {
+            let mut param_types = Vec::new();
+            let mut lambda_locals = locals.clone();
+            for param in params {
+                let ty = resolve_type(&param.type_name.name, structs, enums, module_exports)?;
+                param_types.push(ty.clone());
+                lambda_locals.insert(param.name.clone(), (ty, false));
+            }
+            let ret_ty = resolve_type(&return_type.name, structs, enums, module_exports)?;
+            for stmt in body {
+                check_stmt(stmt, &mut lambda_locals, fn_env, &ret_ty, structs, enums, methods, generic_fns, traits, module_exports)?;
+            }
+            Ok(Type::Fn { params: param_types, ret: Box::new(ret_ty) })
+        }
     }
 }
 
@@ -3201,5 +3216,29 @@ mod tests {
         let program = sans_parser::parse(src).unwrap();
         let result = check(&program, &std::collections::HashMap::new());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn check_lambda_basic() {
+        let src = "main() I { f = |x:I| I { x + 10 }\n 0 }";
+        let program = sans_parser::parse(src).unwrap();
+        let result = check(&program, &std::collections::HashMap::new());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_lambda_capture() {
+        let src = "main() I { offset = 10\n f = |x:I| I { x + offset }\n 0 }";
+        let program = sans_parser::parse(src).unwrap();
+        let result = check(&program, &std::collections::HashMap::new());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_lambda_type_error() {
+        let src = "main() I { f = |x:S| I { x + 10 }\n 0 }";
+        let program = sans_parser::parse(src).unwrap();
+        let result = check(&program, &std::collections::HashMap::new());
+        assert!(result.is_err()); // Can't add String + Int
     }
 }
