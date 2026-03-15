@@ -907,6 +907,10 @@ impl IrBuilder {
 
                 if function == "int_to_string" || function == "str" || function == "itos" {
                     let val_reg = self.lower_expr(&args[0]);
+                    // If the argument is already a string, just pass it through
+                    if self.reg_types.get(&val_reg) == Some(&IrType::Str) {
+                        return val_reg;
+                    }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::IntToString {
                         dest: dest.clone(),

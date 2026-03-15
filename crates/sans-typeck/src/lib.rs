@@ -718,8 +718,8 @@ fn check_expr(
                     return Err(TypeError::new("int_to_string() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
-                    return Err(TypeError::new(format!("int_to_string() requires Int argument, got {}", arg_ty)));
+                if arg_ty != Type::Int && arg_ty != Type::String && arg_ty != Type::Float && arg_ty != Type::Bool {
+                    return Err(TypeError::new(format!("str() requires Int, String, Float, or Bool argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
             } else if function == "string_to_int" || function == "stoi" {
