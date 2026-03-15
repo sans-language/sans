@@ -4,6 +4,16 @@ use std::process;
 use sans::imports;
 
 fn main() {
+    // Spawn with a large stack (64 MB) to handle deeply nested ASTs in large programs
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let handler = builder.spawn(main_inner).expect("failed to spawn main thread");
+    match handler.join() {
+        Ok(()) => {}
+        Err(_) => process::exit(1),
+    }
+}
+
+fn main_inner() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.len() >= 2 && (args[1] == "--version" || args[1] == "-V") {
@@ -121,16 +131,50 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
         }
     }
 
+    // Step 5b: Build extra globals from all module exports (for cross-module global access)
+    let mut all_module_globals: std::collections::HashMap<String, sans_ir::IrType> =
+        std::collections::HashMap::new();
+    for exports in module_exports.values() {
+        for (gname, gty) in &exports.globals {
+            let ir_type = sans_ir::ir_type_for_return(gty);
+            all_module_globals.insert(gname.clone(), ir_type);
+        }
+    }
+
     // Step 6: Lower to IR with name mangling, then merge
     let mut all_ir_functions = Vec::new();
 
+    let mut all_globals: Vec<(String, i64)> = Vec::new();
+    let mut seen_globals: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for module in &resolved_modules {
-        let ir = sans_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
+        // Build extra globals for this module from its imports
+        let mut module_extra_globals: std::collections::HashMap<String, sans_ir::IrType> =
+            std::collections::HashMap::new();
+        for imp in &module.program.imports {
+            if let Some(exports) = module_exports.get(&imp.module_name) {
+                for (gname, gty) in &exports.globals {
+                    let ir_type = sans_ir::ir_type_for_return(gty);
+                    module_extra_globals.insert(gname.clone(), ir_type);
+                }
+            }
+        }
+        let ir = sans_ir::lower_with_extra_structs(&module.program, Some(&module.name), &module_fn_ret_types, &std::collections::HashMap::new(), &module_extra_globals);
+        // Merge globals from this module (avoid duplicates)
+        for (name, val) in &ir.globals {
+            if seen_globals.insert(name.clone()) {
+                all_globals.push((name.clone(), *val));
+            }
+        }
         all_ir_functions.extend(ir.functions);
     }
 
-    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
-    let all_globals = main_ir.globals;
+    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs, &all_module_globals);
+    for (name, val) in &main_ir.globals {
+        if seen_globals.insert(name.clone()) {
+            all_globals.push((name.clone(), *val));
+        }
+    }
     all_ir_functions.extend(main_ir.functions);
 
     let merged_module = sans_ir::ir::Module {

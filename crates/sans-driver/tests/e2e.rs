@@ -87,7 +87,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         let ir = sans_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
-    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
+    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs, &std::collections::HashMap::new());
     let all_globals = main_ir.globals;
     all_ir_functions.extend(main_ir.functions);
 

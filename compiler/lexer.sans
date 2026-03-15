@@ -1,4 +1,4 @@
-import "compiler/constants"
+import "constants"
 
 // ── Token constructor ──────────────────────────────────────────────
 // Token: [kind:I, value:I, line:I, col:I] = 32 bytes
@@ -29,9 +29,12 @@ lx_line(lx:I) I = load64(lx + 8)
 lx_col(lx:I) I = load64(lx + 16)
 lx_len(lx:I) I = load64(lx + 24)
 
-lx_set_pos(lx:I v:I) I { store64(lx, v); 0 }
-lx_set_line(lx:I v:I) I { store64(lx + 8, v); 0 }
-lx_set_col(lx:I v:I) I { store64(lx + 16, v); 0 }
+lx_set_pos(lx:I v:I) I { store64(lx, v)
+  0 }
+lx_set_line(lx:I v:I) I { store64(lx + 8, v)
+  0 }
+lx_set_col(lx:I v:I) I { store64(lx + 16, v)
+  0 }
 
 lx_at_end(lx:I) I = lx_pos(lx) >= lx_len(lx) ? 1 : 0
 
@@ -151,32 +154,32 @@ lx_ident(lx:I src:S) I {
 
   // Match keywords
   kind := TK_IDENT
-  text == "fn" ? kind = TK_FN : 0
-  text == "let" ? kind = TK_LET : 0
-  text == "mut" ? kind = TK_MUT : 0
-  text == "true" ? kind = TK_TRUE : 0
-  text == "false" ? kind = TK_FALSE : 0
-  text == "if" ? kind = TK_IF : 0
-  text == "else" ? kind = TK_ELSE : 0
-  text == "while" ? kind = TK_WHILE : 0
-  text == "return" ? kind = TK_RETURN : 0
-  text == "struct" ? kind = TK_STRUCT : 0
-  text == "enum" ? kind = TK_ENUM : 0
-  text == "match" ? kind = TK_MATCH : 0
-  text == "trait" ? kind = TK_TRAIT : 0
-  text == "impl" ? kind = TK_IMPL : 0
-  text == "for" ? kind = TK_FOR : 0
-  text == "self" ? kind = TK_SELF_VAL : 0
-  text == "Self" ? kind = TK_SELF_TYPE : 0
-  text == "spawn" ? kind = TK_SPAWN : 0
-  text == "channel" ? kind = TK_CHANNEL : 0
-  text == "mutex" ? kind = TK_MUTEX : 0
-  text == "array" ? kind = TK_ARRAY : 0
-  text == "in" ? kind = TK_IN : 0
-  text == "import" ? kind = TK_IMPORT : 0
-  text == "g" ? kind = TK_GLOBAL : 0
-  text == "break" ? kind = TK_BREAK : 0
-  text == "continue" ? kind = TK_CONTINUE : 0
+  if text == "fn" { kind = TK_FN }
+  if text == "let" { kind = TK_LET }
+  if text == "mut" { kind = TK_MUT }
+  if text == "true" { kind = TK_TRUE }
+  if text == "false" { kind = TK_FALSE }
+  if text == "if" { kind = TK_IF }
+  if text == "else" { kind = TK_ELSE }
+  if text == "while" { kind = TK_WHILE }
+  if text == "return" { kind = TK_RETURN }
+  if text == "struct" { kind = TK_STRUCT }
+  if text == "enum" { kind = TK_ENUM }
+  if text == "match" { kind = TK_MATCH }
+  if text == "trait" { kind = TK_TRAIT }
+  if text == "impl" { kind = TK_IMPL }
+  if text == "for" { kind = TK_FOR }
+  if text == "self" { kind = TK_SELF_VAL }
+  if text == "Self" { kind = TK_SELF_TYPE }
+  if text == "spawn" { kind = TK_SPAWN }
+  if text == "channel" { kind = TK_CHANNEL }
+  if text == "mutex" { kind = TK_MUTEX }
+  if text == "array" { kind = TK_ARRAY }
+  if text == "in" { kind = TK_IN }
+  if text == "import" { kind = TK_IMPORT }
+  if text == "g" { kind = TK_GLOBAL }
+  if text == "break" { kind = TK_BREAK }
+  if text == "continue" { kind = TK_CONTINUE }
 
   kind == TK_IDENT ? make_token(TK_IDENT, ptr(text), line, col) : make_token(kind, 0, line, col)
 }
@@ -297,7 +300,7 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
           depth = depth - 1
           0
         } : 0
-        depth > 0 ? probe = probe + 1 : 0
+        if depth > 0 { probe = probe + 1 }
       }
 
       probe < content_end && depth == 0 ? {
@@ -323,9 +326,9 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
           while j < slen(content) && is_id == 1 {
             cc = char_at(content, j)
             j == 0 ? {
-              is_alpha(cc) == 0 ? is_id = 0 : 0
+              if is_alpha(cc) == 0 { is_id = 0 }
             } : {
-              is_alnum(cc) == 0 ? is_id = 0 : 0
+              if is_alnum(cc) == 0 { is_id = 0 }
             }
             j = j + 1
           }
@@ -408,7 +411,7 @@ lx_string(lx:I src:S) I {
           depth = depth - 1
           0
         } : 0
-        depth > 0 ? probe = probe + 1 : 0
+        if depth > 0 { probe = probe + 1 }
       }
       probe < src_len && depth == 0 ? {
         has_interp = 1
@@ -443,53 +446,67 @@ lx_op(lx:I src:S ch:I line:I col:I) I {
 
   ch == 43 ? {
     // '+'
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_PLUS_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_PLUS_EQ, 0, line, col) }
     : make_token(TK_PLUS, 0, line, col)
   } : ch == 45 ? {
     // '-'
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_MINUS_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_MINUS_EQ, 0, line, col) }
     : make_token(TK_MINUS, 0, line, col)
   } : ch == 42 ? {
     // '*'
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_STAR_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_STAR_EQ, 0, line, col) }
     : make_token(TK_STAR, 0, line, col)
   } : ch == 47 ? {
     // '/' (not comment — those handled before)
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_SLASH_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_SLASH_EQ, 0, line, col) }
     : make_token(TK_SLASH, 0, line, col)
   } : ch == 37 ? {
     // '%'
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_PERCENT_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_PERCENT_EQ, 0, line, col) }
     : make_token(TK_PERCENT, 0, line, col)
   } : ch == 61 ? {
     // '='
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_EQ_EQ, 0, line, col) }
-    : nx == 62 ? { lx_advance(lx, src); make_token(TK_FAT_ARROW, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_EQ_EQ, 0, line, col) }
+    : nx == 62 ? { lx_advance(lx, src)
+      make_token(TK_FAT_ARROW, 0, line, col) }
     : make_token(TK_EQ, 0, line, col)
   } : ch == 33 ? {
     // '!'
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_NOT_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_NOT_EQ, 0, line, col) }
     : make_token(TK_BANG, 0, line, col)
   } : ch == 60 ? {
     // '<'
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_LT_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_LT_EQ, 0, line, col) }
     : make_token(TK_LT, 0, line, col)
   } : ch == 62 ? {
     // '>'
-    nx == 61 ? { lx_advance(lx, src); make_token(TK_GT_EQ, 0, line, col) }
+    nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_GT_EQ, 0, line, col) }
     : make_token(TK_GT, 0, line, col)
   } : ch == 38 ? {
     // '&' — must be &&
-    nx == 38 ? { lx_advance(lx, src); make_token(TK_AND, 0, line, col) }
+    nx == 38 ? { lx_advance(lx, src)
+      make_token(TK_AND, 0, line, col) }
     : 0
   } : ch == 124 ? {
     // '|'
-    nx == 124 ? { lx_advance(lx, src); make_token(TK_OR, 0, line, col) }
+    nx == 124 ? { lx_advance(lx, src)
+      make_token(TK_OR, 0, line, col) }
     : make_token(TK_PIPE, 0, line, col)
   } : ch == 58 ? {
     // ':'
-    nx == 58 ? { lx_advance(lx, src); make_token(TK_COLON_COLON, 0, line, col) }
-    : nx == 61 ? { lx_advance(lx, src); make_token(TK_COLON_EQ, 0, line, col) }
+    nx == 58 ? { lx_advance(lx, src)
+      make_token(TK_COLON_COLON, 0, line, col) }
+    : nx == 61 ? { lx_advance(lx, src)
+      make_token(TK_COLON_EQ, 0, line, col) }
     : make_token(TK_COLON, 0, line, col)
   } : ch == 40 ? {
     make_token(TK_LPAREN, 0, line, col)

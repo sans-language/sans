@@ -4,6 +4,13 @@ use std::collections::HashMap;
 use sans_parser::ast::{Expr, Program, Stmt};
 use types::Type;
 
+/// Returns true if the type is representable as i64 at runtime.
+/// Used to relax type checking for the self-hosted compiler where
+/// Int, String, Bool, and pointer types are all i64.
+fn is_i64_compat(t: &Type) -> bool {
+    matches!(t, Type::Int | Type::String | Type::Bool | Type::Array { .. })
+}
+
 /// Information about a generic function, used for type inference at call sites.
 pub struct GenericFnInfo {
     pub type_params: Vec<(String, Option<String>)>, // (name, optional trait bound)
@@ -17,6 +24,7 @@ pub struct ModuleExports {
     pub functions: HashMap<String, FunctionSignature>,
     pub structs: HashMap<String, Vec<(String, Type)>>,
     pub enums: HashMap<String, Vec<(String, Vec<Type>)>>,
+    pub globals: HashMap<String, Type>,
 }
 
 /// Signature of an exported function.
@@ -179,9 +187,9 @@ fn check_stmt(
         Stmt::Continue { .. } => Ok(()),
         Stmt::While { condition, body, .. } => {
             let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-            if cond_ty != Type::Bool {
+            if cond_ty != Type::Bool && cond_ty != Type::Int {
                 return Err(TypeError::new(format!(
-                    "while condition must be Bool, got {}", cond_ty
+                    "while condition must be Bool or Int, got {}", cond_ty
                 )));
             }
             check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
@@ -206,24 +214,28 @@ fn check_stmt(
                     )));
                 }
                 let actual = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if actual != expected_ty {
+                // Allow Int/String interchangeability (both are i64 in Sans)
+                let compatible = actual == expected_ty
+                    || (actual == Type::Int && expected_ty == Type::String)
+                    || (actual == Type::String && expected_ty == Type::Int);
+                if !compatible {
                     return Err(TypeError::new(format!(
                         "type mismatch in assignment to '{}': expected {} but got {}",
                         name, expected_ty, actual
                     )));
                 }
             } else {
-                // New variable — bare assignment creates immutable binding
+                // New variable — bare assignment creates mutable binding (needed for self-hosted compiler)
                 let val_type = check_expr(value, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                locals.insert(name.clone(), (val_type, false));
+                locals.insert(name.clone(), (val_type, true));
             }
             Ok(())
         }
         Stmt::If { condition, body, .. } => {
             let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-            if cond_ty != Type::Bool {
+            if cond_ty != Type::Bool && cond_ty != Type::Int {
                 return Err(TypeError::new(format!(
-                    "if condition must be Bool, got {}", cond_ty
+                    "if condition must be Bool or Int, got {}", cond_ty
                 )));
             }
             check_stmts(body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
@@ -248,7 +260,7 @@ fn check_stmt(
                 Expr::ChannelCreate { element_type, capacity, .. } => {
                     if let Some(cap_expr) = capacity {
                         let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                        if cap_ty != Type::Int {
+                        if !is_i64_compat(&cap_ty) {
                             return Err(TypeError::new(format!(
                                 "channel capacity must be Int, got {}", cap_ty
                             )));
@@ -366,6 +378,13 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
     let mut fn_env: HashMap<String, (Vec<Type>, Type)> = HashMap::new();
     let mut generic_fn_env: HashMap<String, GenericFnInfo> = HashMap::new();
 
+    // Import module functions for unqualified access
+    for (_mod_name, exports) in module_exports.iter() {
+        for (fname, sig) in &exports.functions {
+            fn_env.insert(fname.clone(), (sig.params.clone(), sig.return_type.clone()));
+        }
+    }
+
     for func in &program.functions {
         if func.type_params.is_empty() {
             let mut param_types = Vec::new();
@@ -398,8 +417,18 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
 
     // Pass 1b: type-check global variable definitions.
     let mut global_types: HashMap<String, Type> = HashMap::new();
+    // Inject imported module globals
+    for (_mod_name, exports) in module_exports.iter() {
+        for (gname, gty) in &exports.globals {
+            global_types.insert(gname.clone(), gty.clone());
+        }
+    }
     {
         let mut global_locals: HashMap<String, (Type, bool)> = HashMap::new();
+        // Seed with imported globals
+        for (gname, gty) in &global_types {
+            global_locals.insert(gname.clone(), (gty.clone(), true));
+        }
         for gdef in &program.globals {
             let ty = check_expr(&gdef.value, &global_locals, &fn_env, &Type::Int, &struct_registry, &enum_registry, &method_registry, &generic_fn_env, &trait_registry, module_exports)?;
             global_types.insert(gdef.name.clone(), ty.clone());
@@ -426,6 +455,12 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
         // Inject globals as mutable locals
         for (gname, gty) in &global_types {
             locals.insert(gname.clone(), (gty.clone(), true));
+        }
+        // Inject imported module globals as locals
+        for (_mod_name, exports) in module_exports.iter() {
+            for (gname, gty) in &exports.globals {
+                locals.insert(gname.clone(), (gty.clone(), true));
+            }
         }
         for param in &func.params {
             let ty = resolve_type(&param.type_name.name, &struct_registry, &enum_registry, module_exports)?;
@@ -530,6 +565,7 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
         functions: fn_exports,
         structs: struct_registry,
         enums: enum_registry,
+        globals: global_types,
     })
 }
 
@@ -582,12 +618,12 @@ fn check_expr(
                     if lt == Type::Float && rt == Type::Float {
                         return Ok(Type::Float);
                     }
-                    if lt != Type::Int {
+                    if lt != Type::Int && lt != Type::String {
                         return Err(TypeError::new(format!(
                             "arithmetic operator requires Int operands, left operand is {}", lt
                         )));
                     }
-                    if rt != Type::Int {
+                    if rt != Type::Int && rt != Type::String {
                         return Err(TypeError::new(format!(
                             "arithmetic operator requires Int operands, right operand is {}", rt
                         )));
@@ -595,42 +631,33 @@ fn check_expr(
                     Ok(Type::Int)
                 }
                 // Comparison: same-type operands -> Bool
+                // Relaxed: Int/String/Bool are all i64 at runtime, allow cross-type comparisons
                 BinOp::Eq | BinOp::NotEq | BinOp::Lt | BinOp::Gt | BinOp::LtEq | BinOp::GtEq => {
                     if lt == Type::Float && rt == Type::Float {
                         return Ok(Type::Bool);
                     }
-                    if lt == Type::String && rt == Type::String {
-                        match op {
-                            BinOp::Eq | BinOp::NotEq => return Ok(Type::Bool),
-                            _ => return Err(TypeError::new("String only supports == and != comparison")),
-                        }
+                    // Allow any combination of Int, String, Bool (all i64 at runtime)
+                    let is_i64 = |t: &Type| matches!(t, Type::Int | Type::String | Type::Bool);
+                    if is_i64(&lt) && is_i64(&rt) {
+                        return Ok(Type::Bool);
                     }
-                    if lt == Type::Bool && rt == Type::Bool {
-                        match op {
-                            BinOp::Eq | BinOp::NotEq => return Ok(Type::Bool),
-                            _ => return Err(TypeError::new("Bool only supports == and != comparison")),
-                        }
+                    if lt == Type::Float || rt == Type::Float {
+                        return Ok(Type::Bool);
                     }
-                    if lt != Type::Int {
-                        return Err(TypeError::new(format!(
-                            "comparison operator requires matching operands, left operand is {}", lt
-                        )));
+                    // For opaque/other types, allow == and !=
+                    match op {
+                        BinOp::Eq | BinOp::NotEq => Ok(Type::Bool),
+                        _ => Ok(Type::Bool),
                     }
-                    if rt != Type::Int {
-                        return Err(TypeError::new(format!(
-                            "comparison operator requires matching operands, right operand is {}", rt
-                        )));
-                    }
-                    Ok(Type::Bool)
                 }
                 // Boolean: Bool x Bool -> Bool
                 BinOp::And | BinOp::Or => {
-                    if lt != Type::Bool {
+                    if lt != Type::Bool && lt != Type::Int {
                         return Err(TypeError::new(format!(
                             "boolean operator requires Bool operands, left operand is {}", lt
                         )));
                     }
-                    if rt != Type::Bool {
+                    if rt != Type::Bool && rt != Type::Int {
                         return Err(TypeError::new(format!(
                             "boolean operator requires Bool operands, right operand is {}", rt
                         )));
@@ -646,7 +673,7 @@ fn check_expr(
             match op {
                 sans_parser::ast::UnaryOp::Not => {
                     let ty = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if ty != Type::Bool {
+                    if ty != Type::Bool && ty != Type::Int {
                         return Err(TypeError::new(format!(
                             "'!' operator requires Bool operand, got {}",
                             ty
@@ -669,9 +696,9 @@ fn check_expr(
 
         Expr::If { condition, then_body, then_expr, else_body, else_expr, .. } => {
             let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-            if cond_ty != Type::Bool {
+            if cond_ty != Type::Bool && cond_ty != Type::Int {
                 return Err(TypeError::new(format!(
-                    "if condition must be Bool, got {}",
+                    "if condition must be Bool or Int, got {}",
                     cond_ty
                 )));
             }
@@ -687,11 +714,13 @@ fn check_expr(
             let else_ty = check_expr(else_expr, &else_locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
 
             // Both branches must have the same type (ResultErr is compatible with any Result<T>)
+            // Relaxed: i64-compatible types can be mixed (Int/String/Bool/Array)
             let merged_ty = match (&then_ty, &else_ty) {
                 _ if then_ty == else_ty => then_ty,
                 (Type::ResultErr, Type::Result { .. }) => else_ty,
                 (Type::Result { .. }, Type::ResultErr) => then_ty,
                 (Type::ResultErr, Type::ResultErr) => then_ty,
+                _ if is_i64_compat(&then_ty) && is_i64_compat(&else_ty) => Type::Int,
                 _ => {
                     return Err(TypeError::new(format!(
                         "if/else branch type mismatch: then branch is {} but else branch is {}",
@@ -727,7 +756,7 @@ fn check_expr(
                     return Err(TypeError::new("string_to_int() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("string_to_int() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -736,7 +765,7 @@ fn check_expr(
                     return Err(TypeError::new("int_to_float() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("int_to_float() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Float);
@@ -763,7 +792,7 @@ fn check_expr(
                     return Err(TypeError::new("file_read() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("file_read() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
@@ -772,11 +801,11 @@ fn check_expr(
                     return Err(TypeError::new(format!("{}() takes exactly 2 arguments", function)));
                 }
                 let path_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if path_ty != Type::String {
+                if path_ty != Type::String && path_ty != Type::Int {
                     return Err(TypeError::new(format!("{}() requires String as first argument, got {}", function, path_ty)));
                 }
                 let content_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if content_ty != Type::String {
+                if content_ty != Type::String && content_ty != Type::Int {
                     return Err(TypeError::new(format!("{}() requires String as second argument, got {}", function, content_ty)));
                 }
                 return Ok(Type::Int);
@@ -785,7 +814,7 @@ fn check_expr(
                     return Err(TypeError::new("file_exists() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("file_exists() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Bool);
@@ -799,7 +828,7 @@ fn check_expr(
                     return Err(TypeError::new("json_parse() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("json_parse() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
@@ -823,7 +852,7 @@ fn check_expr(
                     return Err(TypeError::new("json_string() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("json_string() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
@@ -832,7 +861,7 @@ fn check_expr(
                     return Err(TypeError::new("json_int() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("json_int() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
@@ -864,7 +893,7 @@ fn check_expr(
                     return Err(TypeError::new("http_get() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("http_get() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::HttpResponse);
@@ -873,15 +902,15 @@ fn check_expr(
                     return Err(TypeError::new("http_post() takes exactly 3 arguments (url, body, content_type)"));
                 }
                 let url_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if url_ty != Type::String {
+                if url_ty != Type::String && url_ty != Type::Int {
                     return Err(TypeError::new(format!("http_post() url must be String, got {}", url_ty)));
                 }
                 let body_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if body_ty != Type::String {
+                if body_ty != Type::String && body_ty != Type::Int {
                     return Err(TypeError::new(format!("http_post() body must be String, got {}", body_ty)));
                 }
                 let ct_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ct_ty != Type::String {
+                if ct_ty != Type::String && ct_ty != Type::Int {
                     return Err(TypeError::new(format!("http_post() content_type must be String, got {}", ct_ty)));
                 }
                 return Ok(Type::HttpResponse);
@@ -890,7 +919,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("{}() takes exactly 1 argument", function)));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("{}() requires String argument, got {}", function, arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -899,7 +928,7 @@ fn check_expr(
                     return Err(TypeError::new("log_set_level() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("log_set_level() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -908,7 +937,7 @@ fn check_expr(
                     return Err(TypeError::new("print_err() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("print_err() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -917,7 +946,7 @@ fn check_expr(
                     return Err(TypeError::new("fptr() takes exactly 1 argument (function name)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("fptr() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -926,11 +955,11 @@ fn check_expr(
                     return Err(TypeError::new("fcall() takes exactly 2 arguments (fn_ptr, arg)"));
                 }
                 let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ptr_ty != Type::Int {
+                if !is_i64_compat(&ptr_ty) {
                     return Err(TypeError::new(format!("fcall() fn_ptr must be Int, got {}", ptr_ty)));
                 }
                 let arg_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("fcall() arg must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -955,11 +984,11 @@ fn check_expr(
                     return Err(TypeError::new("wfd() takes exactly 2 arguments (fd, msg)"));
                 }
                 let fd_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if fd_ty != Type::Int {
+                if !is_i64_compat(&fd_ty) {
                     return Err(TypeError::new(format!("wfd() fd must be Int, got {}", fd_ty)));
                 }
                 let msg_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if msg_ty != Type::String {
+                if msg_ty != Type::String && msg_ty != Type::Int {
                     return Err(TypeError::new(format!("wfd() msg must be String, got {}", msg_ty)));
                 }
                 return Ok(Type::Int);
@@ -979,7 +1008,7 @@ fn check_expr(
                     return Err(TypeError::new("arena_alloc() takes 1 argument (size)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("arena_alloc() size must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -993,7 +1022,7 @@ fn check_expr(
                     return Err(TypeError::new("alloc() takes exactly 1 argument (size)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("alloc() size must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1002,7 +1031,7 @@ fn check_expr(
                     return Err(TypeError::new("dealloc() takes exactly 1 argument (ptr)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("dealloc() ptr must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1011,11 +1040,11 @@ fn check_expr(
                     return Err(TypeError::new("ralloc() takes exactly 2 arguments (ptr, size)"));
                 }
                 let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ptr_ty != Type::Int {
+                if !is_i64_compat(&ptr_ty) {
                     return Err(TypeError::new(format!("ralloc() ptr must be Int, got {}", ptr_ty)));
                 }
                 let size_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if size_ty != Type::Int {
+                if !is_i64_compat(&size_ty) {
                     return Err(TypeError::new(format!("ralloc() size must be Int, got {}", size_ty)));
                 }
                 return Ok(Type::Int);
@@ -1024,15 +1053,15 @@ fn check_expr(
                     return Err(TypeError::new("mcpy() takes exactly 3 arguments (dst, src, n)"));
                 }
                 let dst_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if dst_ty != Type::Int {
+                if !is_i64_compat(&dst_ty) {
                     return Err(TypeError::new(format!("mcpy() dst must be Int, got {}", dst_ty)));
                 }
                 let src_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if src_ty != Type::Int {
+                if !is_i64_compat(&src_ty) {
                     return Err(TypeError::new(format!("mcpy() src must be Int, got {}", src_ty)));
                 }
                 let n_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if n_ty != Type::Int {
+                if !is_i64_compat(&n_ty) {
                     return Err(TypeError::new(format!("mcpy() n must be Int, got {}", n_ty)));
                 }
                 return Ok(Type::Int);
@@ -1041,11 +1070,11 @@ fn check_expr(
                     return Err(TypeError::new("mzero() takes exactly 2 arguments (ptr, n)"));
                 }
                 let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ptr_ty != Type::Int {
+                if !is_i64_compat(&ptr_ty) {
                     return Err(TypeError::new(format!("mzero() ptr must be Int, got {}", ptr_ty)));
                 }
                 let n_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if n_ty != Type::Int {
+                if !is_i64_compat(&n_ty) {
                     return Err(TypeError::new(format!("mzero() n must be Int, got {}", n_ty)));
                 }
                 return Ok(Type::Int);
@@ -1054,15 +1083,15 @@ fn check_expr(
                     return Err(TypeError::new("mcmp() takes exactly 3 arguments (a, b, n)"));
                 }
                 let a_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if a_ty != Type::Int {
+                if !is_i64_compat(&a_ty) {
                     return Err(TypeError::new(format!("mcmp() a must be Int, got {}", a_ty)));
                 }
                 let b_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if b_ty != Type::Int {
+                if !is_i64_compat(&b_ty) {
                     return Err(TypeError::new(format!("mcmp() b must be Int, got {}", b_ty)));
                 }
                 let n_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if n_ty != Type::Int {
+                if !is_i64_compat(&n_ty) {
                     return Err(TypeError::new(format!("mcmp() n must be Int, got {}", n_ty)));
                 }
                 return Ok(Type::Int);
@@ -1071,8 +1100,8 @@ fn check_expr(
                     return Err(TypeError::new("slen() takes exactly 1 argument (ptr)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
-                    return Err(TypeError::new(format!("slen() ptr must be Int, got {}", arg_ty)));
+                if arg_ty != Type::Int && arg_ty != Type::String {
+                    return Err(TypeError::new(format!("slen() ptr must be Int or String, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
             } else if function == "char_at" {
@@ -1080,11 +1109,11 @@ fn check_expr(
                     return Err(TypeError::new("char_at() takes exactly 2 arguments (string, index)"));
                 }
                 let s_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if s_ty != Type::String {
-                    return Err(TypeError::new(format!("char_at() first arg must be String, got {}", s_ty)));
+                if !is_i64_compat(&s_ty) {
+                    return Err(TypeError::new(format!("char_at() first arg must be String or Int, got {}", s_ty)));
                 }
                 let i_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if i_ty != Type::Int {
+                if !is_i64_compat(&i_ty) {
                     return Err(TypeError::new(format!("char_at() second arg must be Int, got {}", i_ty)));
                 }
                 return Ok(Type::Int);
@@ -1093,21 +1122,20 @@ fn check_expr(
                     return Err(TypeError::new("load8() takes exactly 1 argument (ptr)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("load8() ptr must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
             } else if function == "store8" {
-                if args.len() != 2 {
-                    return Err(TypeError::new("store8() takes exactly 2 arguments (ptr, val)"));
+                // Accept 2 args (ptr, val) or 3 args (addrspace, ptr, val)
+                if args.len() != 2 && args.len() != 3 {
+                    return Err(TypeError::new("store8() takes 2 or 3 arguments"));
                 }
-                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ptr_ty != Type::Int {
-                    return Err(TypeError::new(format!("store8() ptr must be Int, got {}", ptr_ty)));
-                }
-                let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if val_ty != Type::Int {
-                    return Err(TypeError::new(format!("store8() val must be Int, got {}", val_ty)));
+                for arg in args.iter() {
+                    let ty = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if !is_i64_compat(&ty) {
+                        return Err(TypeError::new(format!("store8() args must be Int, got {}", ty)));
+                    }
                 }
                 return Ok(Type::Int);
             } else if function == "load16" {
@@ -1115,7 +1143,7 @@ fn check_expr(
                     return Err(TypeError::new("load16() takes exactly 1 argument (ptr)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("load16() ptr must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1124,11 +1152,11 @@ fn check_expr(
                     return Err(TypeError::new("store16() takes exactly 2 arguments (ptr, val)"));
                 }
                 let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ptr_ty != Type::Int {
+                if !is_i64_compat(&ptr_ty) {
                     return Err(TypeError::new(format!("store16() ptr must be Int, got {}", ptr_ty)));
                 }
                 let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if val_ty != Type::Int {
+                if !is_i64_compat(&val_ty) {
                     return Err(TypeError::new(format!("store16() val must be Int, got {}", val_ty)));
                 }
                 return Ok(Type::Int);
@@ -1137,7 +1165,7 @@ fn check_expr(
                     return Err(TypeError::new("load32() takes exactly 1 argument (ptr)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("load32() ptr must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1146,11 +1174,11 @@ fn check_expr(
                     return Err(TypeError::new("store32() takes exactly 2 arguments (ptr, val)"));
                 }
                 let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ptr_ty != Type::Int {
+                if !is_i64_compat(&ptr_ty) {
                     return Err(TypeError::new(format!("store32() ptr must be Int, got {}", ptr_ty)));
                 }
                 let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if val_ty != Type::Int {
+                if !is_i64_compat(&val_ty) {
                     return Err(TypeError::new(format!("store32() val must be Int, got {}", val_ty)));
                 }
                 return Ok(Type::Int);
@@ -1159,7 +1187,7 @@ fn check_expr(
                     return Err(TypeError::new("bswap16() takes exactly 1 argument (val)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("bswap16() val must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1169,7 +1197,7 @@ fn check_expr(
                 }
                 for (i, label) in ["fd", "addr", "len"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("rbind() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1180,17 +1208,17 @@ fn check_expr(
                 }
                 for (i, label) in ["fd", "level", "opt", "val_ptr", "val_len"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("rsetsockopt() {} must be Int, got {}", label, t)));
                     }
                 }
                 return Ok(Type::Int);
-            } else if function == "load64" {
+            } else if function == "load64" || function == "deref" {
                 if args.len() != 1 {
                     return Err(TypeError::new("load64() takes exactly 1 argument (ptr)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("load64() ptr must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1199,24 +1227,21 @@ fn check_expr(
                     return Err(TypeError::new("store64() takes exactly 2 arguments (ptr, val)"));
                 }
                 let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if ptr_ty != Type::Int {
-                    return Err(TypeError::new(format!("store64() ptr must be Int, got {}", ptr_ty)));
-                }
-                let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if val_ty != Type::Int {
-                    return Err(TypeError::new(format!("store64() val must be Int, got {}", val_ty)));
-                }
+                // Relaxed: pointers can be any type at runtime (all i64)
+                let _ = ptr_ty;
+                let _val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                // Relaxed: all values are i64 at runtime, accept any type
                 return Ok(Type::Int);
             } else if function == "strstr" {
                 if args.len() != 2 {
                     return Err(TypeError::new("strstr() takes exactly 2 arguments (haystack, needle)"));
                 }
                 let haystack_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if haystack_ty != Type::Int {
+                if !is_i64_compat(&haystack_ty) {
                     return Err(TypeError::new(format!("strstr() haystack must be Int, got {}", haystack_ty)));
                 }
                 let needle_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if needle_ty != Type::Int {
+                if !is_i64_compat(&needle_ty) {
                     return Err(TypeError::new(format!("strstr() needle must be Int, got {}", needle_ty)));
                 }
                 return Ok(Type::Int);
@@ -1225,7 +1250,7 @@ fn check_expr(
                     return Err(TypeError::new("exit() takes exactly 1 argument (code)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("exit() code must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1234,7 +1259,7 @@ fn check_expr(
                     return Err(TypeError::new("system() takes exactly 1 argument (cmd)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("system() cmd must be String, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1244,7 +1269,7 @@ fn check_expr(
                 }
                 for (i, label) in ["domain", "type", "proto"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("sock() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1255,7 +1280,7 @@ fn check_expr(
                 }
                 for (i, label) in ["fd", "port"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("sbind() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1266,7 +1291,7 @@ fn check_expr(
                 }
                 for (i, label) in ["fd", "backlog"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("slisten() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1276,7 +1301,7 @@ fn check_expr(
                     return Err(TypeError::new("saccept() takes exactly 1 argument (fd)"));
                 }
                 let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if t != Type::Int {
+                if !is_i64_compat(&t) {
                     return Err(TypeError::new(format!("saccept() fd must be Int, got {}", t)));
                 }
                 return Ok(Type::Int);
@@ -1286,7 +1311,7 @@ fn check_expr(
                 }
                 for (i, label) in ["fd", "buf", "len"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("srecv() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1297,7 +1322,7 @@ fn check_expr(
                 }
                 for (i, label) in ["fd", "buf", "len"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("ssend() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1307,7 +1332,7 @@ fn check_expr(
                     return Err(TypeError::new("sclose() takes exactly 1 argument (fd)"));
                 }
                 let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if t != Type::Int {
+                if !is_i64_compat(&t) {
                     return Err(TypeError::new(format!("sclose() fd must be Int, got {}", t)));
                 }
                 return Ok(Type::Int);
@@ -1321,15 +1346,15 @@ fn check_expr(
                     return Err(TypeError::new("csets() takes exactly 3 arguments (handle, opt, val)"));
                 }
                 let handle_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if handle_ty != Type::Int {
+                if !is_i64_compat(&handle_ty) {
                     return Err(TypeError::new(format!("csets() handle must be Int, got {}", handle_ty)));
                 }
                 let opt_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if opt_ty != Type::Int {
+                if !is_i64_compat(&opt_ty) {
                     return Err(TypeError::new(format!("csets() opt must be Int, got {}", opt_ty)));
                 }
                 let val_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if val_ty != Type::String {
+                if val_ty != Type::String && val_ty != Type::Int {
                     return Err(TypeError::new(format!("csets() val must be String, got {}", val_ty)));
                 }
                 return Ok(Type::Int);
@@ -1339,7 +1364,7 @@ fn check_expr(
                 }
                 for (i, label) in ["handle", "opt", "val"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("cseti() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1349,7 +1374,7 @@ fn check_expr(
                     return Err(TypeError::new("cperf() takes exactly 1 argument (handle)"));
                 }
                 let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if t != Type::Int {
+                if !is_i64_compat(&t) {
                     return Err(TypeError::new(format!("cperf() handle must be Int, got {}", t)));
                 }
                 return Ok(Type::Int);
@@ -1358,7 +1383,7 @@ fn check_expr(
                     return Err(TypeError::new("cclean() takes exactly 1 argument (handle)"));
                 }
                 let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if t != Type::Int {
+                if !is_i64_compat(&t) {
                     return Err(TypeError::new(format!("cclean() handle must be Int, got {}", t)));
                 }
                 return Ok(Type::Int);
@@ -1368,7 +1393,7 @@ fn check_expr(
                 }
                 for (i, label) in ["handle", "info", "buf"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("cinfo() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1379,7 +1404,7 @@ fn check_expr(
                 }
                 for (i, label) in ["slist", "str"].iter().enumerate() {
                     let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if t != Type::Int {
+                    if !is_i64_compat(&t) {
                         return Err(TypeError::new(format!("curl_slist_append() {} must be Int, got {}", label, t)));
                     }
                 }
@@ -1389,7 +1414,7 @@ fn check_expr(
                     return Err(TypeError::new("curl_slist_free() takes exactly 1 argument (slist)"));
                 }
                 let t = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if t != Type::Int {
+                if !is_i64_compat(&t) {
                     return Err(TypeError::new(format!("curl_slist_free() slist must be Int, got {}", t)));
                 }
                 return Ok(Type::Int);
@@ -1403,7 +1428,7 @@ fn check_expr(
                     return Err(TypeError::new("set_log_level() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("set_log_level() requires Int argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
@@ -1412,7 +1437,7 @@ fn check_expr(
                     return Err(TypeError::new("http_listen() takes exactly 1 argument (port)"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::Int {
+                if !is_i64_compat(&arg_ty) {
                     return Err(TypeError::new(format!("http_listen() requires Int port, got {}", arg_ty)));
                 }
                 return Ok(Type::HttpServer);
@@ -1427,7 +1452,7 @@ fn check_expr(
                     return Err(TypeError::new("err() takes exactly 1 argument"));
                 }
                 let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if arg_ty != Type::String {
+                if arg_ty != Type::String && arg_ty != Type::Int {
                     return Err(TypeError::new(format!("err() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::ResultErr);
@@ -1761,7 +1786,7 @@ fn check_expr(
         Expr::ChannelCreate { element_type, capacity, .. } => {
             if let Some(cap_expr) = capacity {
                 let cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                if cap_ty != Type::Int {
+                if !is_i64_compat(&cap_ty) {
                     return Err(TypeError::new(format!(
                         "channel capacity must be Int, got {}", cap_ty
                     )));
@@ -1875,16 +1900,12 @@ fn check_expr(
                     }
                     return Ok(Type::Int);
                 }
-                (Type::Array { inner }, "push") => {
+                (Type::Array { inner: _ }, "push") => {
                     if args.len() != 1 {
                         return Err(TypeError::new("push() takes exactly 1 argument"));
                     }
-                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != **inner {
-                        return Err(TypeError::new(format!(
-                            "push() type mismatch: array holds {} but got {}", inner, arg_ty
-                        )));
-                    }
+                    // Relaxed: all values are i64 at runtime, allow any type to be pushed
+                    let _arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     return Ok(Type::Int);
                 }
                 (Type::Array { inner }, "get") => {
@@ -1892,7 +1913,7 @@ fn check_expr(
                         return Err(TypeError::new("get() takes exactly 1 argument"));
                     }
                     let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if idx_ty != Type::Int {
+                    if !is_i64_compat(&idx_ty) {
                         return Err(TypeError::new(format!("get() index must be Int, got {}", idx_ty)));
                     }
                     return Ok(*inner.clone());
@@ -1902,7 +1923,7 @@ fn check_expr(
                         return Err(TypeError::new("set() takes exactly 2 arguments (index, value)"));
                     }
                     let idx_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if idx_ty != Type::Int {
+                    if !is_i64_compat(&idx_ty) {
                         return Err(TypeError::new(format!("set() index must be Int, got {}", idx_ty)));
                     }
                     let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
@@ -1930,7 +1951,7 @@ fn check_expr(
                         return Err(TypeError::new("remove() takes exactly 1 argument (index)"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::Int {
+                    if !is_i64_compat(&arg_ty) {
                         return Err(TypeError::new(format!("remove() index must be Int, got {}", arg_ty)));
                     }
                     return Ok(*inner.clone());
@@ -2036,11 +2057,11 @@ fn check_expr(
                         return Err(TypeError::new("substring() takes exactly 2 arguments (start, end)"));
                     }
                     let start_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if start_ty != Type::Int {
+                    if !is_i64_compat(&start_ty) {
                         return Err(TypeError::new(format!("substring() start must be Int, got {}", start_ty)));
                     }
                     let end_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if end_ty != Type::Int {
+                    if !is_i64_compat(&end_ty) {
                         return Err(TypeError::new(format!("substring() end must be Int, got {}", end_ty)));
                     }
                     return Ok(Type::String);
@@ -2056,7 +2077,7 @@ fn check_expr(
                         return Err(TypeError::new("starts_with() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("starts_with() requires String argument, got {}", arg_ty)));
                     }
                     return Ok(Type::Bool);
@@ -2066,7 +2087,7 @@ fn check_expr(
                         return Err(TypeError::new("ends_with() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("ends_with() requires String argument, got {}", arg_ty)));
                     }
                     return Ok(Type::Bool);
@@ -2076,7 +2097,7 @@ fn check_expr(
                         return Err(TypeError::new("contains() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("contains() requires String argument, got {}", arg_ty)));
                     }
                     return Ok(Type::Bool);
@@ -2086,7 +2107,7 @@ fn check_expr(
                         return Err(TypeError::new("split() takes exactly 1 argument (delimiter)"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("split() requires String delimiter, got {}", arg_ty)));
                     }
                     return Ok(Type::Array { inner: Box::new(Type::String) });
@@ -2096,11 +2117,11 @@ fn check_expr(
                         return Err(TypeError::new("replace() takes exactly 2 arguments (old, new)"));
                     }
                     let old_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if old_ty != Type::String {
+                    if old_ty != Type::String && old_ty != Type::Int {
                         return Err(TypeError::new(format!("replace() first argument must be String, got {}", old_ty)));
                     }
                     let new_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if new_ty != Type::String {
+                    if new_ty != Type::String && new_ty != Type::Int {
                         return Err(TypeError::new(format!("replace() second argument must be String, got {}", new_ty)));
                     }
                     return Ok(Type::String);
@@ -2110,7 +2131,7 @@ fn check_expr(
                         return Err(TypeError::new("get() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("get() key must be String, got {}", arg_ty)));
                     }
                     return Ok(Type::JsonValue);
@@ -2120,7 +2141,7 @@ fn check_expr(
                         return Err(TypeError::new("get_index() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::Int {
+                    if !is_i64_compat(&arg_ty) {
                         return Err(TypeError::new(format!("get_index() index must be Int, got {}", arg_ty)));
                     }
                     return Ok(Type::JsonValue);
@@ -2160,7 +2181,7 @@ fn check_expr(
                         return Err(TypeError::new("set() takes exactly 2 arguments (key, value)"));
                     }
                     let key_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if key_ty != Type::String {
+                    if key_ty != Type::String && key_ty != Type::Int {
                         return Err(TypeError::new(format!("set() key must be String, got {}", key_ty)));
                     }
                     let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
@@ -2187,7 +2208,7 @@ fn check_expr(
                         return Err(TypeError::new("get() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("get() key must be String, got {}", arg_ty)));
                     }
                     return Ok(Type::Int);
@@ -2197,7 +2218,7 @@ fn check_expr(
                         return Err(TypeError::new("set() takes exactly 2 arguments (key, value)"));
                     }
                     let key_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if key_ty != Type::String {
+                    if key_ty != Type::String && key_ty != Type::Int {
                         return Err(TypeError::new(format!("set() key must be String, got {}", key_ty)));
                     }
                     // Accept any value type — stored as i64 (pointer for heap types)
@@ -2209,7 +2230,7 @@ fn check_expr(
                         return Err(TypeError::new("has() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("has() key must be String, got {}", arg_ty)));
                     }
                     return Ok(Type::Bool);
@@ -2252,7 +2273,7 @@ fn check_expr(
                         return Err(TypeError::new("header() takes exactly 1 argument"));
                     }
                     let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if arg_ty != Type::String {
+                    if arg_ty != Type::String && arg_ty != Type::Int {
                         return Err(TypeError::new(format!("header() name must be String, got {}", arg_ty)));
                     }
                     return Ok(Type::String);
@@ -2298,16 +2319,16 @@ fn check_expr(
                         return Err(TypeError::new("respond() takes 2 or 3 arguments (status, body[, content_type])"));
                     }
                     let status_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if status_ty != Type::Int {
+                    if !is_i64_compat(&status_ty) {
                         return Err(TypeError::new(format!("respond() status must be Int, got {}", status_ty)));
                     }
                     let body_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if body_ty != Type::String {
+                    if body_ty != Type::String && body_ty != Type::Int {
                         return Err(TypeError::new(format!("respond() body must be String, got {}", body_ty)));
                     }
                     if args.len() == 3 {
                         let ct_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                        if ct_ty != Type::String {
+                        if ct_ty != Type::String && ct_ty != Type::Int {
                             return Err(TypeError::new(format!("respond() content_type must be String, got {}", ct_ty)));
                         }
                     }
@@ -2359,6 +2380,13 @@ fn check_expr(
             let type_name = match &obj_ty {
                 Type::Struct { name, .. } => name.clone(),
                 Type::Enum { name, .. } => name.clone(),
+                Type::Int => {
+                    // Int can hold opaque pointers — allow method calls, return Int
+                    for arg in args {
+                        check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    }
+                    return Ok(Type::Int);
+                }
                 other => return Err(TypeError::new(format!(
                     "method call on non-struct/enum type {}", other
                 ))),
@@ -2507,8 +2535,8 @@ mod tests {
 
     #[test]
     fn check_if_condition_must_be_bool() {
-        let err = do_check("fn main() Int { if 1 { 1 } else { 2 } }").unwrap_err();
-        assert!(err.message.contains("Bool"), "expected Bool error, got: {}", err.message);
+        // Int is now allowed as condition (truthy/falsy)
+        assert!(do_check("fn main() Int { if 1 { 1 } else { 2 } }").is_ok());
     }
 
     #[test]
@@ -2540,8 +2568,8 @@ mod tests {
 
     #[test]
     fn check_while_condition_must_be_bool() {
-        let err = do_check("fn main() Int { while 1 { 0 } 0 }").unwrap_err();
-        assert!(err.message.contains("Bool"), "got: {}", err.message);
+        // Int is now allowed as condition (truthy/falsy)
+        assert!(do_check("fn main() Int { while 1 { 0 } 0 }").is_ok());
     }
 
     #[test]
@@ -2913,9 +2941,8 @@ mod tests {
 
     #[test]
     fn check_string_plus_int_error() {
-        let err = do_check(r#"fn main() Int { let s = "a" + 1 0 }"#).unwrap_err();
-        assert!(err.message.contains("type") || err.message.contains("mismatch") || err.message.contains("operand"),
-            "expected type error, got: {}", err.message);
+        // String + Int is now allowed (String is i64 pointer, compatible with Int)
+        assert!(do_check(r#"fn main() Int { let s = "a" + 1 0 }"#).is_ok());
     }
 
     #[test]
@@ -2944,6 +2971,7 @@ mod tests {
             functions: utils_fns,
             structs: HashMap::new(),
             enums: HashMap::new(),
+            globals: HashMap::new(),
         });
 
         assert!(check(&prog, &module_exports).is_ok());
@@ -2974,6 +3002,7 @@ mod tests {
             functions: models_fns,
             structs: models_structs,
             enums: HashMap::new(),
+            globals: HashMap::new(),
         });
 
         assert!(check(&prog, &module_exports).is_ok());
@@ -2990,6 +3019,7 @@ mod tests {
             functions: HashMap::new(),
             structs: HashMap::new(),
             enums: HashMap::new(),
+            globals: HashMap::new(),
         });
 
         let err = check(&prog, &module_exports).unwrap_err();
@@ -3019,6 +3049,7 @@ mod tests {
             functions: HashMap::new(),
             structs: HashMap::new(),
             enums: HashMap::new(),
+            globals: HashMap::new(),
         });
 
         let err = check(&prog, &module_exports).unwrap_err();
@@ -3042,6 +3073,7 @@ mod tests {
             functions: utils_fns,
             structs: HashMap::new(),
             enums: HashMap::new(),
+            globals: HashMap::new(),
         });
 
         assert!(check(&prog, &module_exports).is_ok());
@@ -3446,9 +3478,10 @@ mod tests {
 
     #[test]
     fn check_lambda_type_error() {
+        // String + Int is now allowed (both are i64 in Sans)
         let src = "main() I { f = |x:S| I { x + 10 }\n 0 }";
         let program = sans_parser::parse(src).unwrap();
         let result = check(&program, &std::collections::HashMap::new());
-        assert!(result.is_err()); // Can't add String + Int
+        assert!(result.is_ok());
     }
 }

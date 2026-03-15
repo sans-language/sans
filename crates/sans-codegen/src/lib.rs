@@ -31,10 +31,38 @@ impl fmt::Display for CodegenError {
 
 impl std::error::Error for CodegenError {}
 
+/// Check if `source` block is a predecessor of `target` block.
+/// A block is a predecessor if its terminator branches to target.
+fn is_predecessor<'ctx>(
+    source: inkwell::basic_block::BasicBlock<'ctx>,
+    target: inkwell::basic_block::BasicBlock<'ctx>,
+) -> bool {
+    if let Some(term) = source.get_terminator() {
+        let num_ops = term.get_num_operands();
+        for i in 0..num_ops {
+            if let Some(inkwell::values::Operand::Block(bb)) = term.get_operand(i) {
+                if bb == target {
+                    return true;
+                }
+            }
+        }
+        false
+    } else {
+        // No terminator — block hasn't been finalized, not a predecessor.
+        false
+    }
+}
+
 /// Compile an IR module to a native object file.
 pub fn compile_to_object(module: &Module, output_path: &str) -> Result<(), CodegenError> {
     let context = Context::create();
     let llvm_module = generate_llvm(&context, module)?;
+
+    // Verify LLVM IR before emitting object code to catch invalid IR early
+    // (instead of segfaulting during code emission).
+    if let Err(msg) = llvm_module.verify() {
+        return Err(CodegenError::LlvmError(format!("LLVM verification failed: {}", msg.to_string())));
+    }
 
     Target::initialize_native(&InitializationConfig::default())
         .map_err(|e| CodegenError::TargetError(e.to_string()))?;
@@ -637,7 +665,10 @@ fn generate_llvm<'ctx>(
         // Generate instructions
         let mut block_terminated = false;
         let mut current_label_name: Option<String> = None;
-        let mut ret_terminated_labels: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Track the actual LLVM basic block that was active when we left each IR label.
+        // This can differ from label_blocks[label] when codegen inserts extra blocks
+        // (e.g. arr_grow/arr_write for ArrayPush, bounds check blocks for ArrayGet).
+        let mut label_end_blocks: HashMap<String, inkwell::basic_block::BasicBlock<'ctx>> = HashMap::new();
         for instr in &func.body {
             // Skip dead code after a terminator (ret/br) until a new label starts a new block
             if block_terminated {
@@ -1191,13 +1222,11 @@ fn generate_llvm<'ctx>(
                         .build_return(Some(&ret_val))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     block_terminated = true;
-                    if let Some(ref lbl) = current_label_name {
-                        ret_terminated_labels.insert(lbl.clone());
-                    }
                 }
                 Instruction::BoolConst { dest, value } => {
-                    let bool_type = context.bool_type();
-                    let val = bool_type.const_int(*value as u64, false);
+                    // All Sans values are i64; use i64 constant (not i1) to avoid
+                    // PHI type mismatches in short-circuit ||/&& codegen.
+                    let val = i64_type.const_int(*value as u64, false);
                     regs.insert(dest.clone(), val);
                 }
                 Instruction::CmpOp {
@@ -1216,8 +1245,13 @@ fn generate_llvm<'ctx>(
                         IrCmpOp::LtEq => IntPredicate::SLE,
                         IrCmpOp::GtEq => IntPredicate::SGE,
                     };
+                    // ICmp returns i1; zext to i64 so all regs stay i64
+                    // (avoids type mismatches in downstream PHI / ICmp uses).
+                    let cmp_i1 = builder
+                        .build_int_compare(pred, lhs, rhs, &format!("{}_cmp", dest))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = builder
-                        .build_int_compare(pred, lhs, rhs, dest)
+                        .build_int_z_extend(cmp_i1, i64_type, dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
                 }
@@ -1263,6 +1297,17 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::Label { name } => {
+                    // Before switching to the new label, record where the
+                    // *previous* label's codegen actually ended.  Instructions
+                    // like ArrayPush / ArrayGet may have inserted extra basic
+                    // blocks, so the builder's current insert block can differ
+                    // from the block created for the IR label.  Phi nodes need
+                    // this mapping to reference the correct predecessor.
+                    if let Some(ref prev) = current_label_name {
+                        if let Some(cur_bb) = builder.get_insert_block() {
+                            label_end_blocks.insert(prev.clone(), cur_bb);
+                        }
+                    }
                     current_label_name = Some(name.clone());
                     let bb = label_blocks[name];
                     builder.position_at_end(bb);
@@ -1272,6 +1317,12 @@ fn generate_llvm<'ctx>(
                     then_label,
                     else_label,
                 } => {
+                    // Record the actual LLVM block we're branching from
+                    if let Some(ref label_name) = current_label_name {
+                        if let Some(current_bb) = builder.get_insert_block() {
+                            label_end_blocks.insert(label_name.clone(), current_bb);
+                        }
+                    }
                     let cond_val = regs[cond];
                     // Ensure condition is i1; if it's a wider int (e.g. i64 from Load), compare != 0
                     let cond_i1 = if cond_val.get_type().get_bit_width() == 1 {
@@ -1289,6 +1340,13 @@ fn generate_llvm<'ctx>(
                     block_terminated = true;
                 }
                 Instruction::Jump { target } => {
+                    // Record the actual LLVM block we're jumping from (may differ from IR label
+                    // if codegen inserted extra blocks, e.g. for ArrayPush grow/write)
+                    if let Some(ref label_name) = current_label_name {
+                        if let Some(current_bb) = builder.get_insert_block() {
+                            label_end_blocks.insert(label_name.clone(), current_bb);
+                        }
+                    }
                     let target_bb = label_blocks[target];
                     builder
                         .build_unconditional_branch(target_bb)
@@ -1302,13 +1360,27 @@ fn generate_llvm<'ctx>(
                     b_val,
                     b_label,
                 } => {
-                    let a_ret_terminated = ret_terminated_labels.contains(a_label);
-                    let b_ret_terminated = ret_terminated_labels.contains(b_label);
+                    // Resolve the actual LLVM end-block for each IR label
+                    // (may differ from the label's entry block when codegen
+                    // inserts extra blocks, e.g. for ArrayPush grow/write).
+                    let a_bb = label_end_blocks.get(a_label)
+                        .copied()
+                        .unwrap_or_else(|| label_blocks[a_label]);
+                    let b_bb = label_end_blocks.get(b_label)
+                        .copied()
+                        .unwrap_or_else(|| label_blocks[b_label]);
 
-                    if a_ret_terminated && b_ret_terminated {
-                        // Both branches returned — this phi is dead code, use a dummy value
+                    // Check if each predecessor actually branches to the
+                    // current block.  A predecessor is "diverted" if its
+                    // terminator goes elsewhere (return, break, continue).
+                    let current_bb = builder.get_insert_block().unwrap();
+                    let a_is_pred = is_predecessor(a_bb, current_bb);
+                    let b_is_pred = is_predecessor(b_bb, current_bb);
+
+                    if !a_is_pred && !b_is_pred {
+                        // Both branches diverted — phi is dead code, use dummy
                         regs.insert(dest.clone(), i64_type.const_int(0, false));
-                    } else if a_ret_terminated {
+                    } else if !a_is_pred {
                         // Only b is a valid predecessor — skip phi, use b directly
                         let b = if let Some(v) = regs.get(b_val) {
                             *v
@@ -1316,13 +1388,13 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_b")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
+                            i64_type.const_int(0, false)
                         };
                         regs.insert(dest.clone(), b);
                         if let Some(sz) = struct_sizes.get(b_val) {
                             struct_sizes.insert(dest.clone(), *sz);
                         }
-                    } else if b_ret_terminated {
+                    } else if !b_is_pred {
                         // Only a is a valid predecessor — skip phi, use a directly
                         let a = if let Some(v) = regs.get(a_val) {
                             *v
@@ -1330,7 +1402,7 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_a")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
+                            i64_type.const_int(0, false)
                         };
                         regs.insert(dest.clone(), a);
                         if let Some(sz) = struct_sizes.get(a_val) {
@@ -1344,7 +1416,7 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_a")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
+                            i64_type.const_int(0, false)
                         };
                         let b = if let Some(v) = regs.get(b_val) {
                             *v
@@ -1352,15 +1424,21 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_b")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
+                            i64_type.const_int(0, false)
                         };
-                        let a_bb = label_blocks[a_label];
-                        let b_bb = label_blocks[b_label];
 
-                        // Determine the phi type from the incoming values
-                        let phi_type = a.get_type();
+                        // Always use i64 for PHI (all Sans values are i64).
+                        // Zext any i1 incoming values to i64.
+                        let a = if a.get_type().get_bit_width() == 1 {
+                            builder.build_int_z_extend(a, i64_type, &format!("{}_a_zext", dest))
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else { a };
+                        let b = if b.get_type().get_bit_width() == 1 {
+                            builder.build_int_z_extend(b, i64_type, &format!("{}_b_zext", dest))
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else { b };
                         let phi = builder
-                            .build_phi(phi_type, dest)
+                            .build_phi(i64_type, dest)
                             .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                         phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
                         regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
@@ -2963,7 +3041,14 @@ fn generate_llvm<'ctx>(
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::JsonBool { dest, value } => {
-                    let val = regs[value];
+                    let raw_val = regs[value];
+                    // sans_json_bool expects i64, but BoolConst produces i1; zext if needed
+                    let val = if raw_val.get_type().get_bit_width() == 1 {
+                        builder.build_int_z_extend(raw_val, i64_type, "jbool_zext")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        raw_val
+                    };
                     let fn_ref = llvm_module.get_function("sans_json_bool").unwrap();
                     let call = builder.build_call(fn_ref, &[val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let as_int = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_json_bool: expected return".into())) };

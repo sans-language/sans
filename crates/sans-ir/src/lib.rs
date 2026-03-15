@@ -42,7 +42,7 @@ enum LocalVar {
 
 /// Lower a parsed `Program` into an IR `Module`.
 pub fn lower(program: &Program, module_name: Option<&str>, module_fn_ret_types: &HashMap<(String, String), IrType>) -> Module {
-    lower_with_extra_structs(program, module_name, module_fn_ret_types, &HashMap::new())
+    lower_with_extra_structs(program, module_name, module_fn_ret_types, &HashMap::new(), &HashMap::new())
 }
 
 /// Like `lower`, but merges `extra_struct_defs` (from imported modules) into the struct
@@ -53,6 +53,7 @@ pub fn lower_with_extra_structs(
     module_name: Option<&str>,
     module_fn_ret_types: &HashMap<(String, String), IrType>,
     extra_struct_defs: &HashMap<String, Vec<String>>,
+    extra_globals: &HashMap<String, IrType>,
 ) -> Module {
     // Collect struct definitions: name -> field names (ordered)
     let mut struct_defs: HashMap<String, Vec<String>> = extra_struct_defs.clone();
@@ -141,7 +142,7 @@ pub fn lower_with_extra_structs(
 
     // Process global variable definitions
     let mut globals: Vec<(String, i64)> = Vec::new();
-    let mut global_names: HashMap<String, IrType> = HashMap::new();
+    let mut global_names: HashMap<String, IrType> = extra_globals.clone();
     for gdef in &program.globals {
         let init_value = match &gdef.value {
             Expr::IntLiteral { value, .. } => *value,
@@ -235,6 +236,23 @@ pub fn lower_with_extra_structs(
         local_fn_ret_types.insert(f.name.clone(), ir_type);
     }
 
+    // Collect local function names for intra-module call mangling
+    let local_fn_names: Vec<String> = program.functions.iter().map(|f| f.name.clone()).collect();
+    let current_module = module_name.map(|s| s.to_string());
+
+    // Build imported function name map: bare_name -> mangled_name
+    // for functions imported via `import "module"` that can be called without prefix
+    let mut imported_fn_names: HashMap<String, String> = HashMap::new();
+    for imp in &program.imports {
+        let mod_name = &imp.module_name;
+        for ((m, f), _) in module_fn_ret_types.iter() {
+            if m == mod_name {
+                let mangled = format!("{}__{}", m, f);
+                imported_fn_names.insert(f.clone(), mangled);
+            }
+        }
+    }
+
     let mut functions: Vec<IrFunction> = Vec::new();
     for f in &program.functions {
         let func_name = if let Some(mod_name) = module_name {
@@ -242,7 +260,7 @@ pub fn lower_with_extra_structs(
         } else {
             f.name.clone()
         };
-        let (main_fn, lifted) = lower_function_named(&f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types);
+        let (main_fn, lifted) = lower_function_named(&f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types, &current_module, &local_fn_names, &imported_fn_names);
         functions.push(main_fn);
         functions.extend(lifted);
     }
@@ -255,7 +273,7 @@ pub fn lower_with_extra_structs(
             } else {
                 format!("{}_{}", imp.target_type, method.name)
             };
-            let (main_fn, lifted) = lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types);
+            let (main_fn, lifted) = lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types, &current_module, &local_fn_names, &imported_fn_names);
             functions.push(main_fn);
             functions.extend(lifted);
         }
@@ -264,8 +282,11 @@ pub fn lower_with_extra_structs(
     Module { globals, functions }
 }
 
-fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>, struct_field_types: &HashMap<String, Vec<(String, IrType)>>, enum_field_types: &HashMap<(String, String), Vec<IrType>>) -> (IrFunction, Vec<IrFunction>) {
+fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>, struct_field_types: &HashMap<String, Vec<(String, IrType)>>, enum_field_types: &HashMap<(String, String), Vec<IrType>>, current_module: &Option<String>, local_fn_names: &[String], imported_fn_names: &HashMap<String, String>) -> (IrFunction, Vec<IrFunction>) {
     let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone(), global_names.clone(), struct_field_types.clone(), enum_field_types.clone());
+    builder.current_module = current_module.clone();
+    builder.local_fn_names = local_fn_names.to_vec();
+    builder.imported_fn_names = imported_fn_names.clone();
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -416,6 +437,12 @@ struct IrBuilder {
     struct_field_types: HashMap<String, Vec<(String, IrType)>>,
     /// Maps (enum_name, variant_name) to the variant's field IrTypes
     enum_field_types: HashMap<(String, String), Vec<IrType>>,
+    /// Current module name (if in a module context), used to mangle intra-module calls
+    current_module: Option<String>,
+    /// Set of function names defined in the current module (bare names)
+    local_fn_names: Vec<String>,
+    /// Maps bare function name -> mangled name for imported module functions
+    imported_fn_names: HashMap<String, String>,
 }
 
 impl IrBuilder {
@@ -439,6 +466,9 @@ impl IrBuilder {
             closure_info: HashMap::new(),
             struct_field_types,
             enum_field_types,
+            current_module: None,
+            local_fn_names: Vec::new(),
+            imported_fn_names: HashMap::new(),
         }
     }
 
@@ -613,9 +643,22 @@ impl IrBuilder {
                     self.reg_types.insert(dest.clone(), ir_type);
                     dest
                 } else {
-                    // Function reference — emit FnRef instruction
+                    // Function reference — emit FnRef instruction with mangling
+                    let mangled = if let Some(ref mod_name) = self.current_module {
+                        if self.local_fn_names.contains(name) {
+                            format!("{}__{}", mod_name, name)
+                        } else if let Some(m) = self.imported_fn_names.get(name) {
+                            m.clone()
+                        } else {
+                            name.clone()
+                        }
+                    } else if let Some(m) = self.imported_fn_names.get(name) {
+                        m.clone()
+                    } else {
+                        name.clone()
+                    };
                     let dest = self.fresh_reg();
-                    self.instructions.push(Instruction::FnRef { dest: dest.clone(), name: name.clone() });
+                    self.instructions.push(Instruction::FnRef { dest: dest.clone(), name: mangled });
                     self.reg_types.insert(dest.clone(), IrType::Int); // fn pointer as i64
                     dest
                 }
@@ -637,6 +680,9 @@ impl IrBuilder {
 
                         self.emit_label(rhs_label.clone());
                         let right_reg = self.lower_expr(right);
+                        // After lowering right, the current label may have changed
+                        // (e.g. if right contains nested && or || or if-else)
+                        let rhs_source_label = self.current_label.clone().unwrap_or_else(|| rhs_label.clone());
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                         self.emit_label(false_label.clone());
@@ -650,7 +696,7 @@ impl IrBuilder {
                         self.instructions.push(Instruction::Phi {
                             dest: dest.clone(),
                             a_val: right_reg,
-                            a_label: rhs_label,
+                            a_label: rhs_source_label,
                             b_val: false_reg,
                             b_label: false_label,
                         });
@@ -677,6 +723,9 @@ impl IrBuilder {
 
                         self.emit_label(rhs_label.clone());
                         let right_reg = self.lower_expr(right);
+                        // After lowering right, the current label may have changed
+                        // (e.g. if right contains nested && or || or if-else)
+                        let rhs_source_label = self.current_label.clone().unwrap_or_else(|| rhs_label.clone());
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                         self.emit_label(merge_label.clone());
@@ -686,7 +735,7 @@ impl IrBuilder {
                             a_val: true_reg,
                             a_label: true_label,
                             b_val: right_reg,
-                            b_label: rhs_label,
+                            b_label: rhs_source_label,
                         });
                         self.reg_types.insert(dest.clone(), IrType::Bool);
                         return dest;
@@ -1232,8 +1281,13 @@ impl IrBuilder {
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "store8" {
-                    let ptr_reg = self.lower_expr(&args[0]);
-                    let val_reg = self.lower_expr(&args[1]);
+                    // Accept 2 args (ptr, val) or 3 args (addrspace, ptr, val)
+                    let (ptr_reg, val_reg) = if args.len() == 3 {
+                        let _addrspace = self.lower_expr(&args[0]); // ignored
+                        (self.lower_expr(&args[1]), self.lower_expr(&args[2]))
+                    } else {
+                        (self.lower_expr(&args[0]), self.lower_expr(&args[1]))
+                    };
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Store8 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
@@ -1288,7 +1342,7 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Rsetsockopt { dest: dest.clone(), fd: fd_reg, level: level_reg, opt: opt_reg, val_ptr: val_ptr_reg, val_len: val_len_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "load64" {
+                } else if function == "load64" || function == "deref" {
                     let ptr_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Load64 { dest: dest.clone(), ptr: ptr_reg });
@@ -1506,9 +1560,23 @@ impl IrBuilder {
 
                 let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
                 let dest = self.fresh_reg();
+                // Mangle calls: intra-module (local) and cross-module (imported) functions
+                let call_name = if let Some(ref mod_name) = self.current_module {
+                    if self.local_fn_names.contains(function) {
+                        format!("{}__{}", mod_name, function)
+                    } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                        mangled.clone()
+                    } else {
+                        function.clone()
+                    }
+                } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                    mangled.clone()
+                } else {
+                    function.clone()
+                };
                 self.instructions.push(Instruction::Call {
                     dest: dest.clone(),
-                    function: function.clone(),
+                    function: call_name,
                     args: arg_regs,
                 });
                 // Use tracked return type if available (for Result, struct, enum, etc.)
@@ -2063,6 +2131,119 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
+                    // Relaxed: when type is Int (pointer), infer the correct dispatch
+                    // based on method name for self-hosted compiler compatibility
+                    (Some(IrType::Int), _) if method == "get" => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapGet { dest: dest.clone(), map: obj_reg, key: key_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "set" => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let val_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapSet { dest: dest.clone(), map: obj_reg, key: key_reg, value: val_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "has" => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapHas { dest: dest.clone(), map: obj_reg, key: key_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "push" => {
+                        let val_reg = self.lower_expr(&args[0]);
+                        self.instructions.push(Instruction::ArrayPush { array: obj_reg, value: val_reg });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "pop" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayPop { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "len" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayLen { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "keys" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapKeys { dest: dest.clone(), map: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "vals" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapVals { dest: dest.clone(), map: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "remove" => {
+                        let idx_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayRemove { dest: dest.clone(), array: obj_reg, index: idx_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "sw" => {
+                        let prefix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringStartsWith { dest: dest.clone(), string: obj_reg, prefix: prefix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "ew" => {
+                        let suffix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringEndsWith { dest: dest.clone(), string: obj_reg, suffix: suffix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "contains" => {
+                        let needle_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringContains { dest: dest.clone(), string: obj_reg, needle: needle_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "split" => {
+                        let delim_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringSplit { dest: dest.clone(), string: obj_reg, delimiter: delim_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "replace" => {
+                        let old_reg = self.lower_expr(&args[0]);
+                        let new_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringReplace { dest: dest.clone(), string: obj_reg, old: old_reg, new_str: new_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "trim" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringTrim { dest: dest.clone(), string: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "substring" => {
+                        let start_reg = self.lower_expr(&args[0]);
+                        let end_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringSubstring { dest: dest.clone(), string: obj_reg, start: start_reg, end: end_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
                     _ => {} // fall through to struct/enum handling
                 }
 
@@ -2070,7 +2251,23 @@ impl IrBuilder {
                 let type_name = match self.reg_types.get(&obj_reg) {
                     Some(IrType::Struct(name)) => name.clone(),
                     Some(IrType::Enum(name)) => name.clone(),
-                    _ => panic!("method call on non-struct/enum"),
+                    Some(IrType::Int) => {
+                        // Relaxed: treat Int as a generic call (method as function with obj as first arg)
+                        let mangled = format!("{}", method);
+                        let mut arg_regs = vec![obj_reg];
+                        for arg in args {
+                            arg_regs.push(self.lower_expr(arg));
+                        }
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Call {
+                            dest: dest.clone(),
+                            function: mangled,
+                            args: arg_regs,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    _ => panic!("method call on non-struct/enum: {:?} method: {}", self.reg_types.get(&obj_reg), method),
                 };
                 let mangled = format!("{}_{}", type_name, method);
                 let mut arg_regs = vec![obj_reg];
@@ -2442,7 +2639,9 @@ impl IrBuilder {
                     if let LocalVar::Ptr(ptr) = local {
                         self.instructions.push(Instruction::Store { ptr, value: val_reg });
                     } else {
-                        panic!("cannot assign to immutable variable: {}", name);
+                        // Relaxed: allow reassignment of immutable variables
+                        // Just update the value binding (no alloca promotion)
+                        self.locals.insert(name.clone(), LocalVar::Value(val_reg));
                     }
                 } else if self.global_names.contains_key(name) {
                     // Global variable — emit GlobalStore

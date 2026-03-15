@@ -1,5 +1,5 @@
-import "compiler/constants"
-import "compiler/lexer"
+import "constants"
+import "lexer"
 
 // ── Token accessors ──────────────────────────────────────────────
 tok_kind(t:I) I = load64(t)
@@ -17,9 +17,11 @@ make_parser(tokens:I) I {
 
 p_tokens(p:I) I = load64(p)
 p_pos(p:I) I = load64(p + 8)
-p_set_pos(p:I v:I) I { store64(p + 8, v); 0 }
+p_set_pos(p:I v:I) I { store64(p + 8, v)
+  0 }
 p_last_try(p:I) I = load64(p + 16)
-p_set_last_try(p:I v:I) I { store64(p + 16, v); 0 }
+p_set_last_try(p:I v:I) I { store64(p + 16, v)
+  0 }
 
 // Get token at current position
 p_peek(p:I) I {
@@ -498,7 +500,7 @@ parse_type_name(p:I) I {
 // ── Type params parsing ──────────────────────────────────────────
 parse_type_params(p:I) [I] {
   type_params = array<I>()
-  p_at(p, TK_LT) == 0 ? { return type_params } : 0
+  if p_at(p, TK_LT) == 0 { return type_params }
   p_advance(p)  // consume <
   while p_at(p, TK_GT) == 0 {
     name = p_expect_ident(p)
@@ -509,7 +511,8 @@ parse_type_params(p:I) [I] {
       0
     } : 0
     type_params.push(make_type_param(name, bound))
-    p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+    p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+      0 } : 0
   }
   p_expect(p, TK_GT)
   type_params
@@ -518,15 +521,17 @@ parse_type_params(p:I) [I] {
 // ── Param parsing ────────────────────────────────────────────────
 parse_params(p:I) [I] {
   params = array<I>()
-  p_at(p, TK_RPAREN) == 1 ? { return params } : 0
+  if p_at(p, TK_RPAREN) == 1 { return params }
   while 1 {
     name = p_expect_ident(p)
     // Allow optional colon between param name and type
-    p_at(p, TK_COLON) == 1 ? { p_advance(p); 0 } : 0
+    p_at(p, TK_COLON) == 1 ? { p_advance(p)
+      0 } : 0
     type_name = parse_type_name(p)
     params.push(make_param(name, type_name))
-    p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
-    p_at(p, TK_RPAREN) == 1 ? { return params } : 0
+    p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+      0 } : 0
+    if p_at(p, TK_RPAREN) == 1 { return params }
   }
   params
 }
@@ -534,11 +539,12 @@ parse_params(p:I) [I] {
 // ── Call args parsing ────────────────────────────────────────────
 parse_call_args(p:I) [I] {
   args = array<I>()
-  p_at(p, TK_RPAREN) == 1 ? { return args } : 0
+  if p_at(p, TK_RPAREN) == 1 { return args }
   while 1 {
     args.push(parse_expr(p, 0))
-    p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
-    p_at(p, TK_RPAREN) == 1 ? { return args } : 0
+    p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+      0 } : 0
+    if p_at(p, TK_RPAREN) == 1 { return args }
   }
   args
 }
@@ -575,7 +581,7 @@ peek_has_else_after_block(p:I) I {
   tokens = p_tokens(p)
   while depth > 0 {
     kind = tok_kind(load64(tokens + pos * 8))
-    kind == TK_LBRACE ? depth = depth + 1 : 0
+    if kind == TK_LBRACE { depth = depth + 1 }
     kind == TK_RBRACE ? {
       depth = depth - 1
       depth == 0 ? {
@@ -584,7 +590,7 @@ peek_has_else_after_block(p:I) I {
         return next_kind == TK_ELSE ? 1 : 0
       } : 0
     } : 0
-    kind == TK_EOF ? { return 0 } : 0
+    if kind == TK_EOF { return 0 }
     pos = pos + 1
   }
   0
@@ -688,10 +694,10 @@ parse_stmt_inner(p:I) I {
   kind = p_peek_kind(p)
 
   // let
-  kind == TK_LET ? { return parse_let(p) } : 0
+  if kind == TK_LET { return parse_let(p) }
 
   // while
-  kind == TK_WHILE ? { return parse_while_stmt(p) } : 0
+  if kind == TK_WHILE { return parse_while_stmt(p) }
 
   // break
   kind == TK_BREAK ? {
@@ -706,10 +712,10 @@ parse_stmt_inner(p:I) I {
   } : 0
 
   // return
-  kind == TK_RETURN ? { return parse_return(p) } : 0
+  if kind == TK_RETURN { return parse_return(p) }
 
   // if
-  kind == TK_IF ? { return parse_if_or_if_else(p) } : 0
+  if kind == TK_IF { return parse_if_or_if_else(p) }
 
   // for
   kind == TK_FOR ? {
@@ -763,11 +769,11 @@ parse_stmt_inner(p:I) I {
   kind == TK_IDENT ? {
     next_kind = p_peek_kind_at(p, 1)
     compound_op := -1
-    next_kind == TK_PLUS_EQ ? compound_op = OP_ADD : 0
-    next_kind == TK_MINUS_EQ ? compound_op = OP_SUB : 0
-    next_kind == TK_STAR_EQ ? compound_op = OP_MUL : 0
-    next_kind == TK_SLASH_EQ ? compound_op = OP_DIV : 0
-    next_kind == TK_PERCENT_EQ ? compound_op = OP_MOD : 0
+    if next_kind == TK_PLUS_EQ { compound_op = OP_ADD }
+    if next_kind == TK_MINUS_EQ { compound_op = OP_SUB }
+    if next_kind == TK_STAR_EQ { compound_op = OP_MUL }
+    if next_kind == TK_SLASH_EQ { compound_op = OP_DIV }
+    if next_kind == TK_PERCENT_EQ { compound_op = OP_MOD }
     compound_op >= 0 ? {
       name = p_expect_ident(p)
       p_advance(p)  // consume compound operator
@@ -1077,7 +1083,8 @@ parse_atom(p:I) I {
         fval = parse_expr(p, 0)
         field_names.push(fname)
         field_values.push(fval)
-        p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+        p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+          0 } : 0
       }
       p_expect(p, TK_RBRACE)
       return make_struct_lit(name, field_names, field_values)
@@ -1149,7 +1156,8 @@ parse_atom(p:I) I {
     args = array<I>()
     while p_at(p, TK_RPAREN) == 0 {
       args.push(parse_expr(p, 0))
-      p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+      p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+        0 } : 0
     }
     p_expect(p, TK_RPAREN)
     return make_spawn(func_name, args)
@@ -1217,7 +1225,8 @@ parse_atom(p:I) I {
     elements = array<I>()
     while p_at(p, TK_RBRACKET) == 0 && p_at(p, TK_EOF) == 0 {
       elements.push(parse_expr(p, 0))
-      p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+      p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+        0 } : 0
     }
     p_expect(p, TK_RBRACKET)
     elements.len() == 0 ? {
@@ -1285,7 +1294,8 @@ parse_match_expr(p:I) I {
   while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
     arm = parse_match_arm(p)
     arms.push(arm)
-    p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+    p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+      0 } : 0
   }
   p_expect(p, TK_RBRACE)
   make_match_expr(scrutinee, arms)
@@ -1308,7 +1318,8 @@ parse_pattern(p:I) I {
     while p_at(p, TK_RPAREN) == 0 {
       binding = p_expect_ident(p)
       bindings.push(binding)
-      p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+      p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+        0 } : 0
     }
     p_expect(p, TK_RPAREN)
     0
@@ -1384,7 +1395,8 @@ desugar_interp_string(p:I parts_ptr:I) I {
 // ── Function parsing ─────────────────────────────────────────────
 parse_function(p:I) I {
   // fn keyword is optional
-  p_at(p, TK_FN) == 1 ? { p_advance(p); 0 } : 0
+  p_at(p, TK_FN) == 1 ? { p_advance(p)
+    0 } : 0
 
   name = p_expect_ident(p)
   type_params = parse_type_params(p)
@@ -1422,7 +1434,8 @@ parse_function(p:I) I {
 // ── Method parsing (within impl block) ───────────────────────────
 parse_method(p:I target_type:I) I {
   // fn keyword is optional
-  p_at(p, TK_FN) == 1 ? { p_advance(p); 0 } : 0
+  p_at(p, TK_FN) == 1 ? { p_advance(p)
+    0 } : 0
 
   name = p_expect_ident(p)
   type_params = parse_type_params(p)
@@ -1437,10 +1450,11 @@ parse_method(p:I target_type:I) I {
   // Parse remaining params
   while p_at(p, TK_COMMA) == 1 {
     p_advance(p)  // consume comma
-    p_at(p, TK_RPAREN) == 1 ? { break } : 0
+    if p_at(p, TK_RPAREN) == 1 { break }
     param_name = p_expect_ident(p)
     // Allow optional colon
-    p_at(p, TK_COLON) == 1 ? { p_advance(p); 0 } : 0
+    p_at(p, TK_COLON) == 1 ? { p_advance(p)
+      0 } : 0
     type_name = parse_type_name(p)
     params.push(make_param(param_name, type_name))
   }
@@ -1485,7 +1499,8 @@ parse_struct_def(p:I) I {
     type_name = parse_type_name(p)
     fields.push(field_name)
     fields.push(type_name)
-    p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+    p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+      0 } : 0
   }
   p_expect(p, TK_RBRACE)
 
@@ -1506,13 +1521,15 @@ parse_enum_def(p:I) I {
       p_advance(p)  // consume (
       while p_at(p, TK_RPAREN) == 0 {
         variant_fields.push(parse_type_name(p))
-        p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+        p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+          0 } : 0
       }
       p_expect(p, TK_RPAREN)
       0
     } : 0
     variants.push(make_enum_variant_def(variant_name, variant_fields))
-    p_at(p, TK_COMMA) == 1 ? { p_advance(p); 0 } : 0
+    p_at(p, TK_COMMA) == 1 ? { p_advance(p)
+      0 } : 0
   }
   p_expect(p, TK_RBRACE)
 
@@ -1547,7 +1564,7 @@ parse_trait_method_sig(p:I) I {
   params = array<I>()
   while p_at(p, TK_COMMA) == 1 {
     p_advance(p)  // consume comma
-    p_at(p, TK_RPAREN) == 1 ? { break } : 0
+    if p_at(p, TK_RPAREN) == 1 { break }
     param_name = p_expect_ident(p)
     type_name = parse_type_name(p)
     params.push(type_name)

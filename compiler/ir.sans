@@ -1,40 +1,40 @@
-import "compiler/constants"
-import "compiler/parser"
+import "constants"
+import "parser"
 
 // ── IrType constants ────────────────────────────────────────────
-IRTY_INT = 0
-IRTY_FLOAT = 1
-IRTY_BOOL = 2
-IRTY_STR = 3
-IRTY_STRUCT = 4
-IRTY_ENUM = 5
-IRTY_SENDER = 6
-IRTY_RECEIVER = 7
-IRTY_JOIN_HANDLE = 8
-IRTY_MUTEX = 9
-IRTY_ARRAY = 10
-IRTY_JSON = 11
-IRTY_HTTP_RESP = 12
-IRTY_RESULT = 13
-IRTY_HTTP_SERVER = 14
-IRTY_HTTP_REQ = 15
-IRTY_TUPLE = 16
-IRTY_MAP = 17
+g IRTY_INT = 0
+g IRTY_FLOAT = 1
+g IRTY_BOOL = 2
+g IRTY_STR = 3
+g IRTY_STRUCT = 4
+g IRTY_ENUM = 5
+g IRTY_SENDER = 6
+g IRTY_RECEIVER = 7
+g IRTY_JOIN_HANDLE = 8
+g IRTY_MUTEX = 9
+g IRTY_ARRAY = 10
+g IRTY_JSON = 11
+g IRTY_HTTP_RESP = 12
+g IRTY_RESULT = 13
+g IRTY_HTTP_SERVER = 14
+g IRTY_HTTP_REQ = 15
+g IRTY_TUPLE = 16
+g IRTY_MAP = 17
 
 // ── IrBinOp constants ──────────────────────────────────────────
-IROP_ADD = 0
-IROP_SUB = 1
-IROP_MUL = 2
-IROP_DIV = 3
-IROP_MOD = 4
+g IROP_ADD = 0
+g IROP_SUB = 1
+g IROP_MUL = 2
+g IROP_DIV = 3
+g IROP_MOD = 4
 
 // ── IrCmpOp constants ──────────────────────────────────────────
-IRCMP_EQ = 0
-IRCMP_NEQ = 1
-IRCMP_LT = 2
-IRCMP_GT = 3
-IRCMP_LTEQ = 4
-IRCMP_GTEQ = 5
+g IRCMP_EQ = 0
+g IRCMP_NEQ = 1
+g IRCMP_LT = 2
+g IRCMP_GT = 3
+g IRCMP_LTEQ = 4
+g IRCMP_GTEQ = 5
 
 // ── Instruction accessors ──────────────────────────────────────
 ir_op(inst:I) I = load64(inst)
@@ -174,8 +174,8 @@ ir_channel_recv(dest:I rx:I) I = ir_inst1(IR_CHANNEL_RECV, dest, rx)
 
 // Mutex operations
 ir_mutex_create(dest:I value:I) I = ir_inst1(IR_MUTEX_CREATE, dest, value)
-ir_mutex_lock(dest:I mutex:I) I = ir_inst1(IR_MUTEX_LOCK, dest, mutex)
-ir_mutex_unlock(mutex:I value:I) I = ir_inst1(IR_MUTEX_UNLOCK, mutex, value)
+ir_mutex_lock(dest:I mtx:I) I = ir_inst1(IR_MUTEX_LOCK, dest, mtx)
+ir_mutex_unlock(mtx:I value:I) I = ir_inst1(IR_MUTEX_UNLOCK, mtx, value)
 
 // ── IrFunction (40 bytes) ──────────────────────────────────────
 // offset 0:  name (I) — function name string
@@ -231,7 +231,7 @@ irm_struct_defs(m:I) I = load64(m + 16)
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   ctx = alloc(80)
-  store64(ctx, ptr([I]()))       // instructions array
+  store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
   store64(ctx + 24, ptr(M()))    // locals map
@@ -254,7 +254,8 @@ ctx_struct_defs(ctx:I) I = load64(ctx + 40)
 ctx_enum_defs(ctx:I) I = load64(ctx + 48)
 ctx_fn_ret_types(ctx:I) I = load64(ctx + 56)
 ctx_break_label(ctx:I) I = load64(ctx + 64)
-ctx_set_break_label(ctx:I v:I) I { store64(ctx + 64, v); 0 }
+ctx_set_break_label(ctx:I v:I) I { store64(ctx + 64, v)
+  0 }
 ctx_global_names(ctx:I) I = load64(ctx + 72)
 
 // Emit: push instruction onto the instructions array
@@ -304,7 +305,7 @@ ctx_get_reg_type(ctx:I reg:I) I {
 
 // Reset context for a new function
 ctx_reset(ctx:I) I {
-  store64(ctx, ptr([I]()))       // fresh instructions
+  store64(ctx, ptr(array<I>()))       // fresh instructions
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
   store64(ctx + 24, ptr(M()))    // fresh locals
@@ -717,7 +718,7 @@ lower_call_ptr(ctx:I args:I) I {
 
 // ── User-defined function call ──────────────────────────────────
 lower_call_user(ctx:I name:I args:I) I {
-  arg_regs = [I]()
+  arg_regs = array<I>()
   i := 0
   while i < args.len() {
     arg_regs.push(lower_expr(ctx, args.get(i)))
@@ -1375,7 +1376,7 @@ lower_method_call(ctx:I expr:I) I {
 lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
   // Mangle name as "Type_method" — for now default to calling method directly
   // with obj as first arg
-  arg_regs = [I]()
+  arg_regs = array<I>()
   arg_regs.push(obj_reg)
   i := 0
   while i < args.len() {
@@ -1841,7 +1842,7 @@ lower_field_access(ctx:I expr:I) I {
   // Non-struct/tuple: treat as no-arg method call
   {
     // Synthesize method call with 0 args
-    empty_args = [I]()
+    empty_args = array<I>()
     lower_method_call_direct(ctx, obj_reg, field, empty_args)
   }
 }
@@ -2011,7 +2012,8 @@ lower_match_lookup_tag(ctx:I scrutinee_reg:I variant_name:I) I {
         v = variants.get(j)
         vname = load64(v)
         vtag = load64(v + 8)
-        vname == variant_name ? { result = vtag; 0 } : 0
+        vname == variant_name ? { result = vtag
+          0 } : 0
         j = j + 1
         0
       }
@@ -2105,7 +2107,8 @@ lower_struct_lit(ctx:I expr:I) I {
     struct_fields != 0 ? {
       j := 0
       while j < struct_fields.len() {
-        struct_fields.get(j) == fname ? { field_idx = j; 0 } : 0
+        struct_fields.get(j) == fname ? { field_idx = j
+          0 } : 0
         j = j + 1
         0
       }
@@ -2160,8 +2163,10 @@ lower_enum_variant(ctx:I expr:I) I {
       vname = load64(v)
       vtag = load64(v + 8)
       vnum = load64(v + 16)
-      vname == variant_name ? { tag_idx = vtag; 0 } : 0
-      vnum > max_data ? { max_data = vnum; 0 } : 0
+      vname == variant_name ? { tag_idx = vtag
+        0 } : 0
+      vnum > max_data ? { max_data = vnum
+        0 } : 0
       i = i + 1
       0
     }
@@ -2188,7 +2193,7 @@ lower_spawn(ctx:I expr:I) I {
   func_name = load64(expr + 8)
   args = load64(expr + 16)
 
-  arg_regs = [I]()
+  arg_regs = array<I>()
   i := 0
   while i < args.len() {
     arg_regs.push(lower_expr(ctx, args.get(i)))
@@ -2282,7 +2287,7 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
       vinfo = variants.get(i)
       // vinfo is [tag_index, num_data_fields]
       nd = vinfo.get(1)
-      nd > max_data ? max_data = nd : 0
+      if nd > max_data { max_data = nd }
       i = i + 1
       0
     }
@@ -2297,7 +2302,7 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
       i := 1
       end = slen(type_name) - 1
       while i < end {
-        char_at(type_name, i) == 32 ? count = count + 1 : 0
+        if char_at(type_name, i) == 32 { count = count + 1 }
         i = i + 1
         0
       }
@@ -2316,8 +2321,8 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
 
   // Set up params
   params_ast = load64(func + 8)   // Array of Param pointers [name@0, type@8]
-  param_names = [I]()
-  param_sizes = [I]()
+  param_names = array<I>()
+  param_sizes = array<I>()
 
   i := 0
   while i < params_ast.len() {
@@ -2430,7 +2435,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     sname = load64(sdef)           // name
     sfields = load64(sdef + 8)     // flat array [name0, type0, name1, type1, ...]
     // Build array of just field names
-    field_names = [I]()
+    field_names = array<I>()
     fi := 0
     while fi < sfields.len() {
       field_names.push(sfields.get(fi))  // name at even indices
@@ -2450,7 +2455,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     edef = prog_enums.get(ei)
     ename = load64(edef)              // name
     evariants = load64(edef + 8)      // Array of EnumVariant pointers [name@0, fields@8]
-    vinfo_arr = [I]()
+    vinfo_arr = array<I>()
     vi := 0
     while vi < evariants.len() {
       variant = evariants.get(vi)
@@ -2458,7 +2463,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       vfields = load64(variant + 8)
       num_data = vfields != 0 ? vfields.len() : 0
       // Store as [tag_index, num_data_fields] array
-      entry = [I]()
+      entry = array<I>()
       entry.push(vi)
       entry.push(num_data)
       vinfo_arr.push(entry)
@@ -2481,7 +2486,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     ret_type_name = load64(func + 16)
     ret_type_name != 0 ? {
       rt = ir_type_for_return(ret_type_name, struct_defs, enum_defs)
-      rt != IRTY_INT ? fn_ret_types[fname] = rt : 0
+      if IRTY_INT != rt { fn_ret_types.set(fname, rt) }
     } : 0
     fri = fri + 1
     0
@@ -2500,7 +2505,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
   } : 0
 
   // 4. Collect global variable names and types
-  globals_arr = [I]()
+  globals_arr = array<I>()
   global_names = M()
   prog_globals = load64(program + 8)  // Array of GlobalDef pointers
   gi := 0
@@ -2511,17 +2516,17 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     globals_arr.push(gname)
     // Determine type from value expression tag
     vtag = load64(gvalue)
-    vtag == EX_INT_LIT ? global_names[gname] = IRTY_INT :
-    vtag == EX_FLOAT_LIT ? global_names[gname] = IRTY_FLOAT :
-    vtag == EX_BOOL_LIT ? global_names[gname] = IRTY_BOOL :
-    vtag == EX_STRING_LIT ? global_names[gname] = IRTY_STR :
-    { global_names[gname] = IRTY_INT }
+    if vtag == EX_INT_LIT { global_names.set(gname, IRTY_INT) }
+    if vtag == EX_FLOAT_LIT { global_names.set(gname, IRTY_FLOAT) }
+    if vtag == EX_BOOL_LIT { global_names.set(gname, IRTY_BOOL) }
+    if vtag == EX_STRING_LIT { global_names.set(gname, IRTY_STR) }
+    if vtag != EX_INT_LIT && vtag != EX_FLOAT_LIT && vtag != EX_BOOL_LIT && vtag != EX_STRING_LIT { global_names.set(gname, IRTY_INT) }
     gi = gi + 1
     0
   }
 
   // 5. Lower each function
-  ir_functions = [I]()
+  ir_functions = array<I>()
 
   fi2 := 0
   while fi2 < prog_fns.len() {

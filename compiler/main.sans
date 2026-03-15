@@ -1,12 +1,12 @@
 // ── Sans Self-Hosted Compiler Driver ─────────────────────────────
 // CLI entry point: import resolution, parsing, typeck, IR, codegen, linking
 
-import "compiler/constants"
-import "compiler/lexer"
-import "compiler/parser"
-import "compiler/typeck"
-import "compiler/ir"
-import "compiler/codegen"
+import "constants"
+import "lexer"
+import "parser"
+import "typeck"
+import "ir"
+import "codegen"
 
 // ── String helpers ──────────────────────────────────────────────
 
@@ -14,7 +14,10 @@ import "compiler/codegen"
 find_last(s:S ch:I) I {
   i := slen(s) - 1
   while i >= 0 {
-    char_at(s, i) == ch ? { return i } : 0
+    if char_at(s, i) == ch {
+      return i
+      0
+    } else { 0 }
     i = i - 1
     0
   }
@@ -63,14 +66,17 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   file_path = base_dir + "/" + import_path + ".sans"
 
   // Dedup check
-  visited.has(file_path) ? { return 0 } : 0
+  if visited.has(file_path) {
+    return 0
+    0
+  } else { 0 }
 
   // Circular import check
-  in_progress.has(file_path) ? {
+  if in_progress.has(file_path) {
     p("error: circular import detected: " + import_path)
     exit(1)
     0
-  } : 0
+  } else { 0 }
 
   in_progress.set(file_path, 1)
 
@@ -91,7 +97,6 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   }
 
   // Mark visited, add to result
-  in_progress.del(file_path)
   visited.set(file_path, 1)
 
   name = mod_name_of(import_path)
@@ -101,7 +106,7 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
 
 resolve_imports(entry_path:S) I {
   base_dir = dir_of(entry_path)
-  resolved = [I]()
+  resolved = array<I>()
   visited = M()
   in_progress = M()
 
@@ -194,7 +199,10 @@ build(source_path:S output_path:S) I {
              rt_tag == TY_TUPLE ? IRTY_TUPLE :
              IRTY_INT
       mangled = mod_n + "__" + deref(fname)
-      irty != IRTY_INT ? { module_fn_ret_types[mangled] = irty } : 0
+      if IRTY_INT != irty {
+        module_fn_ret_types.set(mangled, irty)
+        0
+      } else { 0 }
       ki = ki + 1
       0
     }
@@ -217,7 +225,7 @@ build(source_path:S output_path:S) I {
       fields_m = structs_m.get(sname)
       // fields_m is a map: field_name -> type
       field_names = fields_m.keys()
-      extra_struct_defs[sname] = field_names
+      extra_struct_defs.set(sname, field_names)
       ski = ski + 1
       0
     }
@@ -226,8 +234,8 @@ build(source_path:S output_path:S) I {
   }
 
   // 7. IR lower each module
-  all_functions = [I]()
-  all_globals = [I]()
+  all_functions = array<I>()
+  all_globals = array<I>()
   i = 0
   while i < modules.len() {
     mod = modules.get(i)
@@ -287,7 +295,7 @@ build(source_path:S output_path:S) I {
   // Use the Rust compiler (sans) to compile each runtime module to .o
   // The self-hosted compiler needs pre-compiled runtime, or we use sans
   runtime_dir = dir_of(source_path) + "/../runtime"
-  runtime_modules = [I]()
+  runtime_modules = array<I>()
   runtime_modules.push("log")
   runtime_modules.push("result")
   runtime_modules.push("functional")
@@ -301,7 +309,7 @@ build(source_path:S output_path:S) I {
   runtime_modules.push("map")
   runtime_modules.push("arena")
 
-  runtime_o_paths = [I]()
+  runtime_o_paths = array<I>()
   ri := 0
   while ri < runtime_modules.len() {
     rname = deref(runtime_modules.get(ri))
@@ -365,44 +373,47 @@ main() I {
   argv = args()
   argc = argv.len()
 
-  argc < 2 ? {
+  if argc < 2 {
     p("usage: sans2 <build|run> <file.sans>")
     exit(1)
     0
-  } : 0
+  } else { 0 }
 
   cmd = deref(argv.get(1))
 
-  cmd == "--version" || cmd == "-V" ? {
+  if cmd == "--version" || cmd == "-V" {
     p("sans 0.3.25")
     exit(0)
     0
-  } : 0
+  } else { 0 }
 
-  argc < 3 ? {
+  if argc < 3 {
     p("usage: sans2 <build|run> <file.sans>")
     exit(1)
     0
-  } : 0
+  } else { 0 }
 
   file = deref(argv.get(2))
 
   // Check for -o flag
   output := ""
-  argc >= 5 ? {
+  if argc >= 5 {
     flag = deref(argv.get(3))
-    flag == "-o" ? { output = deref(argv.get(4)) } : 0
+    if flag == "-o" {
+      output = deref(argv.get(4))
+      0
+    } else { 0 }
     0
-  } : 0
+  } else { 0 }
 
-  cmd == "build" ? {
+  if cmd == "build" {
     out = output == "" ? strip_ext(file) : output
     build(file, out)
-  } : cmd == "run" ? {
+  } else { if cmd == "run" {
     run(file)
-  } : {
+  } else {
     p("unknown command: " + cmd)
     exit(1)
     0
-  }
+  } }
 }

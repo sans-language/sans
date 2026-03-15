@@ -1,5 +1,5 @@
-import "compiler/constants"
-import "compiler/ir"
+import "constants"
+import "ir"
 
 // ── Codegen state layout (64 bytes) ─────────────────────────────
 // offset 0:  lines        — Array<I> of string pointers (LLVM IR lines)
@@ -13,7 +13,7 @@ import "compiler/ir"
 
 make_codegen() I {
   cg = alloc(64)
-  store64(cg, [I]())
+  store64(cg, array<I>())
   store64(cg + 8, 0)
   store64(cg + 16, M())
   store64(cg + 24, M())

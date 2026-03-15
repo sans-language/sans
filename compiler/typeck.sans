@@ -1,5 +1,5 @@
-import "compiler/constants"
-import "compiler/parser"
+import "constants"
+import "parser"
 
 // ── Type struct layout (32 bytes) ───────────────────────────────────
 // offset 0:  tag (I)    — TY_INT=0 .. TY_MUTEX=20
@@ -113,29 +113,29 @@ tc_error(msg:S) I {
 
 // ── Type equality (deep) ────────────────────────────────────────────
 type_eq(a:I b:I) I {
-  a == 0 && b == 0 ? return 1 : 0
-  a == 0 || b == 0 ? return 0 : 0
+  if a == 0 && b == 0 { return 1 }
+  if a == 0 || b == 0 { return 0 }
   ta = type_tag(a)
   tb = type_tag(b)
-  ta != tb ? return 0 : 0
+  if ta != tb { return 0 }
   // Simple types: tag match is enough
-  ta == TY_INT || ta == TY_FLOAT || ta == TY_BOOL || ta == TY_STRING ||
-  ta == TY_MAP || ta == TY_VOID || ta == TY_JSON || ta == TY_HTTP_RESP ||
-  ta == TY_HTTP_SERVER || ta == TY_HTTP_REQ || ta == TY_JOIN_HANDLE ||
-  ta == TY_RESULT_ERR ? return 1 : 0
+  if ta == TY_INT || ta == TY_FLOAT || ta == TY_BOOL || ta == TY_STRING ||
+     ta == TY_MAP || ta == TY_VOID || ta == TY_JSON || ta == TY_HTTP_RESP ||
+     ta == TY_HTTP_SERVER || ta == TY_HTTP_REQ || ta == TY_JOIN_HANDLE ||
+     ta == TY_RESULT_ERR { return 1 }
   // Parameterized types with inner: compare inner recursively
-  ta == TY_ARRAY || ta == TY_RESULT || ta == TY_SENDER ||
-  ta == TY_RECEIVER || ta == TY_MUTEX ? return type_eq(type_inner(a), type_inner(b)) : 0
+  if ta == TY_ARRAY || ta == TY_RESULT || ta == TY_SENDER ||
+     ta == TY_RECEIVER || ta == TY_MUTEX { return type_eq(type_inner(a), type_inner(b)) }
   // Tuple: compare all element types
   ta == TY_TUPLE ? {
     elems_a = type_data2(a)
     elems_b = type_data2(b)
     len_a = load64(elems_a - 8)
     len_b = load64(elems_b - 8)
-    len_a != len_b ? return 0 : 0
+    if len_a != len_b { return 0 }
     i := 0
     while i < len_a {
-      type_eq(load64(elems_a + i * 8), load64(elems_b + i * 8)) == 0 ? return 0 : 0
+      if type_eq(load64(elems_a + i * 8), load64(elems_b + i * 8)) == 0 { return 0 }
       i += 1
     }
     return 1
@@ -153,14 +153,14 @@ type_eq(a:I b:I) I {
     ret_a = type_data2(a)
     ret_b = type_data2(b)
     // If both have no params arrays, check return
-    params_a == 0 && params_b == 0 ? return type_eq(ret_a, ret_b) : 0
-    params_a == 0 || params_b == 0 ? return 0 : 0
+    if params_a == 0 && params_b == 0 { return type_eq(ret_a, ret_b) }
+    if params_a == 0 || params_b == 0 { return 0 }
     len_a = load64(params_a - 8)
     len_b = load64(params_b - 8)
-    len_a != len_b ? return 0 : 0
+    if len_a != len_b { return 0 }
     i := 0
     while i < len_a {
-      type_eq(load64(params_a + i * 8), load64(params_b + i * 8)) == 0 ? return 0 : 0
+      if type_eq(load64(params_a + i * 8), load64(params_b + i * 8)) == 0 { return 0 }
       i += 1
     }
     return type_eq(ret_a, ret_b)
@@ -170,31 +170,31 @@ type_eq(a:I b:I) I {
 
 // ── Type compatibility (covariance) ─────────────────────────────────
 types_compatible(actual:I expected:I) I {
-  type_eq(actual, expected) == 1 ? return 1 : 0
+  if type_eq(actual, expected) == 1 { return 1 }
   at = type_tag(actual)
   et = type_tag(expected)
   // ResultErr matches any Result<T>
-  at == TY_RESULT_ERR && et == TY_RESULT ? return 1 : 0
+  if at == TY_RESULT_ERR && et == TY_RESULT { return 1 }
   // Fn types stored as i64 — compatible with Int
-  et == TY_INT && at == TY_FN ? return 1 : 0
+  if et == TY_INT && at == TY_FN { return 1 }
   // String where Int expected (strings are pointers = i64)
-  et == TY_INT && at == TY_STRING ? return 1 : 0
-  et == TY_STRING && at == TY_INT ? return 1 : 0
+  if et == TY_INT && at == TY_STRING { return 1 }
+  if et == TY_STRING && at == TY_INT { return 1 }
   // Map/Array where Int expected (heap pointers = i64)
-  et == TY_INT && at == TY_MAP ? return 1 : 0
-  et == TY_MAP && at == TY_INT ? return 1 : 0
-  et == TY_INT && at == TY_ARRAY ? return 1 : 0
+  if et == TY_INT && at == TY_MAP { return 1 }
+  if et == TY_MAP && at == TY_INT { return 1 }
+  if et == TY_INT && at == TY_ARRAY { return 1 }
   // Reverse: Int where Fn expected
-  at == TY_INT && et == TY_FN ? return 1 : 0
+  if at == TY_INT && et == TY_FN { return 1 }
   // Opaque heap types compatible with Int
-  et == TY_INT && at == TY_JSON ? return 1 : 0
-  et == TY_INT && at == TY_HTTP_RESP ? return 1 : 0
-  et == TY_INT && at == TY_HTTP_SERVER ? return 1 : 0
-  et == TY_INT && at == TY_HTTP_REQ ? return 1 : 0
-  et == TY_INT && at == TY_JOIN_HANDLE ? return 1 : 0
-  et == TY_INT && at == TY_SENDER ? return 1 : 0
-  et == TY_INT && at == TY_RECEIVER ? return 1 : 0
-  et == TY_INT && at == TY_MUTEX ? return 1 : 0
+  if et == TY_INT && at == TY_JSON { return 1 }
+  if et == TY_INT && at == TY_HTTP_RESP { return 1 }
+  if et == TY_INT && at == TY_HTTP_SERVER { return 1 }
+  if et == TY_INT && at == TY_HTTP_REQ { return 1 }
+  if et == TY_INT && at == TY_JOIN_HANDLE { return 1 }
+  if et == TY_INT && at == TY_SENDER { return 1 }
+  if et == TY_INT && at == TY_RECEIVER { return 1 }
+  if et == TY_INT && at == TY_MUTEX { return 1 }
   0
 }
 
@@ -203,7 +203,7 @@ find_char(s:S ch:I start:I) I {
   len = slen(s)
   i := start
   while i < len {
-    char_at(s, i) == ch ? return i : 0
+    if char_at(s, i) == ch { return i }
     i += 1
   }
   0 - 1
@@ -214,7 +214,7 @@ find_last_char(s:S ch:I) I {
   len = slen(s)
   i := len - 1
   while i >= 0 {
-    char_at(s, i) == ch ? return i : 0
+    if char_at(s, i) == ch { return i }
     i -= 1
   }
   0 - 1
@@ -223,13 +223,13 @@ find_last_char(s:S ch:I) I {
 // ── resolve_type: parse type name string → Type ptr ─────────────────
 resolve_type(name:S structs:I enums:I mod_exports:I) I {
   len = slen(name)
-  len == 0 ? return tc_error("resolve_type: empty type name") : 0
+  if len == 0 { return tc_error("resolve_type: empty type name") }
 
   // Tuple: starts with '(' ends with ')'
   char_at(name, 0) == 40 && char_at(name, len - 1) == 41 ? {
     inner = name.substring(1, len - 1)
     // Split by spaces and resolve each element
-    elems = [I]
+    elems = array<I>()
     start := 0
     i := 0
     ilen = slen(inner)
@@ -253,16 +253,16 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
   } : 0
 
   // Simple types
-  name == "I" || name == "Int" ? return make_type(TY_INT) : 0
-  name == "F" || name == "Float" ? return make_type(TY_FLOAT) : 0
-  name == "B" || name == "Bool" ? return make_type(TY_BOOL) : 0
-  name == "S" || name == "String" ? return make_type(TY_STRING) : 0
-  name == "M" || name == "Map" ? return make_type(TY_MAP) : 0
-  name == "JsonValue" ? return make_type(TY_JSON) : 0
-  name == "HttpResponse" ? return make_type(TY_HTTP_RESP) : 0
-  name == "HttpServer" || name == "HS" ? return make_type(TY_HTTP_SERVER) : 0
-  name == "HttpRequest" || name == "HR" ? return make_type(TY_HTTP_REQ) : 0
-  name == "JoinHandle" ? return make_type(TY_JOIN_HANDLE) : 0
+  if name == "I" || name == "Int" { return make_type(TY_INT) }
+  if name == "F" || name == "Float" { return make_type(TY_FLOAT) }
+  if name == "B" || name == "Bool" { return make_type(TY_BOOL) }
+  if name == "S" || name == "String" { return make_type(TY_STRING) }
+  if name == "M" || name == "Map" { return make_type(TY_MAP) }
+  if name == "JsonValue" { return make_type(TY_JSON) }
+  if name == "HttpResponse" { return make_type(TY_HTTP_RESP) }
+  if name == "HttpServer" || name == "HS" { return make_type(TY_HTTP_SERVER) }
+  if name == "HttpRequest" || name == "HR" { return make_type(TY_HTTP_REQ) }
+  if name == "JoinHandle" { return make_type(TY_JOIN_HANDLE) }
 
   // Array<T>
   name.sw("Array<") && char_at(name, len - 1) == 62 ? {
@@ -301,7 +301,7 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
   } : 0
 
   // Fn (bare function type)
-  name == "Fn" || name.sw("Fn(") ? return make_type(TY_FN) : 0
+  if name == "Fn" || name.sw("Fn(") { return make_type(TY_FN) }
 
   // Check structs map
   structs != 0 && structs.has(name) ? {
@@ -340,35 +340,35 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
 
 // ── type_to_string: Type ptr → human-readable string ────────────────
 type_to_string(t:I) S {
-  t == 0 ? return "?" : 0
+  if t == 0 { return "?" }
   tag = type_tag(t)
-  tag == TY_INT ? return "Int" : 0
-  tag == TY_FLOAT ? return "Float" : 0
-  tag == TY_BOOL ? return "Bool" : 0
-  tag == TY_STRING ? return "String" : 0
-  tag == TY_MAP ? return "Map" : 0
-  tag == TY_VOID ? return "Void" : 0
-  tag == TY_JSON ? return "JsonValue" : 0
-  tag == TY_HTTP_RESP ? return "HttpResponse" : 0
-  tag == TY_HTTP_SERVER ? return "HttpServer" : 0
-  tag == TY_HTTP_REQ ? return "HttpRequest" : 0
-  tag == TY_JOIN_HANDLE ? return "JoinHandle" : 0
-  tag == TY_RESULT_ERR ? return "Result<_>" : 0
-  tag == TY_ARRAY ? return "Array<" + type_to_string(type_inner(t)) + ">" : 0
-  tag == TY_RESULT ? return "Result<" + type_to_string(type_inner(t)) + ">" : 0
-  tag == TY_SENDER ? return "Sender<" + type_to_string(type_inner(t)) + ">" : 0
-  tag == TY_RECEIVER ? return "Receiver<" + type_to_string(type_inner(t)) + ">" : 0
-  tag == TY_MUTEX ? return "Mutex<" + type_to_string(type_inner(t)) + ">" : 0
-  tag == TY_STRUCT ? return type_data(t) : 0
-  tag == TY_ENUM ? return type_data(t) : 0
+  if tag == TY_INT { return "Int" }
+  if tag == TY_FLOAT { return "Float" }
+  if tag == TY_BOOL { return "Bool" }
+  if tag == TY_STRING { return "String" }
+  if tag == TY_MAP { return "Map" }
+  if tag == TY_VOID { return "Void" }
+  if tag == TY_JSON { return "JsonValue" }
+  if tag == TY_HTTP_RESP { return "HttpResponse" }
+  if tag == TY_HTTP_SERVER { return "HttpServer" }
+  if tag == TY_HTTP_REQ { return "HttpRequest" }
+  if tag == TY_JOIN_HANDLE { return "JoinHandle" }
+  if tag == TY_RESULT_ERR { return "Result<_>" }
+  if tag == TY_ARRAY { return "Array<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_RESULT { return "Result<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_SENDER { return "Sender<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_RECEIVER { return "Receiver<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_MUTEX { return "Mutex<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_STRUCT { return type_data(t) }
+  if tag == TY_ENUM { return type_data(t) }
   tag == TY_TUPLE ? {
     elems = type_data2(t)
-    elems == 0 ? return "()" : 0
+    if elems == 0 { return "()" }
     len = load64(elems - 8)
     s := "("
     i := 0
     while i < len {
-      i > 0 ? s = s + " " : 0
+      if i > 0 { s = s + " " }
       s = s + type_to_string(load64(elems + i * 8))
       i += 1
     }
@@ -382,7 +382,7 @@ type_to_string(t:I) S {
       len = load64(params - 8)
       i := 0
       while i < len {
-        i > 0 ? s = s + ", " : 0
+        if i > 0 { s = s + ", " }
         s = s + type_to_string(load64(params + i * 8))
         i += 1
       }
@@ -411,7 +411,7 @@ lookup_local(locals:I name:S) I {
   i := locals.len() - 1
   while i >= 0 {
     scope = locals[i]
-    scope.has(name) ? return scope.get(name) : 0
+    if scope.has(name) { return scope.get(name) }
     i -= 1
   }
   0
@@ -490,8 +490,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   } : 0
 
   // ST_BREAK / ST_CONTINUE: nothing to check
-  tag == ST_BREAK ? return 0 : 0
-  tag == ST_CONTINUE ? return 0 : 0
+  if tag == ST_BREAK { return 0 }
+  if tag == ST_CONTINUE { return 0 }
 
   // ST_LET_DESTR: [tag, names_p, value_expr]
   tag == ST_LET_DESTR ? {
@@ -546,7 +546,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
 // ── check_stmts: type-check an array of statements ──────────────
 check_stmts(stmts:I stmts_len:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
-  stmts == 0 ? return 0 : 0
+  if stmts == 0 { return 0 }
   i := 0
   while i < stmts_len {
     check_stmt(load64(stmts + i * 8), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -560,17 +560,17 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   tag = load64(expr)
 
   // ── Literals ──────────────────────────────────────────────────
-  tag == EX_INT_LIT ? return make_type(TY_INT) : 0
-  tag == EX_FLOAT_LIT ? return make_type(TY_FLOAT) : 0
-  tag == EX_BOOL_LIT ? return make_type(TY_BOOL) : 0
-  tag == EX_STRING_LIT ? return make_type(TY_STRING) : 0
+  if tag == EX_INT_LIT { return make_type(TY_INT) }
+  if tag == EX_FLOAT_LIT { return make_type(TY_FLOAT) }
+  if tag == EX_BOOL_LIT { return make_type(TY_BOOL) }
+  if tag == EX_STRING_LIT { return make_type(TY_STRING) }
 
   // ── Identifier ────────────────────────────────────────────────
   tag == EX_IDENT ? {
     name = load64(expr + 8)
     // Search local scopes
     t = lookup_local(locals, name)
-    t != 0 ? return t : 0
+    if t != 0 { return t }
     // Check function environment — return Fn type
     fn_env.has(name) ? {
       sig = fn_env.get(name)
@@ -595,39 +595,39 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Arithmetic: OP_ADD(0) .. OP_MOD(4)
     op <= OP_MOD ? {
       // String + String → String
-      op == OP_ADD && lt_tag == TY_STRING && rt_tag == TY_STRING ? return make_type(TY_STRING) : 0
+      if op == OP_ADD && lt_tag == TY_STRING && rt_tag == TY_STRING { return make_type(TY_STRING) }
       // Float op Float → Float
-      lt_tag == TY_FLOAT && rt_tag == TY_FLOAT ? return make_type(TY_FLOAT) : 0
+      if lt_tag == TY_FLOAT && rt_tag == TY_FLOAT { return make_type(TY_FLOAT) }
       // Int op Int → Int
-      lt_tag != TY_INT ? return tc_error("arithmetic operator requires Int operands, left operand is " + type_to_string(lt)) : 0
-      rt_tag != TY_INT ? return tc_error("arithmetic operator requires Int operands, right operand is " + type_to_string(rt)) : 0
+      if lt_tag != TY_INT { return tc_error("arithmetic operator requires Int operands, left operand is " + type_to_string(lt)) }
+      if rt_tag != TY_INT { return tc_error("arithmetic operator requires Int operands, right operand is " + type_to_string(rt)) }
       return make_type(TY_INT)
     } : 0
 
     // Comparison: OP_EQ(5) .. OP_GTEQ(10)
     op >= OP_EQ && op <= OP_GTEQ ? {
       // Float == Float → Bool
-      lt_tag == TY_FLOAT && rt_tag == TY_FLOAT ? return make_type(TY_BOOL) : 0
+      if lt_tag == TY_FLOAT && rt_tag == TY_FLOAT { return make_type(TY_BOOL) }
       // String == / != String → Bool
       lt_tag == TY_STRING && rt_tag == TY_STRING ? {
-        op == OP_EQ || op == OP_NEQ ? return make_type(TY_BOOL) : 0
+        if op == OP_EQ || op == OP_NEQ { return make_type(TY_BOOL) }
         return tc_error("String only supports == and != comparison")
       } : 0
       // Bool == / != Bool → Bool
       lt_tag == TY_BOOL && rt_tag == TY_BOOL ? {
-        op == OP_EQ || op == OP_NEQ ? return make_type(TY_BOOL) : 0
+        if op == OP_EQ || op == OP_NEQ { return make_type(TY_BOOL) }
         return tc_error("Bool only supports == and != comparison")
       } : 0
       // Int cmp Int → Bool
-      lt_tag != TY_INT ? return tc_error("comparison operator requires matching operands, left operand is " + type_to_string(lt)) : 0
-      rt_tag != TY_INT ? return tc_error("comparison operator requires matching operands, right operand is " + type_to_string(rt)) : 0
+      if lt_tag != TY_INT { return tc_error("comparison operator requires matching operands, left operand is " + type_to_string(lt)) }
+      if rt_tag != TY_INT { return tc_error("comparison operator requires matching operands, right operand is " + type_to_string(rt)) }
       return make_type(TY_BOOL)
     } : 0
 
     // Logical: OP_AND(11), OP_OR(12)
     op == OP_AND || op == OP_OR ? {
-      lt_tag != TY_BOOL ? return tc_error("boolean operator requires Bool operands, left operand is " + type_to_string(lt)) : 0
-      rt_tag != TY_BOOL ? return tc_error("boolean operator requires Bool operands, right operand is " + type_to_string(rt)) : 0
+      if lt_tag != TY_BOOL { return tc_error("boolean operator requires Bool operands, left operand is " + type_to_string(lt)) }
+      if rt_tag != TY_BOOL { return tc_error("boolean operator requires Bool operands, right operand is " + type_to_string(rt)) }
       return make_type(TY_BOOL)
     } : 0
 
@@ -642,12 +642,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     ot_tag = type_tag(ot)
 
     op == UOP_NOT ? {
-      ot_tag != TY_BOOL ? return tc_error("'!' operator requires Bool operand, got " + type_to_string(ot)) : 0
+      if ot_tag != TY_BOOL { return tc_error("'!' operator requires Bool operand, got " + type_to_string(ot)) }
       return make_type(TY_BOOL)
     } : 0
 
     op == UOP_NEG ? {
-      ot_tag != TY_INT && ot_tag != TY_FLOAT ? return tc_error("'-' operator requires Int or Float operand, got " + type_to_string(ot)) : 0
+      if ot_tag != TY_INT && ot_tag != TY_FLOAT { return tc_error("'-' operator requires Int or Float operand, got " + type_to_string(ot)) }
       return ot
     } : 0
 
@@ -663,7 +663,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     else_expr = load64(expr + 40)
 
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-    type_tag(cond_ty) != TY_BOOL ? return tc_error("if condition must be Bool, got " + type_to_string(cond_ty)) : 0
+    if type_tag(cond_ty) != TY_BOOL { return tc_error("if condition must be Bool, got " + type_to_string(cond_ty)) }
 
     // Check then branch stmts
     then_stmts_len = then_stmts_p != 0 ? load64(then_stmts_p - 8) : 0
@@ -679,11 +679,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     else_tag = type_tag(else_ty)
 
     // Check type compatibility
-    type_eq(then_ty, else_ty) == 1 ? return then_ty : 0
+    if type_eq(then_ty, else_ty) == 1 { return then_ty }
     // ResultErr matches any Result<T>
-    then_tag == TY_RESULT_ERR && else_tag == TY_RESULT ? return else_ty : 0
-    else_tag == TY_RESULT_ERR && then_tag == TY_RESULT ? return then_ty : 0
-    then_tag == TY_RESULT_ERR && else_tag == TY_RESULT_ERR ? return then_ty : 0
+    if then_tag == TY_RESULT_ERR && else_tag == TY_RESULT { return else_ty }
+    if else_tag == TY_RESULT_ERR && then_tag == TY_RESULT { return then_ty }
+    if then_tag == TY_RESULT_ERR && else_tag == TY_RESULT_ERR { return then_ty }
 
     return tc_error("if/else branch type mismatch: then branch is " + type_to_string(then_ty) + " but else branch is " + type_to_string(else_ty))
   } : 0
@@ -1635,7 +1635,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
       mc_method == "unwrap" ? {
         mc_nargs != 0 ? tc_error("unwrap() takes no arguments") : 0
-        ot == TY_RESULT ? return type_inner(obj_ty) : 0
+        if ot == TY_RESULT { return type_inner(obj_ty) }
         return make_type(TY_INT)
       } : 0
 
@@ -1828,11 +1828,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Tuple: field is numeric index
     obj_tag == TY_TUPLE ? {
       elems = type_data2(obj_ty)
-      elems == 0 ? return tc_error("tuple has no elements") : 0
+      if elems == 0 { return tc_error("tuple has no elements") }
       len = load64(elems - 8)
       // Parse field name as integer index
       idx = stoi(field)
-      idx < 0 || idx >= len ? return tc_error("tuple index out of bounds") : 0
+      if idx < 0 || idx >= len { return tc_error("tuple index out of bounds") }
       return load64(elems + idx * 8)
     } : 0
 
@@ -1840,7 +1840,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     obj_tag == TY_STRUCT ? {
       sname = type_data(obj_ty)
       fields_map = type_data2(obj_ty)
-      fields_map != 0 && fields_map.has(field) ? return fields_map.get(field) : 0
+      if fields_map != 0 && fields_map.has(field) { return fields_map.get(field) }
       return tc_error("no field '" + field + "' on struct '" + sname + "'")
     } : 0
 
@@ -1857,7 +1857,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     field_values_p = load64(expr + 24)
 
     // Look up struct definition
-    structs.has(sname) == 0 ? return tc_error("undefined struct '" + sname + "'") : 0
+    if structs.has(sname) == 0 { return tc_error("undefined struct '" + sname + "'") }
     expected_fields = structs.get(sname)
 
     // expected_fields is a Map: field_name → Type ptr
@@ -1874,10 +1874,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       found := 0
       fi := 0
       while fi < num_fields {
-        load64(field_names_p + fi * 8) == ek ? { found = 1; fi = num_fields } : 0
+        load64(field_names_p + fi * 8) == ek ? { found = 1
+          fi = num_fields } : 0
         fi += 1
       }
-      found == 0 ? return tc_error("missing field '" + ek + "' in struct '" + sname + "'") : 0
+      if found == 0 { return tc_error("missing field '" + ek + "' in struct '" + sname + "'") }
       ei += 1
     }
 
@@ -1886,10 +1887,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     while fi < num_fields {
       fname = load64(field_names_p + fi * 8)
       fval = load64(field_values_p + fi * 8)
-      expected_fields.has(fname) == 0 ? return tc_error("unknown field '" + fname + "' on struct '" + sname + "'") : 0
+      if expected_fields.has(fname) == 0 { return tc_error("unknown field '" + fname + "' on struct '" + sname + "'") }
       expected_ty = expected_fields.get(fname)
       actual_ty = check_expr(fval, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-      type_eq(actual_ty, expected_ty) == 0 ? return tc_error("type mismatch for field '" + fname + "' of struct '" + sname + "': expected " + type_to_string(expected_ty) + " but got " + type_to_string(actual_ty)) : 0
+      if type_eq(actual_ty, expected_ty) == 0 { return tc_error("type mismatch for field '" + fname + "' of struct '" + sname + "': expected " + type_to_string(expected_ty) + " but got " + type_to_string(actual_ty)) }
       fi += 1
     }
 
@@ -1900,7 +1901,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   tag == EX_TUPLE_LIT ? {
     elems_p = load64(expr + 8)
     num_elems = load64(elems_p - 8)
-    elem_types = [I]
+    elem_types = array<I>()
     i := 0
     while i < num_elems {
       et = check_expr(load64(elems_p + i * 8), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -1914,12 +1915,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   tag == EX_ARRAY_LIT ? {
     elems_p = load64(expr + 8)
     num_elems = load64(elems_p - 8)
-    num_elems == 0 ? return tc_error("empty array literal — cannot infer element type") : 0
+    if num_elems == 0 { return tc_error("empty array literal — cannot infer element type") }
     first_ty = check_expr(load64(elems_p), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     i := 1
     while i < num_elems {
       elem_ty = check_expr(load64(elems_p + i * 8), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-      type_eq(elem_ty, first_ty) == 0 ? return tc_error("array literal element " + str(i) + " has type " + type_to_string(elem_ty) + " but expected " + type_to_string(first_ty)) : 0
+      if type_eq(elem_ty, first_ty) == 0 { return tc_error("array literal element " + str(i) + " has type " + type_to_string(elem_ty) + " but expected " + type_to_string(first_ty)) }
       i += 1
     }
     return make_array_type(first_ty)
@@ -1930,15 +1931,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     scrutinee = load64(expr + 8)
     arms_p = load64(expr + 16)
     scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-    type_tag(scrutinee_ty) != TY_ENUM ? return tc_error("match scrutinee must be an enum type, got " + type_to_string(scrutinee_ty)) : 0
+    if type_tag(scrutinee_ty) != TY_ENUM { return tc_error("match scrutinee must be an enum type, got " + type_to_string(scrutinee_ty)) }
 
     enum_name = type_data(scrutinee_ty)
     // Get enum variants from enums map
-    enums.has(enum_name) == 0 ? return tc_error("undefined enum '" + enum_name + "'") : 0
+    if enums.has(enum_name) == 0 { return tc_error("undefined enum '" + enum_name + "'") }
     variants = enums.get(enum_name)
 
     num_arms = load64(arms_p - 8)
-    num_arms == 0 ? return tc_error("match expression has no arms") : 0
+    if num_arms == 0 { return tc_error("match expression has no arms") }
 
     result_ty := 0
     ai := 0
@@ -1953,16 +1954,16 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       pat_variant = load64(pattern + 8)
       bindings_p = load64(pattern + 16)
 
-      pat_enum != enum_name ? return tc_error("pattern enum '" + pat_enum + "' does not match scrutinee enum '" + enum_name + "'") : 0
+      if pat_enum != enum_name { return tc_error("pattern enum '" + pat_enum + "' does not match scrutinee enum '" + enum_name + "'") }
 
       // Look up variant in variants map
-      variants.has(pat_variant) == 0 ? return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name + "'") : 0
+      if variants.has(pat_variant) == 0 { return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name + "'") }
       variant_fields_p = variants.get(pat_variant)
       // variant_fields_p is a raw array of Type ptrs
       variant_fields_len = load64(variant_fields_p - 8)
 
       bindings_len = load64(bindings_p - 8)
-      bindings_len != variant_fields_len ? return tc_error("pattern '" + enum_name + "::" + pat_variant + "' expects " + str(variant_fields_len) + " binding(s) but got " + str(bindings_len)) : 0
+      if bindings_len != variant_fields_len { return tc_error("pattern '" + enum_name + "::" + pat_variant + "' expects " + str(variant_fields_len) + " binding(s) but got " + str(bindings_len)) }
 
       // Create new scope with bindings
       push_scope(locals)
@@ -1981,7 +1982,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       result_ty == 0 ? {
         result_ty = arm_ty
       } : {
-        type_eq(arm_ty, result_ty) == 0 ? return tc_error("match arm type mismatch: expected " + type_to_string(result_ty) + " but got " + type_to_string(arm_ty)) : 0
+        if type_eq(arm_ty, result_ty) == 0 { return tc_error("match arm type mismatch: expected " + type_to_string(result_ty) + " but got " + type_to_string(arm_ty)) }
       }
       ai += 1
     }
@@ -1997,7 +1998,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Build param types and add to new scope
     push_scope(locals)
     inner_scope = locals[locals.len() - 1]
-    param_types = [I]
+    param_types = array<I>()
 
     num_params = load64(params_p - 8)
     pi := 0
@@ -2028,12 +2029,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     args_p = load64(expr + 16)
     num_args = load64(args_p - 8)
 
-    fn_env.has(func_name) == 0 ? return tc_error("undefined function '" + func_name + "' in spawn") : 0
+    if fn_env.has(func_name) == 0 { return tc_error("undefined function '" + func_name + "' in spawn") }
     sig = fn_env.get(func_name)
     sig_params = load64(sig)
     sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
 
-    num_args != sig_params_len ? return tc_error("wrong argument count calling '" + func_name + "': expected " + str(sig_params_len) + " but got " + str(num_args)) : 0
+    if num_args != sig_params_len { return tc_error("wrong argument count calling '" + func_name + "': expected " + str(sig_params_len) + " but got " + str(num_args)) }
 
     si := 0
     while si < num_args {
@@ -2041,7 +2042,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       actual = check_expr(arg_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       expected = load64(sig_params + si * 8)
       // Allow opaque types where Int expected (pointers are i64)
-      types_compatible(actual, expected) == 0 ? return tc_error("argument " + str(si + 1) + " to '" + func_name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
+      if types_compatible(actual, expected) == 0 { return tc_error("argument " + str(si + 1) + " to '" + func_name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) }
       si += 1
     }
     return make_type(TY_JOIN_HANDLE)
@@ -2055,7 +2056,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Check capacity if present
     capacity_expr != 0 ? {
       cap_ty = check_expr(capacity_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-      type_tag(cap_ty) != TY_INT ? return tc_error("channel capacity must be Int, got " + type_to_string(cap_ty)) : 0
+      if type_tag(cap_ty) != TY_INT { return tc_error("channel capacity must be Int, got " + type_to_string(cap_ty)) }
     } : 0
 
     inner = resolve_type(elem_type_name, structs, enums, mod_exports)
@@ -2077,21 +2078,21 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     args_p = load64(expr + 24)
     num_args = load64(args_p - 8)
 
-    enums.has(ename) == 0 ? return tc_error("undefined enum '" + ename + "'") : 0
+    if enums.has(ename) == 0 { return tc_error("undefined enum '" + ename + "'") }
     variants = enums.get(ename)
-    variants.has(vname) == 0 ? return tc_error("unknown variant '" + vname + "' on enum '" + ename + "'") : 0
+    if variants.has(vname) == 0 { return tc_error("unknown variant '" + vname + "' on enum '" + ename + "'") }
 
     expected_fields_p = variants.get(vname)
     expected_len = load64(expected_fields_p - 8)
 
-    num_args != expected_len ? return tc_error("variant '" + ename + "::" + vname + "' expects " + str(expected_len) + " argument(s) but got " + str(num_args)) : 0
+    if num_args != expected_len { return tc_error("variant '" + ename + "::" + vname + "' expects " + str(expected_len) + " argument(s) but got " + str(num_args)) }
 
     vi := 0
     while vi < num_args {
       arg_expr = load64(args_p + vi * 8)
       actual_ty = check_expr(arg_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       expected_ty = load64(expected_fields_p + vi * 8)
-      type_eq(actual_ty, expected_ty) == 0 ? return tc_error("argument " + str(vi + 1) + " to '" + ename + "::" + vname + "': expected " + type_to_string(expected_ty) + " but got " + type_to_string(actual_ty)) : 0
+      if type_eq(actual_ty, expected_ty) == 0 { return tc_error("argument " + str(vi + 1) + " to '" + ename + "::" + vname + "': expected " + type_to_string(expected_ty) + " but got " + type_to_string(actual_ty)) }
       vi += 1
     }
     return make_enum_type(ename, variants)
@@ -2176,7 +2177,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       vname = load64(vdef)
       vfields_p = load64(vdef + 8)  // raw ptr to array of type name strings
       num_vfields = load64(vfields_p - 8)
-      vtypes = [I]
+      vtypes = array<I>()
       vfi := 0
       while vfi < num_vfields {
         vtype_name = load64(vfields_p + vfi * 8)
@@ -2200,7 +2201,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
     tname = load64(tdef)
     tmethods_p = load64(tdef + 8)
     num_tmethods = load64(tmethods_p - 8)
-    tmethods_arr = [I]
+    tmethods_arr = array<I>()
     tmi := 0
     while tmi < num_tmethods {
       tmsig = load64(tmethods_p + tmi * 8)
@@ -2209,7 +2210,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       tm_params_p = load64(tmsig + 8)
       tm_ret_name = load64(tmsig + 16)
       num_tparams = load64(tm_params_p - 8)
-      tparam_types = [I]
+      tparam_types = array<I>()
       tpi := 0
       while tpi < num_tparams {
         tp = load64(tm_params_p + tpi * 8)
@@ -2296,7 +2297,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       mret_name = load64(mdef + 16)
       num_mparams = load64(mparams_p - 8)
       // Build param types skipping self (index 0)
-      method_param_types = [I]
+      method_param_types = array<I>()
       mpi := 1
       while mpi < num_mparams {
         mp = load64(mparams_p + mpi * 8)
@@ -2310,7 +2311,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
 
       // Also add mangled name to fn_env (with self param included)
       mangled = impl_target_type + "_" + mname
-      all_param_types = [I]
+      all_param_types = array<I>()
       api := 0
       while api < num_mparams {
         mp = load64(mparams_p + api * 8)
@@ -2338,7 +2339,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
 
     num_type_params == 0 ? {
       num_fparams = load64(fparams_p - 8)
-      param_types = [I]
+      param_types = array<I>()
       pi := 0
       while pi < num_fparams {
         p_node = load64(fparams_p + pi * 8)
@@ -2384,7 +2385,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
     num_type_params = load64(ftype_params_p - 8)
 
     // Skip generic functions
-    num_type_params > 0 ? { fi += 1; 0 } : {
+    num_type_params > 0 ? { fi += 1
+      0 } : {
       sig = fn_env.get(fname)
       ret_ty = load64(sig + 8)
 

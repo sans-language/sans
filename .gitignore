@@ -10,3 +10,6 @@ examples/hello
 
 # OS files
 .DS_Store
+compiler/main
+compiler/test_build
+compiler/test_const_import
