@@ -1,0 +1,6 @@
+main() I {
+  a = [10 20 30]
+  pairs = a.enumerate()
+  t = pairs.get(2)
+  t.0 + t.1
+}

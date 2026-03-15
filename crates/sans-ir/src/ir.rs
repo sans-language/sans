@@ -196,6 +196,10 @@ pub enum Instruction {
     // Array higher-order methods
     ArrayMap { dest: Reg, array: Reg, fn_ptr: Reg },
     ArrayFilter { dest: Reg, array: Reg, fn_ptr: Reg },
+    ArrayAny { dest: Reg, array: Reg, fn_ptr: Reg },
+    ArrayFind { dest: Reg, array: Reg, fn_ptr: Reg },
+    ArrayEnumerate { dest: Reg, array: Reg },
+    ArrayZip { dest: Reg, array: Reg, other: Reg },
     // String extension methods
     StringTrim { dest: Reg, string: Reg },
     StringStartsWith { dest: Reg, string: Reg, prefix: Reg },

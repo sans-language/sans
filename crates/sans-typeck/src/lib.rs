@@ -1880,6 +1880,58 @@ fn check_expr(
                         }
                     }
                 }
+                (Type::Array { inner }, "any") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("any() takes exactly 1 argument (function)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    match &arg_ty {
+                        Type::Fn { params, ret } if params.len() == 1 && params[0] == **inner && **ret == Type::Bool => {
+                            return Ok(Type::Bool);
+                        }
+                        _ => {
+                            return Err(TypeError::new(format!("any() requires a function ({}) -> Bool, got {}", inner, arg_ty)));
+                        }
+                    }
+                }
+                (Type::Array { inner }, "find") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("find() takes exactly 1 argument (function)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    match &arg_ty {
+                        Type::Fn { params, ret } if params.len() == 1 && params[0] == **inner && **ret == Type::Bool => {
+                            return Ok(*inner.clone());
+                        }
+                        _ => {
+                            return Err(TypeError::new(format!("find() requires a function ({}) -> Bool, got {}", inner, arg_ty)));
+                        }
+                    }
+                }
+                (Type::Array { inner }, "enumerate") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("enumerate() takes no arguments"));
+                    }
+                    return Ok(Type::Array {
+                        inner: Box::new(Type::Tuple { elements: vec![Type::Int, *inner.clone()] }),
+                    });
+                }
+                (Type::Array { inner: inner_a }, "zip") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("zip() takes exactly 1 argument (array)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    match &arg_ty {
+                        Type::Array { inner: inner_b } => {
+                            return Ok(Type::Array {
+                                inner: Box::new(Type::Tuple { elements: vec![*inner_a.clone(), *inner_b.clone()] }),
+                            });
+                        }
+                        _ => {
+                            return Err(TypeError::new(format!("zip() requires an array argument, got {}", arg_ty)));
+                        }
+                    }
+                }
                 (Type::Array { inner }, "contains") => {
                     if args.len() != 1 {
                         return Err(TypeError::new("contains() takes exactly 1 argument"));

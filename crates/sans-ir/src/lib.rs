@@ -1510,6 +1510,33 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Array(inner.clone()));
                         return dest;
                     }
+                    (Some(IrType::Array(_)), "any") => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayAny { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Array(ref inner)), "find") => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayFind { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), inner.as_ref().clone());
+                        return dest;
+                    }
+                    (Some(IrType::Array(ref inner)), "enumerate") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayEnumerate { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Tuple(vec![IrType::Int, inner.as_ref().clone()]))));
+                        return dest;
+                    }
+                    (Some(IrType::Array(_)), "zip") => {
+                        let other_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayZip { dest: dest.clone(), array: obj_reg, other: other_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Tuple(vec![IrType::Int, IrType::Int]))));
+                        return dest;
+                    }
                     (Some(IrType::Array(ref inner)), "pop") => {
                         let elem_type = *inner.clone();
                         let dest = self.fresh_reg();

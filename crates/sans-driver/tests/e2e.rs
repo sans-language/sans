@@ -494,3 +494,23 @@ fn e2e_lambda_map() {
 fn e2e_lambda_capture() {
     assert_eq!(compile_and_run("lambda_capture.sans"), 15);
 }
+
+#[test]
+fn e2e_array_any() {
+    assert_eq!(compile_and_run("array_any.sans"), 1);
+}
+
+#[test]
+fn e2e_array_find() {
+    assert_eq!(compile_and_run("array_find.sans"), 30);
+}
+
+#[test]
+fn e2e_array_enumerate() {
+    assert_eq!(compile_and_run("array_enumerate.sans"), 32);
+}
+
+#[test]
+fn e2e_array_zip() {
+    assert_eq!(compile_and_run("array_zip.sans"), 22);
+}

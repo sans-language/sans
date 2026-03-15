@@ -1,0 +1,7 @@
+main() I {
+  a = [1 2 3]
+  b = [10 20 30]
+  pairs = a.zip(b)
+  t = pairs.get(1)
+  t.0 + t.1
+}

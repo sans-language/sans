@@ -219,6 +219,11 @@ fn generate_llvm<'ctx>(
     let array_map_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("sans_array_map", array_map_type, Some(Linkage::External));
     llvm_module.add_function("sans_array_filter", array_map_type, Some(Linkage::External));
+    llvm_module.add_function("sans_array_any", array_map_type, Some(Linkage::External));
+    llvm_module.add_function("sans_array_find", array_map_type, Some(Linkage::External));
+    let array_enumerate_type = i64_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("sans_array_enumerate", array_enumerate_type, Some(Linkage::External));
+    llvm_module.add_function("sans_array_zip", array_map_type, Some(Linkage::External));
 
     // Declare array extension runtime functions
     let array_contains_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
@@ -547,6 +552,61 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result_int);
                     let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
                     let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "afilt_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::ArrayAny { dest, array, fn_ptr } => {
+                    let arr_int = regs[array];
+                    let fp_int = regs[fn_ptr];
+                    let fn_ref = llvm_module.get_function("sans_array_any").unwrap();
+                    let call = builder.build_call(fn_ref, &[arr_int.into(), fp_int.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_array_any: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_int);
+                }
+                Instruction::ArrayFind { dest, array, fn_ptr } => {
+                    let arr_int = regs[array];
+                    let fp_int = regs[fn_ptr];
+                    let fn_ref = llvm_module.get_function("sans_array_find").unwrap();
+                    let call = builder.build_call(fn_ref, &[arr_int.into(), fp_int.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_array_find: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_int);
+                }
+                Instruction::ArrayEnumerate { dest, array } => {
+                    let arr_int = regs[array];
+                    let fn_ref = llvm_module.get_function("sans_array_enumerate").unwrap();
+                    let call = builder.build_call(fn_ref, &[arr_int.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_array_enumerate: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "aenum_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::ArrayZip { dest, array, other } => {
+                    let arr_int = regs[array];
+                    let other_int = regs[other];
+                    let fn_ref = llvm_module.get_function("sans_array_zip").unwrap();
+                    let call = builder.build_call(fn_ref, &[arr_int.into(), other_int.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_array_zip: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result_int);
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let ptr_val = builder.build_int_to_ptr(result_int, ptr_type, "azip_ptr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr_val);
                 }
