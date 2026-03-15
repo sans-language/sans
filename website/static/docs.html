@@ -36,6 +36,7 @@
         <li><a href="#methods">Methods by Type</a></li>
         <li><a href="#tuples">Tuples</a></li>
         <li><a href="#lambdas">Lambdas &amp; Closures</a></li>
+        <li><a href="#iterators">Iterator Chains</a></li>
         <li><a href="#structs">Structs</a></li>
         <li><a href="#enums">Enums</a></li>
         <li><a href="#traits">Traits &amp; Generics</a></li>
@@ -298,6 +299,10 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td><code>contains(value)</code></td><td><code>(T) -&gt; Bool</code></td><td>Check membership</td></tr>
         <tr><td><code>map(fn)</code></td><td><code>((T) -&gt; U) -&gt; Array&lt;U&gt;</code></td><td>Transform elements</td></tr>
         <tr><td><code>filter(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; Array&lt;T&gt;</code></td><td>Filter elements</td></tr>
+        <tr><td><code>any(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; Bool</code></td><td>True if any element matches</td></tr>
+        <tr><td><code>find(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; T</code></td><td>First match, or 0</td></tr>
+        <tr><td><code>enumerate</code></td><td><code>() -&gt; Array&lt;(Int, T)&gt;</code></td><td>Index-value tuples</td></tr>
+        <tr><td><code>zip(other)</code></td><td><code>(Array&lt;U&gt;) -&gt; Array&lt;(T, U)&gt;</code></td><td>Paired tuples</td></tr>
       </tbody>
     </table>
 
@@ -415,6 +420,16 @@ doubled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span
 multiplier = <span class="num">3</span>
 scaled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * multiplier })</code></pre>
 
+    <h2 id="iterators">Iterator Chains</h2>
+    <p>Array methods return arrays, so they chain without <code>.collect()</code>:</p>
+    <pre><code>a.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> }).<span class="fn">filter</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })
+
+<span class="comment">// New methods</span>
+a.<span class="fn">any</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })      <span class="comment">// B — true if any match</span>
+a.<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })     <span class="comment">// first match or 0</span>
+a.<span class="fn">enumerate</span>()                   <span class="comment">// [(I I)] index-value tuples</span>
+a.<span class="fn">zip</span>(b)                        <span class="comment">// [(I I)] paired tuples</span></code></pre>
+
     <h2 id="structs">Structs</h2>
     <pre><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
 
@@ -498,7 +513,7 @@ msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hell
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.4 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.5 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

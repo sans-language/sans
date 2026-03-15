@@ -115,6 +115,12 @@ const HOVER_DATA: Record<string, string> = {
     // Lambdas
     'lambda': '**Lambda** — |params| ReturnType { body }\n\nAnonymous function with implicit variable capture from enclosing scope.\n\nUsage: `f = |x:I| I { x + 10 }`\n`f(5)  // 15`',
 
+    // Iterator chain methods
+    'any': '**any**(predicate: (T) -> Bool) -> Bool\n\nReturns true if any element satisfies the predicate.\n\nUsage: `[1 2 3].any(|x:I| B { x > 2 })  // true`',
+    'find': '**find**(predicate: (T) -> Bool) -> T\n\nReturns first element matching predicate, or 0 if none found.\n\nUsage: `[10 20 30].find(|x:I| B { x > 15 })  // 20`',
+    'enumerate': '**enumerate**() -> Array<(Int, T)>\n\nReturns array of (index, value) tuples.\n\nUsage: `[10 20 30].enumerate()  // [(0 10) (1 20) (2 30)]`',
+    'zip': '**zip**(other: Array<U>) -> Array<(T, U)>\n\nPairs elements from two arrays into tuples.\n\nUsage: `[1 2].zip([10 20])  // [(1 10) (2 20)]`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

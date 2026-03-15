@@ -276,6 +276,10 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `contains(value)` | `(T) -> Bool` | Check membership |
 | `map(fn)` | `((T) -> U) -> Array<U>` | Transform elements |
 | `filter(fn)` | `((T) -> Bool) -> Array<T>` | Filter elements |
+| `any(fn)` | `((T) -> Bool) -> Bool` | True if any element matches |
+| `find(fn)` | `((T) -> Bool) -> T` | First match, or 0 |
+| `enumerate` | `() -> Array<(Int, T)>` | Index-value tuples |
+| `zip(other)` | `(Array<U>) -> Array<(T, U)>` | Paired tuples |
 
 ### String
 
@@ -402,6 +406,40 @@ doubled = nums.map(|x:I| I { x * 2 })
 // Implicit capture — variables from enclosing scope are captured automatically
 multiplier = 3
 scaled = nums.map(|x:I| I { x * multiplier })
+```
+
+---
+
+## Iterator Chains
+
+Array methods return arrays, so they can be chained without `.collect()`:
+
+### Chaining
+```sans
+a.map(|x:I| I { x * 2 }).filter(|x:I| B { x > 3 })
+```
+
+### New Methods
+- `.any(f)` — returns `B`, true if any element satisfies predicate
+- `.find(f)` — returns first element matching predicate, or 0
+- `.enumerate()` — returns array of `(index value)` tuples
+- `.zip(other)` — returns array of `(a_elem b_elem)` tuples
+
+### Examples
+
+```sans
+nums = [1 2 3 4 5]
+nums.any(|x:I| B { x > 3 })     // true
+nums.find(|x:I| B { x > 10 })   // 0 (not found)
+
+pairs = nums.enumerate()
+t = pairs.get(2)                  // (2 3)
+t.0                               // 2 (index)
+t.1                               // 3 (value)
+
+a = [1 2 3]
+b = [10 20 30]
+a.zip(b).map(|t:I| I { t })      // [(1 10) (2 20) (3 30)]
 ```
 
 ---

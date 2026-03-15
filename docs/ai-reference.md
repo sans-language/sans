@@ -125,7 +125,7 @@ fcall(ptr arg)                          I I -> I (call fn ptr)
 
 ## Methods
 ```
-Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f)
+Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b)
 String:    len substring(s e) trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
@@ -147,6 +147,15 @@ a.map(|x:I| I { x * 2 })        // pass to map
 offset = 10
 g = |x:I| I { x + offset }      // implicit capture
 g(5)                             // 15
+```
+
+## Iterator Chains
+```
+a.map(|x:I| I { x * 2 }).filter(|x:I| B { x > 3 })  // chained, auto-materialized
+a.any(|x:I| B { x > 3 })       // B — true if any match
+a.find(|x:I| B { x > 3 })      // I — first match or 0
+a.enumerate()                    // [(I I)] — index-value tuples
+a.zip(b)                         // [(I I)] — paired tuples
 ```
 
 ## Operators
