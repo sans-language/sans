@@ -1229,6 +1229,15 @@ fn check_expr(
                     return Err(TypeError::new(format!("exit() code must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "system" || function == "sys" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("system() takes exactly 1 argument (cmd)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if arg_ty != Type::String {
+                    return Err(TypeError::new(format!("system() cmd must be String, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "sock" {
                 if args.len() != 3 {
                     return Err(TypeError::new("sock() takes exactly 3 arguments (domain, type, proto)"));

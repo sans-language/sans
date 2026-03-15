@@ -614,3 +614,8 @@ fn e2e_arena_basic() {
 fn e2e_arena_nested() {
     assert_eq!(compile_and_run("arena_nested.sans"), 141);
 }
+
+#[test]
+fn e2e_system_basic() {
+    assert_eq!(compile_and_run("system_basic.sans"), 0);
+}

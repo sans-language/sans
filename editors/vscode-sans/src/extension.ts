@@ -98,6 +98,8 @@ const HOVER_DATA: Record<string, string> = {
     'strstr': '**strstr**(haystack: String, needle: String) -> Int\n\nReturn pointer to first occurrence of needle in haystack, or 0 if not found.\n\nUsage: `p = strstr(s, "foo")`',
     'bswap16': '**bswap16**(n: Int) -> Int\n\nByte-swap a 16-bit integer (reverse byte order).\n\nUsage: `be = bswap16(le)`',
     'exit': '**exit**(code: Int) -> Int\n\nTerminate the process with the given exit code.\n\nUsage: `exit(1)`',
+    'system': '**system**(cmd: String) -> Int\n\nRun a shell command via libc `system()` and return the exit code.\n\nAlias: `sys`\n\nUsage: `r = system("ls -la")`',
+    'sys': '**sys**(cmd: String) -> Int\n\nAlias for `system()`. Run a shell command and return the exit code.\n\nUsage: `r = sys("make")`',
 
     // Arena allocator
     'arena_begin': '**arena_begin**() -> Int\n\nPush a new arena onto the stack. All subsequent `arena_alloc()` calls allocate from this arena until `arena_end()`. Nestable up to 8 deep.\n\nUsage: `arena_begin()`',

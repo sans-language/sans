@@ -1314,6 +1314,12 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Exit { dest: dest.clone(), code: code_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "system" || function == "sys" {
+                    let cmd_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::System { dest: dest.clone(), command: cmd_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "sock" {
                     let domain_reg = self.lower_expr(&args[0]);
                     let type_reg = self.lower_expr(&args[1]);

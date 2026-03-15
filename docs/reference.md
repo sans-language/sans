@@ -222,6 +222,7 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `strstr(haystack, needle)` | `(Int, Int) -> Int` | find substring, 0 if not found |
 | `bswap16(val)` | `(Int) -> Int` | byte-swap 16-bit (htons) |
 | `exit(code)` | `(Int) -> Int` | exit process |
+| `system(cmd)` / `sys(cmd)` | `(String) -> Int` | run shell command, return exit code |
 
 #### Arena Allocator
 

@@ -102,6 +102,7 @@ store64(p v)                            I I -> I (store 64-bit)
 strstr(h n)                             I I -> I (find substr)
 bswap16(v)                              I -> I (byte swap 16)
 exit(code)                              I -> I (exit process)
+system(cmd) / sys(cmd)                  S -> I (run shell cmd, return exit code)
 wfd(fd msg)                             I S -> I (write to fd)
 
 // Arena allocator (phase-based, stackable up to 8 deep)

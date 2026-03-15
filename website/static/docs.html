@@ -239,6 +239,7 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td><code>strstr(haystack, needle)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>find substring, 0 if not found</td></tr>
         <tr><td><code>bswap16(val)</code></td><td><code>(Int) -&gt; Int</code></td><td>byte-swap 16-bit (htons)</td></tr>
         <tr><td><code>exit(code)</code></td><td><code>(Int) -&gt; Int</code></td><td>exit process</td></tr>
+        <tr><td><code>system(cmd)</code> / <code>sys(cmd)</code></td><td><code>(String) -&gt; Int</code></td><td>run shell command, return exit code</td></tr>
       </tbody>
     </table>
 
@@ -609,7 +610,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.25 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.26 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

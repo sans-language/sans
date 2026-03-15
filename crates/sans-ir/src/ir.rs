@@ -255,6 +255,7 @@ pub enum Instruction {
     Store64 { dest: Reg, ptr: Reg, val: Reg },
     Strstr { dest: Reg, haystack: Reg, needle: Reg },
     Exit { dest: Reg, code: Reg },
+    System { dest: Reg, command: Reg },
     GetLogLevel { dest: Reg },
     SetLogLevel { dest: Reg, level: Reg },
     // HTTP operations

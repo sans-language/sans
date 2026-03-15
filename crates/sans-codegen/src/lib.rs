@@ -119,6 +119,9 @@ fn generate_llvm<'ctx>(
     let exit_type = context.void_type().fn_type(&[i64_type.into()], false);
     llvm_module.add_function("exit", exit_type, Some(Linkage::External));
 
+    let system_type = i32_type.fn_type(&[ptr_type.into()], false);
+    llvm_module.add_function("system", system_type, Some(Linkage::External));
+
     let memcpy_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("memcpy", memcpy_type, Some(Linkage::External));
 
@@ -3536,6 +3539,25 @@ fn generate_llvm<'ctx>(
                     builder.build_call(fn_ref, &[regs[code].into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), i64_type.const_int(0, false));
+                }
+                Instruction::System { dest, command } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let cmd_ptr = if let Some(p) = ptrs.get(command) {
+                        *p
+                    } else {
+                        builder.build_int_to_ptr(regs[command], ptr_type, "sys_cmd")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("system").unwrap();
+                    let call = builder.build_call(fn_ref, &[cmd_ptr.into()], "sys_r")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let i32_result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("system: expected return".into())),
+                    };
+                    let result = builder.build_int_s_extend(i32_result, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
                 }
                 Instruction::GetLogLevel { dest } => {
                     let fn_ref = llvm_module.get_function("sans_get_log_level").unwrap();
