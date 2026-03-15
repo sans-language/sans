@@ -1,6 +1,6 @@
 pub mod ir;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use sans_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
@@ -131,16 +131,17 @@ pub fn lower_with_extra_structs(
         local_fn_ret_types.insert(f.name.clone(), ir_type);
     }
 
-    let mut functions: Vec<IrFunction> = program.functions.iter()
-        .map(|f| {
-            let func_name = if let Some(mod_name) = module_name {
-                format!("{}__{}", mod_name, f.name)
-            } else {
-                f.name.clone()
-            };
-            lower_function_named(f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names)
-        })
-        .collect();
+    let mut functions: Vec<IrFunction> = Vec::new();
+    for f in &program.functions {
+        let func_name = if let Some(mod_name) = module_name {
+            format!("{}__{}", mod_name, f.name)
+        } else {
+            f.name.clone()
+        };
+        let (main_fn, lifted) = lower_function_named(&f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names);
+        functions.push(main_fn);
+        functions.extend(lifted);
+    }
 
     // Lower impl methods as mangled functions
     for imp in &program.impls {
@@ -150,14 +151,16 @@ pub fn lower_with_extra_structs(
             } else {
                 format!("{}_{}", imp.target_type, method.name)
             };
-            functions.push(lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names));
+            let (main_fn, lifted) = lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names);
+            functions.push(main_fn);
+            functions.extend(lifted);
         }
     }
 
     Module { globals, functions }
 }
 
-fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>) -> IrFunction {
+fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>) -> (IrFunction, Vec<IrFunction>) {
     let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone(), global_names.clone());
 
     // Map params to arg registers
@@ -240,12 +243,14 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
         }
     }
 
-    IrFunction {
+    let lifted = builder.lifted_fns;
+    let main_fn = IrFunction {
         name: func_name.to_string(),
         params,
         param_struct_sizes,
         body: builder.instructions,
-    }
+    };
+    (main_fn, lifted)
 }
 
 struct IrBuilder {
@@ -262,6 +267,12 @@ struct IrBuilder {
     global_names: HashMap<String, IrType>,
     /// Tracks the name of the current basic block (updated when a Label instruction is emitted)
     current_label: Option<String>,
+    /// Lambda functions lifted out of the current function during lowering
+    lifted_fns: Vec<IrFunction>,
+    /// Counter for generating unique lambda names
+    lambda_counter: usize,
+    /// Tracks closure info: dest_register -> (lifted_fn_name, capture_var_names)
+    closure_info: HashMap<Reg, (String, Vec<String>)>,
 }
 
 impl IrBuilder {
@@ -279,6 +290,9 @@ impl IrBuilder {
             local_fn_ret_types,
             global_names,
             current_label: None,
+            lifted_fns: Vec::new(),
+            lambda_counter: 0,
+            closure_info: HashMap::new(),
         }
     }
 
@@ -297,6 +311,113 @@ impl IrBuilder {
     fn emit_label(&mut self, name: String) {
         self.current_label = Some(name.clone());
         self.instructions.push(Instruction::Label { name });
+    }
+
+    fn find_captures(&self, body: &[Stmt], params: &[sans_parser::ast::Param]) -> Vec<String> {
+        let param_names: HashSet<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        let mut captures = Vec::new();
+        let mut seen = HashSet::new();
+        self.collect_idents_in_stmts(body, &param_names, &mut captures, &mut seen);
+        captures
+    }
+
+    fn collect_idents_in_stmts(&self, stmts: &[Stmt], param_names: &HashSet<&str>, captures: &mut Vec<String>, seen: &mut HashSet<String>) {
+        for stmt in stmts {
+            match stmt {
+                Stmt::Let { value, .. } => self.collect_idents_in_expr(value, param_names, captures, seen),
+                Stmt::Assign { value, .. } => self.collect_idents_in_expr(value, param_names, captures, seen),
+                Stmt::Return { value, .. } => self.collect_idents_in_expr(value, param_names, captures, seen),
+                Stmt::Expr(expr) => self.collect_idents_in_expr(expr, param_names, captures, seen),
+                Stmt::While { condition, body, .. } => {
+                    self.collect_idents_in_expr(condition, param_names, captures, seen);
+                    self.collect_idents_in_stmts(body, param_names, captures, seen);
+                }
+                Stmt::If { condition, body, .. } => {
+                    self.collect_idents_in_expr(condition, param_names, captures, seen);
+                    self.collect_idents_in_stmts(body, param_names, captures, seen);
+                }
+                Stmt::ForIn { iterable, body, .. } => {
+                    self.collect_idents_in_expr(iterable, param_names, captures, seen);
+                    self.collect_idents_in_stmts(body, param_names, captures, seen);
+                }
+                Stmt::LetDestructure { value, .. } => self.collect_idents_in_expr(value, param_names, captures, seen),
+            }
+        }
+    }
+
+    fn collect_idents_in_expr(&self, expr: &Expr, param_names: &HashSet<&str>, captures: &mut Vec<String>, seen: &mut HashSet<String>) {
+        match expr {
+            Expr::Identifier { name, .. } => {
+                if self.locals.contains_key(name) && !param_names.contains(name.as_str()) && !seen.contains(name) {
+                    seen.insert(name.clone());
+                    captures.push(name.clone());
+                }
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                self.collect_idents_in_expr(left, param_names, captures, seen);
+                self.collect_idents_in_expr(right, param_names, captures, seen);
+            }
+            Expr::Call { args, .. } => {
+                for arg in args {
+                    self.collect_idents_in_expr(arg, param_names, captures, seen);
+                }
+            }
+            Expr::MethodCall { object, args, .. } => {
+                self.collect_idents_in_expr(object, param_names, captures, seen);
+                for arg in args {
+                    self.collect_idents_in_expr(arg, param_names, captures, seen);
+                }
+            }
+            Expr::If { condition, then_body, then_expr, else_body, else_expr, .. } => {
+                self.collect_idents_in_expr(condition, param_names, captures, seen);
+                self.collect_idents_in_stmts(then_body, param_names, captures, seen);
+                self.collect_idents_in_expr(then_expr, param_names, captures, seen);
+                self.collect_idents_in_stmts(else_body, param_names, captures, seen);
+                self.collect_idents_in_expr(else_expr, param_names, captures, seen);
+            }
+            Expr::UnaryOp { operand, .. } => {
+                self.collect_idents_in_expr(operand, param_names, captures, seen);
+            }
+            Expr::FieldAccess { object, .. } => {
+                self.collect_idents_in_expr(object, param_names, captures, seen);
+            }
+            Expr::StructLiteral { fields, .. } => {
+                for (_, expr) in fields {
+                    self.collect_idents_in_expr(expr, param_names, captures, seen);
+                }
+            }
+            Expr::EnumVariant { args, .. } => {
+                for arg in args {
+                    self.collect_idents_in_expr(arg, param_names, captures, seen);
+                }
+            }
+            Expr::Match { scrutinee, arms, .. } => {
+                self.collect_idents_in_expr(scrutinee, param_names, captures, seen);
+                for arm in arms {
+                    self.collect_idents_in_expr(&arm.body, param_names, captures, seen);
+                }
+            }
+            Expr::ArrayLiteral { elements, .. } | Expr::TupleLiteral { elements, .. } => {
+                for elem in elements {
+                    self.collect_idents_in_expr(elem, param_names, captures, seen);
+                }
+            }
+            Expr::Spawn { args, .. } => {
+                for arg in args {
+                    self.collect_idents_in_expr(arg, param_names, captures, seen);
+                }
+            }
+            Expr::MutexCreate { value, .. } => {
+                self.collect_idents_in_expr(value, param_names, captures, seen);
+            }
+            Expr::Lambda { body, .. } => {
+                // Don't recurse into nested lambda bodies for captures of the outer lambda
+                // (nested lambdas handle their own captures)
+                let _ = body;
+            }
+            // Literals and other leaf nodes — no identifiers to capture
+            _ => {}
+        }
     }
 
     fn lower_expr(&mut self, expr: &Expr) -> Reg {
@@ -1096,6 +1217,59 @@ impl IrBuilder {
                     return dest;
                 }
 
+                // Check if the function name is a local variable holding a closure or fn ref
+                if let Some(local) = self.locals.get(function).cloned() {
+                    let local_reg = match &local {
+                        LocalVar::Value(r) => r.clone(),
+                        LocalVar::Ptr(r) => r.clone(),
+                    };
+                    // Check if this local holds a capturing closure
+                    if let Some((lifted_fn_name, capture_names)) = self.closure_info.get(&local_reg).cloned() {
+                        // Emit direct Call to lifted function with captures prepended
+                        let mut all_args: Vec<Reg> = Vec::new();
+                        for cap_name in &capture_names {
+                            let cap_reg = match self.locals.get(cap_name).cloned() {
+                                Some(LocalVar::Value(r)) => r,
+                                Some(LocalVar::Ptr(ptr)) => {
+                                    let load_dest = self.fresh_reg();
+                                    self.instructions.push(Instruction::Load { dest: load_dest.clone(), ptr });
+                                    load_dest
+                                }
+                                None => panic!("capture not found: {}", cap_name),
+                            };
+                            all_args.push(cap_reg);
+                        }
+                        let explicit_args: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
+                        all_args.extend(explicit_args);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Call {
+                            dest: dest.clone(),
+                            function: lifted_fn_name,
+                            args: all_args,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    } else {
+                        // Non-capturing fn ref — use Fcall for single arg, or Call via FnRef
+                        let fn_ptr_reg = match local {
+                            LocalVar::Value(r) => r,
+                            LocalVar::Ptr(ptr) => {
+                                let load_dest = self.fresh_reg();
+                                self.instructions.push(Instruction::Load { dest: load_dest.clone(), ptr });
+                                load_dest
+                            }
+                        };
+                        if args.len() == 1 {
+                            let arg_reg = self.lower_expr(&args[0]);
+                            let dest = self.fresh_reg();
+                            self.instructions.push(Instruction::Fcall { dest: dest.clone(), fn_ptr: fn_ptr_reg, arg: arg_reg });
+                            self.reg_types.insert(dest.clone(), IrType::Int);
+                            return dest;
+                        }
+                        // For multi-arg, fall through to direct Call (works if it's a known fn name)
+                    }
+                }
+
                 let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::Call {
@@ -1794,6 +1968,136 @@ impl IrBuilder {
                 }
                 self.reg_types.insert(dest.clone(), IrType::Tuple(elem_types));
                 dest
+            }
+
+            Expr::Lambda { params, return_type: _, body, .. } => {
+                // 1. Find captured variables
+                let captures = self.find_captures(body, params);
+
+                // 2. Generate unique lambda name
+                let lambda_name = format!("__lambda_{}", self.lambda_counter);
+                self.lambda_counter += 1;
+
+                // 3. Build the lifted function with a fresh IrBuilder
+                let mut lifted_params: Vec<Reg> = Vec::new();
+                let mut lifted_builder = IrBuilder::new(
+                    self.struct_defs.clone(),
+                    self.enum_defs.clone(),
+                    self.module_names.clone(),
+                    self.module_fn_ret_types.clone(),
+                    self.local_fn_ret_types.clone(),
+                    self.global_names.clone(),
+                );
+
+                // Add capture params first
+                for cap_name in &captures {
+                    let reg = lifted_builder.fresh_reg();
+                    lifted_params.push(reg.clone());
+                    // Copy type info from the enclosing scope
+                    if let Some(local) = self.locals.get(cap_name) {
+                        let src_reg = match local {
+                            LocalVar::Value(r) => r.clone(),
+                            LocalVar::Ptr(r) => r.clone(),
+                        };
+                        if let Some(ty) = self.reg_types.get(&src_reg).cloned() {
+                            lifted_builder.reg_types.insert(reg.clone(), ty);
+                        }
+                    }
+                    lifted_builder.locals.insert(cap_name.clone(), LocalVar::Value(reg));
+                }
+
+                // Add actual lambda params
+                for param in params {
+                    let reg = lifted_builder.fresh_reg();
+                    lifted_params.push(reg.clone());
+                    // Set type from param type name
+                    match param.type_name.name.as_str() {
+                        "Int" | "I" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Int); }
+                        "Float" | "F" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Float); }
+                        "Bool" | "B" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Bool); }
+                        "String" | "S" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Str); }
+                        _ => { lifted_builder.reg_types.insert(reg.clone(), IrType::Int); }
+                    }
+                    lifted_builder.locals.insert(param.name.clone(), LocalVar::Value(reg));
+                }
+
+                // Lower body statements
+                for (i, stmt) in body.iter().enumerate() {
+                    let is_last = i == body.len() - 1;
+                    if is_last {
+                        match stmt {
+                            Stmt::Expr(expr) => {
+                                let reg = lifted_builder.lower_expr(expr);
+                                lifted_builder.instructions.push(Instruction::Ret { value: reg });
+                            }
+                            Stmt::Return { value, .. } => {
+                                let reg = lifted_builder.lower_expr(value);
+                                lifted_builder.instructions.push(Instruction::Ret { value: reg });
+                            }
+                            other => {
+                                lifted_builder.lower_stmt(other);
+                            }
+                        }
+                    } else {
+                        lifted_builder.lower_stmt(stmt);
+                    }
+                }
+
+                // Create IrFunction for the lifted lambda
+                let param_struct_sizes: Vec<usize> = lifted_params.iter().map(|_| 0usize).collect();
+                let lifted_fn = IrFunction {
+                    name: lambda_name.clone(),
+                    params: lifted_params,
+                    param_struct_sizes,
+                    body: lifted_builder.instructions,
+                };
+                self.lifted_fns.push(lifted_fn);
+                // Collect any nested lambdas
+                self.lifted_fns.extend(lifted_builder.lifted_fns);
+
+                // 4. At the call site, emit either FnRef (no captures) or closure struct
+                if captures.is_empty() {
+                    // Non-capturing: just emit FnRef
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::FnRef { dest: dest.clone(), name: lambda_name });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    dest
+                } else {
+                    // Capturing: create a closure struct {fn_ptr, n_captures, cap0, cap1, ...}
+                    let num_fields = 2 + captures.len();
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::StructAlloc { dest: dest.clone(), num_fields });
+
+                    // Store fn_ptr at field 0
+                    let fn_ref_reg = self.fresh_reg();
+                    self.instructions.push(Instruction::FnRef { dest: fn_ref_reg.clone(), name: lambda_name.clone() });
+                    self.instructions.push(Instruction::FieldStore { ptr: dest.clone(), field_index: 0, value: fn_ref_reg });
+
+                    // Store num_captures at field 1
+                    let ncap_reg = self.fresh_reg();
+                    self.instructions.push(Instruction::Const { dest: ncap_reg.clone(), value: captures.len() as i64 });
+                    self.instructions.push(Instruction::FieldStore { ptr: dest.clone(), field_index: 1, value: ncap_reg });
+
+                    // Store each captured value
+                    for (i, cap_name) in captures.iter().enumerate() {
+                        let cap_reg = match self.locals.get(cap_name).cloned() {
+                            Some(LocalVar::Value(r)) => r,
+                            Some(LocalVar::Ptr(ptr)) => {
+                                let load_dest = self.fresh_reg();
+                                self.instructions.push(Instruction::Load { dest: load_dest.clone(), ptr });
+                                load_dest
+                            }
+                            None => panic!("capture not found: {}", cap_name),
+                        };
+                        self.instructions.push(Instruction::FieldStore { ptr: dest.clone(), field_index: 2 + i, value: cap_reg });
+                    }
+
+                    // Store closure info so call sites can use direct Call with captures prepended
+                    self.closure_info.insert(dest.clone(), (lambda_name, captures.iter().cloned().collect()));
+
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    dest
+                }
             }
         }
     }
@@ -2502,5 +2806,52 @@ mod tests {
         let ir = lower(&program, None, &std::collections::HashMap::new());
         let main_fn = ir.functions.iter().find(|f| f.name == "main").unwrap();
         assert!(main_fn.body.iter().any(|i| matches!(i, Instruction::StructAlloc { num_fields: 2, .. })));
+    }
+
+    #[test]
+    fn lower_lambda_basic() {
+        let src = "main() I { f = |x:I| I { x + 10 }\n 0 }";
+        let program = parse(src);
+        sans_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
+        let ir = lower(&program, None, &std::collections::HashMap::new());
+        // Should have a lifted __lambda_0 function
+        assert!(ir.functions.iter().any(|f| f.name.starts_with("__lambda")),
+            "expected a lifted lambda function, got: {:?}", ir.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn lower_lambda_with_capture() {
+        let src = "main() I { offset = 10\n f = |x:I| I { x + offset }\n 0 }";
+        let program = parse(src);
+        sans_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
+        let ir = lower(&program, None, &std::collections::HashMap::new());
+        let lambda_fn = ir.functions.iter().find(|f| f.name.starts_with("__lambda")).unwrap();
+        // Capturing lambda should have 2 params: capture (offset) + explicit (x)
+        assert_eq!(lambda_fn.params.len(), 2,
+            "expected 2 params (capture + explicit), got {}: {:?}", lambda_fn.params.len(), lambda_fn.params);
+    }
+
+    #[test]
+    fn lower_lambda_no_capture_uses_fnref() {
+        let src = "main() I { f = |x:I| I { x + 10 }\n 0 }";
+        let program = parse(src);
+        sans_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
+        let ir = lower(&program, None, &std::collections::HashMap::new());
+        let main_fn = ir.functions.iter().find(|f| f.name == "main").unwrap();
+        // Non-capturing lambda should emit FnRef
+        assert!(main_fn.body.iter().any(|i| matches!(i, Instruction::FnRef { .. })),
+            "expected FnRef instruction for non-capturing lambda");
+    }
+
+    #[test]
+    fn lower_lambda_capture_uses_closure_struct() {
+        let src = "main() I { offset = 10\n f = |x:I| I { x + offset }\n 0 }";
+        let program = parse(src);
+        sans_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
+        let ir = lower(&program, None, &std::collections::HashMap::new());
+        let main_fn = ir.functions.iter().find(|f| f.name == "main").unwrap();
+        // Capturing lambda should emit StructAlloc for closure struct
+        assert!(main_fn.body.iter().any(|i| matches!(i, Instruction::StructAlloc { num_fields: 3, .. })),
+            "expected StructAlloc with 3 fields (fn_ptr, n_captures, cap0) for closure struct");
     }
 }
