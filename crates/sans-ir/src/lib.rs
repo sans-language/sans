@@ -1447,11 +1447,12 @@ impl IrBuilder {
             Expr::EnumVariant { enum_name, variant_name, args, .. } => {
                 let variants = self.enum_defs.get(enum_name)
                     .expect("unknown enum in variant construction").clone();
-                let (_, tag, num_data_fields) = variants.iter()
+                let (_, tag, _variant_data_fields) = variants.iter()
                     .find(|(n, _, _)| n == variant_name)
                     .expect("unknown variant");
                 let tag = *tag as i64;
-                let num_data_fields = *num_data_fields;
+                // Use max data fields across ALL variants so all are same size (needed for Phi)
+                let num_data_fields = variants.iter().map(|(_, _, n)| *n).max().unwrap_or(0);
 
                 let dest = self.fresh_reg();
                 self.instructions.push(Instruction::EnumAlloc {

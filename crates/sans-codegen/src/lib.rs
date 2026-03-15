@@ -1060,6 +1060,10 @@ fn generate_llvm<'ctx>(
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
                     regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
+                    // Propagate struct_sizes from either branch for enum Phi results
+                    if let Some(sz) = struct_sizes.get(a_val).or_else(|| struct_sizes.get(b_val)) {
+                        struct_sizes.insert(dest.clone(), *sz);
+                    }
                 }
                 Instruction::StringConst { dest, value } => {
                     let string_val = context.const_string(value.as_bytes(), true);
@@ -1249,8 +1253,14 @@ fn generate_llvm<'ctx>(
                     struct_sizes.insert(dest.clone(), total_fields);
                 }
                 Instruction::EnumTag { dest, ptr } => {
-                    let enum_ptr = ptrs[ptr];
-                    let num_fields = struct_sizes[ptr];
+                    let enum_ptr = if let Some(p) = ptrs.get(ptr) {
+                        *p
+                    } else {
+                        let int_val = regs[ptr];
+                        builder.build_int_to_ptr(int_val, context.ptr_type(inkwell::AddressSpace::default()), &format!("{}_ptr", ptr))
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let num_fields = if let Some(n) = struct_sizes.get(ptr) { *n } else { 2 };
                     let field_types: Vec<inkwell::types::BasicTypeEnum> =
                         (0..num_fields).map(|_| i64_type.into()).collect();
                     let struct_type = context.struct_type(&field_types, false);
@@ -1262,8 +1272,14 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), tag_val);
                 }
                 Instruction::EnumData { dest, ptr, field_index } => {
-                    let enum_ptr = ptrs[ptr];
-                    let num_fields = struct_sizes[ptr];
+                    let enum_ptr = if let Some(p) = ptrs.get(ptr) {
+                        *p
+                    } else {
+                        let int_val = regs[ptr];
+                        builder.build_int_to_ptr(int_val, context.ptr_type(inkwell::AddressSpace::default()), &format!("{}_edata_ptr", ptr))
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let num_fields = if let Some(n) = struct_sizes.get(ptr) { *n } else { 2 };
                     let field_types: Vec<inkwell::types::BasicTypeEnum> =
                         (0..num_fields).map(|_| i64_type.into()).collect();
                     let struct_type = context.struct_type(&field_types, false);
