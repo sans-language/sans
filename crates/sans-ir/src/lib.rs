@@ -1111,8 +1111,12 @@ impl IrBuilder {
                     return dest;
                 } else if function == "ptr" {
                     let arg_reg = self.lower_expr(&args[0]);
-                    // ptr() is a no-op at IR level — the value is already an i64
-                    return arg_reg;
+                    // Emit a Copy into a fresh register typed as Int so that
+                    // arithmetic on the result dispatches to BinOp (not StringConcat)
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Copy { dest: dest.clone(), src: arg_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "alloc" {
                     let size_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();

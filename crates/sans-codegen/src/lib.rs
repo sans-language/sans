@@ -1057,8 +1057,22 @@ fn generate_llvm<'ctx>(
                     left,
                     right,
                 } => {
-                    let lhs = regs[left];
-                    let rhs = regs[right];
+                    let lhs = if let Some(&v) = regs.get(left) {
+                        v
+                    } else if let Some(&p) = ptrs.get(left) {
+                        builder.build_ptr_to_int(p, i64_type, &format!("{}_int", left))
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        return Err(CodegenError::LlvmError(format!("BinOp: register '{}' not found", left)));
+                    };
+                    let rhs = if let Some(&v) = regs.get(right) {
+                        v
+                    } else if let Some(&p) = ptrs.get(right) {
+                        builder.build_ptr_to_int(p, i64_type, &format!("{}_int", right))
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        return Err(CodegenError::LlvmError(format!("BinOp: register '{}' not found", right)));
+                    };
                     let result = match op {
                         IrBinOp::Add => builder
                             .build_int_add(lhs, rhs, dest)
