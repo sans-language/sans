@@ -58,6 +58,15 @@ fn resolve_type(
     enums: &HashMap<String, Vec<(String, Vec<Type>)>>,
     module_exports: &HashMap<String, ModuleExports>,
 ) -> Result<Type, TypeError> {
+    if name.starts_with('(') && name.ends_with(')') {
+        let inner = &name[1..name.len()-1];
+        let parts: Vec<&str> = inner.split_whitespace().collect();
+        let element_types: Vec<Type> = parts.iter()
+            .map(|p| resolve_type(p, structs, enums, module_exports))
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok(Type::Tuple { elements: element_types });
+    }
+
     match name {
         "Int" | "I" => Ok(Type::Int),
         "Float" | "F" => Ok(Type::Float),
@@ -1496,6 +1505,17 @@ fn check_expr(
             }
             let obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             match &obj_ty {
+                Type::Tuple { elements } => {
+                    let index: usize = field.parse().map_err(|_| {
+                        TypeError::new(format!("tuple access must use numeric index, got '{}'", field))
+                    })?;
+                    if index >= elements.len() {
+                        return Err(TypeError::new(format!(
+                            "tuple index {} out of bounds, tuple has {} elements", index, elements.len()
+                        )));
+                    }
+                    Ok(elements[index].clone())
+                }
                 Type::Struct { name, fields } => {
                     fields
                         .iter()
@@ -3165,5 +3185,21 @@ mod tests {
     #[test]
     fn check_multiline_string() {
         assert!(do_check("fn main() Int { let s = \"\"\"\nhello\nworld\n\"\"\" \n s.len() }").is_ok());
+    }
+
+    #[test]
+    fn check_tuple_literal() {
+        let src = "main() I { t = (1 2 3)\n t.0 }";
+        let program = sans_parser::parse(src).unwrap();
+        let result = check(&program, &std::collections::HashMap::new());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_tuple_access_out_of_bounds() {
+        let src = "main() I { t = (1 2)\n t.5 }";
+        let program = sans_parser::parse(src).unwrap();
+        let result = check(&program, &std::collections::HashMap::new());
+        assert!(result.is_err());
     }
 }

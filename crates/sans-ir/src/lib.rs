@@ -1130,6 +1130,20 @@ impl IrBuilder {
             Expr::FieldAccess { object, field, span } => {
                 let obj_reg = self.lower_expr(object);
                 match self.reg_types.get(&obj_reg) {
+                    Some(IrType::Tuple(elements)) => {
+                        let num_fields = elements.len();
+                        let field_index: usize = field.parse().expect("tuple access must be numeric");
+                        let elem_type = elements.get(field_index).cloned().unwrap_or(IrType::Int);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::FieldLoad {
+                            dest: dest.clone(),
+                            ptr: obj_reg,
+                            field_index,
+                            num_fields,
+                        });
+                        self.reg_types.insert(dest.clone(), elem_type);
+                        dest
+                    }
                     Some(IrType::Struct(name)) => {
                         let struct_name = name.clone();
                         let struct_fields = self.struct_defs.get(&struct_name)
@@ -1763,17 +1777,21 @@ impl IrBuilder {
             }
 
             Expr::TupleLiteral { elements, .. } => {
-                // Placeholder: lower each element but tuple codegen not yet implemented
-                let mut elem_regs = Vec::new();
-                let mut elem_types = Vec::new();
-                for elem in elements {
-                    let reg = self.lower_expr(elem);
-                    let ty = self.reg_types.get(&reg).cloned().unwrap_or(IrType::Int);
-                    elem_regs.push(reg);
-                    elem_types.push(ty);
-                }
+                let num_fields = elements.len();
                 let dest = self.fresh_reg();
-                self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                self.instructions.push(Instruction::StructAlloc { dest: dest.clone(), num_fields });
+
+                let mut elem_types = Vec::new();
+                for (i, elem_expr) in elements.iter().enumerate() {
+                    let val_reg = self.lower_expr(elem_expr);
+                    let ty = self.reg_types.get(&val_reg).cloned().unwrap_or(IrType::Int);
+                    elem_types.push(ty);
+                    self.instructions.push(Instruction::FieldStore {
+                        ptr: dest.clone(),
+                        field_index: i,
+                        value: val_reg,
+                    });
+                }
                 self.reg_types.insert(dest.clone(), IrType::Tuple(elem_types));
                 dest
             }
@@ -2474,5 +2492,15 @@ mod tests {
         let instrs = &module.functions[0].body;
         assert!(instrs.iter().any(|i| matches!(i, Instruction::ResultUnwrap { .. })),
             "expected ResultUnwrap instruction");
+    }
+
+    #[test]
+    fn lower_tuple_literal() {
+        let src = "main() I { t = (10 20)\n t.0 + t.1 }";
+        let program = parse(src);
+        sans_typeck::check(&program, &std::collections::HashMap::new()).unwrap();
+        let ir = lower(&program, None, &std::collections::HashMap::new());
+        let main_fn = ir.functions.iter().find(|f| f.name == "main").unwrap();
+        assert!(main_fn.body.iter().any(|i| matches!(i, Instruction::StructAlloc { num_fields: 2, .. })));
     }
 }

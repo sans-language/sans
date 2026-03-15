@@ -774,7 +774,19 @@ impl Parser {
             // Check for field access / method call first (highest precedence)
             if self.peek().kind == TokenKind::Dot {
                 self.pos += 1; // consume .
-                let (field_or_method, ident_span) = self.expect_ident()?;
+                // Accept identifier or integer literal (for tuple field access like t.0)
+                let (field_or_method, ident_span) = {
+                    let tok = self.peek().clone();
+                    match &tok.kind {
+                        TokenKind::IntLiteral(n) => {
+                            let s = n.to_string();
+                            let span = tok.span.clone();
+                            self.pos += 1;
+                            (s, span)
+                        }
+                        _ => self.expect_ident()?,
+                    }
+                };
                 let start = expr_span(&lhs).start;
 
                 // Check if this is a method call: identifier followed by `(`
