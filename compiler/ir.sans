@@ -913,117 +913,81 @@ lower_expr(ctx:I expr:I) I {
     }
   } :
 
-  // ── Stubs for remaining expr types (tasks 5c/5d) ──
-
-  // EX_CALL
+  // ── EX_CALL ──
   tag == EX_CALL ? {
     name = load64(expr + 8)
     args := load64(expr + 16)
     lower_call(ctx, name, args)
   } :
 
-  // EX_METHOD_CALL
+  // ── EX_METHOD_CALL ──
   tag == EX_METHOD_CALL ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
-    dest
+    lower_method_call(ctx, expr)
   } :
 
-  // EX_FIELD_ACCESS
+  // ── EX_FIELD_ACCESS ──
   tag == EX_FIELD_ACCESS ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
-    dest
+    lower_field_access(ctx, expr)
   } :
 
-  // EX_IF
+  // ── EX_IF ──
   tag == EX_IF ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
-    dest
+    lower_if_expr(ctx, expr)
   } :
 
-  // EX_LAMBDA
+  // ── EX_LAMBDA ──
   tag == EX_LAMBDA ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
-    dest
+    lower_lambda(ctx, expr)
   } :
 
-  // EX_ARRAY_LIT
+  // ── EX_ARRAY_LIT ──
   tag == EX_ARRAY_LIT ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
-    dest
+    lower_array_lit(ctx, expr)
   } :
 
-  // EX_STRUCT_LIT
+  // ── EX_STRUCT_LIT ──
   tag == EX_STRUCT_LIT ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_STRUCT)
-    dest
+    lower_struct_lit(ctx, expr)
   } :
 
-  // EX_TUPLE_LIT
+  // ── EX_TUPLE_LIT ──
   tag == EX_TUPLE_LIT ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_TUPLE)
-    dest
+    lower_tuple_lit(ctx, expr)
   } :
 
-  // EX_MATCH
+  // ── EX_MATCH ──
   tag == EX_MATCH ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
-    dest
+    lower_match(ctx, expr)
   } :
 
-  // EX_SPAWN
+  // ── EX_SPAWN ──
   tag == EX_SPAWN ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_JOIN_HANDLE)
-    dest
+    lower_spawn(ctx, expr)
   } :
 
-  // EX_CHANNEL
+  // ── EX_CHANNEL ──
   tag == EX_CHANNEL ? {
+    // Channel should only appear inside LetDestructure (handled in lower_stmt)
+    // If it appears standalone, emit zeros for tx
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_const(dest, 0))
     ctx_set_reg_type(ctx, dest, IRTY_SENDER)
     dest
   } :
 
-  // EX_MUTEX
+  // ── EX_MUTEX ──
   tag == EX_MUTEX ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_MUTEX)
-    dest
+    lower_mutex(ctx, expr)
   } :
 
-  // EX_ENUM_VARIANT
+  // ── EX_ENUM_VARIANT ──
   tag == EX_ENUM_VARIANT ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_ENUM)
-    dest
+    lower_enum_variant(ctx, expr)
   } :
 
-  // EX_ARRAY_CREATE
+  // ── EX_ARRAY_CREATE ──
   tag == EX_ARRAY_CREATE ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
-    dest
+    lower_array_create(ctx, expr)
   } :
 
   // Unknown tag — fallback
@@ -1033,4 +997,1226 @@ lower_expr(ctx:I expr:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
+}
+
+// ── lower_stmts ─────────────────────────────────────────────────
+// Iterate an array of statements and lower each one.
+// Stub for now — will be fully implemented in 5e.
+lower_stmts(ctx:I stmts:I) I {
+  // stmts is an array pointer
+  i := 0
+  while i < stmts.len() {
+    lower_stmt(ctx, stmts.get(i))
+    i = i + 1
+    0
+  }
+  0
+}
+
+// ── lower_stmt (stub for 5e) ────────────────────────────────────
+// Minimal stub — enough for if-expr body lowering.
+lower_stmt(ctx:I stmt:I) I {
+  tag = load64(stmt)
+
+  // ST_EXPR — lower the expression, discard result
+  tag == ST_EXPR ? {
+    expr = load64(stmt + 8)
+    lower_expr(ctx, expr)
+    0
+  } :
+
+  // ST_LET — lower value, bind to local
+  tag == ST_LET ? {
+    name = load64(stmt + 8)
+    is_mut = load64(stmt + 16)
+    value_expr = load64(stmt + 32)
+    val_reg = lower_expr(ctx, value_expr)
+    is_mut == 1 ? {
+      // Mutable: alloca + store, prefix reg with "!"
+      ptr_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_alloca(ptr_reg))
+      ctx_emit(ctx, ir_store(ptr_reg, val_reg))
+      vt = ctx_get_reg_type(ctx, val_reg)
+      vt != 0 ? ctx_set_reg_type(ctx, ptr_reg, vt) : 0
+      ctx_set_local(ctx, name, "!" + ptr_reg)
+    } : {
+      ctx_set_local(ctx, name, val_reg)
+    }
+    0
+  } :
+
+  // ST_ASSIGN — store to mutable local or global
+  tag == ST_ASSIGN ? {
+    name = load64(stmt + 8)
+    value_expr = load64(stmt + 16)
+    val_reg = lower_expr(ctx, value_expr)
+    local = ctx_get_local(ctx, name)
+    local != 0 ? {
+      char_at(local, 0) == 33 ? {
+        // Mutable: strip "!" prefix, store
+        ptr_reg = local.substring(1, slen(local))
+        ctx_emit(ctx, ir_store(ptr_reg, val_reg))
+      } : {
+        // Immutable reassignment — treat as new binding
+        ctx_set_local(ctx, name, val_reg)
+      }
+    } : {
+      // Global store
+      ctx_emit(ctx, ir_global_store(name, val_reg))
+    }
+    0
+  } :
+
+  // ST_RETURN
+  tag == ST_RETURN ? {
+    value_expr = load64(stmt + 8)
+    val_reg = lower_expr(ctx, value_expr)
+    ctx_emit(ctx, ir_ret(val_reg))
+    0
+  } :
+
+  // ST_WHILE
+  tag == ST_WHILE ? {
+    cond_expr = load64(stmt + 8)
+    body_stmts = load64(stmt + 16)
+    cond_label = ctx_fresh_label(ctx)
+    body_label = ctx_fresh_label(ctx)
+    end_label = ctx_fresh_label(ctx)
+
+    // Save old break label
+    old_break = ctx_break_label(ctx)
+    ctx_set_break_label(ctx, end_label)
+
+    ctx_emit(ctx, ir_jump(cond_label))
+    ctx_emit(ctx, ir_label(cond_label))
+    cond_reg = lower_expr(ctx, cond_expr)
+    ctx_emit(ctx, ir_branch(cond_reg, body_label, end_label))
+    ctx_emit(ctx, ir_label(body_label))
+    lower_stmts(ctx, body_stmts)
+    ctx_emit(ctx, ir_jump(cond_label))
+    ctx_emit(ctx, ir_label(end_label))
+
+    // Restore old break label
+    ctx_set_break_label(ctx, old_break)
+    0
+  } :
+
+  // ST_IF (statement if — no value)
+  tag == ST_IF ? {
+    cond_expr = load64(stmt + 8)
+    then_stmts = load64(stmt + 16)
+    else_stmts = load64(stmt + 24)
+    then_l = ctx_fresh_label(ctx)
+    else_l = ctx_fresh_label(ctx)
+    end_l = ctx_fresh_label(ctx)
+    cond_reg = lower_expr(ctx, cond_expr)
+    ctx_emit(ctx, ir_branch(cond_reg, then_l, else_l))
+    ctx_emit(ctx, ir_label(then_l))
+    lower_stmts(ctx, then_stmts)
+    ctx_emit(ctx, ir_jump(end_l))
+    ctx_emit(ctx, ir_label(else_l))
+    else_stmts != 0 ? lower_stmts(ctx, else_stmts) : 0
+    ctx_emit(ctx, ir_jump(end_l))
+    ctx_emit(ctx, ir_label(end_l))
+    0
+  } :
+
+  // ST_BREAK
+  tag == ST_BREAK ? {
+    bl = ctx_break_label(ctx)
+    bl != 0 ? ctx_emit(ctx, ir_jump(bl)) : 0
+    0
+  } :
+
+  // ST_CONTINUE — jump back to loop condition (not fully tracked; stub)
+  tag == ST_CONTINUE ? {
+    0
+  } :
+
+  // ST_LET_DESTR — destructuring let (e.g., for channels)
+  tag == ST_LET_DESTR ? {
+    lower_let_destructure(ctx, stmt)
+  } :
+
+  // ST_FOR_IN — desugar to while loop
+  tag == ST_FOR_IN ? {
+    lower_for_in(ctx, stmt)
+  } :
+
+  // Unknown statement — skip
+  { 0 }
+}
+
+// ── lower_let_destructure ───────────────────────────────────────
+lower_let_destructure(ctx:I stmt:I) I {
+  // Layout: [tag, names_array, value_expr]
+  names = load64(stmt + 8)
+  value_expr = load64(stmt + 16)
+
+  // Check if value is a channel create
+  vtag = load64(value_expr)
+  vtag == EX_CHANNEL ? {
+    elem_type = load64(value_expr + 8)
+    cap_expr = load64(value_expr + 16)
+    tx_dest = ctx_fresh_reg(ctx)
+    rx_dest = ctx_fresh_reg(ctx)
+    cap_expr != 0 ? {
+      cap_reg = lower_expr(ctx, cap_expr)
+      ctx_emit(ctx, ir_channel_create_bounded(tx_dest, rx_dest, cap_reg))
+    } : {
+      ctx_emit(ctx, ir_channel_create(tx_dest, rx_dest))
+    }
+    ctx_set_reg_type(ctx, tx_dest, IRTY_SENDER)
+    ctx_set_reg_type(ctx, rx_dest, IRTY_RECEIVER)
+    // Bind first name to tx, second to rx
+    names.len() >= 1 ? ctx_set_local(ctx, names.get(0), tx_dest) : 0
+    names.len() >= 2 ? ctx_set_local(ctx, names.get(1), rx_dest) : 0
+    0
+  } : {
+    // Non-channel destructure: lower value and treat as tuple field loads
+    val_reg = lower_expr(ctx, value_expr)
+    i := 0
+    while i < names.len() {
+      field_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_field_load(field_reg, val_reg, i, names.len()))
+      ctx_set_reg_type(ctx, field_reg, IRTY_INT)
+      ctx_set_local(ctx, names.get(i), field_reg)
+      i = i + 1
+      0
+    }
+    0
+  }
+}
+
+// ── lower_for_in (stub) ─────────────────────────────────────────
+lower_for_in(ctx:I stmt:I) I {
+  // Layout: [tag, var_name, iterable_expr, body_stmts]
+  var_name = load64(stmt + 8)
+  iterable = load64(stmt + 16)
+  body_stmts = load64(stmt + 24)
+
+  // Lower iterable
+  arr_reg = lower_expr(ctx, iterable)
+
+  // Get length
+  len_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, len_reg, arr_reg))
+  ctx_set_reg_type(ctx, len_reg, IRTY_INT)
+
+  // Index variable (mutable)
+  idx_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(idx_ptr))
+  zero_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(zero_reg, 0))
+  ctx_set_reg_type(ctx, zero_reg, IRTY_INT)
+  ctx_emit(ctx, ir_store(idx_ptr, zero_reg))
+
+  cond_label = ctx_fresh_label(ctx)
+  body_label = ctx_fresh_label(ctx)
+  end_label = ctx_fresh_label(ctx)
+
+  old_break = ctx_break_label(ctx)
+  ctx_set_break_label(ctx, end_label)
+
+  ctx_emit(ctx, ir_jump(cond_label))
+  ctx_emit(ctx, ir_label(cond_label))
+
+  // Load index, compare to length
+  idx_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg, IRTY_INT)
+  cmp_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_LT, idx_reg, len_reg))
+  ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+  ctx_emit(ctx, ir_branch(cmp_reg, body_label, end_label))
+
+  ctx_emit(ctx, ir_label(body_label))
+
+  // Get element at index
+  elem_reg = ctx_fresh_reg(ctx)
+  idx_reg2 = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg2, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg2, IRTY_INT)
+  ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, elem_reg, arr_reg, idx_reg2))
+  ctx_set_reg_type(ctx, elem_reg, IRTY_INT)
+  ctx_set_local(ctx, var_name, elem_reg)
+
+  // Lower body
+  lower_stmts(ctx, body_stmts)
+
+  // Increment index
+  idx_reg3 = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg3, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg3, IRTY_INT)
+  one_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(one_reg, 1))
+  ctx_set_reg_type(ctx, one_reg, IRTY_INT)
+  new_idx = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_binop(new_idx, IROP_ADD, idx_reg3, one_reg))
+  ctx_set_reg_type(ctx, new_idx, IRTY_INT)
+  ctx_emit(ctx, ir_store(idx_ptr, new_idx))
+  ctx_emit(ctx, ir_jump(cond_label))
+  ctx_emit(ctx, ir_label(end_label))
+  ctx_set_break_label(ctx, old_break)
+  0
+}
+
+// ── lower_method_call ───────────────────────────────────────────
+lower_method_call(ctx:I expr:I) I {
+  object = load64(expr + 8)
+  method = load64(expr + 16)
+  args = load64(expr + 24)
+
+  // Lower the object
+  obj_reg = lower_expr(ctx, object)
+  obj_type = ctx_get_reg_type(ctx, obj_reg)
+
+  // ── Sender methods ──
+  obj_type == IRTY_SENDER ? {
+    method == "send" ? {
+      val_reg = lower_expr(ctx, args.get(0))
+      ctx_emit(ctx, ir_channel_send(obj_reg, val_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } : { lower_method_fallback(ctx, obj_reg, method, args) }
+  } :
+
+  // ── Receiver methods ──
+  obj_type == IRTY_RECEIVER ? {
+    method == "recv" ? {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_channel_recv(dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } : { lower_method_fallback(ctx, obj_reg, method, args) }
+  } :
+
+  // ── JoinHandle methods ──
+  obj_type == IRTY_JOIN_HANDLE ? {
+    method == "join" ? {
+      ctx_emit(ctx, ir_thread_join(obj_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } : { lower_method_fallback(ctx, obj_reg, method, args) }
+  } :
+
+  // ── Mutex methods ──
+  obj_type == IRTY_MUTEX ? {
+    method == "lock" ? {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_mutex_lock(dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } :
+    method == "unlock" ? {
+      val_reg = lower_expr(ctx, args.get(0))
+      ctx_emit(ctx, ir_mutex_unlock(obj_reg, val_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } : { lower_method_fallback(ctx, obj_reg, method, args) }
+  } :
+
+  // ── Array methods ──
+  obj_type == IRTY_ARRAY ? {
+    lower_array_method(ctx, obj_reg, method, args)
+  } :
+
+  // ── String methods ──
+  obj_type == IRTY_STR ? {
+    lower_string_method(ctx, obj_reg, method, args)
+  } :
+
+  // ── Map methods ──
+  obj_type == IRTY_MAP ? {
+    lower_map_method(ctx, obj_reg, method, args)
+  } :
+
+  // ── JSON methods ──
+  obj_type == IRTY_JSON ? {
+    lower_json_method(ctx, obj_reg, method, args)
+  } :
+
+  // ── HTTP Response methods ──
+  obj_type == IRTY_HTTP_RESP ? {
+    lower_http_resp_method(ctx, obj_reg, method, args)
+  } :
+
+  // ── HTTP Server methods ──
+  obj_type == IRTY_HTTP_SERVER ? {
+    method == "accept" ? {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_HTTP_ACCEPT, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_HTTP_REQ)
+      dest
+    } : { lower_method_fallback(ctx, obj_reg, method, args) }
+  } :
+
+  // ── HTTP Request methods ──
+  obj_type == IRTY_HTTP_REQ ? {
+    lower_http_req_method(ctx, obj_reg, method, args)
+  } :
+
+  // ── Result methods ──
+  obj_type == IRTY_RESULT ? {
+    lower_result_method(ctx, obj_reg, method, args)
+  } :
+
+  // ── Struct/Enum user-defined methods (fallback) ──
+  { lower_method_fallback(ctx, obj_reg, method, args) }
+}
+
+// ── lower_method_fallback (user-defined struct/enum methods) ────
+lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
+  // Mangle name as "Type_method" — for now default to calling method directly
+  // with obj as first arg
+  arg_regs = [I]()
+  arg_regs.push(obj_reg)
+  i := 0
+  while i < args.len() {
+    arg_regs.push(lower_expr(ctx, args.get(i)))
+    i = i + 1
+    0
+  }
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_call(dest, method, arg_regs))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ── lower_array_method ──────────────────────────────────────────
+lower_array_method(ctx:I obj_reg:I method:I args:I) I {
+  method == "len" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "push" ? {
+    val_reg = lower_expr(ctx, args.get(0))
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, obj_reg, val_reg))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "get" ? {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "set" ? {
+    idx_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    n = alloc(40)
+    store64(n, IR_ARRAY_SET)
+    store64(n + 8, obj_reg)
+    store64(n + 16, idx_reg)
+    store64(n + 24, val_reg)
+    store64(n + 32, 0)
+    ctx_emit(ctx, n)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "map" ? {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_MAP, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+  method == "filter" ? {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_FILTER, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+  method == "any" ? {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_ANY, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "find" ? {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_FIND, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "enumerate" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_ENUMERATE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+  method == "zip" ? {
+    other_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_ZIP, dest, obj_reg, other_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+  method == "pop" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_POP, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "contains" ? {
+    val_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_CONTAINS, dest, obj_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "remove" ? {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_REMOVE, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } : {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ── lower_string_method ─────────────────────────────────────────
+lower_string_method(ctx:I obj_reg:I method:I args:I) I {
+  method == "len" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_STRING_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "trim" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_STRING_TRIM, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "split" ? {
+    delim_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_SPLIT, dest, obj_reg, delim_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+  method == "replace" ? {
+    old_reg = lower_expr(ctx, args.get(0))
+    new_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_STRING_REPLACE, dest, obj_reg, old_reg, new_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "starts_with" ? {
+    pfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, pfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "sw" ? {
+    pfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, pfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "ends_with" ? {
+    sfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, sfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "ew" ? {
+    sfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, sfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "contains" ? {
+    needle_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_CONTAINS, dest, obj_reg, needle_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "substring" ? {
+    start_reg = lower_expr(ctx, args.get(0))
+    end_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_STRING_SUBSTRING, dest, obj_reg, start_reg, end_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "add" ? {
+    other_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_string_concat(dest, obj_reg, other_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } : {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ── lower_map_method ────────────────────────────────────────────
+lower_map_method(ctx:I obj_reg:I method:I args:I) I {
+  method == "get" ? {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_GET, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "set" ? {
+    key_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_MAP_SET, dest, obj_reg, key_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "has" ? {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_HAS, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "len" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "keys" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_KEYS, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+  method == "vals" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_VALS, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } : {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ── lower_json_method ───────────────────────────────────────────
+lower_json_method(ctx:I obj_reg:I method:I args:I) I {
+  method == "get" ? {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_JSON_GET, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_JSON)
+    dest
+  } :
+  method == "get_index" ? {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_JSON_GET_INDEX, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_JSON)
+    dest
+  } :
+  method == "get_string" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_GET_STRING, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "get_int" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_GET_INT, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "get_bool" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_GET_BOOL, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "set" ? {
+    key_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    n = alloc(40)
+    store64(n, IR_JSON_SET)
+    store64(n + 8, obj_reg)
+    store64(n + 16, key_reg)
+    store64(n + 24, val_reg)
+    store64(n + 32, 0)
+    ctx_emit(ctx, n)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "push" ? {
+    val_reg = lower_expr(ctx, args.get(0))
+    n = alloc(24)
+    store64(n, IR_JSON_PUSH)
+    store64(n + 8, obj_reg)
+    store64(n + 16, val_reg)
+    ctx_emit(ctx, n)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "len" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "type_of" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_TYPE_OF, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "stringify" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_STRINGIFY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } : {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ── lower_http_resp_method ──────────────────────────────────────
+lower_http_resp_method(ctx:I obj_reg:I method:I args:I) I {
+  method == "status" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_STATUS, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "body" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_BODY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "header" ? {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_HEADER, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "ok" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_OK, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } : {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ── lower_http_req_method ───────────────────────────────────────
+lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
+  method == "path" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_PATH, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "method" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_METHOD, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "body" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_BODY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "respond" ? {
+    status_reg = lower_expr(ctx, args.get(0))
+    body_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    args.len() == 3 ? {
+      ct_reg = lower_expr(ctx, args.get(2))
+      ctx_emit(ctx, ir_inst4(IR_HTTP_RESPOND_CT, dest, obj_reg, status_reg, body_reg, ct_reg))
+    } : {
+      ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND, dest, obj_reg, status_reg, body_reg))
+    }
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } : {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ── lower_result_method ─────────────────────────────────────────
+lower_result_method(ctx:I obj_reg:I method:I args:I) I {
+  method == "is_ok" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_IS_OK, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "is_err" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_IS_ERR, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+  method == "unwrap" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_UNWRAP, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "unwrap_or" ? {
+    default_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_RESULT_UNWRAP_OR, dest, obj_reg, default_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "error" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_ERROR, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } : {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ── lower_field_access ──────────────────────────────────────────
+lower_field_access(ctx:I expr:I) I {
+  object = load64(expr + 8)
+  field = load64(expr + 16)
+
+  obj_reg = lower_expr(ctx, object)
+  obj_type = ctx_get_reg_type(ctx, obj_reg)
+
+  // Struct field access
+  obj_type == IRTY_STRUCT ? {
+    // Look up field index from struct_defs
+    sd = ctx_struct_defs(ctx)
+    // We need the struct name — for now we don't track it in reg_types
+    // Use field_load with best-effort index
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_field_load(dest, obj_reg, 0, 1))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // Tuple field access (field is a numeric string like "0", "1")
+  obj_type == IRTY_TUPLE ? {
+    field_idx = stoi(field)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, 2))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // Non-struct/tuple: treat as no-arg method call
+  {
+    // Synthesize method call with 0 args
+    empty_args = [I]()
+    lower_method_call_direct(ctx, obj_reg, field, empty_args)
+  }
+}
+
+// ── lower_method_call_direct (helper for synthetic method calls) ─
+lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
+  obj_type = ctx_get_reg_type(ctx, obj_reg)
+
+  // Dispatch based on type
+  obj_type == IRTY_ARRAY ? lower_array_method(ctx, obj_reg, method, args) :
+  obj_type == IRTY_STR ? lower_string_method(ctx, obj_reg, method, args) :
+  obj_type == IRTY_MAP ? lower_map_method(ctx, obj_reg, method, args) :
+  obj_type == IRTY_JSON ? lower_json_method(ctx, obj_reg, method, args) :
+  obj_type == IRTY_HTTP_RESP ? lower_http_resp_method(ctx, obj_reg, method, args) :
+  obj_type == IRTY_HTTP_SERVER ? {
+    method == "accept" ? {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_HTTP_ACCEPT, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_HTTP_REQ)
+      dest
+    } : { lower_method_fallback(ctx, obj_reg, method, args) }
+  } :
+  obj_type == IRTY_HTTP_REQ ? lower_http_req_method(ctx, obj_reg, method, args) :
+  obj_type == IRTY_RESULT ? lower_result_method(ctx, obj_reg, method, args) :
+  lower_method_fallback(ctx, obj_reg, method, args)
+}
+
+// ── lower_if_expr ───────────────────────────────────────────────
+lower_if_expr(ctx:I expr:I) I {
+  cond = load64(expr + 8)
+  then_stmts = load64(expr + 16)
+  then_expr = load64(expr + 24)
+  else_stmts = load64(expr + 32)
+  else_expr = load64(expr + 40)
+
+  cond_reg = lower_expr(ctx, cond)
+  then_label = ctx_fresh_label(ctx)
+  else_label = ctx_fresh_label(ctx)
+  merge_label = ctx_fresh_label(ctx)
+
+  ctx_emit(ctx, ir_branch(cond_reg, then_label, else_label))
+
+  // Then branch
+  ctx_emit(ctx, ir_label(then_label))
+  lower_stmts(ctx, then_stmts)
+  then_reg = lower_expr(ctx, then_expr)
+  ctx_emit(ctx, ir_jump(merge_label))
+
+  // Else branch
+  ctx_emit(ctx, ir_label(else_label))
+  lower_stmts(ctx, else_stmts)
+  else_reg = lower_expr(ctx, else_expr)
+  ctx_emit(ctx, ir_jump(merge_label))
+
+  // Merge
+  ctx_emit(ctx, ir_label(merge_label))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_phi(dest, then_reg, then_label, else_reg, else_label))
+  // Take type from then branch
+  tty = ctx_get_reg_type(ctx, then_reg)
+  ctx_set_reg_type(ctx, dest, tty != 0 ? tty : IRTY_INT)
+  dest
+}
+
+// ── lower_match ─────────────────────────────────────────────────
+lower_match(ctx:I expr:I) I {
+  scrutinee = load64(expr + 8)
+  arms = load64(expr + 16)
+
+  scrutinee_reg = lower_expr(ctx, scrutinee)
+
+  // Get enum tag
+  tag_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_enum_tag(tag_reg, scrutinee_reg))
+  ctx_set_reg_type(ctx, tag_reg, IRTY_INT)
+
+  // Alloca for the result
+  result_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(result_ptr))
+
+  merge_label = ctx_fresh_label(ctx)
+  num_arms = arms.len()
+
+  i := 0
+  while i < num_arms {
+    arm = arms.get(i)
+    // arm layout: [pattern, body_expr, 0]
+    pattern = load64(arm)
+    body_expr = load64(arm + 8)
+
+    // pattern layout: [enum_name, variant_name, bindings_array, 0]
+    variant_name = load64(pattern + 8)
+    bindings = load64(pattern + 16)
+
+    // Look up variant tag from enum_defs
+    tag_val = lower_match_lookup_tag(ctx, scrutinee_reg, variant_name)
+
+    arm_label = ctx_fresh_label(ctx)
+
+    i < num_arms - 1 ? {
+      next_label = ctx_fresh_label(ctx)
+      // Compare tag
+      tag_const = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(tag_const, tag_val))
+      ctx_set_reg_type(ctx, tag_const, IRTY_INT)
+      cmp_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_EQ, tag_reg, tag_const))
+      ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_branch(cmp_reg, arm_label, next_label))
+
+      ctx_emit(ctx, ir_label(arm_label))
+
+      // Bind data fields
+      lower_match_bindings(ctx, scrutinee_reg, bindings)
+
+      // Lower body
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      ctx_emit(ctx, ir_label(next_label))
+      0
+    } : {
+      // Last arm — always taken
+      ctx_emit(ctx, ir_jump(arm_label))
+      ctx_emit(ctx, ir_label(arm_label))
+
+      // Bind data fields
+      lower_match_bindings(ctx, scrutinee_reg, bindings)
+
+      // Lower body
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+      0
+    }
+
+    i = i + 1
+    0
+  }
+
+  ctx_emit(ctx, ir_label(merge_label))
+  result_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(result_reg, result_ptr))
+  ctx_set_reg_type(ctx, result_reg, IRTY_INT)
+  result_reg
+}
+
+// ── lower_match_lookup_tag ──────────────────────────────────────
+// Look up the tag index for a variant name from enum_defs.
+// enum_defs is Map: enum_name -> variants_array
+// Each variant in the array: [name, tag, num_data_fields]
+lower_match_lookup_tag(ctx:I scrutinee_reg:I variant_name:I) I {
+  // For now, use a simple sequential tag index.
+  // The enum_defs maps enum_name -> array of [name, tag, num_data]
+  // Since we don't track the enum name in reg_types, we search all enums.
+  ed = ctx_enum_defs(ctx)
+  keys = ed.keys()
+  i := 0
+  result := 0
+  while i < keys.len() {
+    enum_name = keys.get(i)
+    variants = ed.get(enum_name)
+    variants != 0 ? {
+      j := 0
+      while j < variants.len() {
+        v = variants.get(j)
+        vname = load64(v)
+        vtag = load64(v + 8)
+        vname == variant_name ? { result = vtag; 0 } : 0
+        j = j + 1
+        0
+      }
+      0
+    } : 0
+    i = i + 1
+    0
+  }
+  result
+}
+
+// ── lower_match_bindings ────────────────────────────────────────
+lower_match_bindings(ctx:I scrutinee_reg:I bindings:I) I {
+  i := 0
+  while i < bindings.len() {
+    binding_name = bindings.get(i)
+    data_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_enum_data(data_reg, scrutinee_reg, i))
+    ctx_set_reg_type(ctx, data_reg, IRTY_INT)
+    ctx_set_local(ctx, binding_name, data_reg)
+    i = i + 1
+    0
+  }
+  0
+}
+
+// ── lower_lambda ────────────────────────────────────────────────
+// For the self-hosting compiler, lambdas are simplified:
+// We don't do full capture analysis. Instead, we emit a FnRef.
+// Capturing lambdas create a closure struct.
+lower_lambda(ctx:I expr:I) I {
+  params = load64(expr + 8)
+  ret_type = load64(expr + 16)
+  body_stmts = load64(expr + 24)
+
+  // Generate unique lambda name
+  lambda_name = "__lambda_" + itos(ctx_label_counter(ctx))
+  // Bump label counter to avoid collisions
+  ctx_fresh_label(ctx)
+
+  // For simplicity in the self-hosting compiler, emit a FnRef
+  // The lambda body will be emitted as a separate function during module lowering
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_fn_ref(dest, lambda_name))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ── lower_array_lit ─────────────────────────────────────────────
+lower_array_lit(ctx:I expr:I) I {
+  elements = load64(expr + 8)
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
+
+  i := 0
+  while i < elements.len() {
+    val_reg = lower_expr(ctx, elements.get(i))
+    // Track element type from first element
+    i == 0 ? ctx_set_reg_type(ctx, dest, IRTY_ARRAY) : 0
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, dest, val_reg))
+    i = i + 1
+    0
+  }
+  ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+  dest
+}
+
+// ── lower_struct_lit ────────────────────────────────────────────
+lower_struct_lit(ctx:I expr:I) I {
+  name = load64(expr + 8)
+  field_names = load64(expr + 16)
+  field_values = load64(expr + 24)
+
+  // Look up struct definition to get field order
+  sd = ctx_struct_defs(ctx)
+  struct_fields = sd[name]
+  num_fields = struct_fields != 0 ? struct_fields.len() : field_names.len()
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_struct_alloc(dest, num_fields))
+  ctx_set_reg_type(ctx, dest, IRTY_STRUCT)
+
+  i := 0
+  while i < field_names.len() {
+    fname = field_names.get(i)
+    val_reg = lower_expr(ctx, field_values.get(i))
+
+    // Find field index in struct definition
+    field_idx = 0
+    struct_fields != 0 ? {
+      j := 0
+      while j < struct_fields.len() {
+        struct_fields.get(j) == fname ? { field_idx = j; 0 } : 0
+        j = j + 1
+        0
+      }
+      0
+    } : {
+      field_idx = i
+      0
+    }
+
+    ctx_emit(ctx, ir_field_store(dest, field_idx, val_reg))
+    i = i + 1
+    0
+  }
+  dest
+}
+
+// ── lower_tuple_lit ─────────────────────────────────────────────
+lower_tuple_lit(ctx:I expr:I) I {
+  elements = load64(expr + 8)
+  num_fields = elements.len()
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_struct_alloc(dest, num_fields))
+  ctx_set_reg_type(ctx, dest, IRTY_TUPLE)
+
+  i := 0
+  while i < num_fields {
+    val_reg = lower_expr(ctx, elements.get(i))
+    ctx_emit(ctx, ir_field_store(dest, i, val_reg))
+    i = i + 1
+    0
+  }
+  dest
+}
+
+// ── lower_enum_variant ──────────────────────────────────────────
+lower_enum_variant(ctx:I expr:I) I {
+  enum_name = load64(expr + 8)
+  variant_name = load64(expr + 16)
+  args = load64(expr + 24)
+
+  // Look up variant info from enum_defs
+  ed = ctx_enum_defs(ctx)
+  variants = ed[enum_name]
+  tag_idx := 0
+  max_data := 0
+
+  variants != 0 ? {
+    i := 0
+    while i < variants.len() {
+      v = variants.get(i)
+      vname = load64(v)
+      vtag = load64(v + 8)
+      vnum = load64(v + 16)
+      vname == variant_name ? { tag_idx = vtag; 0 } : 0
+      vnum > max_data ? { max_data = vnum; 0 } : 0
+      i = i + 1
+      0
+    }
+    0
+  } : 0
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_enum_alloc(dest, tag_idx, max_data))
+  ctx_set_reg_type(ctx, dest, IRTY_ENUM)
+
+  // Store each arg as data field (offset by 1 for tag at index 0)
+  i := 0
+  while i < args.len() {
+    arg_reg = lower_expr(ctx, args.get(i))
+    ctx_emit(ctx, ir_field_store(dest, i + 1, arg_reg))
+    i = i + 1
+    0
+  }
+  dest
+}
+
+// ── lower_spawn ─────────────────────────────────────────────────
+lower_spawn(ctx:I expr:I) I {
+  func_name = load64(expr + 8)
+  args = load64(expr + 16)
+
+  arg_regs = [I]()
+  i := 0
+  while i < args.len() {
+    arg_regs.push(lower_expr(ctx, args.get(i)))
+    i = i + 1
+    0
+  }
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_thread_spawn(dest, func_name, arg_regs))
+  ctx_set_reg_type(ctx, dest, IRTY_JOIN_HANDLE)
+  dest
+}
+
+// ── lower_mutex ─────────────────────────────────────────────────
+lower_mutex(ctx:I expr:I) I {
+  value_expr = load64(expr + 8)
+  val_reg = lower_expr(ctx, value_expr)
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_mutex_create(dest, val_reg))
+  ctx_set_reg_type(ctx, dest, IRTY_MUTEX)
+  dest
+}
+
+// ── lower_array_create ──────────────────────────────────────────
+lower_array_create(ctx:I expr:I) I {
+  // elem_type_ptr = load64(expr + 8) — used only for type tracking
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
+  ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+  dest
 }
