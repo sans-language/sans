@@ -1,0 +1,7 @@
+main() I {
+  maker = |x:I| I {
+    adder = |y:I| I { x + y }
+    adder(10)
+  }
+  maker(5)
+}

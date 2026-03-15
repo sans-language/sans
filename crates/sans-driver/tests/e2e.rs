@@ -511,6 +511,11 @@ fn e2e_lambda_capture() {
 }
 
 #[test]
+fn e2e_nested_lambda() {
+    assert_eq!(compile_and_run("nested_lambda.sans"), 15);
+}
+
+#[test]
 fn e2e_array_any() {
     assert_eq!(compile_and_run("array_any.sans"), 1);
 }

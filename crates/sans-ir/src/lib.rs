@@ -2065,6 +2065,8 @@ impl IrBuilder {
                     self.local_fn_ret_types.clone(),
                     self.global_names.clone(),
                 );
+                // Share lambda counter with nested builder to avoid name collisions
+                lifted_builder.lambda_counter = self.lambda_counter;
 
                 // Add capture params first
                 for cap_name in &captures {
@@ -2131,6 +2133,8 @@ impl IrBuilder {
                 self.lifted_fns.push(lifted_fn);
                 // Collect any nested lambdas
                 self.lifted_fns.extend(lifted_builder.lifted_fns);
+                // Sync lambda counter back from nested builder to avoid name collisions
+                self.lambda_counter = lifted_builder.lambda_counter;
 
                 // 4. At the call site, emit either FnRef (no captures) or closure struct
                 if captures.is_empty() {
