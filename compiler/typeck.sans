@@ -1,0 +1,394 @@
+import "compiler/constants"
+import "compiler/parser"
+
+// ── Type struct layout (32 bytes) ───────────────────────────────────
+// offset 0:  tag (I)    — TY_INT=0 .. TY_MUTEX=20
+// offset 8:  inner (I)  — inner type ptr (Array/Result/Sender/Receiver/Mutex)
+// offset 16: data (I)   — extra data (struct: name, enum: name, fn: params array)
+// offset 24: data2 (I)  — secondary (fn: ret type, tuple: elements, struct: fields map, enum: variants map)
+
+// ── Type accessors ──────────────────────────────────────────────────
+type_tag(t:I) I = load64(t)
+type_inner(t:I) I = load64(t + 8)
+type_data(t:I) I = load64(t + 16)
+type_data2(t:I) I = load64(t + 24)
+
+// ── Type constructors ───────────────────────────────────────────────
+make_type(tag:I) I {
+  t = alloc(32)
+  store64(t, tag)
+  store64(t + 8, 0)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
+make_array_type(inner:I) I {
+  t = alloc(32)
+  store64(t, TY_ARRAY)
+  store64(t + 8, inner)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
+make_result_type(inner:I) I {
+  t = alloc(32)
+  store64(t, TY_RESULT)
+  store64(t + 8, inner)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
+make_sender_type(inner:I) I {
+  t = alloc(32)
+  store64(t, TY_SENDER)
+  store64(t + 8, inner)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
+make_receiver_type(inner:I) I {
+  t = alloc(32)
+  store64(t, TY_RECEIVER)
+  store64(t + 8, inner)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
+make_mutex_type(inner:I) I {
+  t = alloc(32)
+  store64(t, TY_MUTEX)
+  store64(t + 8, inner)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
+make_fn_type(params:I ret:I) I {
+  t = alloc(32)
+  store64(t, TY_FN)
+  store64(t + 8, 0)
+  store64(t + 16, params)
+  store64(t + 24, ret)
+  t
+}
+
+make_struct_type(name:I fields_map:I) I {
+  t = alloc(32)
+  store64(t, TY_STRUCT)
+  store64(t + 8, 0)
+  store64(t + 16, name)
+  store64(t + 24, fields_map)
+  t
+}
+
+make_enum_type(name:I variants_map:I) I {
+  t = alloc(32)
+  store64(t, TY_ENUM)
+  store64(t + 8, 0)
+  store64(t + 16, name)
+  store64(t + 24, variants_map)
+  t
+}
+
+make_tuple_type(elements:I) I {
+  t = alloc(32)
+  store64(t, TY_TUPLE)
+  store64(t + 8, 0)
+  store64(t + 16, 0)
+  store64(t + 24, elements)
+  t
+}
+
+// ── Error helper ────────────────────────────────────────────────────
+tc_error(msg:S) I {
+  p(msg)
+  exit(1)
+  0
+}
+
+// ── Type equality (deep) ────────────────────────────────────────────
+type_eq(a:I b:I) I {
+  a == 0 && b == 0 ? return 1 : 0
+  a == 0 || b == 0 ? return 0 : 0
+  ta = type_tag(a)
+  tb = type_tag(b)
+  ta != tb ? return 0 : 0
+  // Simple types: tag match is enough
+  ta == TY_INT || ta == TY_FLOAT || ta == TY_BOOL || ta == TY_STRING ||
+  ta == TY_MAP || ta == TY_VOID || ta == TY_JSON || ta == TY_HTTP_RESP ||
+  ta == TY_HTTP_SERVER || ta == TY_HTTP_REQ || ta == TY_JOIN_HANDLE ||
+  ta == TY_RESULT_ERR ? return 1 : 0
+  // Parameterized types with inner: compare inner recursively
+  ta == TY_ARRAY || ta == TY_RESULT || ta == TY_SENDER ||
+  ta == TY_RECEIVER || ta == TY_MUTEX ? return type_eq(type_inner(a), type_inner(b)) : 0
+  // Tuple: compare all element types
+  ta == TY_TUPLE ? {
+    elems_a = type_data2(a)
+    elems_b = type_data2(b)
+    len_a = load64(elems_a - 8)
+    len_b = load64(elems_b - 8)
+    len_a != len_b ? return 0 : 0
+    i := 0
+    while i < len_a {
+      type_eq(load64(elems_a + i * 8), load64(elems_b + i * 8)) == 0 ? return 0 : 0
+      i += 1
+    }
+    return 1
+  } : 0
+  // Struct/Enum: compare names
+  ta == TY_STRUCT || ta == TY_ENUM ? {
+    name_a = type_data(a)
+    name_b = type_data(b)
+    return name_a == name_b ? 1 : 0
+  } : 0
+  // Fn: compare param count, each param, and return type
+  ta == TY_FN ? {
+    params_a = type_data(a)
+    params_b = type_data(b)
+    ret_a = type_data2(a)
+    ret_b = type_data2(b)
+    // If both have no params arrays, check return
+    params_a == 0 && params_b == 0 ? return type_eq(ret_a, ret_b) : 0
+    params_a == 0 || params_b == 0 ? return 0 : 0
+    len_a = load64(params_a - 8)
+    len_b = load64(params_b - 8)
+    len_a != len_b ? return 0 : 0
+    i := 0
+    while i < len_a {
+      type_eq(load64(params_a + i * 8), load64(params_b + i * 8)) == 0 ? return 0 : 0
+      i += 1
+    }
+    return type_eq(ret_a, ret_b)
+  } : 0
+  0
+}
+
+// ── Type compatibility (covariance) ─────────────────────────────────
+types_compatible(actual:I expected:I) I {
+  type_eq(actual, expected) == 1 ? return 1 : 0
+  at = type_tag(actual)
+  et = type_tag(expected)
+  // ResultErr matches any Result<T>
+  at == TY_RESULT_ERR && et == TY_RESULT ? return 1 : 0
+  // Fn types stored as i64 — compatible with Int
+  et == TY_INT && at == TY_FN ? return 1 : 0
+  // String where Int expected (strings are pointers = i64)
+  et == TY_INT && at == TY_STRING ? return 1 : 0
+  et == TY_STRING && at == TY_INT ? return 1 : 0
+  // Map/Array where Int expected (heap pointers = i64)
+  et == TY_INT && at == TY_MAP ? return 1 : 0
+  et == TY_MAP && at == TY_INT ? return 1 : 0
+  et == TY_INT && at == TY_ARRAY ? return 1 : 0
+  // Reverse: Int where Fn expected
+  at == TY_INT && et == TY_FN ? return 1 : 0
+  // Opaque heap types compatible with Int
+  et == TY_INT && at == TY_JSON ? return 1 : 0
+  et == TY_INT && at == TY_HTTP_RESP ? return 1 : 0
+  et == TY_INT && at == TY_HTTP_SERVER ? return 1 : 0
+  et == TY_INT && at == TY_HTTP_REQ ? return 1 : 0
+  et == TY_INT && at == TY_JOIN_HANDLE ? return 1 : 0
+  et == TY_INT && at == TY_SENDER ? return 1 : 0
+  et == TY_INT && at == TY_RECEIVER ? return 1 : 0
+  et == TY_INT && at == TY_MUTEX ? return 1 : 0
+  0
+}
+
+// ── Helper: find char position in string ────────────────────────────
+find_char(s:S ch:I start:I) I {
+  len = slen(s)
+  i := start
+  while i < len {
+    char_at(s, i) == ch ? return i : 0
+    i += 1
+  }
+  0 - 1
+}
+
+// ── Helper: find last char position in string ───────────────────────
+find_last_char(s:S ch:I) I {
+  len = slen(s)
+  i := len - 1
+  while i >= 0 {
+    char_at(s, i) == ch ? return i : 0
+    i -= 1
+  }
+  0 - 1
+}
+
+// ── resolve_type: parse type name string → Type ptr ─────────────────
+resolve_type(name:S structs:I enums:I mod_exports:I) I {
+  len = slen(name)
+  len == 0 ? return tc_error("resolve_type: empty type name") : 0
+
+  // Tuple: starts with '(' ends with ')'
+  char_at(name, 0) == 40 && char_at(name, len - 1) == 41 ? {
+    inner = name.substring(1, len - 1)
+    // Split by spaces and resolve each element
+    elems = [I]
+    start := 0
+    i := 0
+    ilen = slen(inner)
+    while i <= ilen {
+      i == ilen || char_at(inner, i) == 32 ? {
+        i > start ? {
+          part = inner.substring(start, i)
+          elems.push(resolve_type(part, structs, enums, mod_exports))
+        } : 0
+        start = i + 1
+      } : 0
+      i += 1
+    }
+    return make_tuple_type(ptr(elems))
+  } : 0
+
+  // Short bracket array: [I] = Array<Int>
+  char_at(name, 0) == 91 && char_at(name, len - 1) == 93 ? {
+    inner_name = name.substring(1, len - 1)
+    return make_array_type(resolve_type(inner_name, structs, enums, mod_exports))
+  } : 0
+
+  // Simple types
+  name == "I" || name == "Int" ? return make_type(TY_INT) : 0
+  name == "F" || name == "Float" ? return make_type(TY_FLOAT) : 0
+  name == "B" || name == "Bool" ? return make_type(TY_BOOL) : 0
+  name == "S" || name == "String" ? return make_type(TY_STRING) : 0
+  name == "M" || name == "Map" ? return make_type(TY_MAP) : 0
+  name == "JsonValue" ? return make_type(TY_JSON) : 0
+  name == "HttpResponse" ? return make_type(TY_HTTP_RESP) : 0
+  name == "HttpServer" || name == "HS" ? return make_type(TY_HTTP_SERVER) : 0
+  name == "HttpRequest" || name == "HR" ? return make_type(TY_HTTP_REQ) : 0
+  name == "JoinHandle" ? return make_type(TY_JOIN_HANDLE) : 0
+
+  // Array<T>
+  name.sw("Array<") && char_at(name, len - 1) == 62 ? {
+    inner_name = name.substring(6, len - 1)
+    return make_array_type(resolve_type(inner_name, structs, enums, mod_exports))
+  } : 0
+
+  // Result<T>
+  name.sw("Result<") && char_at(name, len - 1) == 62 ? {
+    inner_name = name.substring(7, len - 1)
+    return make_result_type(resolve_type(inner_name, structs, enums, mod_exports))
+  } : 0
+
+  // R<T> (short Result)
+  name.sw("R<") && char_at(name, len - 1) == 62 ? {
+    inner_name = name.substring(2, len - 1)
+    return make_result_type(resolve_type(inner_name, structs, enums, mod_exports))
+  } : 0
+
+  // Sender<T>
+  name.sw("Sender<") && char_at(name, len - 1) == 62 ? {
+    inner_name = name.substring(7, len - 1)
+    return make_sender_type(resolve_type(inner_name, structs, enums, mod_exports))
+  } : 0
+
+  // Receiver<T>
+  name.sw("Receiver<") && char_at(name, len - 1) == 62 ? {
+    inner_name = name.substring(9, len - 1)
+    return make_receiver_type(resolve_type(inner_name, structs, enums, mod_exports))
+  } : 0
+
+  // Mutex<T>
+  name.sw("Mutex<") && char_at(name, len - 1) == 62 ? {
+    inner_name = name.substring(6, len - 1)
+    return make_mutex_type(resolve_type(inner_name, structs, enums, mod_exports))
+  } : 0
+
+  // Fn (bare function type)
+  name == "Fn" || name.sw("Fn(") ? return make_type(TY_FN) : 0
+
+  // Check structs map
+  structs != 0 && structs.has(name) ? {
+    return make_struct_type(name, structs.get(name))
+  } : 0
+
+  // Check enums map
+  enums != 0 && enums.has(name) ? {
+    return make_enum_type(name, enums.get(name))
+  } : 0
+
+  // Check module exports — iterate map keys looking for struct/enum
+  mod_exports != 0 ? {
+    mkeys = mod_exports.keys()
+    mk_len = mkeys.len()
+    mi := 0
+    while mi < mk_len {
+      mod_name = mkeys[mi]
+      exports = mod_exports.get(mod_name)
+      // exports is a ptr to module export data
+      // exports offset 0: structs map, offset 8: enums map, offset 16: fn_env map
+      exp_structs = load64(exports)
+      exp_enums = load64(exports + 8)
+      exp_structs != 0 && exp_structs.has(name) ? {
+        return make_struct_type(name, exp_structs.get(name))
+      } : 0
+      exp_enums != 0 && exp_enums.has(name) ? {
+        return make_enum_type(name, exp_enums.get(name))
+      } : 0
+      mi += 1
+    }
+  } : 0
+
+  tc_error("unknown type '" + name + "'")
+}
+
+// ── type_to_string: Type ptr → human-readable string ────────────────
+type_to_string(t:I) S {
+  t == 0 ? return "?" : 0
+  tag = type_tag(t)
+  tag == TY_INT ? return "Int" : 0
+  tag == TY_FLOAT ? return "Float" : 0
+  tag == TY_BOOL ? return "Bool" : 0
+  tag == TY_STRING ? return "String" : 0
+  tag == TY_MAP ? return "Map" : 0
+  tag == TY_VOID ? return "Void" : 0
+  tag == TY_JSON ? return "JsonValue" : 0
+  tag == TY_HTTP_RESP ? return "HttpResponse" : 0
+  tag == TY_HTTP_SERVER ? return "HttpServer" : 0
+  tag == TY_HTTP_REQ ? return "HttpRequest" : 0
+  tag == TY_JOIN_HANDLE ? return "JoinHandle" : 0
+  tag == TY_RESULT_ERR ? return "Result<_>" : 0
+  tag == TY_ARRAY ? return "Array<" + type_to_string(type_inner(t)) + ">" : 0
+  tag == TY_RESULT ? return "Result<" + type_to_string(type_inner(t)) + ">" : 0
+  tag == TY_SENDER ? return "Sender<" + type_to_string(type_inner(t)) + ">" : 0
+  tag == TY_RECEIVER ? return "Receiver<" + type_to_string(type_inner(t)) + ">" : 0
+  tag == TY_MUTEX ? return "Mutex<" + type_to_string(type_inner(t)) + ">" : 0
+  tag == TY_STRUCT ? return type_data(t) : 0
+  tag == TY_ENUM ? return type_data(t) : 0
+  tag == TY_TUPLE ? {
+    elems = type_data2(t)
+    elems == 0 ? return "()" : 0
+    len = load64(elems - 8)
+    s := "("
+    i := 0
+    while i < len {
+      i > 0 ? s = s + " " : 0
+      s = s + type_to_string(load64(elems + i * 8))
+      i += 1
+    }
+    return s + ")"
+  } : 0
+  tag == TY_FN ? {
+    params = type_data(t)
+    ret = type_data2(t)
+    s := "fn("
+    params != 0 ? {
+      len = load64(params - 8)
+      i := 0
+      while i < len {
+        i > 0 ? s = s + ", " : 0
+        s = s + type_to_string(load64(params + i * 8))
+        i += 1
+      }
+    } : 0
+    s = s + ") " + type_to_string(ret)
+    return s
+  } : 0
+  "?"
+}
