@@ -213,7 +213,15 @@ pub fn lower_with_extra_structs(
                     "Float" | "F" => IrType::Float,
                     "Bool" | "B" => IrType::Bool,
                     "String" | "S" => IrType::Str,
-                    _ => IrType::Int,
+                    _ => {
+                        if struct_defs.contains_key(t) {
+                            IrType::Struct(t.to_string())
+                        } else if enum_defs.contains_key(t) {
+                            IrType::Enum(t.to_string())
+                        } else {
+                            IrType::Int
+                        }
+                    }
                 })
                 .collect();
             IrType::Tuple(types)
