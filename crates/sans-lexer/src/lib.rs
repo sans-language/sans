@@ -43,7 +43,9 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     pos += 1;
                 }
                 // Check for decimal point (float literal)
-                if pos < len && bytes[pos] == b'.' && pos + 1 < len && (bytes[pos + 1] as char).is_ascii_digit() {
+                // Don't read as float if the char before this number was a dot (tuple field access like t.0.0)
+                if pos < len && bytes[pos] == b'.' && pos + 1 < len && (bytes[pos + 1] as char).is_ascii_digit()
+                    && !(start > 0 && bytes[start - 1] == b'.') {
                     pos += 1; // consume '.'
                     while pos < len && (bytes[pos] as char).is_ascii_digit() {
                         pos += 1;
@@ -611,5 +613,22 @@ mod tests {
         assert_eq!(tokens[0].kind, TokenKind::Pipe);
         // Second pipe
         assert!(tokens.iter().filter(|t| t.kind == TokenKind::Pipe).count() == 2);
+    }
+
+    #[test]
+    fn lex_tuple_field_chain() {
+        // t.0.0 should be: Identifier(t), Dot, IntLiteral(0), Dot, IntLiteral(0)
+        let tokens = lex("t.0.0").unwrap();
+        assert_eq!(
+            kinds(&tokens),
+            vec![
+                Identifier("t".to_string()),
+                Dot,
+                IntLiteral(0),
+                Dot,
+                IntLiteral(0),
+                Eof,
+            ]
+        );
     }
 }
