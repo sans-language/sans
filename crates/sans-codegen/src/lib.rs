@@ -122,6 +122,9 @@ fn generate_llvm<'ctx>(
     let memcpy_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("memcpy", memcpy_type, Some(Linkage::External));
 
+    let memset_type = ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), i64_type.into()], false);
+    llvm_module.add_function("memset", memset_type, Some(Linkage::External));
+
     // Memory primitives
     let realloc_type = ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("realloc", realloc_type, Some(Linkage::External));
@@ -2764,6 +2767,17 @@ fn generate_llvm<'ctx>(
                     builder.build_call(memcpy_fn, &[dp.into(), sp.into(), len_val.into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), regs[dst_ptr]);
+                }
+                Instruction::Mzero { dest, ptr, len } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let p = builder.build_int_to_ptr(regs[ptr], ptr_type, "mzero_p")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len_val = regs[len];
+                    let zero = i64_type.const_int(0, false);
+                    let memset_fn = llvm_module.get_function("memset").unwrap();
+                    builder.build_call(memset_fn, &[p.into(), zero.into(), len_val.into()], "")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), regs[ptr]);
                 }
                 Instruction::Mcmp { dest, a_ptr, b_ptr, len } => {
                     let ptr_type = context.ptr_type(inkwell::AddressSpace::default());

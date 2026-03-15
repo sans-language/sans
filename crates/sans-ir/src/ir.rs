@@ -233,6 +233,7 @@ pub enum Instruction {
     Dealloc { dest: Reg, ptr: Reg },
     Ralloc { dest: Reg, ptr: Reg, size: Reg },
     Mcpy { dest: Reg, dst_ptr: Reg, src_ptr: Reg, len: Reg },
+    Mzero { dest: Reg, ptr: Reg, len: Reg },
     Mcmp { dest: Reg, a_ptr: Reg, b_ptr: Reg, len: Reg },
     Slen { dest: Reg, ptr: Reg },
     Load8 { dest: Reg, ptr: Reg },

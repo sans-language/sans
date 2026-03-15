@@ -966,6 +966,19 @@ fn check_expr(
                     return Err(TypeError::new(format!("mcpy() n must be Int, got {}", n_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "mzero" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("mzero() takes exactly 2 arguments (ptr, n)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("mzero() ptr must be Int, got {}", ptr_ty)));
+                }
+                let n_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if n_ty != Type::Int {
+                    return Err(TypeError::new(format!("mzero() n must be Int, got {}", n_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "mcmp" {
                 if args.len() != 3 {
                     return Err(TypeError::new("mcmp() takes exactly 3 arguments (a, b, n)"));

@@ -851,6 +851,13 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Mcpy { dest: dest.clone(), dst_ptr: dst_reg, src_ptr: src_reg, len: len_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "mzero" {
+                    let ptr_reg = self.lower_expr(&args[0]);
+                    let len_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Mzero { dest: dest.clone(), ptr: ptr_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "mcmp" {
                     let a_reg = self.lower_expr(&args[0]);
                     let b_reg = self.lower_expr(&args[1]);
