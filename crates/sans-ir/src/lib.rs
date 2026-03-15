@@ -293,8 +293,22 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
                     "Map" | "M" => { builder.reg_types.insert(reg.clone(), IrType::Map); }
                     _ => {
                         let n = &param.type_name.name;
+                        // Array parameter type like "Array<Int>" or "[I]"
+                        if n.starts_with("Array<") && n.ends_with('>') {
+                            let inner_str = &n[6..n.len()-1];
+                            let inner = match inner_str {
+                                "Int" | "I" => IrType::Int,
+                                "Float" | "F" => IrType::Float,
+                                "Bool" | "B" => IrType::Bool,
+                                "String" | "S" => IrType::Str,
+                                _ if struct_defs.contains_key(inner_str) => IrType::Struct(inner_str.to_string()),
+                                _ if enum_defs.contains_key(inner_str) => IrType::Enum(inner_str.to_string()),
+                                _ => IrType::Int,
+                            };
+                            builder.reg_types.insert(reg.clone(), IrType::Array(Box::new(inner)));
+                        }
                         // Tuple parameter type like "(I I)"
-                        if n.starts_with('(') && n.ends_with(')') {
+                        else if n.starts_with('(') && n.ends_with(')') {
                             let inner = &n[1..n.len()-1];
                             let types: Vec<IrType> = inner.split_whitespace()
                                 .map(|t| match t {

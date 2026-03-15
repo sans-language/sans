@@ -289,6 +289,11 @@ fn e2e_array_literal() {
 }
 
 #[test]
+fn e2e_array_param() {
+    assert_eq!(compile_and_run("array_param.sans"), 70);
+}
+
+#[test]
 fn e2e_array_for_in() {
     assert_eq!(compile_and_run("array_for_in.sans"), 10);
 }

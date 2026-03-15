@@ -1,0 +1,14 @@
+first(arr:[I]) I = arr.get(0)
+sum_all(arr:[I]) I {
+  total := 0
+  i := 0
+  while i < arr.len() {
+    total += arr.get(i)
+    i += 1
+  }
+  total
+}
+main() I {
+  a = [10 20 30]
+  first(a) + sum_all(a)
+}
