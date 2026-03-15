@@ -556,10 +556,632 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     return tc_error("if/else branch type mismatch: then branch is " + type_to_string(then_ty) + " but else branch is " + type_to_string(else_ty))
   } : 0
 
-  // ── Call (stub — full impl in 4c) ─────────────────────────────
+  // ── Call ────────────────────────────────────────────────────────
   tag == EX_CALL ? {
-    // TODO: implement built-in + user function call checking in task 4c
-    return make_type(TY_INT)
+    name = load64(expr + 8)
+    args = load64(expr + 16)
+    nargs = args.len()
+
+    // ── I/O ──────────────────────────────────────────────────────
+    name == "print" || name == "p" ? {
+      nargs != 1 ? tc_error("print() takes exactly 1 argument, got " + str(nargs)) : 0
+      check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_type(TY_INT)
+    } : 0
+
+    name == "file_read" || name == "read_file" || name == "fread" || name == "fr" ? {
+      nargs != 1 ? tc_error("file_read() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("file_read() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_STRING)
+    } : 0
+
+    name == "file_write" || name == "write_file" || name == "fwrite" || name == "fw" ||
+    name == "file_append" || name == "append_file" || name == "fappend" || name == "fa" ? {
+      nargs != 2 ? tc_error(name + "() takes exactly 2 arguments") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_STRING ? tc_error(name + "() requires String as first argument, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_STRING ? tc_error(name + "() requires String as second argument, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "file_exists" || name == "fexists" || name == "fe" ? {
+      nargs != 1 ? tc_error("file_exists() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("file_exists() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_BOOL)
+    } : 0
+
+    // ── Conversion ───────────────────────────────────────────────
+    name == "str" || name == "int_to_string" || name == "itos" ? {
+      nargs != 1 ? tc_error("str() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      att = type_tag(at)
+      att != TY_INT && att != TY_STRING && att != TY_FLOAT && att != TY_BOOL ? tc_error("str() requires Int, String, Float, or Bool argument, got " + type_to_string(at)) : 0
+      return make_type(TY_STRING)
+    } : 0
+
+    name == "stoi" || name == "string_to_int" ? {
+      nargs != 1 ? tc_error("string_to_int() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("string_to_int() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "itof" || name == "int_to_float" ? {
+      nargs != 1 ? tc_error("int_to_float() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("int_to_float() requires Int argument, got " + type_to_string(at)) : 0
+      return make_type(TY_FLOAT)
+    } : 0
+
+    name == "ftoi" || name == "float_to_int" ? {
+      nargs != 1 ? tc_error("float_to_int() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_FLOAT ? tc_error("float_to_int() requires Float argument, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "ftos" || name == "float_to_string" ? {
+      nargs != 1 ? tc_error("float_to_string() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_FLOAT ? tc_error("float_to_string() requires Float argument, got " + type_to_string(at)) : 0
+      return make_type(TY_STRING)
+    } : 0
+
+    // ── JSON ─────────────────────────────────────────────────────
+    name == "json_parse" || name == "jparse" || name == "jp" ? {
+      nargs != 1 ? tc_error("json_parse() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("json_parse() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_JSON)
+    } : 0
+
+    name == "json_object" || name == "jobj" || name == "jo" ? {
+      nargs != 0 ? tc_error("json_object() takes 0 arguments") : 0
+      return make_type(TY_JSON)
+    } : 0
+
+    name == "json_array" || name == "jarr" || name == "ja" ? {
+      nargs != 0 ? tc_error("json_array() takes 0 arguments") : 0
+      return make_type(TY_JSON)
+    } : 0
+
+    name == "json_string" || name == "jstr" || name == "js" ? {
+      nargs != 1 ? tc_error("json_string() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("json_string() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_JSON)
+    } : 0
+
+    name == "json_int" || name == "ji" ? {
+      nargs != 1 ? tc_error("json_int() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("json_int() requires Int argument, got " + type_to_string(at)) : 0
+      return make_type(TY_JSON)
+    } : 0
+
+    name == "json_bool" || name == "jb" ? {
+      nargs != 1 ? tc_error("json_bool() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_BOOL ? tc_error("json_bool() requires Bool argument, got " + type_to_string(at)) : 0
+      return make_type(TY_JSON)
+    } : 0
+
+    name == "json_null" || name == "jn" ? {
+      nargs != 0 ? tc_error("json_null() takes 0 arguments") : 0
+      return make_type(TY_JSON)
+    } : 0
+
+    name == "json_stringify" || name == "jstringify" || name == "jfy" ? {
+      nargs != 1 ? tc_error("json_stringify() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_JSON ? tc_error("json_stringify() requires JsonValue argument, got " + type_to_string(at)) : 0
+      return make_type(TY_STRING)
+    } : 0
+
+    // ── HTTP ─────────────────────────────────────────────────────
+    name == "http_get" || name == "hget" || name == "hg" ? {
+      nargs != 1 ? tc_error("http_get() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("http_get() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_HTTP_RESP)
+    } : 0
+
+    name == "http_post" || name == "hpost" || name == "hp" ? {
+      nargs != 3 ? tc_error("http_post() takes exactly 3 arguments (url, body, content_type)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_STRING ? tc_error("http_post() url must be String, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_STRING ? tc_error("http_post() body must be String, got " + type_to_string(at1)) : 0
+      at2 = check_expr(args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at2) != TY_STRING ? tc_error("http_post() content_type must be String, got " + type_to_string(at2)) : 0
+      return make_type(TY_HTTP_RESP)
+    } : 0
+
+    name == "http_listen" || name == "listen" || name == "hl" ? {
+      nargs != 1 ? tc_error("http_listen() takes exactly 1 argument (port)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("http_listen() requires Int port, got " + type_to_string(at)) : 0
+      return make_type(TY_HTTP_SERVER)
+    } : 0
+
+    // ── Logging ──────────────────────────────────────────────────
+    name == "log_debug" || name == "ld" || name == "log_info" || name == "li" ||
+    name == "log_warn" || name == "lw" || name == "log_error" || name == "le" ? {
+      nargs != 1 ? tc_error(name + "() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error(name + "() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "log_set_level" || name == "ll" ? {
+      nargs != 1 ? tc_error("log_set_level() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("log_set_level() requires Int argument, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "get_log_level" ? {
+      nargs != 0 ? tc_error("get_log_level() takes no arguments") : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "set_log_level" ? {
+      nargs != 1 ? tc_error("set_log_level() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("set_log_level() requires Int argument, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "print_err" ? {
+      nargs != 1 ? tc_error("print_err() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("print_err() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── Memory ───────────────────────────────────────────────────
+    name == "alloc" ? {
+      nargs != 1 ? tc_error("alloc() takes exactly 1 argument (size)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("alloc() size must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "dealloc" ? {
+      nargs != 1 ? tc_error("dealloc() takes exactly 1 argument (ptr)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("dealloc() ptr must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "ralloc" ? {
+      nargs != 2 ? tc_error("ralloc() takes exactly 2 arguments (ptr, size)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("ralloc() ptr must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("ralloc() size must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "mcpy" ? {
+      nargs != 3 ? tc_error("mcpy() takes exactly 3 arguments (dst, src, n)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("mcpy() dst must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("mcpy() src must be Int, got " + type_to_string(at1)) : 0
+      at2 = check_expr(args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at2) != TY_INT ? tc_error("mcpy() n must be Int, got " + type_to_string(at2)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "mzero" ? {
+      nargs != 2 ? tc_error("mzero() takes exactly 2 arguments (ptr, n)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("mzero() ptr must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("mzero() n must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "mcmp" ? {
+      nargs != 3 ? tc_error("mcmp() takes exactly 3 arguments (a, b, n)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("mcmp() a must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("mcmp() b must be Int, got " + type_to_string(at1)) : 0
+      at2 = check_expr(args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at2) != TY_INT ? tc_error("mcmp() n must be Int, got " + type_to_string(at2)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "slen" ? {
+      nargs != 1 ? tc_error("slen() takes exactly 1 argument (ptr)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("slen() ptr must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── Load/Store ───────────────────────────────────────────────
+    name == "load8" || name == "load16" || name == "load32" || name == "load64" ? {
+      nargs != 1 ? tc_error(name + "() takes exactly 1 argument (ptr)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error(name + "() ptr must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "store8" || name == "store16" || name == "store32" || name == "store64" ? {
+      nargs != 2 ? tc_error(name + "() takes exactly 2 arguments (ptr, val)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error(name + "() ptr must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error(name + "() val must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "bswap16" ? {
+      nargs != 1 ? tc_error("bswap16() takes exactly 1 argument (val)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("bswap16() val must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "char_at" ? {
+      nargs != 2 ? tc_error("char_at() takes exactly 2 arguments (string, index)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_STRING ? tc_error("char_at() first arg must be String, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("char_at() second arg must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── Arena ────────────────────────────────────────────────────
+    name == "arena_begin" ? {
+      nargs != 0 ? tc_error("arena_begin() takes 0 arguments") : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "arena_alloc" ? {
+      nargs != 1 ? tc_error("arena_alloc() takes 1 argument (size)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("arena_alloc() size must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "arena_end" ? {
+      nargs != 0 ? tc_error("arena_end() takes 0 arguments") : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── Function pointers ────────────────────────────────────────
+    name == "fptr" ? {
+      nargs != 1 ? tc_error("fptr() takes exactly 1 argument (function name)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("fptr() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "fcall" ? {
+      nargs != 2 ? tc_error("fcall() takes exactly 2 arguments (fn_ptr, arg)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT && type_tag(at0) != TY_FN ? tc_error("fcall() fn_ptr must be Int or Fn, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("fcall() arg must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "fcall2" ? {
+      nargs != 3 ? tc_error("fcall2() takes exactly 3 arguments (fn_ptr, arg1, arg2)") : 0
+      ci := 0
+      while ci < nargs {
+        check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "fcall3" ? {
+      nargs != 4 ? tc_error("fcall3() takes exactly 4 arguments (fn_ptr, arg1, arg2, arg3)") : 0
+      ci := 0
+      while ci < nargs {
+        check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "ptr" ? {
+      nargs != 1 ? tc_error("ptr() takes exactly 1 argument") : 0
+      check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_type(TY_INT)
+    } : 0
+
+    name == "wfd" ? {
+      nargs != 2 ? tc_error("wfd() takes exactly 2 arguments (fd, msg)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("wfd() fd must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_STRING ? tc_error("wfd() msg must be String, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── Sockets ──────────────────────────────────────────────────
+    name == "sock" ? {
+      nargs != 3 ? tc_error("sock() takes exactly 3 arguments (domain, type, proto)") : 0
+      ci := 0
+      while ci < 3 {
+        at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at) != TY_INT ? tc_error("sock() argument must be Int, got " + type_to_string(at)) : 0
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "sbind" ? {
+      nargs != 2 ? tc_error("sbind() takes exactly 2 arguments (fd, port)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("sbind() fd must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("sbind() port must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "slisten" ? {
+      nargs != 2 ? tc_error("slisten() takes exactly 2 arguments (fd, backlog)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("slisten() fd must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("slisten() backlog must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "saccept" ? {
+      nargs != 1 ? tc_error("saccept() takes exactly 1 argument (fd)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("saccept() fd must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "srecv" ? {
+      nargs != 3 ? tc_error("srecv() takes exactly 3 arguments (fd, buf, len)") : 0
+      ci := 0
+      while ci < 3 {
+        at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at) != TY_INT ? tc_error("srecv() argument must be Int, got " + type_to_string(at)) : 0
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "ssend" ? {
+      nargs != 3 ? tc_error("ssend() takes exactly 3 arguments (fd, buf, len)") : 0
+      ci := 0
+      while ci < 3 {
+        at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at) != TY_INT ? tc_error("ssend() argument must be Int, got " + type_to_string(at)) : 0
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "sclose" ? {
+      nargs != 1 ? tc_error("sclose() takes exactly 1 argument (fd)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("sclose() fd must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "rbind" ? {
+      nargs != 3 ? tc_error("rbind() takes exactly 3 arguments (fd, addr, len)") : 0
+      ci := 0
+      while ci < 3 {
+        at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at) != TY_INT ? tc_error("rbind() argument must be Int, got " + type_to_string(at)) : 0
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "rsetsockopt" ? {
+      nargs != 5 ? tc_error("rsetsockopt() takes exactly 5 arguments (fd, level, opt, val_ptr, val_len)") : 0
+      ci := 0
+      while ci < 5 {
+        at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at) != TY_INT ? tc_error("rsetsockopt() argument must be Int, got " + type_to_string(at)) : 0
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "strstr" ? {
+      nargs != 2 ? tc_error("strstr() takes exactly 2 arguments (haystack, needle)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("strstr() haystack must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("strstr() needle must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── Curl ─────────────────────────────────────────────────────
+    name == "cinit" ? {
+      nargs != 0 ? tc_error("cinit() takes no arguments") : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "csets" ? {
+      nargs != 3 ? tc_error("csets() takes exactly 3 arguments (handle, opt, val)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("csets() handle must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("csets() opt must be Int, got " + type_to_string(at1)) : 0
+      at2 = check_expr(args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at2) != TY_STRING ? tc_error("csets() val must be String, got " + type_to_string(at2)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "cseti" ? {
+      nargs != 3 ? tc_error("cseti() takes exactly 3 arguments (handle, opt, val)") : 0
+      ci := 0
+      while ci < 3 {
+        at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at) != TY_INT ? tc_error("cseti() argument must be Int, got " + type_to_string(at)) : 0
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "cperf" ? {
+      nargs != 1 ? tc_error("cperf() takes exactly 1 argument (handle)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("cperf() handle must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "cclean" ? {
+      nargs != 1 ? tc_error("cclean() takes exactly 1 argument (handle)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("cclean() handle must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "cinfo" ? {
+      nargs != 3 ? tc_error("cinfo() takes exactly 3 arguments (handle, info, buf)") : 0
+      ci := 0
+      while ci < 3 {
+        at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at) != TY_INT ? tc_error("cinfo() argument must be Int, got " + type_to_string(at)) : 0
+        ci += 1
+      }
+      return make_type(TY_INT)
+    } : 0
+
+    name == "curl_slist_append" ? {
+      nargs != 2 ? tc_error("curl_slist_append() takes exactly 2 arguments (slist, str)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("curl_slist_append() slist must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_INT ? tc_error("curl_slist_append() str must be Int, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "curl_slist_free" ? {
+      nargs != 1 ? tc_error("curl_slist_free() takes exactly 1 argument (slist)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("curl_slist_free() slist must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── Result ───────────────────────────────────────────────────
+    name == "ok" ? {
+      nargs != 1 ? tc_error("ok() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_result_type(at)
+    } : 0
+
+    name == "err" ? {
+      nargs != 1 ? tc_error("err() takes exactly 1 argument") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("err() requires String argument, got " + type_to_string(at)) : 0
+      return make_type(TY_RESULT_ERR)
+    } : 0
+
+    // ── Map ──────────────────────────────────────────────────────
+    name == "M" || name == "map" ? {
+      nargs != 0 ? tc_error("map() takes 0 arguments") : 0
+      return make_type(TY_MAP)
+    } : 0
+
+    // ── Misc ─────────────────────────────────────────────────────
+    name == "args" ? {
+      nargs != 0 ? tc_error("args() takes 0 arguments") : 0
+      return make_array_type(make_type(TY_STRING))
+    } : 0
+
+    name == "exit" ? {
+      nargs != 1 ? tc_error("exit() takes exactly 1 argument (code)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_INT ? tc_error("exit() code must be Int, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "system" || name == "sys" ? {
+      nargs != 1 ? tc_error("system() takes exactly 1 argument (cmd)") : 0
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at) != TY_STRING ? tc_error("system() cmd must be String, got " + type_to_string(at)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // ── User-defined function: check fn_env ──────────────────────
+    fn_env.has(name) ? {
+      sig = fn_env.get(name)
+      // sig layout: offset 0 = params array ptr, offset 8 = return type ptr
+      sig_params = load64(sig)
+      sig_ret = load64(sig + 8)
+      sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+
+      nargs != sig_params_len ? tc_error("wrong argument count calling '" + name + "': expected " + str(sig_params_len) + " argument(s) but got " + str(nargs)) : 0
+
+      ci := 0
+      while ci < nargs {
+        actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        expected = load64(sig_params + ci * 8)
+        types_compatible(actual, expected) == 0 ? tc_error("argument " + str(ci + 1) + " to '" + name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
+        ci += 1
+      }
+      return sig_ret
+    } : 0
+
+    // ── Check local variable holding a lambda/fn ─────────────────
+    local_ty = lookup_local(locals, name)
+    local_ty != 0 && type_tag(local_ty) == TY_FN ? {
+      fn_params = type_data(local_ty)
+      fn_ret = type_data2(local_ty)
+      fn_params_len = fn_params != 0 ? load64(fn_params - 8) : 0
+
+      nargs != fn_params_len ? tc_error("wrong argument count calling '" + name + "': expected " + str(fn_params_len) + " argument(s) but got " + str(nargs)) : 0
+
+      ci := 0
+      while ci < nargs {
+        actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        expected = load64(fn_params + ci * 8)
+        type_eq(actual, expected) == 0 ? tc_error("argument " + str(ci + 1) + " to '" + name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
+        ci += 1
+      }
+      return fn_ret
+    } : 0
+
+    // ── Check mod_exports ────────────────────────────────────────
+    // Look for "module.func" pattern in function name
+    dot_pos = find_char(name, 46, 0)
+    dot_pos >= 0 ? {
+      mod_name = name.substring(0, dot_pos)
+      func_name = name.substring(dot_pos + 1, slen(name))
+      mod_exports != 0 && mod_exports.has(mod_name) ? {
+        exports = mod_exports.get(mod_name)
+        exp_fn_env = load64(exports + 16)
+        exp_fn_env != 0 && exp_fn_env.has(func_name) ? {
+          sig = exp_fn_env.get(func_name)
+          sig_params = load64(sig)
+          sig_ret = load64(sig + 8)
+          sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+
+          nargs != sig_params_len ? tc_error("wrong argument count calling '" + name + "': expected " + str(sig_params_len) + " argument(s) but got " + str(nargs)) : 0
+
+          ci := 0
+          while ci < nargs {
+            actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+            expected = load64(sig_params + ci * 8)
+            types_compatible(actual, expected) == 0 ? tc_error("argument " + str(ci + 1) + " to '" + name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
+            ci += 1
+          }
+          return sig_ret
+        } : 0
+      } : 0
+    } : 0
+
+    return tc_error("undefined function '" + name + "'")
   } : 0
 
   // ── Method call (stub — full impl in 4d) ──────────────────────
