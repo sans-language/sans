@@ -44,13 +44,6 @@ impl Parser {
         &self.tokens[self.pos]
     }
 
-    /// Consume and return the current token, advancing the position.
-    fn advance(&mut self) -> Token {
-        let tok = self.tokens[self.pos].clone();
-        self.pos += 1;
-        tok
-    }
-
     /// Expect the current token to match `kind`, consume it, and return it.
     fn expect(&mut self, kind: &TokenKind) -> Result<Token, ParseError> {
         let tok = self.peek().clone();
