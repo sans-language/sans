@@ -1975,17 +1975,54 @@ fn generate_llvm<'ctx>(
                     let arr_ptr = builder.build_int_to_ptr(arr_int, ptr_type, "arr_p")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
-                    // Load data ptr from offset 0
+                    // Load len from offset 1
+                    let len_ptr = unsafe { builder.build_gep(i64_type, arr_ptr, &[i64_type.const_int(1, false)], "ag_lp") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let len = builder.build_load(i64_type, len_ptr, "ag_len")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+
+                    // Bounds check: index < len && index >= 0
+                    let in_bounds = builder.build_int_compare(inkwell::IntPredicate::SLT, idx, len, "ag_ib")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let not_neg = builder.build_int_compare(inkwell::IntPredicate::SGE, idx, i64_type.const_zero(), "ag_nn")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let valid = builder.build_and(in_bounds, not_neg, "ag_ok")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    let current_fn = builder.get_insert_block().unwrap().get_parent().unwrap();
+                    let then_bb = context.append_basic_block(current_fn, "ag_then");
+                    let else_bb = context.append_basic_block(current_fn, "ag_else");
+                    let merge_bb = context.append_basic_block(current_fn, "ag_merge");
+                    builder.build_conditional_branch(valid, then_bb, else_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // In-bounds path: load element
+                    builder.position_at_end(then_bb);
                     let data_int = builder.build_load(i64_type, arr_ptr, "di")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
                     let data_ptr = builder.build_int_to_ptr(data_int, ptr_type, "dp")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // GEP to data[index], load value
                     let elem_ptr = unsafe { builder.build_gep(i64_type, data_ptr, &[idx], "ep") }
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let val = builder.build_load(i64_type, elem_ptr, dest)
+                    let loaded_val = builder.build_load(i64_type, elem_ptr, "ag_v")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+                    builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let then_end = builder.get_insert_block().unwrap();
+
+                    // Out-of-bounds path: return 0
+                    builder.position_at_end(else_bb);
+                    let zero_val = i64_type.const_zero();
+                    builder.build_unconditional_branch(merge_bb)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let else_end = builder.get_insert_block().unwrap();
+
+                    // Merge: phi node
+                    builder.position_at_end(merge_bb);
+                    let phi = builder.build_phi(i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    phi.add_incoming(&[(&loaded_val, then_end), (&zero_val, else_end)]);
+                    let val = phi.as_basic_value().into_int_value();
                     regs.insert(dest.clone(), val);
                 }
                 Instruction::ArraySet { array, index, value } => {
