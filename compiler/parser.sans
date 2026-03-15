@@ -9,7 +9,7 @@ tok_val(t:I) I = load64(t + 8)
 // Parser: [tokens:I, pos:I, last_try_expr:I] = 24 bytes
 make_parser(tokens:I) I {
   p = alloc(24)
-  store64(p, ptr(tokens))    // tokens array
+  store64(p, tokens)          // tokens array pointer
   store64(p + 8, 0)          // pos
   store64(p + 16, 0)         // last_try_expr
   p
@@ -27,7 +27,8 @@ p_set_last_try(p:I v:I) I { store64(p + 16, v)
 p_peek(p:I) I {
   tokens = p_tokens(p)
   pos = p_pos(p)
-  load64(tokens + pos * 8)
+  data = load64(tokens)  // array data pointer is at offset 0
+  load64(data + pos * 8)
 }
 
 p_peek_kind(p:I) I = tok_kind(p_peek(p))
@@ -36,7 +37,8 @@ p_peek_kind(p:I) I = tok_kind(p_peek(p))
 p_peek_at(p:I offset:I) I {
   tokens = p_tokens(p)
   pos = p_pos(p) + offset
-  load64(tokens + pos * 8)
+  data = load64(tokens)  // array data pointer is at offset 0
+  load64(data + pos * 8)
 }
 
 p_peek_kind_at(p:I offset:I) I = tok_kind(p_peek_at(p, offset))
@@ -578,15 +580,15 @@ bp_op(packed:I) I = (packed % 100) - 1
 peek_has_else_after_block(p:I) I {
   depth := 1
   pos := p_pos(p)
-  tokens = p_tokens(p)
+  tokens_data = load64(p_tokens(p))  // get data pointer from array
   while depth > 0 {
-    kind = tok_kind(load64(tokens + pos * 8))
+    kind = tok_kind(load64(tokens_data + pos * 8))
     if kind == TK_LBRACE { depth = depth + 1 }
     kind == TK_RBRACE ? {
       depth = depth - 1
       depth == 0 ? {
         // Check token after matching }
-        next_kind = tok_kind(load64(tokens + (pos + 1) * 8))
+        next_kind = tok_kind(load64(tokens_data + (pos + 1) * 8))
         return next_kind == TK_ELSE ? 1 : 0
       } : 0
     } : 0
