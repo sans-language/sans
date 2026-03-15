@@ -1174,12 +1174,16 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), loaded);
                 }
                 Instruction::StructAlloc { dest, num_fields } => {
-                    let field_types: Vec<inkwell::types::BasicTypeEnum> =
-                        (0..*num_fields).map(|_| i64_type.into()).collect();
-                    let struct_type = context.struct_type(&field_types, false);
-                    let ptr = builder
-                        .build_alloca(struct_type, dest)
+                    // Use malloc instead of alloca so struct survives function return
+                    // (Sans already leaks all heap allocations — documented limitation)
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let alloc_size = i64_type.const_int((*num_fields as u64) * 8, false);
+                    let call = builder.build_call(malloc_fn, &[alloc_size.into()], "struct_alloc")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc: expected return".into())),
+                    };
                     ptrs.insert(dest.clone(), ptr);
                     struct_sizes.insert(dest.clone(), *num_fields);
                     // Also store as i64 in regs so the pointer can be used as a value
@@ -1241,8 +1245,15 @@ fn generate_llvm<'ctx>(
                     let field_types: Vec<inkwell::types::BasicTypeEnum> =
                         (0..total_fields).map(|_| i64_type.into()).collect();
                     let struct_type = context.struct_type(&field_types, false);
-                    let ptr = builder.build_alloca(struct_type, dest)
+                    // Use malloc instead of alloca so enum survives function return
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let alloc_size = i64_type.const_int((total_fields as u64) * 8, false);
+                    let call = builder.build_call(malloc_fn, &[alloc_size.into()], "enum_alloc")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ptr = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("malloc: expected return".into())),
+                    };
                     // Store tag at field 0
                     let tag_ptr = builder.build_struct_gep(struct_type, ptr, 0, "tag_ptr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
@@ -3619,7 +3630,7 @@ mod tests {
         ).expect("parse failed");
         let module = sans_ir::lower(&program, None, &std::collections::HashMap::new());
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
-        assert!(ir.contains("alloca"), "expected alloca in:\n{}", ir);
+        assert!(ir.contains("malloc"), "expected malloc in:\n{}", ir);
         assert!(ir.contains("getelementptr"), "expected GEP in:\n{}", ir);
         assert!(ir.contains("ret i64"), "expected ret in:\n{}", ir);
     }

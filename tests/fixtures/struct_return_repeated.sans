@@ -1,0 +1,12 @@
+struct LexState { src S, pos I }
+advance(st:LexState n:I) LexState {
+  new_pos = st.pos + n
+  LexState { src: st.src, pos: new_pos }
+}
+main() I {
+  st := LexState { src: "hello", pos: 0 }
+  st = advance(st 1)
+  st = advance(st 1)
+  st = advance(st 1)
+  st.pos
+}

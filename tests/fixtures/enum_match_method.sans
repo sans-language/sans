@@ -1,0 +1,8 @@
+enum Tok { Ident(S), Num(I) }
+main() I {
+  t = Tok::Ident("hello")
+  match t {
+    Tok::Ident(s) => s.len(),
+    Tok::Num(n) => n,
+  }
+}

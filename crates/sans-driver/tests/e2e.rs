@@ -209,6 +209,16 @@ fn e2e_struct_nested_access() {
 }
 
 #[test]
+fn e2e_struct_return_repeated() {
+    assert_eq!(compile_and_run("struct_return_repeated.sans"), 3);
+}
+
+#[test]
+fn e2e_enum_match_method() {
+    assert_eq!(compile_and_run("enum_match_method.sans"), 5);
+}
+
+#[test]
 fn e2e_enum_basic() {
     assert_eq!(compile_and_run("enum_basic.sans"), 2);
 }

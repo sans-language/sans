@@ -103,6 +103,42 @@ pub fn lower_with_extra_structs(
         enum_defs.insert(e.name.clone(), variants);
     }
 
+    // Collect enum field types: (enum_name, variant_name) -> [IrType] for data fields
+    let mut enum_field_types: HashMap<(String, String), Vec<IrType>> = HashMap::new();
+    for e in &program.enums {
+        for v in &e.variants {
+            let field_types: Vec<IrType> = v.fields.iter()
+                .map(|tn| {
+                    match tn.name.as_str() {
+                        "String" | "S" => IrType::Str,
+                        "Float" | "F" => IrType::Float,
+                        "Bool" | "B" => IrType::Bool,
+                        "Map" | "M" => IrType::Map,
+                        "JsonValue" => IrType::JsonValue,
+                        "HttpResponse" => IrType::HttpResponse,
+                        "HttpRequest" | "HR" => IrType::HttpRequest,
+                        "HttpServer" | "HS" => IrType::HttpServer,
+                        name if struct_defs.contains_key(name) => IrType::Struct(name.to_string()),
+                        name if enum_defs.contains_key(name) => IrType::Enum(name.to_string()),
+                        name if name.starts_with("Array<") && name.ends_with('>') => {
+                            let inner_str = &name[6..name.len()-1];
+                            let inner = match inner_str {
+                                "Int" | "I" => IrType::Int,
+                                "Float" | "F" => IrType::Float,
+                                "Bool" | "B" => IrType::Bool,
+                                "String" | "S" => IrType::Str,
+                                _ => IrType::Int,
+                            };
+                            IrType::Array(Box::new(inner))
+                        }
+                        _ => IrType::Int,
+                    }
+                })
+                .collect();
+            enum_field_types.insert((e.name.clone(), v.name.clone()), field_types);
+        }
+    }
+
     // Process global variable definitions
     let mut globals: Vec<(String, i64)> = Vec::new();
     let mut global_names: HashMap<String, IrType> = HashMap::new();
@@ -198,7 +234,7 @@ pub fn lower_with_extra_structs(
         } else {
             f.name.clone()
         };
-        let (main_fn, lifted) = lower_function_named(&f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types);
+        let (main_fn, lifted) = lower_function_named(&f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types);
         functions.push(main_fn);
         functions.extend(lifted);
     }
@@ -211,7 +247,7 @@ pub fn lower_with_extra_structs(
             } else {
                 format!("{}_{}", imp.target_type, method.name)
             };
-            let (main_fn, lifted) = lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types);
+            let (main_fn, lifted) = lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types);
             functions.push(main_fn);
             functions.extend(lifted);
         }
@@ -220,8 +256,8 @@ pub fn lower_with_extra_structs(
     Module { globals, functions }
 }
 
-fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>, struct_field_types: &HashMap<String, Vec<(String, IrType)>>) -> (IrFunction, Vec<IrFunction>) {
-    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone(), global_names.clone(), struct_field_types.clone());
+fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>, struct_field_types: &HashMap<String, Vec<(String, IrType)>>, enum_field_types: &HashMap<(String, String), Vec<IrType>>) -> (IrFunction, Vec<IrFunction>) {
+    let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone(), global_names.clone(), struct_field_types.clone(), enum_field_types.clone());
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -356,10 +392,12 @@ struct IrBuilder {
     closure_info: HashMap<Reg, (String, Vec<String>)>,
     /// Maps (struct_name, field_name) to the field's IrType for correct field access typing
     struct_field_types: HashMap<String, Vec<(String, IrType)>>,
+    /// Maps (enum_name, variant_name) to the variant's field IrTypes
+    enum_field_types: HashMap<(String, String), Vec<IrType>>,
 }
 
 impl IrBuilder {
-    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>, module_names: Vec<String>, module_fn_ret_types: HashMap<(String, String), IrType>, local_fn_ret_types: HashMap<String, IrType>, global_names: HashMap<String, IrType>, struct_field_types: HashMap<String, Vec<(String, IrType)>>) -> Self {
+    fn new(struct_defs: HashMap<String, Vec<String>>, enum_defs: HashMap<String, Vec<(String, usize, usize)>>, module_names: Vec<String>, module_fn_ret_types: HashMap<(String, String), IrType>, local_fn_ret_types: HashMap<String, IrType>, global_names: HashMap<String, IrType>, struct_field_types: HashMap<String, Vec<(String, IrType)>>, enum_field_types: HashMap<(String, String), Vec<IrType>>) -> Self {
         IrBuilder {
             counter: 0,
             label_counter: 0,
@@ -378,6 +416,7 @@ impl IrBuilder {
             lambda_counter: 0,
             closure_info: HashMap::new(),
             struct_field_types,
+            enum_field_types,
         }
     }
 
@@ -2019,7 +2058,8 @@ impl IrBuilder {
 
                     self.instructions.push(Instruction::Label { name: arm_label });
 
-                    // Bind data fields
+                    // Bind data fields with correct types from enum definition
+                    let field_types = self.enum_field_types.get(&(enum_name.clone(), variant_name.clone())).cloned();
                     for (i, binding_name) in bindings.iter().enumerate() {
                         let data_reg = self.fresh_reg();
                         self.instructions.push(Instruction::EnumData {
@@ -2027,7 +2067,10 @@ impl IrBuilder {
                             ptr: scrutinee_reg.clone(),
                             field_index: i,
                         });
-                        self.reg_types.insert(data_reg.clone(), IrType::Int);
+                        let ir_type = field_types.as_ref()
+                            .and_then(|types| types.get(i).cloned())
+                            .unwrap_or(IrType::Int);
+                        self.reg_types.insert(data_reg.clone(), ir_type);
                         self.locals.insert(binding_name.clone(), LocalVar::Value(data_reg));
                     }
 
@@ -2152,6 +2195,7 @@ impl IrBuilder {
                     self.local_fn_ret_types.clone(),
                     self.global_names.clone(),
                     self.struct_field_types.clone(),
+                    self.enum_field_types.clone(),
                 );
                 // Share lambda counter with nested builder to avoid name collisions
                 lifted_builder.lambda_counter = self.lambda_counter;
