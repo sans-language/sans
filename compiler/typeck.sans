@@ -392,3 +392,467 @@ type_to_string(t:I) S {
   } : 0
   "?"
 }
+
+// ── Scope helpers ─────────────────────────────────────────────────
+push_scope(locals:I) I {
+  locals.push(map())
+  0
+}
+
+pop_scope(locals:I) I {
+  locals.pop()
+  0
+}
+
+// ── Lookup variable in scope stack ────────────────────────────────
+// Walk locals from last (innermost) to first (outermost).
+// Returns Type ptr or 0 if not found.
+lookup_local(locals:I name:S) I {
+  i := locals.len() - 1
+  while i >= 0 {
+    scope = locals[i]
+    scope.has(name) ? return scope.get(name) : 0
+    i -= 1
+  }
+  0
+}
+
+// ── Stub: check_stmts (full impl in 4e) ──────────────────────────
+check_stmts(stmts:I stmts_len:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
+  // TODO: implement in task 4e
+  0
+}
+
+// ── check_expr: type-check an expression, return Type ptr ─────────
+check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
+  tag = load64(expr)
+
+  // ── Literals ──────────────────────────────────────────────────
+  tag == EX_INT_LIT ? return make_type(TY_INT) : 0
+  tag == EX_FLOAT_LIT ? return make_type(TY_FLOAT) : 0
+  tag == EX_BOOL_LIT ? return make_type(TY_BOOL) : 0
+  tag == EX_STRING_LIT ? return make_type(TY_STRING) : 0
+
+  // ── Identifier ────────────────────────────────────────────────
+  tag == EX_IDENT ? {
+    name = load64(expr + 8)
+    // Search local scopes
+    t = lookup_local(locals, name)
+    t != 0 ? return t : 0
+    // Check function environment — return Fn type
+    fn_env.has(name) ? {
+      sig = fn_env.get(name)
+      // sig layout: offset 0 = params array ptr, offset 8 = ret type ptr
+      sig_params = load64(sig)
+      sig_ret = load64(sig + 8)
+      return make_fn_type(sig_params, sig_ret)
+    } : 0
+    return tc_error("undefined variable '" + name + "'")
+  } : 0
+
+  // ── Binary operator ───────────────────────────────────────────
+  tag == EX_BINOP ? {
+    op = load64(expr + 8)
+    left = load64(expr + 16)
+    right = load64(expr + 24)
+    lt = check_expr(left, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    rt = check_expr(right, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    lt_tag = type_tag(lt)
+    rt_tag = type_tag(rt)
+
+    // Arithmetic: OP_ADD(0) .. OP_MOD(4)
+    op <= OP_MOD ? {
+      // String + String → String
+      op == OP_ADD && lt_tag == TY_STRING && rt_tag == TY_STRING ? return make_type(TY_STRING) : 0
+      // Float op Float → Float
+      lt_tag == TY_FLOAT && rt_tag == TY_FLOAT ? return make_type(TY_FLOAT) : 0
+      // Int op Int → Int
+      lt_tag != TY_INT ? return tc_error("arithmetic operator requires Int operands, left operand is " + type_to_string(lt)) : 0
+      rt_tag != TY_INT ? return tc_error("arithmetic operator requires Int operands, right operand is " + type_to_string(rt)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    // Comparison: OP_EQ(5) .. OP_GTEQ(10)
+    op >= OP_EQ && op <= OP_GTEQ ? {
+      // Float == Float → Bool
+      lt_tag == TY_FLOAT && rt_tag == TY_FLOAT ? return make_type(TY_BOOL) : 0
+      // String == / != String → Bool
+      lt_tag == TY_STRING && rt_tag == TY_STRING ? {
+        op == OP_EQ || op == OP_NEQ ? return make_type(TY_BOOL) : 0
+        return tc_error("String only supports == and != comparison")
+      } : 0
+      // Bool == / != Bool → Bool
+      lt_tag == TY_BOOL && rt_tag == TY_BOOL ? {
+        op == OP_EQ || op == OP_NEQ ? return make_type(TY_BOOL) : 0
+        return tc_error("Bool only supports == and != comparison")
+      } : 0
+      // Int cmp Int → Bool
+      lt_tag != TY_INT ? return tc_error("comparison operator requires matching operands, left operand is " + type_to_string(lt)) : 0
+      rt_tag != TY_INT ? return tc_error("comparison operator requires matching operands, right operand is " + type_to_string(rt)) : 0
+      return make_type(TY_BOOL)
+    } : 0
+
+    // Logical: OP_AND(11), OP_OR(12)
+    op == OP_AND || op == OP_OR ? {
+      lt_tag != TY_BOOL ? return tc_error("boolean operator requires Bool operands, left operand is " + type_to_string(lt)) : 0
+      rt_tag != TY_BOOL ? return tc_error("boolean operator requires Bool operands, right operand is " + type_to_string(rt)) : 0
+      return make_type(TY_BOOL)
+    } : 0
+
+    return tc_error("unknown binary operator")
+  } : 0
+
+  // ── Unary operator ────────────────────────────────────────────
+  tag == EX_UNARYOP ? {
+    op = load64(expr + 8)
+    operand = load64(expr + 16)
+    ot = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    ot_tag = type_tag(ot)
+
+    op == UOP_NOT ? {
+      ot_tag != TY_BOOL ? return tc_error("'!' operator requires Bool operand, got " + type_to_string(ot)) : 0
+      return make_type(TY_BOOL)
+    } : 0
+
+    op == UOP_NEG ? {
+      ot_tag != TY_INT && ot_tag != TY_FLOAT ? return tc_error("'-' operator requires Int or Float operand, got " + type_to_string(ot)) : 0
+      return ot
+    } : 0
+
+    return tc_error("unknown unary operator")
+  } : 0
+
+  // ── If expression ─────────────────────────────────────────────
+  tag == EX_IF ? {
+    cond = load64(expr + 8)
+    then_stmts_p = load64(expr + 16)
+    then_expr = load64(expr + 24)
+    else_stmts_p = load64(expr + 32)
+    else_expr = load64(expr + 40)
+
+    cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    type_tag(cond_ty) != TY_BOOL ? return tc_error("if condition must be Bool, got " + type_to_string(cond_ty)) : 0
+
+    // Check then branch stmts
+    then_stmts_len = then_stmts_p != 0 ? load64(then_stmts_p - 8) : 0
+    check_stmts(then_stmts_p, then_stmts_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    then_ty = check_expr(then_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+
+    // Check else branch stmts
+    else_stmts_len = else_stmts_p != 0 ? load64(else_stmts_p - 8) : 0
+    check_stmts(else_stmts_p, else_stmts_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    else_ty = check_expr(else_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+
+    then_tag = type_tag(then_ty)
+    else_tag = type_tag(else_ty)
+
+    // Check type compatibility
+    type_eq(then_ty, else_ty) == 1 ? return then_ty : 0
+    // ResultErr matches any Result<T>
+    then_tag == TY_RESULT_ERR && else_tag == TY_RESULT ? return else_ty : 0
+    else_tag == TY_RESULT_ERR && then_tag == TY_RESULT ? return then_ty : 0
+    then_tag == TY_RESULT_ERR && else_tag == TY_RESULT_ERR ? return then_ty : 0
+
+    return tc_error("if/else branch type mismatch: then branch is " + type_to_string(then_ty) + " but else branch is " + type_to_string(else_ty))
+  } : 0
+
+  // ── Call (stub — full impl in 4c) ─────────────────────────────
+  tag == EX_CALL ? {
+    // TODO: implement built-in + user function call checking in task 4c
+    return make_type(TY_INT)
+  } : 0
+
+  // ── Method call (stub — full impl in 4d) ──────────────────────
+  tag == EX_METHOD_CALL ? {
+    // TODO: implement method call checking in task 4d
+    return make_type(TY_INT)
+  } : 0
+
+  // ── Field access ──────────────────────────────────────────────
+  tag == EX_FIELD_ACCESS ? {
+    object = load64(expr + 8)
+    field = load64(expr + 16)
+    obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    obj_tag = type_tag(obj_ty)
+
+    // Tuple: field is numeric index
+    obj_tag == TY_TUPLE ? {
+      elems = type_data2(obj_ty)
+      elems == 0 ? return tc_error("tuple has no elements") : 0
+      len = load64(elems - 8)
+      // Parse field name as integer index
+      idx = stoi(field)
+      idx < 0 || idx >= len ? return tc_error("tuple index out of bounds") : 0
+      return load64(elems + idx * 8)
+    } : 0
+
+    // Struct: look up field in fields map
+    obj_tag == TY_STRUCT ? {
+      sname = type_data(obj_ty)
+      fields_map = type_data2(obj_ty)
+      fields_map != 0 && fields_map.has(field) ? return fields_map.get(field) : 0
+      return tc_error("no field '" + field + "' on struct '" + sname + "'")
+    } : 0
+
+    // Fallback: treat as no-arg method call (e.g. array.len)
+    // Construct a synthetic method call and check it
+    // For now, return error
+    return tc_error("field access on non-struct/tuple type " + type_to_string(obj_ty))
+  } : 0
+
+  // ── Struct literal ────────────────────────────────────────────
+  tag == EX_STRUCT_LIT ? {
+    sname = load64(expr + 8)
+    field_names_p = load64(expr + 16)
+    field_values_p = load64(expr + 24)
+
+    // Look up struct definition
+    structs.has(sname) == 0 ? return tc_error("undefined struct '" + sname + "'") : 0
+    expected_fields = structs.get(sname)
+
+    // expected_fields is a Map: field_name → Type ptr
+    exp_keys = expected_fields.keys()
+    exp_len = exp_keys.len()
+
+    // Number of provided fields
+    num_fields = load64(field_names_p - 8)
+
+    // Check for missing fields
+    ei := 0
+    while ei < exp_len {
+      ek = exp_keys[ei]
+      found := 0
+      fi := 0
+      while fi < num_fields {
+        load64(field_names_p + fi * 8) == ek ? { found = 1; fi = num_fields } : 0
+        fi += 1
+      }
+      found == 0 ? return tc_error("missing field '" + ek + "' in struct '" + sname + "'") : 0
+      ei += 1
+    }
+
+    // Check each provided field's type
+    fi := 0
+    while fi < num_fields {
+      fname = load64(field_names_p + fi * 8)
+      fval = load64(field_values_p + fi * 8)
+      expected_fields.has(fname) == 0 ? return tc_error("unknown field '" + fname + "' on struct '" + sname + "'") : 0
+      expected_ty = expected_fields.get(fname)
+      actual_ty = check_expr(fval, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_eq(actual_ty, expected_ty) == 0 ? return tc_error("type mismatch for field '" + fname + "' of struct '" + sname + "': expected " + type_to_string(expected_ty) + " but got " + type_to_string(actual_ty)) : 0
+      fi += 1
+    }
+
+    return make_struct_type(sname, expected_fields)
+  } : 0
+
+  // ── Tuple literal ─────────────────────────────────────────────
+  tag == EX_TUPLE_LIT ? {
+    elems_p = load64(expr + 8)
+    num_elems = load64(elems_p - 8)
+    elem_types = [I]
+    i := 0
+    while i < num_elems {
+      et = check_expr(load64(elems_p + i * 8), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      elem_types.push(et)
+      i += 1
+    }
+    return make_tuple_type(ptr(elem_types))
+  } : 0
+
+  // ── Array literal ─────────────────────────────────────────────
+  tag == EX_ARRAY_LIT ? {
+    elems_p = load64(expr + 8)
+    num_elems = load64(elems_p - 8)
+    num_elems == 0 ? return tc_error("empty array literal — cannot infer element type") : 0
+    first_ty = check_expr(load64(elems_p), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    i := 1
+    while i < num_elems {
+      elem_ty = check_expr(load64(elems_p + i * 8), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_eq(elem_ty, first_ty) == 0 ? return tc_error("array literal element " + str(i) + " has type " + type_to_string(elem_ty) + " but expected " + type_to_string(first_ty)) : 0
+      i += 1
+    }
+    return make_array_type(first_ty)
+  } : 0
+
+  // ── Match expression ──────────────────────────────────────────
+  tag == EX_MATCH ? {
+    scrutinee = load64(expr + 8)
+    arms_p = load64(expr + 16)
+    scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    type_tag(scrutinee_ty) != TY_ENUM ? return tc_error("match scrutinee must be an enum type, got " + type_to_string(scrutinee_ty)) : 0
+
+    enum_name = type_data(scrutinee_ty)
+    // Get enum variants from enums map
+    enums.has(enum_name) == 0 ? return tc_error("undefined enum '" + enum_name + "'") : 0
+    variants = enums.get(enum_name)
+
+    num_arms = load64(arms_p - 8)
+    num_arms == 0 ? return tc_error("match expression has no arms") : 0
+
+    result_ty := 0
+    ai := 0
+    while ai < num_arms {
+      arm = load64(arms_p + ai * 8)
+      // arm layout: offset 0 = pattern ptr, offset 8 = body expr ptr
+      pattern = load64(arm)
+      arm_body = load64(arm + 8)
+
+      // pattern layout: offset 0 = enum_name, offset 8 = variant_name, offset 16 = bindings array ptr
+      pat_enum = load64(pattern)
+      pat_variant = load64(pattern + 8)
+      bindings_p = load64(pattern + 16)
+
+      pat_enum != enum_name ? return tc_error("pattern enum '" + pat_enum + "' does not match scrutinee enum '" + enum_name + "'") : 0
+
+      // Look up variant in variants map
+      variants.has(pat_variant) == 0 ? return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name + "'") : 0
+      variant_fields_p = variants.get(pat_variant)
+      // variant_fields_p is a raw array of Type ptrs
+      variant_fields_len = load64(variant_fields_p - 8)
+
+      bindings_len = load64(bindings_p - 8)
+      bindings_len != variant_fields_len ? return tc_error("pattern '" + enum_name + "::" + pat_variant + "' expects " + str(variant_fields_len) + " binding(s) but got " + str(bindings_len)) : 0
+
+      // Create new scope with bindings
+      push_scope(locals)
+      inner_scope = locals[locals.len() - 1]
+      bi := 0
+      while bi < bindings_len {
+        bname = load64(bindings_p + bi * 8)
+        btype = load64(variant_fields_p + bi * 8)
+        inner_scope.set(bname, btype)
+        bi += 1
+      }
+
+      arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      pop_scope(locals)
+
+      result_ty == 0 ? {
+        result_ty = arm_ty
+      } : {
+        type_eq(arm_ty, result_ty) == 0 ? return tc_error("match arm type mismatch: expected " + type_to_string(result_ty) + " but got " + type_to_string(arm_ty)) : 0
+      }
+      ai += 1
+    }
+    return result_ty
+  } : 0
+
+  // ── Lambda ────────────────────────────────────────────────────
+  tag == EX_LAMBDA ? {
+    params_p = load64(expr + 8)
+    ret_type_name = load64(expr + 16)
+    body_stmts_p = load64(expr + 24)
+
+    // Build param types and add to new scope
+    push_scope(locals)
+    inner_scope = locals[locals.len() - 1]
+    param_types = [I]
+
+    num_params = load64(params_p - 8)
+    pi := 0
+    while pi < num_params {
+      param = load64(params_p + pi * 8)
+      // param layout: offset 0 = name, offset 8 = type_name string
+      pname = load64(param)
+      ptype_name = load64(param + 8)
+      pty = resolve_type(ptype_name, structs, enums, mod_exports)
+      param_types.push(pty)
+      inner_scope.set(pname, pty)
+      pi += 1
+    }
+
+    ret_ty = resolve_type(ret_type_name, structs, enums, mod_exports)
+
+    // Check body stmts
+    body_len = body_stmts_p != 0 ? load64(body_stmts_p - 8) : 0
+    check_stmts(body_stmts_p, body_len, locals, fn_env, ret_ty, structs, enums, methods, generic_fns, traits, mod_exports)
+
+    pop_scope(locals)
+    return make_fn_type(ptr(param_types), ret_ty)
+  } : 0
+
+  // ── Spawn ─────────────────────────────────────────────────────
+  tag == EX_SPAWN ? {
+    func_name = load64(expr + 8)
+    args_p = load64(expr + 16)
+    num_args = load64(args_p - 8)
+
+    fn_env.has(func_name) == 0 ? return tc_error("undefined function '" + func_name + "' in spawn") : 0
+    sig = fn_env.get(func_name)
+    sig_params = load64(sig)
+    sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+
+    num_args != sig_params_len ? return tc_error("wrong argument count calling '" + func_name + "': expected " + str(sig_params_len) + " but got " + str(num_args)) : 0
+
+    si := 0
+    while si < num_args {
+      arg_expr = load64(args_p + si * 8)
+      actual = check_expr(arg_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      expected = load64(sig_params + si * 8)
+      // Allow opaque types where Int expected (pointers are i64)
+      types_compatible(actual, expected) == 0 ? return tc_error("argument " + str(si + 1) + " to '" + func_name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
+      si += 1
+    }
+    return make_type(TY_JOIN_HANDLE)
+  } : 0
+
+  // ── Channel ───────────────────────────────────────────────────
+  tag == EX_CHANNEL ? {
+    elem_type_name = load64(expr + 8)
+    capacity_expr = load64(expr + 16)
+
+    // Check capacity if present
+    capacity_expr != 0 ? {
+      cap_ty = check_expr(capacity_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(cap_ty) != TY_INT ? return tc_error("channel capacity must be Int, got " + type_to_string(cap_ty)) : 0
+    } : 0
+
+    inner = resolve_type(elem_type_name, structs, enums, mod_exports)
+    // Rust returns Sender<T> — the channel() call returns Sender (receiver obtained via split)
+    return make_sender_type(inner)
+  } : 0
+
+  // ── Mutex ─────────────────────────────────────────────────────
+  tag == EX_MUTEX ? {
+    value_expr = load64(expr + 8)
+    inner = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    return make_mutex_type(inner)
+  } : 0
+
+  // ── Enum variant ──────────────────────────────────────────────
+  tag == EX_ENUM_VARIANT ? {
+    ename = load64(expr + 8)
+    vname = load64(expr + 16)
+    args_p = load64(expr + 24)
+    num_args = load64(args_p - 8)
+
+    enums.has(ename) == 0 ? return tc_error("undefined enum '" + ename + "'") : 0
+    variants = enums.get(ename)
+    variants.has(vname) == 0 ? return tc_error("unknown variant '" + vname + "' on enum '" + ename + "'") : 0
+
+    expected_fields_p = variants.get(vname)
+    expected_len = load64(expected_fields_p - 8)
+
+    num_args != expected_len ? return tc_error("variant '" + ename + "::" + vname + "' expects " + str(expected_len) + " argument(s) but got " + str(num_args)) : 0
+
+    vi := 0
+    while vi < num_args {
+      arg_expr = load64(args_p + vi * 8)
+      actual_ty = check_expr(arg_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      expected_ty = load64(expected_fields_p + vi * 8)
+      type_eq(actual_ty, expected_ty) == 0 ? return tc_error("argument " + str(vi + 1) + " to '" + ename + "::" + vname + "': expected " + type_to_string(expected_ty) + " but got " + type_to_string(actual_ty)) : 0
+      vi += 1
+    }
+    return make_enum_type(ename, variants)
+  } : 0
+
+  // ── Array create ──────────────────────────────────────────────
+  tag == EX_ARRAY_CREATE ? {
+    elem_type_name = load64(expr + 8)
+    inner = resolve_type(elem_type_name, structs, enums, mod_exports)
+    return make_array_type(inner)
+  } : 0
+
+  tc_error("check_expr: unknown expression tag " + str(tag))
+}
