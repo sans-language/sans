@@ -423,6 +423,314 @@ lower_binop_arith_or_cmp(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
   }
 }
 
+// ── Helper: look up function return type ────────────────────────
+ctx_get_fn_ret_type(ctx:I name:I) I {
+  m := load64(ctx + 56)
+  m[name]
+}
+
+// ── lower_call ──────────────────────────────────────────────────
+// Lower a function call expression. Dispatches built-in functions to
+// specific IR instructions, falls through to user-defined IR_CALL.
+lower_call(ctx:I name:I args:I) I {
+  // ── print / p ──
+  name == "print" ? lower_call_print(ctx, args) :
+  name == "p" ? lower_call_print(ctx, args) :
+
+  // ── I/O ──
+  name == "file_read" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
+  name == "read_file" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
+  name == "fread" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
+  name == "fr" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
+  name == "file_write" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
+  name == "write_file" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
+  name == "fwrite" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
+  name == "fw" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
+  name == "file_append" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
+  name == "append_file" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
+  name == "fappend" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
+  name == "fa" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
+  name == "file_exists" ? lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) :
+  name == "fexists" ? lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) :
+  name == "fe" ? lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) :
+
+  // ── Conversion ──
+  name == "str" ? lower_call_str(ctx, args) :
+  name == "int_to_string" ? lower_call_str(ctx, args) :
+  name == "itos" ? lower_call_str(ctx, args) :
+  name == "stoi" ? lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) :
+  name == "string_to_int" ? lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) :
+  name == "itof" ? lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) :
+  name == "int_to_float" ? lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) :
+  name == "ftoi" ? lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) :
+  name == "float_to_int" ? lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) :
+  name == "ftos" ? lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) :
+  name == "float_to_string" ? lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) :
+
+  // ── JSON ──
+  name == "json_parse" ? lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) :
+  name == "jparse" ? lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) :
+  name == "jp" ? lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) :
+  name == "json_object" ? lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) :
+  name == "jobj" ? lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) :
+  name == "jo" ? lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) :
+  name == "json_array" ? lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) :
+  name == "jarr" ? lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) :
+  name == "ja" ? lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) :
+  name == "json_string" ? lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) :
+  name == "jstr" ? lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) :
+  name == "js" ? lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) :
+  name == "json_int" ? lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) :
+  name == "ji" ? lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) :
+  name == "json_bool" ? lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) :
+  name == "jb" ? lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) :
+  name == "json_null" ? lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) :
+  name == "jn" ? lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) :
+  name == "json_stringify" ? lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) :
+  name == "jstringify" ? lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) :
+  name == "jfy" ? lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) :
+
+  // ── HTTP ──
+  name == "http_get" ? lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) :
+  name == "hget" ? lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) :
+  name == "hg" ? lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) :
+  name == "http_post" ? lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) :
+  name == "hpost" ? lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) :
+  name == "hp" ? lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) :
+  name == "http_listen" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
+  name == "listen" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
+  name == "hl" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
+
+  // ── Logging ──
+  name == "log_debug" ? lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) :
+  name == "ld" ? lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) :
+  name == "log_info" ? lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) :
+  name == "li" ? lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) :
+  name == "log_warn" ? lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) :
+  name == "lw" ? lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) :
+  name == "log_error" ? lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) :
+  name == "le" ? lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) :
+  name == "log_set_level" ? lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) :
+  name == "ll" ? lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) :
+  name == "get_log_level" ? lower_call_0(ctx, IR_GET_LOG_LEVEL, IRTY_INT) :
+  name == "set_log_level" ? lower_call_1(ctx, args, IR_SET_LOG_LEVEL, IRTY_INT) :
+  name == "print_err" ? lower_call_1(ctx, args, IR_PRINT_ERR, IRTY_INT) :
+
+  // ── Memory ──
+  name == "alloc" ? lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) :
+  name == "dealloc" ? lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) :
+  name == "ralloc" ? lower_call_2(ctx, args, IR_RALLOC, IRTY_INT) :
+  name == "mcpy" ? lower_call_3(ctx, args, IR_MCPY, IRTY_INT) :
+  name == "mzero" ? lower_call_2(ctx, args, IR_MZERO, IRTY_INT) :
+  name == "mcmp" ? lower_call_3(ctx, args, IR_MCMP, IRTY_INT) :
+  name == "slen" ? lower_call_1(ctx, args, IR_SLEN, IRTY_INT) :
+
+  // ── Load/Store ──
+  name == "load8" ? lower_call_1(ctx, args, IR_LOAD8, IRTY_INT) :
+  name == "store8" ? lower_call_2(ctx, args, IR_STORE8, IRTY_INT) :
+  name == "load16" ? lower_call_1(ctx, args, IR_LOAD16, IRTY_INT) :
+  name == "store16" ? lower_call_2(ctx, args, IR_STORE16, IRTY_INT) :
+  name == "load32" ? lower_call_1(ctx, args, IR_LOAD32, IRTY_INT) :
+  name == "store32" ? lower_call_2(ctx, args, IR_STORE32, IRTY_INT) :
+  name == "load64" ? lower_call_1(ctx, args, IR_LOAD64, IRTY_INT) :
+  name == "store64" ? lower_call_2(ctx, args, IR_STORE64, IRTY_INT) :
+  name == "bswap16" ? lower_call_1(ctx, args, IR_BSWAP16, IRTY_INT) :
+  name == "char_at" ? lower_call_char_at(ctx, args) :
+
+  // ── Arena ──
+  name == "arena_begin" ? lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) :
+  name == "arena_alloc" ? lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) :
+  name == "arena_end" ? lower_call_0(ctx, IR_ARENA_END, IRTY_INT) :
+
+  // ── Function pointers ──
+  name == "fptr" ? lower_call_fptr(ctx, args) :
+  name == "fcall" ? lower_call_2(ctx, args, IR_FCALL, IRTY_INT) :
+  name == "fcall2" ? lower_call_3(ctx, args, IR_FCALL2, IRTY_INT) :
+  name == "fcall3" ? lower_call_4(ctx, args, IR_FCALL3, IRTY_INT) :
+  name == "ptr" ? lower_call_ptr(ctx, args) :
+  name == "wfd" ? lower_call_2(ctx, args, IR_WRITE_FD, IRTY_INT) :
+
+  // ── Sockets ──
+  name == "sock" ? lower_call_3(ctx, args, IR_SOCK, IRTY_INT) :
+  name == "sbind" ? lower_call_2(ctx, args, IR_SBIND, IRTY_INT) :
+  name == "slisten" ? lower_call_2(ctx, args, IR_SLISTEN, IRTY_INT) :
+  name == "saccept" ? lower_call_1(ctx, args, IR_SACCEPT, IRTY_INT) :
+  name == "srecv" ? lower_call_3(ctx, args, IR_SRECV, IRTY_INT) :
+  name == "ssend" ? lower_call_3(ctx, args, IR_SSEND, IRTY_INT) :
+  name == "sclose" ? lower_call_1(ctx, args, IR_SCLOSE, IRTY_INT) :
+  name == "rbind" ? lower_call_3(ctx, args, IR_RBIND, IRTY_INT) :
+  name == "rsetsockopt" ? lower_call_5(ctx, args, IR_RSETSOCKOPT, IRTY_INT) :
+  name == "strstr" ? lower_call_2(ctx, args, IR_STRSTR, IRTY_INT) :
+
+  // ── Curl ──
+  name == "cinit" ? lower_call_0(ctx, IR_CINIT, IRTY_INT) :
+  name == "csets" ? lower_call_3(ctx, args, IR_CSETS, IRTY_INT) :
+  name == "cseti" ? lower_call_3(ctx, args, IR_CSETI, IRTY_INT) :
+  name == "cperf" ? lower_call_1(ctx, args, IR_CPERF, IRTY_INT) :
+  name == "cclean" ? lower_call_1(ctx, args, IR_CCLEAN, IRTY_INT) :
+  name == "cinfo" ? lower_call_3(ctx, args, IR_CINFO, IRTY_INT) :
+  name == "curl_slist_append" ? lower_call_2(ctx, args, IR_CURL_SLIST_APPEND, IRTY_INT) :
+  name == "curl_slist_free" ? lower_call_1(ctx, args, IR_CURL_SLIST_FREE, IRTY_INT) :
+
+  // ── Result ──
+  name == "ok" ? lower_call_1(ctx, args, IR_RESULT_OK, IRTY_RESULT) :
+  name == "err" ? lower_call_1(ctx, args, IR_RESULT_ERR, IRTY_RESULT) :
+
+  // ── Map ──
+  name == "M" ? lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) :
+  name == "map" ? lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) :
+
+  // ── Misc ──
+  name == "args" ? lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) :
+  name == "exit" ? lower_call_1(ctx, args, IR_EXIT, IRTY_INT) :
+  name == "system" ? lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) :
+  name == "sys" ? lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) :
+
+  // ── User-defined function call (fallthrough) ──
+  lower_call_user(ctx, name, args)
+}
+
+// ── lower_call helpers by arity ─────────────────────────────────
+// 0-arg built-in: emit ir_inst0
+lower_call_0(ctx:I opcode:I irtype:I) I {
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(opcode, dest))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 1-arg built-in: emit ir_inst1
+lower_call_1(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(opcode, dest, a0))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 2-arg built-in: emit ir_inst2
+lower_call_2(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst2(opcode, dest, a0, a1))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 3-arg built-in: emit ir_inst3
+lower_call_3(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  a2 = lower_expr(ctx, args.get(2))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst3(opcode, dest, a0, a1, a2))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 4-arg built-in: emit ir_inst4
+lower_call_4(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  a2 = lower_expr(ctx, args.get(2))
+  a3 = lower_expr(ctx, args.get(3))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst4(opcode, dest, a0, a1, a2, a3))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 5-arg built-in: emit ir_inst5
+lower_call_5(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  a2 = lower_expr(ctx, args.get(2))
+  a3 = lower_expr(ctx, args.get(3))
+  a4 = lower_expr(ctx, args.get(4))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst5(opcode, dest, a0, a1, a2, a3, a4))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// ── print: dispatch by argument type ────────────────────────────
+lower_call_print(ctx:I args:I) I {
+  arg_reg = lower_expr(ctx, args.get(0))
+  ty = ctx_get_reg_type(ctx, arg_reg)
+  ty == IRTY_STR ? ctx_emit(ctx, ir_print_string(arg_reg)) :
+  ty == IRTY_BOOL ? ctx_emit(ctx, ir_print_bool(arg_reg)) :
+  ty == IRTY_FLOAT ? ctx_emit(ctx, ir_print_float(arg_reg)) :
+  ctx_emit(ctx, ir_print_int(arg_reg))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(dest, 0))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ── str/itos: if arg is already a string, pass through ──────────
+lower_call_str(ctx:I args:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  ctx_get_reg_type(ctx, a0) == IRTY_STR ? a0 : {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_INT_TO_STRING, dest, a0))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+}
+
+// ── char_at: desugar to copy + add + load8 ──────────────────────
+lower_call_char_at(ctx:I args:I) I {
+  str_reg = lower_expr(ctx, args.get(0))
+  idx_reg = lower_expr(ctx, args.get(1))
+  ptr_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_copy(ptr_reg, str_reg))
+  ctx_set_reg_type(ctx, ptr_reg, IRTY_INT)
+  addr_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_binop(addr_reg, IROP_ADD, ptr_reg, idx_reg))
+  ctx_set_reg_type(ctx, addr_reg, IRTY_INT)
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(IR_LOAD8, dest, addr_reg))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ── fptr: arg must be a string literal (function name) ──────────
+lower_call_fptr(ctx:I args:I) I {
+  // The arg is an EX_STRING_LIT node; extract the string pointer
+  arg_expr = args.get(0)
+  fname = load64(arg_expr + 8)
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(IR_FPTR_NAMED, dest, fname))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ── ptr: return arg register as Int (it's already an i64) ───────
+lower_call_ptr(ctx:I args:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_copy(dest, a0))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ── User-defined function call ──────────────────────────────────
+lower_call_user(ctx:I name:I args:I) I {
+  arg_regs = [I]()
+  i := 0
+  while i < args.len() {
+    arg_regs.push(lower_expr(ctx, args.get(i)))
+    i = i + 1
+    0
+  }
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_call(dest, name, arg_regs))
+  rt = ctx_get_fn_ret_type(ctx, name)
+  ctx_set_reg_type(ctx, dest, rt != 0 ? rt : IRTY_INT)
+  dest
+}
+
 // ── lower_expr ──────────────────────────────────────────────────
 // Lower an AST Expr node to IR instructions, return dest register name.
 // Handles: literals, identifiers, binary/unary ops, short-circuit logic.
@@ -609,10 +917,9 @@ lower_expr(ctx:I expr:I) I {
 
   // EX_CALL
   tag == EX_CALL ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
-    dest
+    name = load64(expr + 8)
+    args := load64(expr + 16)
+    lower_call(ctx, name, args)
   } :
 
   // EX_METHOD_CALL
