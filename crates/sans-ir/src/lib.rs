@@ -124,6 +124,16 @@ pub fn lower_with_extra_structs(
             IrType::HttpRequest
         } else if ret_name == "HttpServer" || ret_name == "HS" {
             IrType::HttpServer
+        } else if ret_name.starts_with("Array<") && ret_name.ends_with('>') {
+            let inner_str = &ret_name[6..ret_name.len()-1];
+            let inner = match inner_str {
+                "Int" | "I" => IrType::Int,
+                "Float" | "F" => IrType::Float,
+                "Bool" | "B" => IrType::Bool,
+                "String" | "S" => IrType::Str,
+                _ => IrType::Int,
+            };
+            IrType::Array(Box::new(inner))
         } else if ret_name.starts_with('(') && ret_name.ends_with(')') {
             // Tuple return type like "(I I)" or "(Int String Bool)"
             let inner = &ret_name[1..ret_name.len()-1];
