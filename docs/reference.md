@@ -286,7 +286,7 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | Method | Signature |
 |--------|-----------|
 | `len` | `() -> Int` |
-| `substring(start, end)` | `(Int, Int) -> String` |
+| `substring(start, end)` or `[start:end]` | `(Int, Int) -> String` |
 | `trim` | `() -> String` |
 | `starts_with(prefix)` | `(String) -> Bool` |
 | `ends_with(suffix)` | `(String) -> Bool` |
@@ -524,7 +524,29 @@ name = "Sans"
 msg = "Hello {name}!"    // "Hello Sans!"
 ```
 
-Only identifiers (not expressions) inside `{}`. For non-string types, convert first: `"count: {str(n)}"` won't work — use `"count: " + str(n)`.
+### Expression Interpolation
+
+Full expressions are supported inside `{}`:
+
+```sans
+x = 10
+"result is {x + 1}"     // "result is 11"
+"len is {a.len()}"       // method calls
+"sum is {x * 2 + 3}"    // arithmetic
+```
+
+Identifiers and arbitrary expressions both work. For non-string results, the value is automatically converted.
+
+## String Slicing
+
+Slice strings with `[start:end]` syntax (desugars to `.substring()`):
+
+```sans
+s = "hello world"
+s[0:5]    // "hello"
+s[6:]     // "world" (to end)
+s[:5]     // "hello" (from start)
+```
 
 ## Error Handling
 
@@ -544,5 +566,5 @@ main() {
 - No garbage collector — all heap memory leaked until process exit
 - No array bounds checking — out-of-bounds is undefined behavior
 - Multiple opaque type method calls in complex expressions may crash
-- String interpolation only supports identifiers, not expressions
+- ~~String interpolation only supports identifiers, not expressions~~ — Expression interpolation now supported (v0.3.6)
 - ~~No lambda syntax with capture~~ — Lambdas with implicit capture now supported (v0.3.4)

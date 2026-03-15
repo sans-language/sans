@@ -514,3 +514,13 @@ fn e2e_array_enumerate() {
 fn e2e_array_zip() {
     assert_eq!(compile_and_run("array_zip.sans"), 22);
 }
+
+#[test]
+fn e2e_string_slice() {
+    assert_eq!(compile_and_run("string_slice.sans"), 10);
+}
+
+#[test]
+fn e2e_string_interp_expr() {
+    assert_eq!(compile_and_run("string_interp_expr.sans"), 6);
+}

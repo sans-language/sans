@@ -823,16 +823,50 @@ impl Parser {
                 continue;
             }
 
-            // Check for index access: expr[index] => expr.get(index)
+            // Check for index access: expr[index] or slice: expr[start:end]
             if self.peek().kind == TokenKind::LBracket {
                 self.pos += 1; // consume [
-                let index = self.parse_expr(0)?;
+                let saved_lhs = lhs.clone();
+
+                let start_expr = if self.peek().kind == TokenKind::Colon {
+                    // [:end] — start defaults to 0
+                    Expr::IntLiteral { value: 0, span: self.peek().span.clone() }
+                } else {
+                    self.parse_expr(0)?
+                };
+
+                if self.peek().kind == TokenKind::Colon {
+                    // Slice syntax: [start:end] or [start:] or [:end]
+                    self.pos += 1; // consume :
+                    let end_expr = if self.peek().kind == TokenKind::RBracket {
+                        // [start:] — end defaults to len()
+                        Expr::MethodCall {
+                            object: Box::new(saved_lhs.clone()),
+                            method: "len".to_string(),
+                            args: vec![],
+                            span: self.peek().span.clone(),
+                        }
+                    } else {
+                        self.parse_expr(0)?
+                    };
+                    self.expect(&TokenKind::RBracket)?;
+                    let span = expr_span(&saved_lhs).start..self.tokens[self.pos - 1].span.end;
+                    lhs = Expr::MethodCall {
+                        object: Box::new(saved_lhs),
+                        method: "substring".to_string(),
+                        args: vec![start_expr, end_expr],
+                        span,
+                    };
+                    continue;
+                }
+
+                // Regular index access: [index]
                 self.expect(&TokenKind::RBracket)?;
-                let span = expr_span(&lhs).start..self.tokens[self.pos - 1].span.end;
+                let span = expr_span(&saved_lhs).start..self.tokens[self.pos - 1].span.end;
                 lhs = Expr::MethodCall {
-                    object: Box::new(lhs),
+                    object: Box::new(saved_lhs),
                     method: "get".to_string(),
-                    args: vec![index],
+                    args: vec![start_expr],
                     span,
                 };
                 continue;
@@ -1171,6 +1205,17 @@ impl Parser {
             let expr = match part {
                 StringPart::Literal(s) => Expr::StringLiteral { value: s, span: span.clone() },
                 StringPart::Ident(name) => Expr::Identifier { name, span: span.clone() },
+                StringPart::Expr(src) => {
+                    let tokens = sans_lexer::lex(&src).map_err(|e| ParseError::new(e.message.clone(), span.clone()))?;
+                    let mut sub = Parser::new(tokens);
+                    let inner_expr = sub.parse_expr(0)?;
+                    // Wrap in str() to ensure string type
+                    Expr::Call {
+                        function: "str".to_string(),
+                        args: vec![inner_expr],
+                        span: span.clone(),
+                    }
+                }
             };
             result = Some(match result {
                 None => expr,

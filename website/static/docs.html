@@ -42,7 +42,7 @@
         <li><a href="#traits">Traits &amp; Generics</a></li>
         <li><a href="#modules">Modules</a></li>
         <li><a href="#concurrency">Concurrency</a></li>
-        <li><a href="#strings">String Interpolation</a></li>
+        <li><a href="#strings">String Interpolation &amp; Slicing</a></li>
         <li><a href="#errors">Error Handling</a></li>
       </ul>
     </div>
@@ -488,10 +488,23 @@ a.<span class="fn">zip</span>(b)                        <span class="comment">//
     val
 }</code></pre>
 
-    <h2 id="strings">String Interpolation</h2>
+    <h2 id="strings">String Interpolation &amp; Slicing</h2>
     <pre><code>name = <span class="str">"Sans"</span>
 msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hello Sans!"</span></code></pre>
-    <p>Only identifiers (not expressions) inside <code>{}</code>.</p>
+
+    <h3>Expression Interpolation</h3>
+    <p>Full expressions are supported inside <code>{}</code>:</p>
+    <pre><code>x = <span class="num">10</span>
+<span class="str">"result is {x + 1}"</span>     <span class="comment">// "result is 11"</span>
+<span class="str">"len is {a.len()}"</span>      <span class="comment">// method calls</span>
+<span class="str">"sum is {x * 2 + 3}"</span>    <span class="comment">// arithmetic</span></code></pre>
+
+    <h3>String Slicing</h3>
+    <p>Slice strings with <code>[start:end]</code> syntax (desugars to <code>.substring()</code>):</p>
+    <pre><code>s = <span class="str">"hello world"</span>
+s[<span class="num">0</span>:<span class="num">5</span>]    <span class="comment">// "hello"</span>
+s[<span class="num">6</span>:]     <span class="comment">// "world" (to end)</span>
+s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)</span></code></pre>
 
     <h2 id="errors">Error Handling</h2>
     <pre><code><span class="fn">divide</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; = b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div/0"</span>) : <span class="fn">ok</span>(a / b)
@@ -506,14 +519,14 @@ msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hell
       <li>No garbage collector &mdash; all heap memory leaked until process exit</li>
       <li>No array bounds checking &mdash; out-of-bounds is undefined behavior</li>
       <li>Multiple opaque type method calls in complex expressions may crash</li>
-      <li>String interpolation only supports identifiers, not expressions</li>
+      <li><del>String interpolation only supports identifiers, not expressions</del> &mdash; Expression interpolation now supported (v0.3.6)</li>
       <li>Lambdas with captures work for direct calls and .map()/.filter(); passing capturing closures across modules is not yet supported</li>
     </ul>
   </div>
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.5 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.6 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

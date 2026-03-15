@@ -24,6 +24,10 @@ cond ? a : b               // ternary
 r!                         // unwrap (= r.unwrap())
 obj.method                 // no-arg method (parens optional)
 "hello {name}!"            // string interpolation
+"val is {x + 1}"          // expression interpolation
+s[0:5]                     // string slice (= s.substring(0,5))
+s[6:]                      // slice to end
+s[:5]                      // slice from start
 """multi\nline"""           // multiline string
 -x                         // negation
 import "mod"               // module import
@@ -126,7 +130,7 @@ fcall(ptr arg)                          I I -> I (call fn ptr)
 ## Methods
 ```
 Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b)
-String:    len substring(s e) trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n)
+String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
 HttpServer:   accept

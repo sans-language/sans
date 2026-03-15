@@ -1,0 +1,6 @@
+main() I {
+  s = "hello world"
+  h = s[0:5]
+  w = s[6:]
+  h.len() + w.len()
+}

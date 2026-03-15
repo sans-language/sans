@@ -4,7 +4,7 @@ pub type Span = std::ops::Range<usize>;
 pub struct Token { pub kind: TokenKind, pub span: Span }
 /// A segment of an interpolated string.
 #[derive(Debug, Clone, PartialEq)]
-pub enum StringPart { Literal(String), Ident(String) }
+pub enum StringPart { Literal(String), Ident(String), Expr(String) }
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     IntLiteral(i64), FloatLiteral(f64), StringLiteral(String), InterpolatedString(Vec<StringPart>), Identifier(String),

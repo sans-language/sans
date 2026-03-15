@@ -313,30 +313,36 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                                 pos += 1;
                             }
                         } else if bytes[pos] == b'{' {
-                            // Check if content between { and } forms a valid identifier
+                            // Scan for matching closing brace, handling nesting
+                            // Stop at '"' or '\' to avoid crossing string escape boundaries
                             let mut probe = pos + 1;
-                            while probe < len && bytes[probe] != b'}' && bytes[probe] != b'"' {
-                                probe += 1;
+                            let mut depth = 1;
+                            while probe < len && depth > 0 {
+                                if bytes[probe] == b'"' || bytes[probe] == b'\\' { break; }
+                                if bytes[probe] == b'{' { depth += 1; }
+                                if bytes[probe] == b'}' { depth -= 1; }
+                                if depth > 0 { probe += 1; }
                             }
-                            let is_valid_interp = probe < len && bytes[probe] == b'}' && {
-                                let candidate = source[pos + 1..probe].trim();
-                                !candidate.is_empty()
-                                    && candidate.bytes().next().map_or(false, |b| b.is_ascii_alphabetic() || b == b'_')
-                                    && candidate.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-                            };
-                            if is_valid_interp {
-                                has_interp = true;
-                                if !cur.is_empty() {
-                                    parts.push(token::StringPart::Literal(std::mem::take(&mut cur)));
-                                }
-                                pos += 1; // skip '{'
-                                let ident_start = pos;
-                                while pos < len && bytes[pos] != b'}' {
+                            if probe < len && depth == 0 {
+                                let content = source[pos + 1..probe].trim().to_string();
+                                if !content.is_empty() {
+                                    has_interp = true;
+                                    if !cur.is_empty() {
+                                        parts.push(token::StringPart::Literal(std::mem::take(&mut cur)));
+                                    }
+                                    // Check if it's a simple identifier
+                                    let is_ident = content.bytes().next().map_or(false, |b| b.is_ascii_alphabetic() || b == b'_')
+                                        && content.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+                                    if is_ident {
+                                        parts.push(token::StringPart::Ident(content));
+                                    } else {
+                                        parts.push(token::StringPart::Expr(content));
+                                    }
+                                    pos = probe + 1; // skip past closing }
+                                } else {
+                                    cur.push('{');
                                     pos += 1;
                                 }
-                                let ident = source[ident_start..pos].trim().to_string();
-                                parts.push(token::StringPart::Ident(ident));
-                                pos += 1; // skip '}'
                             } else {
                                 cur.push('{');
                                 pos += 1;
