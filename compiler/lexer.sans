@@ -1,0 +1,577 @@
+import "compiler/constants"
+
+// ── Token constructor ──────────────────────────────────────────────
+// Token: [kind:I, value:I, line:I, col:I] = 32 bytes
+make_token(kind:I val:I line:I col:I) I {
+  t = alloc(32)
+  store64(t, kind)
+  store64(t + 8, val)
+  store64(t + 16, line)
+  store64(t + 24, col)
+  t
+}
+
+// ── Lexer state ────────────────────────────────────────────────────
+// LexerState: [pos:I, line:I, col:I, len:I] = 32 bytes
+// src is passed separately as S to all functions
+make_lexer(src:S) I {
+  lx = alloc(32)
+  store64(lx, 0)           // pos
+  store64(lx + 8, 1)       // line
+  store64(lx + 16, 1)      // col
+  store64(lx + 24, slen(src))  // len
+  lx
+}
+
+// ── Lexer helpers ──────────────────────────────────────────────────
+lx_pos(lx:I) I = load64(lx)
+lx_line(lx:I) I = load64(lx + 8)
+lx_col(lx:I) I = load64(lx + 16)
+lx_len(lx:I) I = load64(lx + 24)
+
+lx_set_pos(lx:I v:I) I { store64(lx, v); 0 }
+lx_set_line(lx:I v:I) I { store64(lx + 8, v); 0 }
+lx_set_col(lx:I v:I) I { store64(lx + 16, v); 0 }
+
+lx_at_end(lx:I) I = lx_pos(lx) >= lx_len(lx) ? 1 : 0
+
+lx_peek(lx:I src:S) I {
+  lx_pos(lx) >= lx_len(lx) ? 0 : char_at(src, lx_pos(lx))
+}
+
+lx_peek_at(lx:I src:S offset:I) I {
+  p = lx_pos(lx) + offset
+  p >= lx_len(lx) ? 0 : char_at(src, p)
+}
+
+lx_advance(lx:I src:S) I {
+  ch = lx_peek(lx, src)
+  lx_set_pos(lx, lx_pos(lx) + 1)
+  ch == 10 ? {
+    lx_set_line(lx, lx_line(lx) + 1)
+    lx_set_col(lx, 1)
+    0
+  } : {
+    lx_set_col(lx, lx_col(lx) + 1)
+    0
+  }
+  ch
+}
+
+// ── Character classification ───────────────────────────────────────
+is_digit(ch:I) I = ch >= 48 && ch <= 57 ? 1 : 0
+is_alpha(ch:I) I = (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == 95 ? 1 : 0
+is_alnum(ch:I) I = is_digit(ch) == 1 || is_alpha(ch) == 1 ? 1 : 0
+is_ws(ch:I) I = ch == 32 || ch == 9 || ch == 13 || ch == 10 ? 1 : 0
+
+// ── Whitespace / comment skipping ──────────────────────────────────
+lx_skip_ws(lx:I src:S) I {
+  while lx_at_end(lx) == 0 && is_ws(lx_peek(lx, src)) == 1 {
+    lx_advance(lx, src)
+  }
+  0
+}
+
+lx_skip_line_comment(lx:I src:S) I {
+  while lx_at_end(lx) == 0 && lx_peek(lx, src) != 10 {
+    lx_advance(lx, src)
+  }
+  0
+}
+
+lx_skip_block_comment(lx:I src:S) I {
+  // skip opening /*
+  lx_advance(lx, src)
+  lx_advance(lx, src)
+  depth := 1
+  while lx_at_end(lx) == 0 && depth > 0 {
+    ch = lx_peek(lx, src)
+    ch == 47 && lx_peek_at(lx, src, 1) == 42 ? {
+      lx_advance(lx, src)
+      lx_advance(lx, src)
+      depth = depth + 1
+      0
+    } : ch == 42 && lx_peek_at(lx, src, 1) == 47 ? {
+      lx_advance(lx, src)
+      lx_advance(lx, src)
+      depth = depth - 1
+      0
+    } : {
+      lx_advance(lx, src)
+      0
+    }
+  }
+  0
+}
+
+// ── Number lexing ──────────────────────────────────────────────────
+lx_number(lx:I src:S) I {
+  start = lx_pos(lx)
+  line = lx_line(lx)
+  col = lx_col(lx)
+
+  while lx_at_end(lx) == 0 && is_digit(lx_peek(lx, src)) == 1 {
+    lx_advance(lx, src)
+  }
+
+  // Check for float: '.' followed by digit, and char before number is not '.'
+  is_float := 0
+  lx_peek(lx, src) == 46 && is_digit(lx_peek_at(lx, src, 1)) == 1 && !(start > 0 && char_at(src, start - 1) == 46) ? {
+    lx_advance(lx, src)  // consume '.'
+    while lx_at_end(lx) == 0 && is_digit(lx_peek(lx, src)) == 1 {
+      lx_advance(lx, src)
+    }
+    is_float = 1
+    0
+  } : 0
+
+  end = lx_pos(lx)
+  text = src[start:end]
+
+  is_float == 1 ? {
+    // For float, store the string pointer as value
+    make_token(TK_FLOAT_LIT, ptr(text), line, col)
+  } : {
+    make_token(TK_INT_LIT, stoi(text), line, col)
+  }
+}
+
+// ── Identifier / keyword lexing ────────────────────────────────────
+lx_ident(lx:I src:S) I {
+  start = lx_pos(lx)
+  line = lx_line(lx)
+  col = lx_col(lx)
+
+  while lx_at_end(lx) == 0 && is_alnum(lx_peek(lx, src)) == 1 {
+    lx_advance(lx, src)
+  }
+
+  end = lx_pos(lx)
+  text = src[start:end]
+
+  // Match keywords
+  kind := TK_IDENT
+  text == "fn" ? kind = TK_FN : 0
+  text == "let" ? kind = TK_LET : 0
+  text == "mut" ? kind = TK_MUT : 0
+  text == "true" ? kind = TK_TRUE : 0
+  text == "false" ? kind = TK_FALSE : 0
+  text == "if" ? kind = TK_IF : 0
+  text == "else" ? kind = TK_ELSE : 0
+  text == "while" ? kind = TK_WHILE : 0
+  text == "return" ? kind = TK_RETURN : 0
+  text == "struct" ? kind = TK_STRUCT : 0
+  text == "enum" ? kind = TK_ENUM : 0
+  text == "match" ? kind = TK_MATCH : 0
+  text == "trait" ? kind = TK_TRAIT : 0
+  text == "impl" ? kind = TK_IMPL : 0
+  text == "for" ? kind = TK_FOR : 0
+  text == "self" ? kind = TK_SELF_VAL : 0
+  text == "Self" ? kind = TK_SELF_TYPE : 0
+  text == "spawn" ? kind = TK_SPAWN : 0
+  text == "channel" ? kind = TK_CHANNEL : 0
+  text == "mutex" ? kind = TK_MUTEX : 0
+  text == "array" ? kind = TK_ARRAY : 0
+  text == "in" ? kind = TK_IN : 0
+  text == "import" ? kind = TK_IMPORT : 0
+  text == "g" ? kind = TK_GLOBAL : 0
+  text == "break" ? kind = TK_BREAK : 0
+  text == "continue" ? kind = TK_CONTINUE : 0
+
+  kind == TK_IDENT ? make_token(TK_IDENT, ptr(text), line, col) : make_token(kind, 0, line, col)
+}
+
+// ── String helpers ─────────────────────────────────────────────────
+
+// Build a string from src[start:end] processing escape sequences
+lx_build_escaped(src:S start:I end:I) S {
+  result := ""
+  i := start
+  while i < end {
+    ch = char_at(src, i)
+    ch == 92 && i + 1 < end ? {
+      nc = char_at(src, i + 1)
+      nc == 110 ? {
+        result = result + "\n"
+        i = i + 2
+        0
+      } : nc == 116 ? {
+        result = result + "\t"
+        i = i + 2
+        0
+      } : nc == 92 ? {
+        result = result + "\\"
+        i = i + 2
+        0
+      } : nc == 34 ? {
+        result = result + "\""
+        i = i + 2
+        0
+      } : nc == 123 ? {
+        result = result + "{"
+        i = i + 2
+        0
+      } : {
+        result = result + "\\"
+        i = i + 1
+        0
+      }
+    } : {
+      result = result + src[i:i + 1]
+      i = i + 1
+      0
+    }
+  }
+  result
+}
+
+// Trim whitespace from a string
+lx_trim(s:S) S {
+  start := 0
+  len = slen(s)
+  while start < len && is_ws(char_at(s, start)) == 1 {
+    start = start + 1
+  }
+  end := len
+  while end > start && is_ws(char_at(s, end - 1)) == 1 {
+    end = end - 1
+  }
+  s[start:end]
+}
+
+// ── String lexing ──────────────────────────────────────────────────
+lx_multiline_string(lx:I src:S) I {
+  line = lx_line(lx)
+  col = lx_col(lx)
+
+  // skip opening """
+  lx_advance(lx, src)
+  lx_advance(lx, src)
+  lx_advance(lx, src)
+
+  start = lx_pos(lx)
+
+  // scan until closing """
+  while lx_at_end(lx) == 0 {
+    lx_peek(lx, src) == 34 && lx_peek_at(lx, src, 1) == 34 && lx_peek_at(lx, src, 2) == 34 ? {
+      end = lx_pos(lx)
+      text = src[start:end]
+      lx_advance(lx, src)
+      lx_advance(lx, src)
+      lx_advance(lx, src)
+      return make_token(TK_STRING_LIT, ptr(text), line, col)
+    } : {
+      lx_advance(lx, src)
+      0
+    }
+  }
+  // unterminated — return empty string token
+  make_token(TK_STRING_LIT, 0, line, col)
+}
+
+lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
+  parts = array<I>()
+  cur_start := content_start
+  i := content_start
+
+  while i < content_end {
+    ch = char_at(src, i)
+    ch == 92 ? {
+      // backslash escape — skip 2 chars
+      i = i + 2
+      0
+    } : ch == 123 ? {
+      // '{' — start of interpolation
+      // Scan for matching closing brace
+      probe := i + 1
+      depth := 1
+      while probe < content_end && depth > 0 {
+        pc = char_at(src, probe)
+        pc == 34 || pc == 92 ? {
+          depth = -1
+          0
+        } : pc == 123 ? {
+          depth = depth + 1
+          0
+        } : pc == 125 ? {
+          depth = depth - 1
+          0
+        } : 0
+        depth > 0 ? probe = probe + 1 : 0
+      }
+
+      probe < content_end && depth == 0 ? {
+        // Flush accumulated literal text
+        i > cur_start ? {
+          lit = lx_build_escaped(src, cur_start, i)
+          slen(lit) > 0 ? {
+            part = alloc(16)
+            store64(part, INTERP_LITERAL)
+            store64(part + 8, ptr(lit))
+            parts.push(part)
+            0
+          } : 0
+          0
+        } : 0
+
+        content = src[i + 1:probe]
+        content = lx_trim(content)
+        slen(content) > 0 ? {
+          // Determine if simple ident or expr
+          is_id := 1
+          j := 0
+          while j < slen(content) && is_id == 1 {
+            cc = char_at(content, j)
+            j == 0 ? {
+              is_alpha(cc) == 0 ? is_id = 0 : 0
+            } : {
+              is_alnum(cc) == 0 ? is_id = 0 : 0
+            }
+            j = j + 1
+          }
+
+          part = alloc(16)
+          is_id == 1 ? {
+            store64(part, INTERP_IDENT)
+            store64(part + 8, ptr(content))
+            0
+          } : {
+            store64(part, INTERP_EXPR)
+            store64(part + 8, ptr(content))
+            0
+          }
+          parts.push(part)
+          0
+        } : 0
+        i = probe + 1
+        cur_start = i
+        0
+      } : {
+        // Not a valid interpolation — treat '{' as literal char
+        i = i + 1
+        0
+      }
+    } : {
+      i = i + 1
+      0
+    }
+  }
+
+  // Flush remaining literal text
+  i > cur_start ? {
+    lit = lx_build_escaped(src, cur_start, i)
+    slen(lit) > 0 ? {
+      part = alloc(16)
+      store64(part, INTERP_LITERAL)
+      store64(part + 8, ptr(lit))
+      parts.push(part)
+      0
+    } : 0
+    0
+  } : 0
+
+  make_token(TK_INTERP_STRING, ptr(parts), line, col)
+}
+
+lx_string(lx:I src:S) I {
+  line = lx_line(lx)
+  col = lx_col(lx)
+
+  // skip opening quote
+  lx_advance(lx, src)
+  content_start = lx_pos(lx)
+
+  // First pass: scan to closing quote, detect interpolation
+  has_interp := 0
+  while lx_at_end(lx) == 0 && lx_peek(lx, src) != 34 {
+    ch = lx_peek(lx, src)
+    ch == 92 ? {
+      // backslash — skip next char too
+      lx_advance(lx, src)
+      lx_at_end(lx) == 0 ? lx_advance(lx, src) : 0
+      0
+    } : ch == 123 ? {
+      // Check if this is a valid interpolation (scan for matching })
+      cur_pos = lx_pos(lx)
+      probe := cur_pos + 1
+      depth := 1
+      src_len = lx_len(lx)
+      while probe < src_len && depth > 0 {
+        pc = char_at(src, probe)
+        pc == 34 || pc == 92 ? {
+          depth = -1
+          0
+        } : pc == 123 ? {
+          depth = depth + 1
+          0
+        } : pc == 125 ? {
+          depth = depth - 1
+          0
+        } : 0
+        depth > 0 ? probe = probe + 1 : 0
+      }
+      probe < src_len && depth == 0 ? {
+        has_interp = 1
+        0
+      } : 0
+      lx_advance(lx, src)
+      0
+    } : {
+      lx_advance(lx, src)
+      0
+    }
+  }
+
+  content_end = lx_pos(lx)
+
+  // skip closing quote
+  lx_at_end(lx) == 0 ? lx_advance(lx, src) : 0
+
+  has_interp == 1 ? {
+    lx_interp_string(lx, src, content_start, content_end, line, col)
+  } : {
+    // Build the string with escape processing
+    text = lx_build_escaped(src, content_start, content_end)
+    make_token(TK_STRING_LIT, ptr(text), line, col)
+  }
+}
+
+// ── Operator / delimiter lexing ────────────────────────────────────
+lx_op(lx:I src:S ch:I line:I col:I) I {
+  lx_advance(lx, src)
+  nx = lx_peek(lx, src)
+
+  ch == 43 ? {
+    // '+'
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_PLUS_EQ, 0, line, col) }
+    : make_token(TK_PLUS, 0, line, col)
+  } : ch == 45 ? {
+    // '-'
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_MINUS_EQ, 0, line, col) }
+    : make_token(TK_MINUS, 0, line, col)
+  } : ch == 42 ? {
+    // '*'
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_STAR_EQ, 0, line, col) }
+    : make_token(TK_STAR, 0, line, col)
+  } : ch == 47 ? {
+    // '/' (not comment — those handled before)
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_SLASH_EQ, 0, line, col) }
+    : make_token(TK_SLASH, 0, line, col)
+  } : ch == 37 ? {
+    // '%'
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_PERCENT_EQ, 0, line, col) }
+    : make_token(TK_PERCENT, 0, line, col)
+  } : ch == 61 ? {
+    // '='
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_EQ_EQ, 0, line, col) }
+    : nx == 62 ? { lx_advance(lx, src); make_token(TK_FAT_ARROW, 0, line, col) }
+    : make_token(TK_EQ, 0, line, col)
+  } : ch == 33 ? {
+    // '!'
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_NOT_EQ, 0, line, col) }
+    : make_token(TK_BANG, 0, line, col)
+  } : ch == 60 ? {
+    // '<'
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_LT_EQ, 0, line, col) }
+    : make_token(TK_LT, 0, line, col)
+  } : ch == 62 ? {
+    // '>'
+    nx == 61 ? { lx_advance(lx, src); make_token(TK_GT_EQ, 0, line, col) }
+    : make_token(TK_GT, 0, line, col)
+  } : ch == 38 ? {
+    // '&' — must be &&
+    nx == 38 ? { lx_advance(lx, src); make_token(TK_AND, 0, line, col) }
+    : 0
+  } : ch == 124 ? {
+    // '|'
+    nx == 124 ? { lx_advance(lx, src); make_token(TK_OR, 0, line, col) }
+    : make_token(TK_PIPE, 0, line, col)
+  } : ch == 58 ? {
+    // ':'
+    nx == 58 ? { lx_advance(lx, src); make_token(TK_COLON_COLON, 0, line, col) }
+    : nx == 61 ? { lx_advance(lx, src); make_token(TK_COLON_EQ, 0, line, col) }
+    : make_token(TK_COLON, 0, line, col)
+  } : ch == 40 ? {
+    make_token(TK_LPAREN, 0, line, col)
+  } : ch == 41 ? {
+    make_token(TK_RPAREN, 0, line, col)
+  } : ch == 123 ? {
+    make_token(TK_LBRACE, 0, line, col)
+  } : ch == 125 ? {
+    make_token(TK_RBRACE, 0, line, col)
+  } : ch == 91 ? {
+    make_token(TK_LBRACKET, 0, line, col)
+  } : ch == 93 ? {
+    make_token(TK_RBRACKET, 0, line, col)
+  } : ch == 44 ? {
+    make_token(TK_COMMA, 0, line, col)
+  } : ch == 46 ? {
+    make_token(TK_DOT, 0, line, col)
+  } : ch == 63 ? {
+    make_token(TK_QUESTION, 0, line, col)
+  } : {
+    // Unknown character — skip
+    0
+  }
+}
+
+// ── Main entry point ───────────────────────────────────────────────
+lex(src:S) [I] {
+  lx = make_lexer(src)
+  tokens = array<I>()
+
+  while lx_at_end(lx) == 0 {
+    lx_skip_ws(lx, src)
+    lx_at_end(lx) == 1 ? 0 : {
+      ch = lx_peek(lx, src)
+      line = lx_line(lx)
+      col = lx_col(lx)
+
+      // Line comment: //
+      ch == 47 && lx_peek_at(lx, src, 1) == 47 ? {
+        lx_skip_line_comment(lx, src)
+        0
+      }
+      // Block comment: /*
+      : ch == 47 && lx_peek_at(lx, src, 1) == 42 ? {
+        lx_skip_block_comment(lx, src)
+        0
+      }
+      // Number
+      : is_digit(ch) == 1 ? {
+        tok = lx_number(lx, src)
+        tokens.push(tok)
+        0
+      }
+      // Identifier or keyword
+      : is_alpha(ch) == 1 ? {
+        tok = lx_ident(lx, src)
+        tokens.push(tok)
+        0
+      }
+      // String
+      : ch == 34 ? {
+        // Check for triple-quote multiline string
+        lx_peek_at(lx, src, 1) == 34 && lx_peek_at(lx, src, 2) == 34 ? {
+          tok = lx_multiline_string(lx, src)
+          tokens.push(tok)
+          0
+        } : {
+          tok = lx_string(lx, src)
+          tokens.push(tok)
+          0
+        }
+      }
+      // Operator or delimiter
+      : {
+        tok = lx_op(lx, src, ch, line, col)
+        tok != 0 ? tokens.push(tok) : 0
+        0
+      }
+    }
+  }
+
+  // Append EOF token
+  tokens.push(make_token(TK_EOF, 0, lx_line(lx), lx_col(lx)))
+  tokens
+}
