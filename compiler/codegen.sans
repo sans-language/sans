@@ -2199,3 +2199,260 @@ compile_inst(cg:I inst:I) I {
   emit(cg, "  ; unknown opcode " + str(op))
   0
 }
+
+// ── Top-level code generation ─────────────────────────────────
+
+// Emit global variable declarations
+emit_globals(cg:I module:I) I {
+  funcs = irm_functions(module)
+  nf = funcs.len()
+  // Check if module has main → emit argc/argv globals
+  has_main = cg_has_main(cg)
+  if has_main {
+    emit(cg, "@__sans_argc = global i64 0")
+    emit(cg, "@__sans_argv = global ptr null")
+  }
+  // Emit user globals
+  globals = irm_globals(module)
+  ng = globals.len()
+  i := 0
+  while i < ng {
+    gname = deref(globals.get(i))
+    emit(cg, "@" + gname + " = global i64 0")
+    i = i + 1
+    0
+  }
+  emit(cg, "")
+  0
+}
+
+// First pass: declare a function (forward declaration)
+emit_function_decl(cg:I func:I) I {
+  fname = deref(irf_name(func))
+  llvm_name = fname == "main" ? "__sans_main" : fname
+  params = irf_params(func)
+  np = params.len()
+  param_str := ""
+  i := 0
+  while i < np {
+    if i > 0 { param_str = param_str + ", " }
+    param_str = param_str + "i64"
+    i = i + 1
+    0
+  }
+  emit(cg, "declare i64 @" + llvm_name + "(" + param_str + ")")
+  0
+}
+
+// Second pass: compile a function body
+emit_function_body(cg:I func:I) I {
+  fname = deref(irf_name(func))
+  llvm_name = fname == "main" ? "__sans_main" : fname
+  params = irf_params(func)
+  np = params.len()
+  instrs = irf_instrs(func)
+  ni = instrs.len()
+  param_sizes = irf_param_sizes(func)
+
+  // Build parameter list: "i64 %p0, i64 %p1, ..."
+  param_str := ""
+  i := 0
+  while i < np {
+    if i > 0 { param_str = param_str + ", " }
+    param_str = param_str + "i64 %p" + str(i)
+    i = i + 1
+    0
+  }
+
+  emit(cg, "define i64 @" + llvm_name + "(" + param_str + ") {")
+  emit(cg, "entry:")
+
+  // Reset per-function state
+  cg_set_reg_counter(cg, np)
+  store64(cg + 40, M())
+  store64(cg + 48, M())
+
+  // Map parameters: store each param name → %pN in reg_map
+  i = 0
+  while i < np {
+    pname = params.get(i)
+    pval = "%p" + str(i)
+    rm = load64(cg + 40)
+    rm.set(pname, ptr(pval))
+    // Handle struct params: if param_struct_sizes[i] > 0, convert i64 to ptr
+    if param_sizes.get(i) > 0 {
+      pp = cg_fresh_reg(cg)
+      emit(cg, "  " + pp + " = inttoptr i64 " + pval + " to ptr")
+      ps = load64(cg + 48)
+      ps.set(pname, 1)
+    }
+    i = i + 1
+    0
+  }
+
+  // Pre-scan instructions for IR_LABEL to know all label names
+  // (not strictly needed for textual IR, but keeps things consistent)
+
+  // Compile instructions with dead-code elimination after terminators
+  terminated := 0
+  j := 0
+  while j < ni {
+    inst = instrs.get(j)
+    op = ir_op(inst)
+    if terminated {
+      // Skip dead code until next label
+      if op == IR_LABEL {
+        terminated = 0
+        compile_inst(cg, inst)
+      }
+    } else {
+      compile_inst(cg, inst)
+      // Mark terminated after ret or branch/jump
+      if op == IR_RET { terminated = 1 }
+      if op == IR_BRANCH { terminated = 1 }
+      if op == IR_JUMP { terminated = 1 }
+    }
+    j = j + 1
+    0
+  }
+
+  // If function body doesn't end with a terminator, add implicit ret
+  if terminated == 0 {
+    emit(cg, "  ret i64 0")
+  }
+
+  emit(cg, "}")
+  emit(cg, "")
+  0
+}
+
+// Emit C-compatible main wrapper
+emit_main_wrapper(cg:I) I {
+  emit(cg, "define i32 @main(i32 %argc, ptr %argv) {")
+  emit(cg, "entry:")
+  emit(cg, "  %argc_ext = sext i32 %argc to i64")
+  emit(cg, "  store i64 %argc_ext, ptr @__sans_argc")
+  emit(cg, "  %argv_i64 = ptrtoint ptr %argv to i64")
+  emit(cg, "  store i64 %argv_i64, ptr @__sans_argv")
+  emit(cg, "  %result = call i64 @__sans_main()")
+  emit(cg, "  %ret = trunc i64 %result to i32")
+  emit(cg, "  ret i32 %ret")
+  emit(cg, "}")
+  emit(cg, "")
+  0
+}
+
+// Emit __sans_args() — builds a Sans array from argc/argv
+emit_sans_args(cg:I) I {
+  emit(cg, "define i64 @__sans_args() {")
+  emit(cg, "entry:")
+  // Load argc and argv from globals
+  emit(cg, "  %argc = load i64, ptr @__sans_argc")
+  emit(cg, "  %argv_i = load i64, ptr @__sans_argv")
+  emit(cg, "  %argv = inttoptr i64 %argv_i to ptr")
+  // Allocate array struct (24 bytes): [data_ptr, len, capacity]
+  emit(cg, "  %arr_struct = call ptr @malloc(i64 24)")
+  // Allocate data buffer: argc * 8 bytes (min 8)
+  emit(cg, "  %buf_sz = mul i64 %argc, 8")
+  emit(cg, "  %need_min = icmp ult i64 %buf_sz, 8")
+  emit(cg, "  %actual_sz = select i1 %need_min, i64 8, i64 %buf_sz")
+  emit(cg, "  %arr_buf = call ptr @malloc(i64 %actual_sz)")
+  // Store data ptr at offset 0
+  emit(cg, "  %buf_int = ptrtoint ptr %arr_buf to i64")
+  emit(cg, "  store i64 %buf_int, ptr %arr_struct")
+  // Store len = argc at offset 1
+  emit(cg, "  %len_ptr = getelementptr i64, ptr %arr_struct, i64 1")
+  emit(cg, "  store i64 %argc, ptr %len_ptr")
+  // Store capacity = argc at offset 2
+  emit(cg, "  %cap_ptr = getelementptr i64, ptr %arr_struct, i64 2")
+  emit(cg, "  store i64 %argc, ptr %cap_ptr")
+  // Loop setup: i = 0
+  emit(cg, "  %i_alloca = alloca i64")
+  emit(cg, "  store i64 0, ptr %i_alloca")
+  emit(cg, "  br label %loop")
+  // Loop header: if i < argc goto body else done
+  emit(cg, "loop:")
+  emit(cg, "  %i = load i64, ptr %i_alloca")
+  emit(cg, "  %cmp = icmp ult i64 %i, %argc")
+  emit(cg, "  br i1 %cmp, label %body, label %done")
+  // Loop body: load argv[i], strlen, malloc+memcpy, store in buf[i]
+  emit(cg, "body:")
+  emit(cg, "  %i2 = load i64, ptr %i_alloca")
+  emit(cg, "  %argv_i_ptr = getelementptr ptr, ptr %argv, i64 %i2")
+  emit(cg, "  %arg_str = load ptr, ptr %argv_i_ptr")
+  emit(cg, "  %slen = call i64 @strlen(ptr %arg_str)")
+  emit(cg, "  %sp1 = add i64 %slen, 1")
+  emit(cg, "  %copy = call ptr @malloc(i64 %sp1)")
+  emit(cg, "  call ptr @memcpy(ptr %copy, ptr %arg_str, i64 %sp1)")
+  emit(cg, "  %copy_int = ptrtoint ptr %copy to i64")
+  emit(cg, "  %slot = getelementptr i64, ptr %arr_buf, i64 %i2")
+  emit(cg, "  store i64 %copy_int, ptr %slot")
+  // i++
+  emit(cg, "  %i_next = add i64 %i2, 1")
+  emit(cg, "  store i64 %i_next, ptr %i_alloca")
+  emit(cg, "  br label %loop")
+  // Done: return struct_ptr as i64
+  emit(cg, "done:")
+  emit(cg, "  %args_result = ptrtoint ptr %arr_struct to i64")
+  emit(cg, "  ret i64 %args_result")
+  emit(cg, "}")
+  emit(cg, "")
+  0
+}
+
+// ── Top-level entry point ─────────────────────────────────────
+
+compile_to_ll(module:I output_path:S) I {
+  cg = make_codegen()
+
+  // Check if module has a "main" function
+  funcs = irm_functions(module)
+  nf = funcs.len()
+  i := 0
+  while i < nf {
+    f = funcs.get(i)
+    fname = deref(irf_name(f))
+    if fname == "main" {
+      cg_set_has_main(cg, 1)
+    }
+    i = i + 1
+    0
+  }
+
+  // 1. Emit LLVM IR header
+  emit_header(cg)
+
+  // 2. Emit external function declarations
+  emit_externals(cg)
+
+  // 3. Emit global variable declarations
+  emit_globals(cg, module)
+
+  // 4. First pass: declare all functions
+  i = 0
+  while i < nf {
+    emit_function_decl(cg, funcs.get(i))
+    i = i + 1
+    0
+  }
+  emit(cg, "")
+
+  // 5. If has_main: emit main wrapper and __sans_args
+  if cg_has_main(cg) {
+    emit_main_wrapper(cg)
+    emit_sans_args(cg)
+  }
+
+  // 6. Second pass: compile each function body
+  i = 0
+  while i < nf {
+    emit_function_body(cg, funcs.get(i))
+    i = i + 1
+    0
+  }
+
+  // 7. Join all lines into a single string and write to file
+  ll_string = join_lines(cg)
+  fw(output_path, ll_string)
+  0
+}
