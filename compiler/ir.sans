@@ -1,0 +1,357 @@
+import "compiler/constants"
+import "compiler/parser"
+
+// ── IrType constants ────────────────────────────────────────────
+IRTY_INT = 0
+IRTY_FLOAT = 1
+IRTY_BOOL = 2
+IRTY_STR = 3
+IRTY_STRUCT = 4
+IRTY_ENUM = 5
+IRTY_SENDER = 6
+IRTY_RECEIVER = 7
+IRTY_JOIN_HANDLE = 8
+IRTY_MUTEX = 9
+IRTY_ARRAY = 10
+IRTY_JSON = 11
+IRTY_HTTP_RESP = 12
+IRTY_RESULT = 13
+IRTY_HTTP_SERVER = 14
+IRTY_HTTP_REQ = 15
+IRTY_TUPLE = 16
+IRTY_MAP = 17
+
+// ── IrBinOp constants ──────────────────────────────────────────
+IROP_ADD = 0
+IROP_SUB = 1
+IROP_MUL = 2
+IROP_DIV = 3
+IROP_MOD = 4
+
+// ── IrCmpOp constants ──────────────────────────────────────────
+IRCMP_EQ = 0
+IRCMP_NEQ = 1
+IRCMP_LT = 2
+IRCMP_GT = 3
+IRCMP_LTEQ = 4
+IRCMP_GTEQ = 5
+
+// ── Instruction accessors ──────────────────────────────────────
+ir_op(inst:I) I = load64(inst)
+ir_dest(inst:I) I = load64(inst + 8)
+ir_field(inst:I offset:I) I = load64(inst + offset)
+
+// ── Generic instruction constructors ───────────────────────────
+// These allocate heap memory: [opcode, dest, ...operands]
+
+ir_inst0(opcode:I dest:I) I {
+  n = alloc(16)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  n
+}
+
+ir_inst1(opcode:I dest:I a:I) I {
+  n = alloc(24)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  n
+}
+
+ir_inst2(opcode:I dest:I a:I b:I) I {
+  n = alloc(32)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  n
+}
+
+ir_inst3(opcode:I dest:I a:I b:I c:I) I {
+  n = alloc(40)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  store64(n + 32, c)
+  n
+}
+
+ir_inst4(opcode:I dest:I a:I b:I c:I d:I) I {
+  n = alloc(48)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  store64(n + 32, c)
+  store64(n + 40, d)
+  n
+}
+
+ir_inst5(opcode:I dest:I a:I b:I c:I d:I e:I) I {
+  n = alloc(56)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  store64(n + 32, c)
+  store64(n + 40, d)
+  store64(n + 48, e)
+  n
+}
+
+// ── Named instruction constructors ─────────────────────────────
+// Constants: [op, dest, value] 24 bytes
+ir_const(dest:I value:I) I = ir_inst1(IR_CONST, dest, value)
+ir_float_const(dest:I value:I) I = ir_inst1(IR_FLOAT_CONST, dest, value)
+ir_bool_const(dest:I value:I) I = ir_inst1(IR_BOOL_CONST, dest, value)
+ir_string_const(dest:I value:I) I = ir_inst1(IR_STRING_CONST, dest, value)
+
+// Print: [op, value] 16 bytes (value in dest slot)
+ir_print_int(value:I) I = ir_inst0(IR_PRINT_INT, value)
+ir_print_float(value:I) I = ir_inst0(IR_PRINT_FLOAT, value)
+ir_print_string(value:I) I = ir_inst0(IR_PRINT_STRING, value)
+ir_print_bool(value:I) I = ir_inst0(IR_PRINT_BOOL, value)
+
+// Arithmetic: [op, dest, binop, left, right] 40 bytes
+ir_binop(dest:I op:I left:I right:I) I = ir_inst3(IR_BINOP, dest, op, left, right)
+ir_float_binop(dest:I op:I left:I right:I) I = ir_inst3(IR_FLOAT_BINOP, dest, op, left, right)
+ir_cmpop(dest:I op:I left:I right:I) I = ir_inst3(IR_CMPOP, dest, op, left, right)
+ir_float_cmpop(dest:I op:I left:I right:I) I = ir_inst3(IR_FLOAT_CMPOP, dest, op, left, right)
+ir_string_cmpop(dest:I op:I left:I right:I) I = ir_inst3(IR_STRING_CMPOP, dest, op, left, right)
+
+// Unary: [op, dest, src] 24 bytes
+ir_not(dest:I src:I) I = ir_inst1(IR_NOT, dest, src)
+ir_neg(dest:I src:I) I = ir_inst1(IR_NEG, dest, src)
+ir_copy(dest:I src:I) I = ir_inst1(IR_COPY, dest, src)
+
+// Control flow
+ir_label(name:I) I = ir_inst0(IR_LABEL, name)
+ir_jump(target:I) I = ir_inst0(IR_JUMP, target)
+ir_branch(cond:I then_l:I else_l:I) I = ir_inst2(IR_BRANCH, cond, then_l, else_l)
+ir_phi(dest:I a_val:I a_label:I b_val:I b_label:I) I = ir_inst4(IR_PHI, dest, a_val, a_label, b_val, b_label)
+
+// Functions
+ir_call(dest:I fname:I args:I) I = ir_inst2(IR_CALL, dest, fname, args)
+ir_ret(value:I) I = ir_inst0(IR_RET, value)
+
+// Memory
+ir_alloca(dest:I) I = ir_inst0(IR_ALLOCA, dest)
+ir_store(ptr:I value:I) I = ir_inst1(IR_STORE, ptr, value)
+ir_load(dest:I ptr:I) I = ir_inst1(IR_LOAD, dest, ptr)
+ir_global_load(dest:I name:I) I = ir_inst1(IR_GLOBAL_LOAD, dest, name)
+ir_global_store(name:I value:I) I = ir_inst1(IR_GLOBAL_STORE, name, value)
+ir_alloc(dest:I size:I) I = ir_inst1(IR_ALLOC, dest, size)
+ir_dealloc(dest:I ptr:I) I = ir_inst1(IR_DEALLOC, dest, ptr)
+ir_ralloc(dest:I ptr:I size:I) I = ir_inst2(IR_RALLOC, dest, ptr, size)
+
+// Structs
+ir_struct_alloc(dest:I num_fields:I) I = ir_inst1(IR_STRUCT_ALLOC, dest, num_fields)
+ir_field_store(ptr:I field_idx:I value:I) I = ir_inst2(IR_FIELD_STORE, ptr, field_idx, value)
+ir_field_load(dest:I ptr:I field_idx:I num_fields:I) I = ir_inst3(IR_FIELD_LOAD, dest, ptr, field_idx, num_fields)
+
+// Enums
+ir_enum_alloc(dest:I tag:I num_data:I) I = ir_inst2(IR_ENUM_ALLOC, dest, tag, num_data)
+ir_enum_tag(dest:I ptr:I) I = ir_inst1(IR_ENUM_TAG, dest, ptr)
+ir_enum_data(dest:I ptr:I field_idx:I) I = ir_inst2(IR_ENUM_DATA, dest, ptr, field_idx)
+
+// Thread operations
+ir_thread_spawn(dest:I func:I args:I) I = ir_inst2(IR_THREAD_SPAWN, dest, func, args)
+ir_thread_join(handle:I) I = ir_inst0(IR_THREAD_JOIN, handle)
+
+// Channel operations
+ir_channel_create(tx_dest:I rx_dest:I) I = ir_inst1(IR_CHANNEL_CREATE, tx_dest, rx_dest)
+ir_channel_create_bounded(tx_dest:I rx_dest:I cap:I) I = ir_inst2(IR_CHANNEL_CREATE_BOUNDED, tx_dest, rx_dest, cap)
+ir_channel_send(tx:I value:I) I = ir_inst1(IR_CHANNEL_SEND, tx, value)
+ir_channel_recv(dest:I rx:I) I = ir_inst1(IR_CHANNEL_RECV, dest, rx)
+
+// Mutex operations
+ir_mutex_create(dest:I value:I) I = ir_inst1(IR_MUTEX_CREATE, dest, value)
+ir_mutex_lock(dest:I mutex:I) I = ir_inst1(IR_MUTEX_LOCK, dest, mutex)
+ir_mutex_unlock(mutex:I value:I) I = ir_inst1(IR_MUTEX_UNLOCK, mutex, value)
+
+// ── IrFunction (40 bytes) ──────────────────────────────────────
+// offset 0:  name (I) — function name string
+// offset 8:  params (I) — Array of param name strings
+// offset 16: instructions (I) — Array of instruction pointers
+// offset 24: return_type (I) — IrType tag
+// offset 32: param_struct_sizes (I) — Array of Ints (0=scalar, >0=struct fields)
+
+make_ir_function(name:I params:I instrs:I ret_type:I param_sizes:I) I {
+  f = alloc(40)
+  store64(f, name)
+  store64(f + 8, params)
+  store64(f + 16, instrs)
+  store64(f + 24, ret_type)
+  store64(f + 32, param_sizes)
+  f
+}
+
+irf_name(f:I) I = load64(f)
+irf_params(f:I) I = load64(f + 8)
+irf_instrs(f:I) I = load64(f + 16)
+irf_ret_type(f:I) I = load64(f + 24)
+irf_param_sizes(f:I) I = load64(f + 32)
+
+// ── IrModule (24 bytes) ────────────────────────────────────────
+// offset 0:  functions (I) — Array of IrFunction pointers
+// offset 8:  globals (I) — Array of global name strings
+// offset 16: struct_defs (I) — Map: name -> field names array
+
+make_ir_module(funcs:I globals:I struct_defs:I) I {
+  m = alloc(24)
+  store64(m, funcs)
+  store64(m + 8, globals)
+  store64(m + 16, struct_defs)
+  m
+}
+
+irm_functions(m:I) I = load64(m)
+irm_globals(m:I) I = load64(m + 8)
+irm_struct_defs(m:I) I = load64(m + 16)
+
+// ── Lowering Context (72 bytes) ────────────────────────────────
+// offset 0:  instructions (I) — Array of instruction pointers
+// offset 8:  reg_counter (I) — next register number
+// offset 16: label_counter (I) — next label number
+// offset 24: locals (I) — Map: var name -> register (positive=value, negative=alloca ptr)
+// offset 32: reg_types (I) — Map: register name -> IrType tag
+// offset 40: struct_defs (I) — Map: struct name -> field names array
+// offset 48: enum_defs (I) — Map: enum name -> variants info
+// offset 56: fn_ret_types (I) — Map: func name -> IrType tag
+// offset 64: break_label (I) — current loop break label (or 0)
+
+make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I) I {
+  ctx = alloc(72)
+  store64(ctx, ptr([I]()))       // instructions array
+  store64(ctx + 8, 0)            // reg_counter
+  store64(ctx + 16, 0)           // label_counter
+  store64(ctx + 24, ptr(M()))    // locals map
+  store64(ctx + 32, ptr(M()))    // reg_types map
+  store64(ctx + 40, struct_defs)
+  store64(ctx + 48, enum_defs)
+  store64(ctx + 56, fn_ret_types)
+  store64(ctx + 64, 0)           // break_label
+  ctx
+}
+
+// Context field accessors
+ctx_instrs(ctx:I) I = load64(ctx)
+ctx_reg_counter(ctx:I) I = load64(ctx + 8)
+ctx_label_counter(ctx:I) I = load64(ctx + 16)
+ctx_locals(ctx:I) I = load64(ctx + 24)
+ctx_reg_types(ctx:I) I = load64(ctx + 32)
+ctx_struct_defs(ctx:I) I = load64(ctx + 40)
+ctx_enum_defs(ctx:I) I = load64(ctx + 48)
+ctx_fn_ret_types(ctx:I) I = load64(ctx + 56)
+ctx_break_label(ctx:I) I = load64(ctx + 64)
+ctx_set_break_label(ctx:I v:I) I { store64(ctx + 64, v); 0 }
+
+// Emit: push instruction onto the instructions array
+ctx_emit(ctx:I inst:I) I {
+  arr := load64(ctx)
+  arr.push(inst)
+  0
+}
+
+// Fresh register: increment counter, return "rN" string
+ctx_fresh_reg(ctx:I) I {
+  n := load64(ctx + 8)
+  store64(ctx + 8, n + 1)
+  "r" + itos(n)
+}
+
+// Fresh label: increment counter, return "L_N" string
+ctx_fresh_label(ctx:I) I {
+  n := load64(ctx + 16)
+  store64(ctx + 16, n + 1)
+  "L_" + itos(n)
+}
+
+// Local variable management
+ctx_set_local(ctx:I name:I reg:I) I {
+  m := load64(ctx + 24)
+  m[name] = reg
+  0
+}
+
+ctx_get_local(ctx:I name:I) I {
+  m := load64(ctx + 24)
+  m[name]
+}
+
+// Register type tracking
+ctx_set_reg_type(ctx:I reg:I irtype:I) I {
+  m := load64(ctx + 32)
+  m[reg] = irtype
+  0
+}
+
+ctx_get_reg_type(ctx:I reg:I) I {
+  m := load64(ctx + 32)
+  m[reg]
+}
+
+// Reset context for a new function
+ctx_reset(ctx:I) I {
+  store64(ctx, ptr([I]()))       // fresh instructions
+  store64(ctx + 8, 0)            // reg_counter
+  store64(ctx + 16, 0)           // label_counter
+  store64(ctx + 24, ptr(M()))    // fresh locals
+  store64(ctx + 32, ptr(M()))    // fresh reg_types
+  store64(ctx + 64, 0)           // break_label
+  0
+}
+
+// ── TY -> IRTY mapping ─────────────────────────────────────────
+ty_to_irty(ty:I) I {
+  ty == TY_INT ? IRTY_INT :
+  ty == TY_FLOAT ? IRTY_FLOAT :
+  ty == TY_BOOL ? IRTY_BOOL :
+  ty == TY_STRING ? IRTY_STR :
+  ty == TY_STRUCT ? IRTY_STRUCT :
+  ty == TY_ENUM ? IRTY_ENUM :
+  ty == TY_SENDER ? IRTY_SENDER :
+  ty == TY_RECEIVER ? IRTY_RECEIVER :
+  ty == TY_JOIN_HANDLE ? IRTY_JOIN_HANDLE :
+  ty == TY_MUTEX ? IRTY_MUTEX :
+  ty == TY_ARRAY ? IRTY_ARRAY :
+  ty == TY_JSON ? IRTY_JSON :
+  ty == TY_HTTP_RESP ? IRTY_HTTP_RESP :
+  ty == TY_RESULT ? IRTY_RESULT :
+  ty == TY_RESULT_ERR ? IRTY_RESULT :
+  ty == TY_HTTP_SERVER ? IRTY_HTTP_SERVER :
+  ty == TY_HTTP_REQ ? IRTY_HTTP_REQ :
+  ty == TY_TUPLE ? IRTY_TUPLE :
+  ty == TY_MAP ? IRTY_MAP :
+  IRTY_INT
+}
+
+// ── BinOp -> IR op mapping ─────────────────────────────────────
+binop_to_irbinop(op:I) I {
+  op == OP_ADD ? IROP_ADD :
+  op == OP_SUB ? IROP_SUB :
+  op == OP_MUL ? IROP_MUL :
+  op == OP_DIV ? IROP_DIV :
+  op == OP_MOD ? IROP_MOD :
+  0 - 1  // not a binop
+}
+
+binop_to_ircmpop(op:I) I {
+  op == OP_EQ ? IRCMP_EQ :
+  op == OP_NEQ ? IRCMP_NEQ :
+  op == OP_LT ? IRCMP_LT :
+  op == OP_GT ? IRCMP_GT :
+  op == OP_LTEQ ? IRCMP_LTEQ :
+  op == OP_GTEQ ? IRCMP_GTEQ :
+  0 - 1  // not a cmpop
+}
+
+is_cmp_op(op:I) I {
+  op >= OP_EQ ? op <= OP_GTEQ ? 1 : 0 : 0
+}
+
+is_arith_op(op:I) I {
+  op >= OP_ADD ? op <= OP_MOD ? 1 : 0 : 0
+}
