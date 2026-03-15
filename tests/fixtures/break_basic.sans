@@ -1,0 +1,10 @@
+main() I {
+  i := 0
+  total := 0
+  while i < 100 {
+    i += 1
+    if i == 5 { break }
+    total += i
+  }
+  total
+}

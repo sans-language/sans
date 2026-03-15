@@ -56,6 +56,7 @@ fn main() Int {
 | **If/Else** | `if x > 0 { ... } else { ... }` |
 | **While loops** | `while i < 10 { ... }` |
 | **For-in loops** | `for item in items { ... }` |
+| **Break/Continue** | `break` / `continue` in loops |
 | **Match** | `match value { Ok(v) => ..., Err(e) => ... }` |
 | **Structs** | `struct Point { x Int, y Int }` |
 | **Enums** | `enum Color { Red, Green, Blue }` |

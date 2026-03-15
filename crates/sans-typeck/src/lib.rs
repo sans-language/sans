@@ -160,6 +160,8 @@ fn check_stmt(
             check_expr(expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             Ok(())
         }
+        Stmt::Break { .. } => Ok(()),
+        Stmt::Continue { .. } => Ok(()),
         Stmt::While { condition, body, .. } => {
             let cond_ty = check_expr(condition, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
             if cond_ty != Type::Bool {
@@ -440,7 +442,7 @@ fn check_inner(program: &Program, module_exports: &HashMap<String, ModuleExports
                     Stmt::Return { .. } => {
                         // Already type-checked in check_stmt
                     }
-                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } | Stmt::If { .. } | Stmt::LetDestructure { .. } | Stmt::ForIn { .. } => {
+                    Stmt::Let { .. } | Stmt::While { .. } | Stmt::Assign { .. } | Stmt::If { .. } | Stmt::LetDestructure { .. } | Stmt::ForIn { .. } | Stmt::Break { .. } | Stmt::Continue { .. } => {
                         return Err(TypeError::new(format!(
                             "function '{}': missing return expression", func.name
                         )));

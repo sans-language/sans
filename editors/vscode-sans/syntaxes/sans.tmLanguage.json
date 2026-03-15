@@ -74,7 +74,7 @@
       "patterns": [
         {
           "name": "keyword.control.sans",
-          "match": "\\b(if|else|while|for|in|match|return|spawn)\\b"
+          "match": "\\b(if|else|while|for|in|match|return|spawn|break|continue)\\b"
         },
         {
           "name": "keyword.declaration.sans",

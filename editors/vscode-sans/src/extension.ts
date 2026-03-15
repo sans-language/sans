@@ -133,6 +133,10 @@ const HOVER_DATA: Record<string, string> = {
     'unwrap_or': '**unwrap_or**(default: T) -> T\n\nUnwrap a Result, returning default on error.\n\nUsage: `r.unwrap_or(0)`',
     'error': '**error**() -> String\n\nGet error message from a Result.\n\nUsage: `r.error()`',
 
+    // Loop control
+    'break': '**break**\n\nExit the nearest enclosing `while` or `for` loop immediately.',
+    'continue': '**continue**\n\nSkip the rest of the current iteration and jump to the next iteration of the nearest enclosing loop.',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

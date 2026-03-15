@@ -105,6 +105,16 @@ for item in array {
     body
 }
 
+// Loop control
+while cond {
+    if done { break }       // exit loop immediately
+    if skip { continue }    // skip to next iteration
+}
+for x in arr {
+    if x == 0 { continue }  // works in for-in too
+    if x < 0 { break }
+}
+
 // Match expression
 match value {
     EnumName::Variant1 => expr1,

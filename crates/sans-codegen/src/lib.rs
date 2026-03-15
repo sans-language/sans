@@ -1858,7 +1858,14 @@ fn generate_llvm<'ctx>(
                     let memcpy_fn = llvm_module.get_function("memcpy").unwrap();
 
                     let arr_int = regs[array];
-                    let val = regs[value];
+                    let val = if let Some(v) = regs.get(value) {
+                        *v
+                    } else {
+                        // Value is a struct/tuple pointer — convert to i64
+                        let ptr_val = ptrs[value];
+                        builder.build_ptr_to_int(ptr_val, i64_type, &format!("{}_int", value))
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
                     let arr_ptr = builder.build_int_to_ptr(arr_int, ptr_type, "arr_p")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 

@@ -554,3 +554,23 @@ fn e2e_try_operator() {
 fn e2e_try_operator_err() {
     assert_eq!(compile_and_run("try_operator_err.sans"), 99);
 }
+
+#[test]
+fn e2e_break_basic() {
+    assert_eq!(compile_and_run("break_basic.sans"), 10);
+}
+
+#[test]
+fn e2e_continue_basic() {
+    assert_eq!(compile_and_run("continue_basic.sans"), 25);
+}
+
+#[test]
+fn e2e_tuple_return_typed() {
+    assert_eq!(compile_and_run("tuple_return_typed.sans"), 7);
+}
+
+#[test]
+fn e2e_tuple_array() {
+    assert_eq!(compile_and_run("tuple_array.sans"), 3);
+}

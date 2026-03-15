@@ -124,6 +124,19 @@ pub fn lower_with_extra_structs(
             IrType::HttpRequest
         } else if ret_name == "HttpServer" || ret_name == "HS" {
             IrType::HttpServer
+        } else if ret_name.starts_with('(') && ret_name.ends_with(')') {
+            // Tuple return type like "(I I)" or "(Int String Bool)"
+            let inner = &ret_name[1..ret_name.len()-1];
+            let types: Vec<IrType> = inner.split_whitespace()
+                .map(|t| match t {
+                    "Int" | "I" => IrType::Int,
+                    "Float" | "F" => IrType::Float,
+                    "Bool" | "B" => IrType::Bool,
+                    "String" | "S" => IrType::Str,
+                    _ => IrType::Int,
+                })
+                .collect();
+            IrType::Tuple(types)
         } else if struct_defs.contains_key(ret_name) {
             IrType::Struct(ret_name.clone())
         } else if enum_defs.contains_key(ret_name) {
@@ -191,9 +204,23 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
                     "JsonValue" => { builder.reg_types.insert(reg.clone(), IrType::JsonValue); }
                     "Map" | "M" => { builder.reg_types.insert(reg.clone(), IrType::Map); }
                     _ => {
-                        // Result<T> or R<T>
                         let n = &param.type_name.name;
-                        if (n.starts_with("Result<") || n.starts_with("R<")) && n.ends_with('>') {
+                        // Tuple parameter type like "(I I)"
+                        if n.starts_with('(') && n.ends_with(')') {
+                            let inner = &n[1..n.len()-1];
+                            let types: Vec<IrType> = inner.split_whitespace()
+                                .map(|t| match t {
+                                    "Int" | "I" => IrType::Int,
+                                    "Float" | "F" => IrType::Float,
+                                    "Bool" | "B" => IrType::Bool,
+                                    "String" | "S" => IrType::Str,
+                                    _ => IrType::Int,
+                                })
+                                .collect();
+                            builder.reg_types.insert(reg.clone(), IrType::Tuple(types));
+                        }
+                        // Result<T> or R<T>
+                        else if (n.starts_with("Result<") || n.starts_with("R<")) && n.ends_with('>') {
                             let prefix_len = if n.starts_with("Result<") { 7 } else { 2 };
                             let inner_str = &n[prefix_len..n.len()-1];
                             let inner = match inner_str {
@@ -214,11 +241,15 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
 
     let param_struct_sizes: Vec<usize> = func.params.iter()
         .map(|p| {
-            if let Some(fields) = struct_defs.get(&p.type_name.name) {
+            let n = &p.type_name.name;
+            if let Some(fields) = struct_defs.get(n) {
                 fields.len()
-            } else if let Some(variants) = enum_defs.get(&p.type_name.name) {
+            } else if let Some(variants) = enum_defs.get(n) {
                 let max_data = variants.iter().map(|(_, _, n)| *n).max().unwrap_or(0);
                 1 + max_data // tag + max data fields
+            } else if n.starts_with('(') && n.ends_with(')') {
+                // Tuple parameter — count fields
+                n[1..n.len()-1].split_whitespace().count()
             } else {
                 0
             }
@@ -273,6 +304,8 @@ struct IrBuilder {
     current_label: Option<String>,
     /// Lambda functions lifted out of the current function during lowering
     lifted_fns: Vec<IrFunction>,
+    /// Stack of (cond_label, end_label) for nested loops (used by break/continue)
+    loop_stack: Vec<(String, String)>,
     /// Counter for generating unique lambda names
     lambda_counter: usize,
     /// Tracks closure info: dest_register -> (lifted_fn_name, capture_var_names)
@@ -295,6 +328,7 @@ impl IrBuilder {
             global_names,
             current_label: None,
             lifted_fns: Vec::new(),
+            loop_stack: Vec::new(),
             lambda_counter: 0,
             closure_info: HashMap::new(),
         }
@@ -345,6 +379,7 @@ impl IrBuilder {
                     self.collect_idents_in_stmts(body, param_names, captures, seen);
                 }
                 Stmt::LetDestructure { value, .. } => self.collect_idents_in_expr(value, param_names, captures, seen),
+                Stmt::Break { .. } | Stmt::Continue { .. } => {}
             }
         }
     }
@@ -2219,6 +2254,8 @@ impl IrBuilder {
                 let body_label = self.fresh_label("while_body");
                 let end_label = self.fresh_label("while_end");
 
+                self.loop_stack.push((cond_label.clone(), end_label.clone()));
+
                 self.instructions.push(Instruction::Jump { target: cond_label.clone() });
 
                 self.instructions.push(Instruction::Label { name: cond_label.clone() });
@@ -2236,6 +2273,17 @@ impl IrBuilder {
                 self.instructions.push(Instruction::Jump { target: cond_label.clone() });
 
                 self.instructions.push(Instruction::Label { name: end_label.clone() });
+                self.loop_stack.pop();
+            }
+            Stmt::Break { .. } => {
+                if let Some((_, end_label)) = self.loop_stack.last() {
+                    self.instructions.push(Instruction::Jump { target: end_label.clone() });
+                }
+            }
+            Stmt::Continue { .. } => {
+                if let Some((cond_label, _)) = self.loop_stack.last() {
+                    self.instructions.push(Instruction::Jump { target: cond_label.clone() });
+                }
             }
             Stmt::Return { value, .. } => {
                 let reg = self.lower_expr(value);
@@ -2286,7 +2334,12 @@ impl IrBuilder {
                 // Loop structure — follows the exact While lowering pattern
                 let cond_label = self.fresh_label("forin_cond");
                 let body_label = self.fresh_label("forin_body");
+                let inc_label = self.fresh_label("forin_inc");
                 let end_label = self.fresh_label("forin_end");
+
+                // For break/continue: continue jumps to inc (increment then re-check),
+                // break jumps to end
+                self.loop_stack.push((inc_label.clone(), end_label.clone()));
 
                 self.instructions.push(Instruction::Jump { target: cond_label.clone() });
 
@@ -2323,6 +2376,11 @@ impl IrBuilder {
                     self.lower_stmt(stmt);
                 }
 
+                // Jump to increment (so body block has a terminator before inc label)
+                self.instructions.push(Instruction::Jump { target: inc_label.clone() });
+                // Increment label (continue target)
+                self.instructions.push(Instruction::Label { name: inc_label });
+
                 // idx = idx + 1
                 let cur_idx = self.fresh_reg();
                 self.instructions.push(Instruction::Load { dest: cur_idx.clone(), ptr: idx_ptr.clone() });
@@ -2339,6 +2397,7 @@ impl IrBuilder {
 
                 self.instructions.push(Instruction::Jump { target: cond_label });
                 self.instructions.push(Instruction::Label { name: end_label });
+                self.loop_stack.pop();
             }
             Stmt::LetDestructure { names, value, .. } => {
                 match value {

@@ -42,6 +42,8 @@ let (tx rx) = channel<I>() // channel
 mutex(val)                 // mutex
 for x in arr { }           // iteration
 while cond { }             // loop
+break                      // exit loop
+continue                   // skip to next iteration
 ```
 
 ## Tuples
