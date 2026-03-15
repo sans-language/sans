@@ -758,7 +758,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("float_to_string() requires Float argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
-            } else if function == "file_read" || function == "fread" || function == "fr" {
+            } else if function == "file_read" || function == "read_file" || function == "fread" || function == "fr" {
                 if args.len() != 1 {
                     return Err(TypeError::new("file_read() takes exactly 1 argument"));
                 }
@@ -767,7 +767,7 @@ fn check_expr(
                     return Err(TypeError::new(format!("file_read() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::String);
-            } else if function == "file_write" || function == "fwrite" || function == "fw" || function == "file_append" || function == "fappend" || function == "fa" {
+            } else if function == "file_write" || function == "write_file" || function == "fwrite" || function == "fw" || function == "file_append" || function == "append_file" || function == "fappend" || function == "fa" {
                 if args.len() != 2 {
                     return Err(TypeError::new(format!("{}() takes exactly 2 arguments", function)));
                 }
@@ -789,6 +789,11 @@ fn check_expr(
                     return Err(TypeError::new(format!("file_exists() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::Bool);
+            } else if function == "args" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("args() takes 0 arguments"));
+                }
+                return Ok(Type::Array { inner: Box::new(Type::String) });
             } else if function == "json_parse" || function == "jparse" || function == "jp" {
                 if args.len() != 1 {
                     return Err(TypeError::new("json_parse() takes exactly 1 argument"));

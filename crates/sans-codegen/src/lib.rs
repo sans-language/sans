@@ -366,6 +366,20 @@ fn generate_llvm<'ctx>(
     let curl_slist_free_type = context.void_type().fn_type(&[i64_type.into()], false);
     llvm_module.add_function("curl_slist_free_all", curl_slist_free_type, Some(Linkage::External));
 
+    // Check if this module has a main function
+    let has_main = module.functions.iter().any(|f| f.name == "main");
+
+    // Create global variables for argc/argv (only when main exists)
+    if has_main {
+        let argc_global = llvm_module.add_global(i64_type, None, "__sans_argc");
+        argc_global.set_initializer(&i64_type.const_int(0, false));
+        argc_global.set_linkage(Linkage::Internal);
+
+        let argv_global = llvm_module.add_global(ptr_type, None, "__sans_argv");
+        argv_global.set_initializer(&ptr_type.const_null());
+        argv_global.set_linkage(Linkage::Internal);
+    }
+
     // Create LLVM global variables
     for (name, init_value) in &module.globals {
         let global = llvm_module.add_global(i64_type, None, name);
@@ -373,18 +387,200 @@ fn generate_llvm<'ctx>(
         global.set_linkage(Linkage::Internal);
     }
 
-    // First pass: declare all functions
+    // First pass: declare all functions (rename "main" to "__sans_main")
     for func in &module.functions {
+        let llvm_name = if func.name == "main" {
+            "__sans_main".to_string()
+        } else {
+            func.name.clone()
+        };
         let param_types: Vec<inkwell::types::BasicMetadataTypeEnum> =
             func.params.iter().map(|_| i64_type.into()).collect();
         let fn_type = i64_type.fn_type(&param_types, false);
-        llvm_module.add_function(&func.name, fn_type, None);
+        llvm_module.add_function(&llvm_name, fn_type, None);
+    }
+
+    // Generate C-compatible main(argc, argv) wrapper
+    if has_main {
+        let main_type = i32_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
+        let main_fn = llvm_module.add_function("main", main_type, None);
+        let entry = context.append_basic_block(main_fn, "entry");
+        builder.position_at_end(entry);
+
+        // Store argc (as i64) into __sans_argc
+        let argc_param = main_fn.get_nth_param(0).unwrap().into_int_value();
+        let argc_i64 = builder.build_int_z_extend(argc_param, i64_type, "argc_i64")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let argc_gv = llvm_module.get_global("__sans_argc").unwrap();
+        builder.build_store(argc_gv.as_pointer_value(), argc_i64)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // Store argv into __sans_argv
+        let argv_param = main_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let argv_gv = llvm_module.get_global("__sans_argv").unwrap();
+        builder.build_store(argv_gv.as_pointer_value(), argv_param)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // Call __sans_main()
+        let sans_main = llvm_module.get_function("__sans_main").unwrap();
+        let ret = builder.build_call(sans_main, &[], "ret")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let ret_val = match ret.try_as_basic_value() {
+            inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+            _ => return Err(CodegenError::LlvmError("__sans_main returned void".into())),
+        };
+        let ret_i32 = builder.build_int_truncate(ret_val, i32_type, "ret_i32")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_return(Some(&ret_i32))
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+    }
+
+    // Generate __sans_args() helper: reads __sans_argc/__sans_argv, builds string array
+    if has_main {
+        let args_fn_type = i64_type.fn_type(&[], false);
+        let args_fn = llvm_module.add_function("__sans_args", args_fn_type, None);
+        let entry = context.append_basic_block(args_fn, "entry");
+        builder.position_at_end(entry);
+
+        let malloc_fn = llvm_module.get_function("malloc").unwrap();
+        let strlen_fn = llvm_module.get_function("strlen").unwrap();
+        let memcpy_fn = llvm_module.get_function("memcpy").unwrap();
+
+        // Load argc and argv from globals
+        let argc_gv = llvm_module.get_global("__sans_argc").unwrap();
+        let argc = builder.build_load(i64_type, argc_gv.as_pointer_value(), "argc")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+        let argv_gv = llvm_module.get_global("__sans_argv").unwrap();
+        let argv = builder.build_load(ptr_type, argv_gv.as_pointer_value(), "argv")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_pointer_value();
+
+        // Allocate array struct: [data_ptr, len, capacity]
+        let struct_call = builder.build_call(malloc_fn, &[i64_type.const_int(24, false).into()], "arr_struct")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let struct_ptr = match struct_call.try_as_basic_value() {
+            inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+            _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+        };
+
+        // Allocate data buffer: argc * 8 bytes (at least 8 bytes)
+        let eight = i64_type.const_int(8, false);
+        let buf_size = builder.build_int_mul(argc, eight, "buf_sz")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        // Ensure minimum 8 bytes
+        let min_size = i64_type.const_int(8, false);
+        let need_min = builder.build_int_compare(IntPredicate::ULT, buf_size, min_size, "need_min")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let actual_size = builder.build_select(need_min, min_size, buf_size, "actual_sz")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+        let buf_call = builder.build_call(malloc_fn, &[actual_size.into()], "arr_buf")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let buf_ptr = match buf_call.try_as_basic_value() {
+            inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+            _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+        };
+
+        // Store data ptr at offset 0
+        let buf_int = builder.build_ptr_to_int(buf_ptr, i64_type, "buf_int")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_store(struct_ptr, buf_int)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // Store len = argc at offset 1
+        let len_ptr = unsafe { builder.build_gep(i64_type, struct_ptr, &[i64_type.const_int(1, false)], "len_ptr") }
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_store(len_ptr, argc)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // Store capacity = argc at offset 2
+        let cap_ptr = unsafe { builder.build_gep(i64_type, struct_ptr, &[i64_type.const_int(2, false)], "cap_ptr") }
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_store(cap_ptr, argc)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // Loop over argv[0..argc], copying each string into a new malloc'd buffer
+        let loop_bb = context.append_basic_block(args_fn, "loop");
+        let body_bb = context.append_basic_block(args_fn, "body");
+        let done_bb = context.append_basic_block(args_fn, "done");
+
+        // i = 0
+        let i_alloca = builder.build_alloca(i64_type, "i_alloca")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_store(i_alloca, i64_type.const_int(0, false))
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_unconditional_branch(loop_bb)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // loop: if i < argc, goto body, else goto done
+        builder.position_at_end(loop_bb);
+        let i_val = builder.build_load(i64_type, i_alloca, "i")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+        let cmp = builder.build_int_compare(IntPredicate::ULT, i_val, argc, "cmp")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_conditional_branch(cmp, body_bb, done_bb)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // body: load argv[i], strlen, malloc, memcpy, store into buf[i]
+        builder.position_at_end(body_bb);
+        let i_val2 = builder.build_load(i64_type, i_alloca, "i2")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
+
+        // argv[i] — argv is char**, so argv[i] is a char*
+        let argv_i_ptr = unsafe { builder.build_gep(ptr_type, argv, &[i_val2], "argv_i_ptr") }
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let arg_str = builder.build_load(ptr_type, argv_i_ptr, "arg_str")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_pointer_value();
+
+        // strlen(arg_str)
+        let slen_call = builder.build_call(strlen_fn, &[arg_str.into()], "slen")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let slen = match slen_call.try_as_basic_value() {
+            inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+            _ => return Err(CodegenError::LlvmError("strlen returned void".into())),
+        };
+
+        // malloc(slen + 1)
+        let slen_plus1 = builder.build_int_add(slen, i64_type.const_int(1, false), "sp1")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let copy_call = builder.build_call(malloc_fn, &[slen_plus1.into()], "copy")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let copy_ptr = match copy_call.try_as_basic_value() {
+            inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+            _ => return Err(CodegenError::LlvmError("malloc returned void".into())),
+        };
+
+        // memcpy(copy, arg_str, slen + 1)
+        builder.build_call(memcpy_fn, &[copy_ptr.into(), arg_str.into(), slen_plus1.into()], "")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // Store copy_ptr as i64 into buf[i]
+        let copy_int = builder.build_ptr_to_int(copy_ptr, i64_type, "copy_int")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        let slot_ptr = unsafe { builder.build_gep(i64_type, buf_ptr, &[i_val2], "slot") }
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_store(slot_ptr, copy_int)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // i++
+        let i_next = builder.build_int_add(i_val2, i64_type.const_int(1, false), "i_next")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_store(i_alloca, i_next)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_unconditional_branch(loop_bb)
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+        // done: return struct_ptr as i64
+        builder.position_at_end(done_bb);
+        let result = builder.build_ptr_to_int(struct_ptr, i64_type, "args_result")
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+        builder.build_return(Some(&result))
+            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
     }
 
     // Second pass: generate function bodies
     for func in &module.functions {
+        let llvm_name = if func.name == "main" { "__sans_main".to_string() } else { func.name.clone() };
         let llvm_fn = llvm_module
-            .get_function(&func.name)
+            .get_function(&llvm_name)
             .ok_or_else(|| CodegenError::LlvmError(format!("function {} not found", func.name)))?;
 
         let entry = context.append_basic_block(llvm_fn, "entry");
@@ -517,7 +713,8 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::FnRef { dest, name } => {
-                    let fn_val = llvm_module.get_function(name).ok_or_else(|| {
+                    let llvm_fn_name = if name == "main" { "__sans_main" } else { name.as_str() };
+                    let fn_val = llvm_module.get_function(llvm_fn_name).ok_or_else(|| {
                         CodegenError::LlvmError(format!("undefined function for fn_ref: {}", name))
                     })?;
                     let fn_ptr = fn_val.as_global_value().as_pointer_value();
@@ -527,7 +724,8 @@ fn generate_llvm<'ctx>(
                     ptrs.insert(dest.clone(), fn_ptr);
                 }
                 Instruction::FptrNamed { dest, func_name } => {
-                    let fn_val = llvm_module.get_function(func_name).ok_or_else(|| {
+                    let llvm_fn_name = if func_name == "main" { "__sans_main" } else { func_name.as_str() };
+                    let fn_val = llvm_module.get_function(llvm_fn_name).ok_or_else(|| {
                         CodegenError::LlvmError(format!("fptr: unknown function '{}'", func_name))
                     })?;
                     let fn_ptr = fn_val.as_global_value().as_pointer_value();
@@ -889,7 +1087,8 @@ fn generate_llvm<'ctx>(
                     function,
                     args,
                 } => {
-                    let callee = llvm_module.get_function(function).ok_or_else(|| {
+                    let llvm_fn_name = if function == "main" { "__sans_main" } else { function.as_str() };
+                    let callee = llvm_module.get_function(llvm_fn_name).ok_or_else(|| {
                         CodegenError::LlvmError(format!("undefined function: {}", function))
                     })?;
                     let arg_vals: Vec<inkwell::values::BasicMetadataValueEnum> =
@@ -1724,7 +1923,8 @@ fn generate_llvm<'ctx>(
                         builder.position_at_end(tramp_bb);
 
                         let ap = tramp.get_nth_param(0).unwrap().into_pointer_value();
-                        let target = llvm_module.get_function(function).unwrap();
+                        let spawn_llvm_name = if function == "main" { "__sans_main" } else { function.as_str() };
+                        let target = llvm_module.get_function(spawn_llvm_name).unwrap();
 
                         let mut call_args: Vec<inkwell::values::BasicMetadataValueEnum> = Vec::new();
                         for i in 0..num_args {
@@ -3501,6 +3701,16 @@ fn generate_llvm<'ctx>(
                     // curl_slist_free_all returns void; insert 0
                     regs.insert(dest.clone(), i64_type.const_int(0, false));
                 }
+                Instruction::Args { dest } => {
+                    let args_fn = llvm_module.get_function("__sans_args").unwrap();
+                    let call = builder.build_call(args_fn, &[], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("__sans_args returned void".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
             }
         }
     }
@@ -3555,7 +3765,8 @@ mod tests {
         };
 
         let ir = compile_to_llvm_ir(&module).expect("codegen failed");
-        assert!(ir.contains("define i64 @main()"), "expected 'define i64 @main()' in:\n{}", ir);
+        assert!(ir.contains("define i64 @__sans_main()"), "expected 'define i64 @__sans_main()' in:\n{}", ir);
+        assert!(ir.contains("define i32 @main(i32"), "expected C main wrapper in:\n{}", ir);
         assert!(ir.contains("ret i64"), "expected 'ret i64' in:\n{}", ir);
     }
 

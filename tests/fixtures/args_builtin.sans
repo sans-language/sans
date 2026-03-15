@@ -1,0 +1,4 @@
+main() I {
+  a = args()
+  a.len()
+}

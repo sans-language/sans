@@ -287,6 +287,8 @@ pub enum Instruction {
     MapLen { dest: Reg, map: Reg },
     MapKeys { dest: Reg, map: Reg },
     MapVals { dest: Reg, map: Reg },
+    // Command-line args
+    Args { dest: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

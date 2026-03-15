@@ -916,7 +916,7 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "file_read" || function == "fread" || function == "fr" {
+                } else if function == "file_read" || function == "read_file" || function == "fread" || function == "fr" {
                     let path_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::FileRead {
@@ -925,7 +925,7 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Str);
                     return dest;
-                } else if function == "file_write" || function == "fwrite" || function == "fw" {
+                } else if function == "file_write" || function == "write_file" || function == "fwrite" || function == "fw" {
                     let path_reg = self.lower_expr(&args[0]);
                     let content_reg = self.lower_expr(&args[1]);
                     let dest = self.fresh_reg();
@@ -936,7 +936,7 @@ impl IrBuilder {
                     });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "file_append" || function == "fappend" || function == "fa" {
+                } else if function == "file_append" || function == "append_file" || function == "fappend" || function == "fa" {
                     let path_reg = self.lower_expr(&args[0]);
                     let content_reg = self.lower_expr(&args[1]);
                     let dest = self.fresh_reg();
@@ -955,6 +955,13 @@ impl IrBuilder {
                         path: path_reg,
                     });
                     self.reg_types.insert(dest.clone(), IrType::Bool);
+                    return dest;
+                } else if function == "args" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Args {
+                        dest: dest.clone(),
+                    });
+                    self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
                     return dest;
                 } else if function == "json_parse" || function == "jparse" || function == "jp" {
                     let source_reg = self.lower_expr(&args[0]);

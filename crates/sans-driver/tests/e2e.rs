@@ -339,6 +339,16 @@ fn e2e_file_exists_check() {
 }
 
 #[test]
+fn e2e_read_file_alias() {
+    assert_eq!(compile_and_run("read_file_alias.sans"), 9);
+}
+
+#[test]
+fn e2e_args_builtin() {
+    assert_eq!(compile_and_run("args_builtin.sans"), 1);
+}
+
+#[test]
 fn e2e_json_object_stringify() {
     assert_eq!(compile_and_run("json_object_stringify.sans"), 2);
 }

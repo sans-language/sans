@@ -1,0 +1,5 @@
+main() I {
+  write_file("/tmp/sans_test_rf_alias.txt" "test data")
+  content = read_file("/tmp/sans_test_rf_alias.txt")
+  content.len()
+}
