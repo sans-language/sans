@@ -496,6 +496,11 @@ fn e2e_tuple_three() {
 }
 
 #[test]
+fn e2e_tuple_nested() {
+    assert_eq!(compile_and_run("tuple_nested.sans"), 3);
+}
+
+#[test]
 fn e2e_lambda_basic() {
     assert_eq!(compile_and_run("lambda_basic.sans"), 15);
 }

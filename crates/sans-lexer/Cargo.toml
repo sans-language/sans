@@ -1,4 +1,4 @@
 [package]
 name = "sans-lexer"
-version = "0.3.11"
+version = "0.3.12"
 edition = "2021"

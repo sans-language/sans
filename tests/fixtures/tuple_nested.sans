@@ -1,0 +1,6 @@
+main() I {
+  inner = (1 2)
+  outer = (inner 3)
+  t = outer.0
+  t.0 + t.1
+}

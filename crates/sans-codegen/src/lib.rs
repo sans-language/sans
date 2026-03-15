@@ -1164,6 +1164,11 @@ fn generate_llvm<'ctx>(
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), ptr);
                     struct_sizes.insert(dest.clone(), *num_fields);
+                    // Also store as i64 in regs so the pointer can be used as a value
+                    // (e.g. storing a tuple into another tuple via FieldStore)
+                    let as_int = builder.build_ptr_to_int(ptr, i64_type, &format!("{}_int", dest))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), as_int);
                 }
                 Instruction::FieldStore { ptr, field_index, value } => {
                     let struct_ptr = ptrs[ptr];
@@ -1204,6 +1209,14 @@ fn generate_llvm<'ctx>(
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         .into_int_value();
                     regs.insert(dest.clone(), loaded);
+                    // Also store as pointer so nested struct/tuple access works
+                    // (e.g. accessing a tuple field that is itself a tuple)
+                    let as_ptr = builder.build_int_to_ptr(
+                        loaded,
+                        context.ptr_type(inkwell::AddressSpace::default()),
+                        &format!("{}_ptr", dest),
+                    ).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), as_ptr);
                 }
                 Instruction::EnumAlloc { dest, tag, num_data_fields } => {
                     let total_fields = 1 + num_data_fields;
