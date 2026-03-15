@@ -1232,10 +1232,18 @@ fn generate_llvm<'ctx>(
                     else_label,
                 } => {
                     let cond_val = regs[cond];
+                    // Ensure condition is i1; if it's a wider int (e.g. i64 from Load), compare != 0
+                    let cond_i1 = if cond_val.get_type().get_bit_width() == 1 {
+                        cond_val
+                    } else {
+                        let zero = cond_val.get_type().const_zero();
+                        builder.build_int_compare(IntPredicate::NE, cond_val, zero, "cond_bool")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
                     let then_bb = label_blocks[then_label];
                     let else_bb = label_blocks[else_label];
                     builder
-                        .build_conditional_branch(cond_val, then_bb, else_bb)
+                        .build_conditional_branch(cond_i1, then_bb, else_bb)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     block_terminated = true;
                 }
@@ -1417,8 +1425,15 @@ fn generate_llvm<'ctx>(
                 Instruction::Store { ptr, value } => {
                     let ptr_val = ptrs[ptr];
                     let val = regs[value];
+                    // If storing an i1 (bool) into an i64 alloca, zero-extend to i64 first
+                    let store_val = if val.get_type().get_bit_width() != i64_type.get_bit_width() {
+                        builder.build_int_z_extend(val, i64_type, "store_zext")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        val
+                    };
                     builder
-                        .build_store(ptr_val, val)
+                        .build_store(ptr_val, store_val)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                 }
                 Instruction::Load { dest, ptr } => {
