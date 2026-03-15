@@ -112,6 +112,9 @@ const HOVER_DATA: Record<string, string> = {
     // Tuples
     'tuple': '**Tuple** — (expr1 expr2 ...)\n\nFixed-size ordered collection of values. Access with `.0`, `.1`, `.2` etc.\n\nUsage: `t = (1 "hi" true)`\n`t.0  // 1`',
 
+    // Lambdas
+    'lambda': '**Lambda** — |params| ReturnType { body }\n\nAnonymous function with implicit variable capture from enclosing scope.\n\nUsage: `f = |x:I| I { x + 10 }`\n`f(5)  // 15`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

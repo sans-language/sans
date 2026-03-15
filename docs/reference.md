@@ -378,6 +378,34 @@ Single expressions in parens are grouping, not tuples: `(1 + 2)` evaluates to `3
 
 ---
 
+## Lambdas & Closures
+
+Lambda expressions are anonymous functions that can capture variables from their enclosing scope.
+
+### Syntax
+`|params| ReturnType { body }`
+
+### Examples
+
+```sans
+// Non-capturing lambda
+f = |x:I| I { x + 10 }
+f(5)  // 15
+
+// Multiple parameters
+add = |a:I b:I| I { a + b }
+
+// Used with map/filter
+nums = [1 2 3 4 5]
+doubled = nums.map(|x:I| I { x * 2 })
+
+// Implicit capture — variables from enclosing scope are captured automatically
+multiplier = 3
+scaled = nums.map(|x:I| I { x * multiplier })
+```
+
+---
+
 ## Structs
 
 ```sans
@@ -479,4 +507,4 @@ main() {
 - No array bounds checking — out-of-bounds is undefined behavior
 - Multiple opaque type method calls in complex expressions may crash
 - String interpolation only supports identifiers, not expressions
-- No lambda syntax with capture — use named function references
+- ~~No lambda syntax with capture~~ — Lambdas with implicit capture now supported (v0.3.4)

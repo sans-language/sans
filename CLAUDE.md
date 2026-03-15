@@ -58,15 +58,16 @@ Sans is designed for AI generation, not human readability. All new features, syn
 
 1. **`docs/reference.md`** — Add/update the human-readable reference with full explanation and examples
 2. **`docs/ai-reference.md`** — Add/update the compact AI reference (short-form syntax)
-3. **`editors/vscode-sans/src/extension.ts`** — Add hover documentation entry to `HOVER_DATA` for any new keyword, function, method, or alias
-4. **`editors/vscode-sans/syntaxes/sans.tmLanguage.json`** — Add syntax highlighting patterns for new keywords, builtins, or operators
-5. **`tests/fixtures/`** — Add at least one E2E test fixture (`.sans` file) demonstrating the feature
-6. **`examples/`** — Update existing examples or add a new one if the feature is significant enough to showcase
-7. **`README.md`** — Update feature list if the feature is user-facing and notable
+3. **`website/static/docs.html`** — Add/update the website documentation to match `docs/reference.md`. Every section in reference.md MUST have a corresponding section in docs.html.
+4. **`editors/vscode-sans/src/extension.ts`** — Add hover documentation entry to `HOVER_DATA` for any new keyword, function, method, or alias
+5. **`editors/vscode-sans/syntaxes/sans.tmLanguage.json`** — Add syntax highlighting patterns for new keywords, builtins, or operators
+6. **`tests/fixtures/`** — Add at least one E2E test fixture (`.sans` file) demonstrating the feature
+7. **`examples/`** — Update existing examples or add a new one if the feature is significant enough to showcase
+8. **`README.md`** — Update feature list if the feature is user-facing and notable
 
 **If a short alias is added** (e.g., `p` for `print`), it must appear in all of: `ai-reference.md`, `reference.md`, and `HOVER_DATA`.
 
-**Rule: A feature is not done until docs, hover docs, syntax highlighting, and examples are updated.** Do not split docs into a separate PR — ship them with the feature.
+**Rule: A feature is not done until docs, website docs, hover docs, syntax highlighting, and examples are updated.** Do not split docs into a separate PR — ship them with the feature.
 
 ## Versioning (MANDATORY — DO NOT SKIP)
 All version numbers must stay in sync and follow semver (`x.y.z`).
@@ -85,7 +86,7 @@ All version numbers must stay in sync and follow semver (`x.y.z`).
 
 The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
 
-**Current version: `0.3.3`**
+**Current version: `0.3.4`**
 
 **Checklist before committing:**
 1. Does this commit change code? → Bump version

@@ -34,6 +34,8 @@
         <li><a href="#builtins">Built-in Functions</a></li>
         <li><a href="#lowlevel">Low-Level Primitives</a></li>
         <li><a href="#methods">Methods by Type</a></li>
+        <li><a href="#tuples">Tuples</a></li>
+        <li><a href="#lambdas">Lambdas &amp; Closures</a></li>
         <li><a href="#structs">Structs</a></li>
         <li><a href="#enums">Enums</a></li>
         <li><a href="#traits">Traits &amp; Generics</a></li>
@@ -378,6 +380,41 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       </tbody>
     </table>
 
+    <h2 id="tuples">Tuples</h2>
+    <p>Tuples are fixed-size, ordered collections of values that can have different types. No commas &mdash; space-separated like arrays.</p>
+    <pre><code><span class="comment">// Tuple literal (no commas)</span>
+t = (<span class="num">1</span> <span class="str">"hello"</span> <span class="kw">true</span>)
+
+<span class="comment">// Access by index</span>
+t.<span class="num">0</span>   <span class="comment">// 1</span>
+t.<span class="num">1</span>   <span class="comment">// "hello"</span>
+t.<span class="num">2</span>   <span class="comment">// true</span>
+
+<span class="comment">// Tuple type annotation</span>
+<span class="fn">pair</span>(a:<span class="type">I</span> b:<span class="type">I</span>) (<span class="type">I</span> <span class="type">I</span>) = (a b)
+
+<span class="comment">// Multi-return via tuples</span>
+p = <span class="fn">pair</span>(<span class="num">10</span> <span class="num">20</span>)
+p.<span class="num">0</span> + p.<span class="num">1</span>  <span class="comment">// 30</span></code></pre>
+    <p>Single expressions in parens are grouping, not tuples: <code>(1 + 2)</code> evaluates to <code>3</code>, not a 1-tuple.</p>
+
+    <h2 id="lambdas">Lambdas &amp; Closures</h2>
+    <p>Lambda expressions are anonymous functions. They implicitly capture variables from their enclosing scope.</p>
+    <pre><code><span class="comment">// Non-capturing lambda</span>
+f = |x:<span class="type">I</span>| <span class="type">I</span> { x + <span class="num">10</span> }
+<span class="fn">f</span>(<span class="num">5</span>)  <span class="comment">// 15</span>
+
+<span class="comment">// Multiple parameters</span>
+add = |a:<span class="type">I</span> b:<span class="type">I</span>| <span class="type">I</span> { a + b }
+
+<span class="comment">// Used with map</span>
+nums = [<span class="num">1</span> <span class="num">2</span> <span class="num">3</span> <span class="num">4</span> <span class="num">5</span>]
+doubled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> })
+
+<span class="comment">// Implicit capture from enclosing scope</span>
+multiplier = <span class="num">3</span>
+scaled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * multiplier })</code></pre>
+
     <h2 id="structs">Structs</h2>
     <pre><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
 
@@ -455,13 +492,13 @@ msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hell
       <li>No array bounds checking &mdash; out-of-bounds is undefined behavior</li>
       <li>Multiple opaque type method calls in complex expressions may crash</li>
       <li>String interpolation only supports identifiers, not expressions</li>
-      <li>No lambda syntax with capture &mdash; use named function references</li>
+      <li>Lambdas with captures work for direct calls and .map()/.filter(); passing capturing closures across modules is not yet supported</li>
     </ul>
   </div>
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.3 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.4 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

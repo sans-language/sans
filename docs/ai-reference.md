@@ -138,6 +138,17 @@ Mutex<T>:     lock unlock(v)
 JoinHandle:   join
 ```
 
+## Lambdas & Closures
+```
+|x:I| I { x + 10 }              // lambda expression
+f = |x:I| I { x * 2 }           // assign to variable
+f(5)                             // call: 10
+a.map(|x:I| I { x * 2 })        // pass to map
+offset = 10
+g = |x:I| I { x + offset }      // implicit capture
+g(5)                             // 15
+```
+
 ## Operators
 `+ - * / %` arithmetic
 `== != < > <= >=` comparison (works on I F S B)
