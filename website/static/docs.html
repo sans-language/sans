@@ -37,6 +37,7 @@
         <li><a href="#tuples">Tuples</a></li>
         <li><a href="#lambdas">Lambdas &amp; Closures</a></li>
         <li><a href="#iterators">Iterator Chains</a></li>
+        <li><a href="#maps">Maps</a></li>
         <li><a href="#structs">Structs</a></li>
         <li><a href="#enums">Enums</a></li>
         <li><a href="#traits">Traits &amp; Generics</a></li>
@@ -56,6 +57,7 @@
         <tr><td><code>Bool</code></td><td><code>B</code></td><td>Boolean (<code>true</code> / <code>false</code>)</td></tr>
         <tr><td><code>String</code></td><td><code>S</code></td><td>UTF-8 string</td></tr>
         <tr><td><code>Array&lt;T&gt;</code></td><td>&mdash;</td><td>Dynamic growable array</td></tr>
+        <tr><td><code>Map</code></td><td><code>M</code></td><td>Hash map with string keys</td></tr>
         <tr><td><code>Result&lt;T&gt;</code></td><td><code>R&lt;T&gt;</code></td><td>Success or error value</td></tr>
         <tr><td><code>JsonValue</code></td><td>&mdash;</td><td>Opaque JSON value</td></tr>
         <tr><td><code>HttpResponse</code></td><td>&mdash;</td><td>HTTP client response</td></tr>
@@ -430,6 +432,29 @@ a.<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type
 a.<span class="fn">enumerate</span>()                   <span class="comment">// [(I I)] index-value tuples</span>
 a.<span class="fn">zip</span>(b)                        <span class="comment">// [(I I)] paired tuples</span></code></pre>
 
+    <h2 id="maps">Maps</h2>
+    <p>Hash map with string keys. Constructor: <code>M()</code> or <code>map()</code>.</p>
+    <pre><code>m = <span class="fn">M</span>()
+m.<span class="fn">set</span>(<span class="str">"x"</span> <span class="num">10</span>)
+m.<span class="fn">set</span>(<span class="str">"y"</span> <span class="num">20</span>)
+m.<span class="fn">get</span>(<span class="str">"x"</span>)       <span class="comment">// 10</span>
+m.<span class="fn">has</span>(<span class="str">"z"</span>)       <span class="comment">// false</span>
+m.<span class="fn">len</span>()           <span class="comment">// 2</span>
+m.<span class="fn">keys</span>()          <span class="comment">// ["x" "y"]</span></code></pre>
+
+    <h3>Map Methods</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>set(key, val)</code></td><td><code>(S, I) -&gt; I</code></td><td>Set key-value pair</td></tr>
+        <tr><td><code>get(key)</code></td><td><code>(S) -&gt; I</code></td><td>Get value, 0 if missing</td></tr>
+        <tr><td><code>has(key)</code></td><td><code>(S) -&gt; B</code></td><td>Check if key exists</td></tr>
+        <tr><td><code>len()</code></td><td><code>() -&gt; I</code></td><td>Number of entries</td></tr>
+        <tr><td><code>keys()</code></td><td><code>() -&gt; [S]</code></td><td>Array of all keys</td></tr>
+        <tr><td><code>vals()</code></td><td><code>() -&gt; [I]</code></td><td>Array of all values</td></tr>
+      </tbody>
+    </table>
+
     <h2 id="structs">Structs</h2>
     <pre><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
 
@@ -519,14 +544,14 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
       <li>No garbage collector &mdash; all heap memory leaked until process exit</li>
       <li>No array bounds checking &mdash; out-of-bounds is undefined behavior</li>
       <li>Multiple opaque type method calls in complex expressions may crash</li>
-      <li><del>String interpolation only supports identifiers, not expressions</del> &mdash; Expression interpolation now supported (v0.3.6)</li>
+      <li><del>String interpolation only supports identifiers, not expressions</del> &mdash; Expression interpolation now supported (v0.3.7)</li>
       <li>Lambdas with captures work for direct calls and .map()/.filter(); passing capturing closures across modules is not yet supported</li>
     </ul>
   </div>
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.6 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.7 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

@@ -4,7 +4,7 @@ Compact reference for LLM context injection. Use short aliases.
 
 ## Types
 `I`=Int `F`=Float `B`=Bool `S`=String `R<T>`=Result<T>
-Array<T> JsonValue HttpResponse HttpServer HttpRequest
+Array<T> Map(`M`) JsonValue HttpResponse HttpServer HttpRequest
 Sender<T> Receiver<T> Mutex<T> JoinHandle
 Tuple: `(I S B)` — heterogeneous fixed-size collection
 
@@ -130,6 +130,7 @@ fcall(ptr arg)                          I I -> I (call fn ptr)
 ## Methods
 ```
 Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b)
+Map:       set(k v) get(k) has(k) len keys vals
 String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
@@ -151,6 +152,17 @@ a.map(|x:I| I { x * 2 })        // pass to map
 offset = 10
 g = |x:I| I { x + offset }      // implicit capture
 g(5)                             // 15
+```
+
+## Map
+```
+m = M()                    // create empty map
+m.set("key" 42)            // set key-value
+m.get("key")               // get value (0 if missing)
+m.has("key")               // B — key exists?
+m.len()                    // I — entry count
+m.keys()                   // [S] — all keys
+m.vals()                   // [I] — all values
 ```
 
 ## Iterator Chains

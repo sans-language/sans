@@ -32,6 +32,7 @@ main() {
 | `Bool` | `B` | Boolean (`true` / `false`) |
 | `String` | `S` | UTF-8 string |
 | `Array<T>` | — | Dynamic growable array |
+| `Map` | `M` | Hash map with string keys |
 | `Result<T>` | `R<T>` | Success or error value |
 | `JsonValue` | — | Opaque JSON value |
 | `HttpResponse` | — | HTTP client response |
@@ -440,6 +441,34 @@ t.1                               // 3 (value)
 a = [1 2 3]
 b = [10 20 30]
 a.zip(b).map(|t:I| I { t })      // [(1 10) (2 20) (3 30)]
+```
+
+---
+
+## Map
+
+Hash map with string keys and integer values. Constructor: `M()` or `map()`.
+
+### Methods
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `set(key, val)` | `(S, I) -> I` | Set key-value pair |
+| `get(key)` | `(S) -> I` | Get value, 0 if missing |
+| `has(key)` | `(S) -> B` | Check if key exists |
+| `len()` | `() -> I` | Number of entries |
+| `keys()` | `() -> [S]` | Array of all keys |
+| `vals()` | `() -> [I]` | Array of all values |
+
+### Examples
+
+```sans
+m = M()
+m.set("x" 10)
+m.set("y" 20)
+m.get("x")       // 10
+m.has("z")        // false
+m.len()           // 2
+m.keys()          // ["x" "y"]
 ```
 
 ---

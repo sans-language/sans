@@ -122,6 +122,10 @@ const HOVER_DATA: Record<string, string> = {
     'enumerate': '**enumerate**() -> Array<(Int, T)>\n\nReturns array of (index, value) tuples.\n\nUsage: `[10 20 30].enumerate()  // [(0 10) (1 20) (2 30)]`',
     'zip': '**zip**(other: Array<U>) -> Array<(T, U)>\n\nPairs elements from two arrays into tuples.\n\nUsage: `[1 2].zip([10 20])  // [(1 10) (2 20)]`',
 
+    // Map
+    'map': '**M**() or **map**()\n\nCreate an empty hash map with string keys.\n\nUsage: `m = M()`\n`m.set("key" 42)`\n`m.get("key")  // 42`',
+    'M': '**M**()\n\nCreate an empty hash map (alias for map()).\n\nUsage: `m = M()`\n`m.set("x" 10)`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',
