@@ -45,112 +45,117 @@
 
   <section class="container comparison">
     <h2>Why Token-Efficiency Matters</h2>
-    <p style="color:#6c6f85; margin-bottom:24px;">AI models pay per token. Sans uses <strong>40-60% fewer tokens</strong> than Go or Rust for the same logic &mdash; meaning faster generation, lower cost, and fewer errors.</p>
+    <p style="color:#6c6f85; margin-bottom:32px;">AI models pay per token. Sans uses <strong>40-60% fewer tokens</strong> than Go or Rust for the same logic &mdash; meaning faster generation, lower cost, and fewer errors.</p>
 
-    <h3 style="margin-top:32px;">Fibonacci</h3>
-    <div class="compare-grid compare-grid-3">
-      <div>
-        <h4>Sans <span class="token-count">14 tokens</span></h4>
-        <pre><code><span class="fn">fib</span>(n:<span class="type">I</span>) <span class="type">I</span> = n &lt;= <span class="num">1</span> ? n : <span class="fn">fib</span>(n-<span class="num">1</span>) + <span class="fn">fib</span>(n-<span class="num">2</span>)</code></pre>
+    <!-- Example 1: Fibonacci -->
+    <div class="tabs">
+      <input type="radio" name="ex1" id="ex1-sans" checked>
+      <input type="radio" name="ex1" id="ex1-go">
+      <input type="radio" name="ex1" id="ex1-rust">
+      <div class="tab-bar">
+        <label for="ex1-sans" class="tab-label">Sans <span class="token-badge">14 tokens</span></label>
+        <label for="ex1-go" class="tab-label">Go <span class="token-badge">26 tokens</span></label>
+        <label for="ex1-rust" class="tab-label">Rust <span class="token-badge">27 tokens</span></label>
+        <span class="tab-title">Fibonacci</span>
       </div>
-      <div>
-        <h4>Go <span class="token-count">26 tokens</span></h4>
-        <pre><code><span class="kw">func</span> <span class="fn">fib</span>(n <span class="type">int</span>) <span class="type">int</span> {
-  <span class="kw">if</span> n &lt;= <span class="num">1</span> { <span class="kw">return</span> n }
-  <span class="kw">return</span> <span class="fn">fib</span>(n-<span class="num">1</span>) + <span class="fn">fib</span>(n-<span class="num">2</span>)
-}</code></pre>
-      </div>
-      <div>
-        <h4>Rust <span class="token-count">27 tokens</span></h4>
-        <pre><code><span class="kw">fn</span> <span class="fn">fib</span>(n: <span class="type">i64</span>) -> <span class="type">i64</span> {
-  <span class="kw">if</span> n &lt;= <span class="num">1</span> { n }
-  <span class="kw">else</span> { <span class="fn">fib</span>(n-<span class="num">1</span>) + <span class="fn">fib</span>(n-<span class="num">2</span>) }
-}</code></pre>
+      <div class="tab-panels">
+        <div class="tab-panel"><pre><code><span class="fn">fib</span>(n:<span class="type">I</span>) <span class="type">I</span> = n &lt;= <span class="num">1</span> ? n : <span class="fn">fib</span>(n-<span class="num">1</span>) + <span class="fn">fib</span>(n-<span class="num">2</span>)</code></pre></div>
+        <div class="tab-panel"><pre><code><span class="kw">func</span> <span class="fn">fib</span>(n <span class="type">int</span>) <span class="type">int</span> {
+    <span class="kw">if</span> n &lt;= <span class="num">1</span> { <span class="kw">return</span> n }
+    <span class="kw">return</span> <span class="fn">fib</span>(n-<span class="num">1</span>) + <span class="fn">fib</span>(n-<span class="num">2</span>)
+}</code></pre></div>
+        <div class="tab-panel"><pre><code><span class="kw">fn</span> <span class="fn">fib</span>(n: <span class="type">i64</span>) -> <span class="type">i64</span> {
+    <span class="kw">if</span> n &lt;= <span class="num">1</span> { n }
+    <span class="kw">else</span> { <span class="fn">fib</span>(n-<span class="num">1</span>) + <span class="fn">fib</span>(n-<span class="num">2</span>) }
+}</code></pre></div>
       </div>
     </div>
 
-    <h3>JSON Roundtrip</h3>
-    <div class="compare-grid compare-grid-3">
-      <div>
-        <h4>Sans <span class="token-count">36 tokens</span></h4>
-        <pre><code><span class="fn">main</span>() {
-  j = <span class="fn">jo</span>()
-  k := <span class="num">0</span>
-  <span class="kw">while</span> k &lt; <span class="num">1000</span> {
-    j.<span class="fn">set</span>(<span class="fn">str</span>(k), <span class="fn">ji</span>(k))
-    k += <span class="num">1</span>
-  }
-  <span class="fn">p</span>(<span class="fn">jp</span>(<span class="fn">jfy</span>(j)).<span class="fn">get</span>(<span class="str">"999"</span>).<span class="fn">get_int</span>())
-}</code></pre>
+    <!-- Example 2: JSON Roundtrip -->
+    <div class="tabs">
+      <input type="radio" name="ex2" id="ex2-sans" checked>
+      <input type="radio" name="ex2" id="ex2-go">
+      <input type="radio" name="ex2" id="ex2-rust">
+      <div class="tab-bar">
+        <label for="ex2-sans" class="tab-label">Sans <span class="token-badge">36 tokens</span></label>
+        <label for="ex2-go" class="tab-label">Go <span class="token-badge">65 tokens</span></label>
+        <label for="ex2-rust" class="tab-label">Rust <span class="token-badge">72 tokens</span></label>
+        <span class="tab-title">JSON Roundtrip</span>
       </div>
-      <div>
-        <h4>Go <span class="token-count">65 tokens</span></h4>
-        <pre><code><span class="kw">func</span> <span class="fn">main</span>() {
-  m := <span class="fn">make</span>(<span class="kw">map</span>[<span class="type">string</span>]<span class="type">int</span>, <span class="num">1000</span>)
-  <span class="kw">for</span> i := <span class="num">0</span>; i &lt; <span class="num">1000</span>; i++ {
-    m[fmt.<span class="fn">Sprintf</span>(<span class="str">"key%d"</span>, i)] = i
-  }
-  data, _ := json.<span class="fn">Marshal</span>(m)
-  <span class="kw">var</span> out <span class="kw">map</span>[<span class="type">string</span>]<span class="type">int</span>
-  json.<span class="fn">Unmarshal</span>(data, &amp;out)
-}</code></pre>
-      </div>
-      <div>
-        <h4>Rust <span class="token-count">72 tokens</span></h4>
-        <pre><code><span class="kw">fn</span> <span class="fn">main</span>() {
-  <span class="kw">let mut</span> obj = serde_json::Map::<span class="fn">new</span>();
-  <span class="kw">for</span> i <span class="kw">in</span> <span class="num">0</span>..<span class="num">1000</span> {
-    obj.<span class="fn">insert</span>(<span class="fn">format!</span>(<span class="str">"key{}"</span>, i),
-      <span class="fn">json!</span>(i));
-  }
-  <span class="kw">let</span> s = serde_json::<span class="fn">to_string</span>(&amp;obj).<span class="fn">unwrap</span>();
-  <span class="kw">let</span> p: Value = serde_json::<span class="fn">from_str</span>(&amp;s).<span class="fn">unwrap</span>();
-}</code></pre>
+      <div class="tab-panels">
+        <div class="tab-panel"><pre><code><span class="fn">main</span>() {
+    j = <span class="fn">jo</span>()
+    k := <span class="num">0</span>
+    <span class="kw">while</span> k &lt; <span class="num">1000</span> {
+        j.<span class="fn">set</span>(<span class="fn">str</span>(k), <span class="fn">ji</span>(k))
+        k += <span class="num">1</span>
+    }
+    <span class="fn">p</span>(<span class="fn">jp</span>(<span class="fn">jfy</span>(j)).<span class="fn">get</span>(<span class="str">"999"</span>).<span class="fn">get_int</span>())
+}</code></pre></div>
+        <div class="tab-panel"><pre><code><span class="kw">func</span> <span class="fn">main</span>() {
+    m := <span class="fn">make</span>(<span class="kw">map</span>[<span class="type">string</span>]<span class="type">int</span>, <span class="num">1000</span>)
+    <span class="kw">for</span> i := <span class="num">0</span>; i &lt; <span class="num">1000</span>; i++ {
+        m[fmt.<span class="fn">Sprintf</span>(<span class="str">"key%d"</span>, i)] = i
+    }
+    data, _ := json.<span class="fn">Marshal</span>(m)
+    <span class="kw">var</span> out <span class="kw">map</span>[<span class="type">string</span>]<span class="type">int</span>
+    json.<span class="fn">Unmarshal</span>(data, &amp;out)
+}</code></pre></div>
+        <div class="tab-panel"><pre><code><span class="kw">fn</span> <span class="fn">main</span>() {
+    <span class="kw">let mut</span> obj = serde_json::Map::<span class="fn">new</span>();
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="num">0</span>..<span class="num">1000</span> {
+        obj.<span class="fn">insert</span>(<span class="fn">format!</span>(<span class="str">"key{}"</span>, i), <span class="fn">json!</span>(i));
+    }
+    <span class="kw">let</span> s = serde_json::<span class="fn">to_string</span>(&amp;obj).<span class="fn">unwrap</span>();
+    <span class="kw">let</span> p: Value = serde_json::<span class="fn">from_str</span>(&amp;s).<span class="fn">unwrap</span>();
+}</code></pre></div>
       </div>
     </div>
 
-    <h3>HTTP Server</h3>
-    <div class="compare-grid compare-grid-3">
-      <div>
-        <h4>Sans <span class="token-count">18 tokens</span></h4>
-        <pre><code><span class="fn">handler</span>(req:<span class="type">HR</span>) <span class="type">S</span> = <span class="str">"hello world"</span>
+    <!-- Example 3: HTTP Server -->
+    <div class="tabs">
+      <input type="radio" name="ex3" id="ex3-sans" checked>
+      <input type="radio" name="ex3" id="ex3-go">
+      <input type="radio" name="ex3" id="ex3-rust">
+      <div class="tab-bar">
+        <label for="ex3-sans" class="tab-label">Sans <span class="token-badge">18 tokens</span></label>
+        <label for="ex3-go" class="tab-label">Go <span class="token-badge">42 tokens</span></label>
+        <label for="ex3-rust" class="tab-label">Rust <span class="token-badge">58 tokens</span></label>
+        <span class="tab-title">HTTP Server</span>
+      </div>
+      <div class="tab-panels">
+        <div class="tab-panel"><pre><code><span class="fn">handler</span>(req:<span class="type">HR</span>) <span class="type">S</span> = <span class="str">"hello world"</span>
 
 <span class="fn">main</span>() {
-  s = <span class="fn">hs</span>(<span class="num">8080</span>)
-  s.<span class="fn">get</span>(<span class="str">"/"</span>, handler)
-  s.<span class="fn">start</span>()
-}</code></pre>
-      </div>
-      <div>
-        <h4>Go <span class="token-count">42 tokens</span></h4>
-        <pre><code><span class="kw">func</span> <span class="fn">main</span>() {
-  http.<span class="fn">HandleFunc</span>(<span class="str">"/"</span>,
-    <span class="kw">func</span>(w http.ResponseWriter,
-         r *http.Request) {
-      fmt.<span class="fn">Fprint</span>(w, <span class="str">"hello world"</span>)
-  })
-  http.<span class="fn">ListenAndServe</span>(<span class="str">":8080"</span>, <span class="kw">nil</span>)
-}</code></pre>
-      </div>
-      <div>
-        <h4>Rust <span class="token-count">58 tokens</span></h4>
-        <pre><code><span class="kw">async fn</span> <span class="fn">handler</span>() -> <span class="kw">impl</span> Responder {
-  <span class="str">"hello world"</span>
+    s = <span class="fn">hs</span>(<span class="num">8080</span>)
+    s.<span class="fn">get</span>(<span class="str">"/"</span>, handler)
+    s.<span class="fn">start</span>()
+}</code></pre></div>
+        <div class="tab-panel"><pre><code><span class="kw">func</span> <span class="fn">main</span>() {
+    http.<span class="fn">HandleFunc</span>(<span class="str">"/"</span>,
+        <span class="kw">func</span>(w http.ResponseWriter,
+             r *http.Request) {
+            fmt.<span class="fn">Fprint</span>(w, <span class="str">"hello world"</span>)
+    })
+    http.<span class="fn">ListenAndServe</span>(<span class="str">":8080"</span>, <span class="kw">nil</span>)
+}</code></pre></div>
+        <div class="tab-panel"><pre><code><span class="kw">async fn</span> <span class="fn">handler</span>() -> <span class="kw">impl</span> Responder {
+    <span class="str">"hello world"</span>
 }
 
 #[actix_web::main]
 <span class="kw">async fn</span> <span class="fn">main</span>() -> std::io::Result&lt;()&gt; {
-  HttpServer::<span class="fn">new</span>(|| App::<span class="fn">new</span>()
-    .<span class="fn">route</span>(<span class="str">"/"</span>, web::<span class="fn">get</span>().<span class="fn">to</span>(handler)))
-    .<span class="fn">bind</span>(<span class="str">"0.0.0.0:8080"</span>)?.<span class="fn">run</span>().<span class="kw">await</span>
-}</code></pre>
+    HttpServer::<span class="fn">new</span>(|| App::<span class="fn">new</span>()
+        .<span class="fn">route</span>(<span class="str">"/"</span>, web::<span class="fn">get</span>().<span class="fn">to</span>(handler)))
+        .<span class="fn">bind</span>(<span class="str">"0.0.0.0:8080"</span>)?.<span class="fn">run</span>().<span class="kw">await</span>
+}</code></pre></div>
       </div>
     </div>
 
     <div class="token-summary">
       <table>
         <thead>
-          <tr><th>Example</th><th>Sans</th><th>Go</th><th>Rust</th><th>Sans Savings</th></tr>
+          <tr><th>Example</th><th>Sans</th><th>Go</th><th>Rust</th><th>Savings</th></tr>
         </thead>
         <tbody>
           <tr><td>Fibonacci</td><td class="highlight">14</td><td>26</td><td>27</td><td><strong>46-48%</strong></td></tr>
