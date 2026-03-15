@@ -352,6 +352,12 @@ emit_externals(cg:I) I {
   // ── Sans runtime: Socket helper ──
   emit(cg, "declare i64 @sans_bind_port(i64, i64)")
 
+  // ── Sans runtime: Args helper ──
+  emit(cg, "declare i64 @__sans_args()")
+
+  // ── LLVM intrinsics ──
+  emit(cg, "declare i16 @llvm.bswap.i16(i16)")
+
   emit(cg, "")
   0
 }
@@ -456,6 +462,58 @@ cg_label_id(cg:I) S {
   n = cg_reg_counter(cg)
   cg_set_reg_counter(cg, n + 1)
   str(n)
+}
+
+// ── Generic runtime call helpers ─────────────────────────────────
+
+// 0-arg: dest = call i64 @fname()
+compile_rt0(cg:I inst:I fname:S) I {
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "()")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 1-arg: dest = call i64 @fname(i64 arg1)
+compile_rt1(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 2-arg: dest = call i64 @fname(i64 arg1, i64 arg2)
+compile_rt2(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  b = cg_get_val(cg, ir_field(inst, 24))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ", i64 " + b + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 3-arg: dest = call i64 @fname(i64 arg1, i64 arg2, i64 arg3)
+compile_rt3(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  b = cg_get_val(cg, ir_field(inst, 24))
+  c = cg_get_val(cg, ir_field(inst, 32))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ", i64 " + b + ", i64 " + c + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 4-arg: dest = call i64 @fname(i64 a1, i64 a2, i64 a3, i64 a4)
+compile_rt4(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  b = cg_get_val(cg, ir_field(inst, 24))
+  c = cg_get_val(cg, ir_field(inst, 32))
+  e = cg_get_val(cg, ir_field(inst, 40))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ", i64 " + b + ", i64 " + c + ", i64 " + e + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
 }
 
 // ── Compile a single IR instruction to LLVM IR text ─────────────
@@ -1491,6 +1549,648 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + ok + " = icmp eq i32 " + ar + ", 0")
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = zext i1 " + ok + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ── JSON (66-82) — runtime calls ──
+  if op == IR_JSON_PARSE { return compile_rt1(cg, inst, "sans_json_parse") }
+  if op == IR_JSON_OBJECT { return compile_rt0(cg, inst, "sans_json_object") }
+  if op == IR_JSON_ARRAY { return compile_rt0(cg, inst, "sans_json_array") }
+  if op == IR_JSON_STRING { return compile_rt1(cg, inst, "sans_json_string") }
+  if op == IR_JSON_INT { return compile_rt1(cg, inst, "sans_json_int") }
+  if op == IR_JSON_BOOL { return compile_rt1(cg, inst, "sans_json_bool") }
+  if op == IR_JSON_NULL { return compile_rt0(cg, inst, "sans_json_null") }
+  if op == IR_JSON_GET { return compile_rt2(cg, inst, "sans_json_get") }
+  if op == IR_JSON_GET_INDEX { return compile_rt2(cg, inst, "sans_json_get_index") }
+  if op == IR_JSON_GET_STRING { return compile_rt1(cg, inst, "sans_json_get_string") }
+  if op == IR_JSON_GET_INT { return compile_rt1(cg, inst, "sans_json_get_int") }
+  if op == IR_JSON_GET_BOOL { return compile_rt1(cg, inst, "sans_json_get_bool") }
+  if op == IR_JSON_LEN { return compile_rt1(cg, inst, "sans_json_len") }
+  if op == IR_JSON_TYPE_OF { return compile_rt1(cg, inst, "sans_json_type_of") }
+  if op == IR_JSON_SET { return compile_rt3(cg, inst, "sans_json_set") }
+  if op == IR_JSON_PUSH { return compile_rt2(cg, inst, "sans_json_push") }
+  if op == IR_JSON_STRINGIFY { return compile_rt1(cg, inst, "sans_json_stringify") }
+
+  // ── HTTP Server (83-89) ──
+  if op == IR_HTTP_LISTEN { return compile_rt1(cg, inst, "sans_http_listen") }
+  if op == IR_HTTP_ACCEPT { return compile_rt1(cg, inst, "sans_http_accept") }
+  if op == IR_HTTP_REQUEST_PATH { return compile_rt1(cg, inst, "sans_http_request_path") }
+  if op == IR_HTTP_REQUEST_METHOD { return compile_rt1(cg, inst, "sans_http_request_method") }
+  if op == IR_HTTP_REQUEST_BODY { return compile_rt1(cg, inst, "sans_http_request_body") }
+  if op == IR_HTTP_RESPOND {
+    // 3 IR args + default content type = 4 C args
+    a = cg_get_val(cg, ir_field(inst, 16))
+    b = cg_get_val(cg, ir_field(inst, 24))
+    c = cg_get_val(cg, ir_field(inst, 32))
+    ct_name = emit_string_const(cg, "text/html; charset=utf-8")
+    ct = cg_fresh_reg(cg)
+    emit(cg, "  " + ct + " = ptrtoint ptr " + ct_name + " to i64")
+    d = cg_fresh_reg(cg)
+    emit(cg, "  " + d + " = call i64 @sans_http_respond(i64 " + a + ", i64 " + b + ", i64 " + c + ", i64 " + ct + ")")
+    cg_set_val(cg, dest, d)
+    return 0
+  }
+  if op == IR_HTTP_RESPOND_CT {
+    // 4 IR args: request, status, body, content_type
+    a = cg_get_val(cg, ir_field(inst, 16))
+    b = cg_get_val(cg, ir_field(inst, 24))
+    c = cg_get_val(cg, ir_field(inst, 32))
+    e = cg_get_val(cg, ir_field(inst, 40))
+    d = cg_fresh_reg(cg)
+    emit(cg, "  " + d + " = call i64 @sans_http_respond(i64 " + a + ", i64 " + b + ", i64 " + c + ", i64 " + e + ")")
+    cg_set_val(cg, dest, d)
+    return 0
+  }
+
+  // ── HTTP Client (90-95) ──
+  if op == IR_HTTP_GET { return compile_rt1(cg, inst, "sans_http_get") }
+  if op == IR_HTTP_POST { return compile_rt3(cg, inst, "sans_http_post") }
+  if op == IR_HTTP_STATUS { return compile_rt1(cg, inst, "sans_http_status") }
+  if op == IR_HTTP_BODY { return compile_rt1(cg, inst, "sans_http_body") }
+  if op == IR_HTTP_HEADER { return compile_rt2(cg, inst, "sans_http_header") }
+  if op == IR_HTTP_OK { return compile_rt1(cg, inst, "sans_http_ok") }
+
+  // ── Concurrency (96-104) — stubbed for now ──
+  if op == IR_THREAD_SPAWN {
+    // TODO: Thread spawn requires trampoline generation — stub for now
+    emit(cg, "  ; TODO: IR_THREAD_SPAWN not yet implemented")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = add i64 0, 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_THREAD_JOIN {
+    // dest field holds the handle register
+    hv = cg_get_val(cg, dest)
+    cg_fresh_reg(cg)
+    emit(cg, "  call i32 @pthread_join(i64 " + hv + ", ptr null)")
+    return 0
+  }
+  if op == IR_CHANNEL_CREATE {
+    // TODO: Channel create requires inline struct init — stub for now
+    emit(cg, "  ; TODO: IR_CHANNEL_CREATE not yet implemented")
+    r1 = cg_fresh_reg(cg)
+    emit(cg, "  " + r1 + " = add i64 0, 0")
+    cg_set_val(cg, dest, r1)
+    rx_dest = ir_field(inst, 16)
+    r2 = cg_fresh_reg(cg)
+    emit(cg, "  " + r2 + " = add i64 0, 0")
+    cg_set_val(cg, rx_dest, r2)
+    return 0
+  }
+  if op == IR_CHANNEL_CREATE_BOUNDED {
+    // TODO: Bounded channel — stub
+    emit(cg, "  ; TODO: IR_CHANNEL_CREATE_BOUNDED not yet implemented")
+    r1 = cg_fresh_reg(cg)
+    emit(cg, "  " + r1 + " = add i64 0, 0")
+    cg_set_val(cg, dest, r1)
+    rx_dest = ir_field(inst, 16)
+    r2 = cg_fresh_reg(cg)
+    emit(cg, "  " + r2 + " = add i64 0, 0")
+    cg_set_val(cg, rx_dest, r2)
+    return 0
+  }
+  if op == IR_CHANNEL_SEND {
+    // TODO: Channel send — stub
+    emit(cg, "  ; TODO: IR_CHANNEL_SEND not yet implemented")
+    return 0
+  }
+  if op == IR_CHANNEL_RECV {
+    // TODO: Channel recv — stub
+    emit(cg, "  ; TODO: IR_CHANNEL_RECV not yet implemented")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = add i64 0, 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_MUTEX_CREATE {
+    // [op, dest, value_reg]: malloc 72 bytes, init mutex, store value
+    val = cg_get_val(cg, ir_field(inst, 16))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = call ptr @malloc(i64 72)")
+    // Store value at offset 0
+    emit(cg, "  store i64 " + val + ", ptr " + mp)
+    // Init mutex at offset 8 (64 bytes for pthread_mutex_t)
+    mx = cg_fresh_reg(cg)
+    emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
+    cg_fresh_reg(cg)
+    emit(cg, "  call i32 @pthread_mutex_init(ptr " + mx + ", ptr null)")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + mp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_MUTEX_LOCK {
+    // [op, dest, mutex_reg]: lock, load value
+    mv = cg_get_val(cg, ir_field(inst, 16))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = inttoptr i64 " + mv + " to ptr")
+    mx = cg_fresh_reg(cg)
+    emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
+    cg_fresh_reg(cg)
+    emit(cg, "  call i32 @pthread_mutex_lock(ptr " + mx + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + mp)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_MUTEX_UNLOCK {
+    // [op, mutex_reg, value_reg]: store value, unlock
+    mv = cg_get_val(cg, dest)
+    val = cg_get_val(cg, ir_field(inst, 16))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = inttoptr i64 " + mv + " to ptr")
+    emit(cg, "  store i64 " + val + ", ptr " + mp)
+    mx = cg_fresh_reg(cg)
+    emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
+    cg_fresh_reg(cg)
+    emit(cg, "  call i32 @pthread_mutex_unlock(ptr " + mx + ")")
+    return 0
+  }
+
+  // ── Function Refs (105-109) ──
+  if op == IR_FN_REF {
+    // [op, dest, name_ptr]: ptrtoint of function pointer
+    // In text IR, we emit the function name directly
+    fname = deref(ir_field(inst, 16))
+    llvm_fname = fname == "main" ? "__sans_main" : fname
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+  if op == IR_FPTR_NAMED {
+    // [op, dest, func_name_ptr]: same as FN_REF
+    fname = deref(ir_field(inst, 16))
+    llvm_fname = fname == "main" ? "__sans_main" : fname
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+  if op == IR_FCALL {
+    // [op, dest, fn_ptr_reg, arg_reg]: indirect call with 1 arg
+    fp_val = cg_get_val(cg, ir_field(inst, 16))
+    arg_val = cg_get_val(cg, ir_field(inst, 24))
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + arg_val + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FCALL2 {
+    // [op, dest, fn_ptr_reg, arg1_reg, arg2_reg]
+    fp_val = cg_get_val(cg, ir_field(inst, 16))
+    a1 = cg_get_val(cg, ir_field(inst, 24))
+    a2 = cg_get_val(cg, ir_field(inst, 32))
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FCALL3 {
+    // [op, dest, fn_ptr_reg, arg1_reg, arg2_reg, arg3_reg]
+    fp_val = cg_get_val(cg, ir_field(inst, 16))
+    a1 = cg_get_val(cg, ir_field(inst, 24))
+    a2 = cg_get_val(cg, ir_field(inst, 32))
+    a3 = cg_get_val(cg, ir_field(inst, 40))
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ── Float Conversion (110-111) ──
+  if op == IR_INT_TO_FLOAT {
+    // sitofp i64 to double, bitcast double to i64
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = sitofp i64 " + val + " to double")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + fv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FLOAT_TO_INT {
+    // bitcast i64 to double, fptosi double to i64
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = fptosi double " + fv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ── Result (112-118) — runtime calls ──
+  if op == IR_RESULT_OK { return compile_rt1(cg, inst, "sans_result_ok") }
+  if op == IR_RESULT_ERR { return compile_rt1(cg, inst, "sans_result_err") }
+  if op == IR_RESULT_IS_OK { return compile_rt1(cg, inst, "sans_result_is_ok") }
+  if op == IR_RESULT_IS_ERR { return compile_rt1(cg, inst, "sans_result_is_err") }
+  if op == IR_RESULT_UNWRAP { return compile_rt1(cg, inst, "sans_result_unwrap") }
+  if op == IR_RESULT_UNWRAP_OR { return compile_rt2(cg, inst, "sans_result_unwrap_or") }
+  if op == IR_RESULT_ERROR { return compile_rt1(cg, inst, "sans_result_error") }
+
+  // ── Logging (119-125) — runtime calls ──
+  if op == IR_LOG_DEBUG { return compile_rt1(cg, inst, "sans_log_debug") }
+  if op == IR_LOG_INFO { return compile_rt1(cg, inst, "sans_log_info") }
+  if op == IR_LOG_WARN { return compile_rt1(cg, inst, "sans_log_warn") }
+  if op == IR_LOG_ERROR { return compile_rt1(cg, inst, "sans_log_error") }
+  if op == IR_LOG_SET_LEVEL { return compile_rt1(cg, inst, "sans_log_set_level") }
+  if op == IR_GET_LOG_LEVEL { return compile_rt0(cg, inst, "sans_get_log_level") }
+  if op == IR_SET_LOG_LEVEL { return compile_rt1(cg, inst, "sans_set_log_level") }
+
+  // ── Low-Level Memory (126-135) ──
+  if op == IR_LOAD8 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = load i8, ptr " + p)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i8 " + bv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE8 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = trunc i64 " + vv + " to i8")
+    emit(cg, "  store i8 " + bv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_LOAD16 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    sv = cg_fresh_reg(cg)
+    emit(cg, "  " + sv + " = load i16, ptr " + p)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i16 " + sv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE16 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    sv = cg_fresh_reg(cg)
+    emit(cg, "  " + sv + " = trunc i64 " + vv + " to i16")
+    emit(cg, "  store i16 " + sv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_LOAD32 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    wv = cg_fresh_reg(cg)
+    emit(cg, "  " + wv + " = load i32, ptr " + p)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i32 " + wv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE32 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    wv = cg_fresh_reg(cg)
+    emit(cg, "  " + wv + " = trunc i64 " + vv + " to i32")
+    emit(cg, "  store i32 " + wv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_LOAD64 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + p)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE64 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    emit(cg, "  store i64 " + vv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_BSWAP16 {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    sv = cg_fresh_reg(cg)
+    emit(cg, "  " + sv + " = trunc i64 " + val + " to i16")
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = call i16 @llvm.bswap.i16(i16 " + sv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i16 " + bv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SLEN {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @strlen(ptr " + p + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ── Sockets (136-145) ──
+  if op == IR_SOCK {
+    // socket(domain, type, proto) — all i64 in our ABI
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    a3 = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @socket(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SBIND {
+    // sans_bind_port(fd, port)
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_bind_port(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SLISTEN {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @listen(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SACCEPT {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @accept(i64 " + a1 + ", ptr null, ptr null)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SRECV {
+    // recv(fd, buf, len, 0)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    buf = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @recv(i64 " + fd + ", ptr " + bp + ", i64 " + ln + ", i64 0)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSEND {
+    // send(fd, buf, len, 0)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    buf = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @send(i64 " + fd + ", ptr " + bp + ", i64 " + ln + ", i64 0)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SCLOSE {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @close(i64 " + a1 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_RBIND {
+    // bind(fd, addr_ptr, len)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    addr = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + addr + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @bind(i64 " + fd + ", ptr " + ap + ", i64 " + ln + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_RSETSOCKOPT {
+    // setsockopt(fd, level, opt, val_ptr, val_len)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    lvl = cg_get_val(cg, ir_field(inst, 24))
+    opt = cg_get_val(cg, ir_field(inst, 32))
+    vp = cg_get_val(cg, ir_field(inst, 40))
+    vl = cg_get_val(cg, ir_field(inst, 48))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + vp + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @setsockopt(i64 " + fd + ", i64 " + lvl + ", i64 " + opt + ", ptr " + pp + ", i64 " + vl + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STRSTR {
+    // strstr(haystack, needle) — both are string ptrs
+    hv = cg_get_val(cg, ir_field(inst, 16))
+    nv = cg_get_val(cg, ir_field(inst, 24))
+    hp = cg_fresh_reg(cg)
+    emit(cg, "  " + hp + " = inttoptr i64 " + hv + " to ptr")
+    np = cg_fresh_reg(cg)
+    emit(cg, "  " + np + " = inttoptr i64 " + nv + " to ptr")
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @strstr(ptr " + hp + ", ptr " + np + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ── Curl (146-153) ──
+  if op == IR_CINIT {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @curl_easy_init()")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CSETS {
+    // curl_easy_setopt(handle, opt, val) — all i64
+    h = cg_get_val(cg, ir_field(inst, 16))
+    o = cg_get_val(cg, ir_field(inst, 24))
+    v = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 (i64, i64, ...) @curl_easy_setopt(i64 " + h + ", i64 " + o + ", i64 " + v + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CSETI {
+    h = cg_get_val(cg, ir_field(inst, 16))
+    o = cg_get_val(cg, ir_field(inst, 24))
+    v = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 (i64, i64, ...) @curl_easy_setopt(i64 " + h + ", i64 " + o + ", i64 " + v + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CPERF {
+    h = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @curl_easy_perform(i64 " + h + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CCLEAN {
+    h = cg_get_val(cg, ir_field(inst, 16))
+    emit(cg, "  call void @curl_easy_cleanup(i64 " + h + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_CINFO {
+    // curl_easy_getinfo(handle, info, buf) — variadic
+    h = cg_get_val(cg, ir_field(inst, 16))
+    info = cg_get_val(cg, ir_field(inst, 24))
+    buf = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 (i64, i64, ...) @curl_easy_getinfo(i64 " + h + ", i64 " + info + ", i64 " + buf + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CURL_SLIST_APPEND {
+    sl = cg_get_val(cg, ir_field(inst, 16))
+    sv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @curl_slist_append(i64 " + sl + ", i64 " + sv + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CURL_SLIST_FREE {
+    sl = cg_get_val(cg, ir_field(inst, 16))
+    emit(cg, "  call void @curl_slist_free_all(i64 " + sl + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+
+  // ── Map (154-160) — runtime calls ──
+  if op == IR_MAP_CREATE { return compile_rt0(cg, inst, "sans_map_create") }
+  if op == IR_MAP_GET { return compile_rt2(cg, inst, "sans_map_get") }
+  if op == IR_MAP_SET { return compile_rt3(cg, inst, "sans_map_set") }
+  if op == IR_MAP_HAS { return compile_rt2(cg, inst, "sans_map_has") }
+  if op == IR_MAP_LEN { return compile_rt1(cg, inst, "sans_map_len") }
+  if op == IR_MAP_KEYS { return compile_rt1(cg, inst, "sans_map_keys") }
+  if op == IR_MAP_VALS { return compile_rt1(cg, inst, "sans_map_vals") }
+
+  // ── Arena (161-163) — runtime calls ──
+  if op == IR_ARENA_BEGIN { return compile_rt0(cg, inst, "sans_arena_begin") }
+  if op == IR_ARENA_ALLOC { return compile_rt1(cg, inst, "sans_arena_alloc") }
+  if op == IR_ARENA_END { return compile_rt0(cg, inst, "sans_arena_end") }
+
+  // ── Misc (164-172) ──
+  if op == IR_ARGS {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @__sans_args()")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_EXIT {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    emit(cg, "  call void @exit(i64 " + val + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_PRINT_ERR {
+    return compile_rt1(cg, inst, "sans_print_err")
+  }
+  if op == IR_WRITE_FD {
+    // write(fd, msg_ptr, strlen(msg))
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    mv = cg_get_val(cg, ir_field(inst, 24))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = inttoptr i64 " + mv + " to ptr")
+    ln = cg_fresh_reg(cg)
+    emit(cg, "  " + ln + " = call i64 @strlen(ptr " + mp + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @write(i64 " + fd + ", ptr " + mp + ", i64 " + ln + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SYSTEM {
+    cv = cg_get_val(cg, ir_field(inst, 16))
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + cv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @system(ptr " + cp + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + rv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_MCPY {
+    // memcpy(dst, src, len)
+    dv = cg_get_val(cg, ir_field(inst, 16))
+    sv = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    dp = cg_fresh_reg(cg)
+    emit(cg, "  " + dp + " = inttoptr i64 " + dv + " to ptr")
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
+    emit(cg, "  call ptr @memcpy(ptr " + dp + ", ptr " + sp + ", i64 " + ln + ")")
+    cg_set_val(cg, dest, dv)
+    return 0
+  }
+  if op == IR_MZERO {
+    // memset(ptr, 0, len)
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    ln = cg_get_val(cg, ir_field(inst, 24))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    emit(cg, "  call ptr @memset(ptr " + pp + ", i64 0, i64 " + ln + ")")
+    cg_set_val(cg, dest, pv)
+    return 0
+  }
+  if op == IR_MCMP {
+    // memcmp(a, b, len)
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + av + " to ptr")
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + bv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @memcmp(ptr " + ap + ", ptr " + bp + ", i64 " + ln + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + rv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CHAR_AT {
+    // [op, dest, str_reg, idx_reg]: add ptr+offset, load i8, zext
+    sv = cg_get_val(cg, ir_field(inst, 16))
+    iv = cg_get_val(cg, ir_field(inst, 24))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i8, ptr " + sp + ", i64 " + iv)
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = load i8, ptr " + ep)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i8 " + bv + " to i64")
     cg_set_val(cg, dest, r)
     return 0
   }
