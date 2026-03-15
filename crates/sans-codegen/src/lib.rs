@@ -1034,8 +1034,22 @@ fn generate_llvm<'ctx>(
                     b_val,
                     b_label,
                 } => {
-                    let a = regs[a_val];
-                    let b = regs[b_val];
+                    let a = if let Some(v) = regs.get(a_val) {
+                        *v
+                    } else if let Some(p) = ptrs.get(a_val) {
+                        builder.build_ptr_to_int(*p, i64_type, "phi_a")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
+                    };
+                    let b = if let Some(v) = regs.get(b_val) {
+                        *v
+                    } else if let Some(p) = ptrs.get(b_val) {
+                        builder.build_ptr_to_int(*p, i64_type, "phi_b")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
+                    };
                     let a_bb = label_blocks[a_label];
                     let b_bb = label_blocks[b_label];
 
