@@ -492,6 +492,15 @@ impl Parser {
     }
 
     fn parse_type_name(&mut self) -> Result<TypeName, ParseError> {
+        // Array type: [I] or [S]
+        if self.peek().kind == TokenKind::LBracket {
+            let start = self.peek().span.start;
+            self.pos += 1; // consume [
+            let inner = self.parse_type_name()?;
+            let rbracket = self.expect(&TokenKind::RBracket)?;
+            let name = format!("Array<{}>", inner.name);
+            return Ok(TypeName { name, span: start..rbracket.span.end });
+        }
         // Tuple type: (I S B)
         if self.peek().kind == TokenKind::LParen {
             let start = self.peek().span.start;

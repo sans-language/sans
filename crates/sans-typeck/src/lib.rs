@@ -76,6 +76,11 @@ fn resolve_type(
         "String" | "S" => Ok(Type::String),
         "HttpRequest" | "HR" => Ok(Type::HttpRequest),
         "HttpServer" | "HS" => Ok(Type::HttpServer),
+        _ if name.starts_with("Array<") && name.ends_with('>') => {
+            let inner_str = &name[6..name.len()-1];
+            let inner = resolve_type(inner_str, structs, enums, module_exports)?;
+            Ok(Type::Array { inner: Box::new(inner) })
+        }
         _ if name.starts_with("R<") && name.ends_with('>') => {
             let inner_str = &name[2..name.len()-1];
             let inner = resolve_type(inner_str, structs, enums, module_exports)?;
