@@ -136,6 +136,12 @@ ir_phi(dest:I a_val:I a_label:I b_val:I b_label:I) I = ir_inst4(IR_PHI, dest, a_
 ir_call(dest:I fname:I args:I) I = ir_inst2(IR_CALL, dest, fname, args)
 ir_ret(value:I) I = ir_inst0(IR_RET, value)
 
+// String concat: [op, dest, left, right] 32 bytes
+ir_string_concat(dest:I left:I right:I) I = ir_inst2(IR_STRING_CONCAT, dest, left, right)
+
+// Function reference: [op, dest, name] 24 bytes
+ir_fn_ref(dest:I name:I) I = ir_inst1(IR_FN_REF, dest, name)
+
 // Memory
 ir_alloca(dest:I) I = ir_inst0(IR_ALLOCA, dest)
 ir_store(ptr:I value:I) I = ir_inst1(IR_STORE, ptr, value)
@@ -211,7 +217,7 @@ irm_functions(m:I) I = load64(m)
 irm_globals(m:I) I = load64(m + 8)
 irm_struct_defs(m:I) I = load64(m + 16)
 
-// ── Lowering Context (72 bytes) ────────────────────────────────
+// ── Lowering Context (80 bytes) ────────────────────────────────
 // offset 0:  instructions (I) — Array of instruction pointers
 // offset 8:  reg_counter (I) — next register number
 // offset 16: label_counter (I) — next label number
@@ -221,9 +227,10 @@ irm_struct_defs(m:I) I = load64(m + 16)
 // offset 48: enum_defs (I) — Map: enum name -> variants info
 // offset 56: fn_ret_types (I) — Map: func name -> IrType tag
 // offset 64: break_label (I) — current loop break label (or 0)
+// offset 72: global_names (I) — Map: global name -> IrType tag
 
-make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I) I {
-  ctx = alloc(72)
+make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
+  ctx = alloc(80)
   store64(ctx, ptr([I]()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -233,6 +240,7 @@ make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I) I {
   store64(ctx + 48, enum_defs)
   store64(ctx + 56, fn_ret_types)
   store64(ctx + 64, 0)           // break_label
+  store64(ctx + 72, global_names)
   ctx
 }
 
@@ -247,6 +255,7 @@ ctx_enum_defs(ctx:I) I = load64(ctx + 48)
 ctx_fn_ret_types(ctx:I) I = load64(ctx + 56)
 ctx_break_label(ctx:I) I = load64(ctx + 64)
 ctx_set_break_label(ctx:I v:I) I { store64(ctx + 64, v); 0 }
+ctx_global_names(ctx:I) I = load64(ctx + 72)
 
 // Emit: push instruction onto the instructions array
 ctx_emit(ctx:I inst:I) I {
@@ -354,4 +363,367 @@ is_cmp_op(op:I) I {
 
 is_arith_op(op:I) I {
   op >= OP_ADD ? op <= OP_MOD ? 1 : 0 : 0
+}
+
+// ── lower_binop_normal ──────────────────────────────────────────
+// Handle non-short-circuit binary operators after both sides evaluated.
+lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
+  // String + String → StringConcat
+  op == OP_ADD ? left_type == IRTY_STR ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_string_concat(dest, left_reg, right_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } : lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, left_type)
+  :
+  // Arithmetic operators (SUB, MUL, DIV, MOD — ADD handled above)
+  is_arith_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, left_type)
+  :
+  // Comparison operators
+  is_cmp_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, left_type)
+  : {
+    // Fallback — should not reach for valid programs
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+}
+
+// Dispatch arithmetic or comparison based on op value
+lower_binop_arith_or_cmp(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
+  is_arith_op(op) == 1 ? {
+    dest = ctx_fresh_reg(ctx)
+    irop = binop_to_irbinop(op)
+    left_type == IRTY_FLOAT ? {
+      ctx_emit(ctx, ir_float_binop(dest, irop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+      dest
+    } : {
+      ctx_emit(ctx, ir_binop(dest, irop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    }
+  } : {
+    dest = ctx_fresh_reg(ctx)
+    cmpop = binop_to_ircmpop(op)
+    left_type == IRTY_FLOAT ? {
+      ctx_emit(ctx, ir_float_cmpop(dest, cmpop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } : left_type == IRTY_STR ? {
+      ctx_emit(ctx, ir_string_cmpop(dest, cmpop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } : {
+      ctx_emit(ctx, ir_cmpop(dest, cmpop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    }
+  }
+}
+
+// ── lower_expr ──────────────────────────────────────────────────
+// Lower an AST Expr node to IR instructions, return dest register name.
+// Handles: literals, identifiers, binary/unary ops, short-circuit logic.
+// Other expr types are stubbed for tasks 5c/5d.
+
+lower_expr(ctx:I expr:I) I {
+  tag = load64(expr)
+
+  // ── EX_INT_LIT ──
+  tag == EX_INT_LIT ? {
+    value = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, value))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // ── EX_FLOAT_LIT ──
+  tag == EX_FLOAT_LIT ? {
+    value = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_float_const(dest, value))
+    ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+    dest
+  } :
+
+  // ── EX_BOOL_LIT ──
+  tag == EX_BOOL_LIT ? {
+    value = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_bool_const(dest, value))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } :
+
+  // ── EX_STRING_LIT ──
+  tag == EX_STRING_LIT ? {
+    str_ptr = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_string_const(dest, str_ptr))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+
+  // ── EX_IDENT ──
+  tag == EX_IDENT ? {
+    name = load64(expr + 8)
+    local = ctx_get_local(ctx, name)
+    local != 0 ? {
+      // Check for mutable variable marker "!" prefix
+      char_at(local, 0) == 33 ? {
+        // Mutable — stored reg is "!rN", strip prefix to get alloca ptr
+        ptr_reg = local.substring(1, slen(local))
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_load(dest, ptr_reg))
+        // Copy type from the alloca pointer's tracked type
+        pty = ctx_get_reg_type(ctx, ptr_reg)
+        pty != 0 ? ctx_set_reg_type(ctx, dest, pty) : 0
+        dest
+      } : {
+        // Immutable — register used directly
+        local
+      }
+    } : {
+      // Not a local — check globals
+      gmap = ctx_global_names(ctx)
+      gtype = gmap[name]
+      gtype != 0 ? {
+        // Global variable — emit GlobalLoad
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_global_load(dest, name))
+        ctx_set_reg_type(ctx, dest, gtype)
+        dest
+      } : {
+        // Function reference
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_fn_ref(dest, name))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      }
+    }
+  } :
+
+  // ── EX_BINOP ──
+  tag == EX_BINOP ? {
+    op = load64(expr + 8)
+    left = load64(expr + 16)
+    right = load64(expr + 24)
+
+    // Short-circuit: AND
+    op == OP_AND ? {
+      left_reg = lower_expr(ctx, left)
+      rhs_label = ctx_fresh_label(ctx)
+      false_label = ctx_fresh_label(ctx)
+      merge_label = ctx_fresh_label(ctx)
+
+      ctx_emit(ctx, ir_branch(left_reg, rhs_label, false_label))
+
+      // rhs block — evaluate right side
+      ctx_emit(ctx, ir_label(rhs_label))
+      right_reg = lower_expr(ctx, right)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // false block — produce false constant
+      ctx_emit(ctx, ir_label(false_label))
+      false_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_bool_const(false_reg, 0))
+      ctx_set_reg_type(ctx, false_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // merge block — phi
+      ctx_emit(ctx, ir_label(merge_label))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_phi(dest, right_reg, rhs_label, false_reg, false_label))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } :
+
+    // Short-circuit: OR
+    op == OP_OR ? {
+      left_reg = lower_expr(ctx, left)
+      true_label = ctx_fresh_label(ctx)
+      rhs_label = ctx_fresh_label(ctx)
+      merge_label = ctx_fresh_label(ctx)
+
+      ctx_emit(ctx, ir_branch(left_reg, true_label, rhs_label))
+
+      // true block — produce true constant
+      ctx_emit(ctx, ir_label(true_label))
+      true_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_bool_const(true_reg, 1))
+      ctx_set_reg_type(ctx, true_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // rhs block — evaluate right side
+      ctx_emit(ctx, ir_label(rhs_label))
+      right_reg = lower_expr(ctx, right)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // merge block — phi
+      ctx_emit(ctx, ir_label(merge_label))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_phi(dest, true_reg, true_label, right_reg, rhs_label))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } : {
+      // Non-short-circuit: evaluate both sides
+      left_reg = lower_expr(ctx, left)
+      right_reg = lower_expr(ctx, right)
+      left_type = ctx_get_reg_type(ctx, left_reg)
+      lower_binop_normal(ctx, op, left_reg, right_reg, left_type)
+    }
+  } :
+
+  // ── EX_UNARYOP ──
+  tag == EX_UNARYOP ? {
+    op = load64(expr + 8)
+    operand = load64(expr + 16)
+    src_reg = lower_expr(ctx, operand)
+    src_type = ctx_get_reg_type(ctx, src_reg)
+    dest = ctx_fresh_reg(ctx)
+    op == UOP_NOT ? {
+      ctx_emit(ctx, ir_not(dest, src_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } : {
+      // UOP_NEG — for floats, emit 0.0 - x
+      src_type == IRTY_FLOAT ? {
+        zero_reg = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_float_const(zero_reg, 0))
+        ctx_set_reg_type(ctx, zero_reg, IRTY_FLOAT)
+        ctx_emit(ctx, ir_float_binop(dest, IROP_SUB, zero_reg, src_reg))
+        ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+        dest
+      } : {
+        ctx_emit(ctx, ir_neg(dest, src_reg))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      }
+    }
+  } :
+
+  // ── Stubs for remaining expr types (tasks 5c/5d) ──
+
+  // EX_CALL
+  tag == EX_CALL ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // EX_METHOD_CALL
+  tag == EX_METHOD_CALL ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // EX_FIELD_ACCESS
+  tag == EX_FIELD_ACCESS ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // EX_IF
+  tag == EX_IF ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // EX_LAMBDA
+  tag == EX_LAMBDA ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // EX_ARRAY_LIT
+  tag == EX_ARRAY_LIT ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+
+  // EX_STRUCT_LIT
+  tag == EX_STRUCT_LIT ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_STRUCT)
+    dest
+  } :
+
+  // EX_TUPLE_LIT
+  tag == EX_TUPLE_LIT ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_TUPLE)
+    dest
+  } :
+
+  // EX_MATCH
+  tag == EX_MATCH ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // EX_SPAWN
+  tag == EX_SPAWN ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_JOIN_HANDLE)
+    dest
+  } :
+
+  // EX_CHANNEL
+  tag == EX_CHANNEL ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_SENDER)
+    dest
+  } :
+
+  // EX_MUTEX
+  tag == EX_MUTEX ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_MUTEX)
+    dest
+  } :
+
+  // EX_ENUM_VARIANT
+  tag == EX_ENUM_VARIANT ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_ENUM)
+    dest
+  } :
+
+  // EX_ARRAY_CREATE
+  tag == EX_ARRAY_CREATE ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } :
+
+  // Unknown tag — fallback
+  {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
 }
