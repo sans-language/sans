@@ -213,10 +213,8 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     pos += 2;
                     tokens.push(Token { kind: TokenKind::Or, span: start..pos });
                 } else {
-                    return Err(LexError {
-                        message: "unexpected character '|'".to_string(),
-                        span: start..start + 1,
-                    });
+                    pos += 1;
+                    tokens.push(Token { kind: TokenKind::Pipe, span: start..pos });
                 }
             }
             '(' => {
@@ -597,5 +595,13 @@ mod tests {
             kinds(&tokens),
             vec![Import, StringLiteral("utils".to_string()), Eof]
         );
+    }
+
+    #[test]
+    fn lex_pipe_token() {
+        let tokens = lex("|x:I| I { x }").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::Pipe);
+        // Second pipe
+        assert!(tokens.iter().filter(|t| t.kind == TokenKind::Pipe).count() == 2);
     }
 }

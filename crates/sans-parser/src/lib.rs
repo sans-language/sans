@@ -1098,6 +1098,36 @@ impl Parser {
                     span: start..rbracket.span.end,
                 })
             }
+            TokenKind::Pipe => {
+                let start = tok.span.start;
+                self.pos += 1; // consume opening |
+
+                // Parse parameters: name:Type pairs until closing |
+                let mut params = Vec::new();
+                while self.peek().kind != TokenKind::Pipe && self.peek().kind != TokenKind::Eof {
+                    let (param_name, param_span_start) = self.expect_ident()?;
+                    self.expect(&TokenKind::Colon)?;
+                    let type_name = self.parse_type_name()?;
+                    let param_end = type_name.span.end;
+                    params.push(Param { name: param_name, type_name, span: param_span_start.start..param_end });
+                }
+                self.expect(&TokenKind::Pipe)?; // consume closing |
+
+                // Parse return type
+                let return_type = self.parse_type_name()?;
+
+                // Parse body: { stmts }
+                self.expect(&TokenKind::LBrace)?;
+                let body = self.parse_body()?;
+                let end = self.expect(&TokenKind::RBrace)?;
+
+                Ok(Expr::Lambda {
+                    params,
+                    return_type,
+                    body,
+                    span: start..end.span.end,
+                })
+            }
             _ => Err(ParseError::new(
                 format!("unexpected token in expression: {:?}", tok.kind),
                 tok.span,
@@ -1316,6 +1346,7 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::ArrayCreate { span, .. } => span,
         Expr::ArrayLiteral { span, .. } => span,
         Expr::TupleLiteral { span, .. } => span,
+        Expr::Lambda { span, .. } => span,
     }
 }
 
@@ -2016,5 +2047,32 @@ mod tests {
         let program = parse(src).unwrap();
         let ret = &program.functions[0].return_type;
         assert_eq!(ret.name, "(I S)");
+    }
+
+    #[test]
+    fn parse_lambda_basic() {
+        let src = "main() I { f = |x:I| I { x + 10 }\n f }";
+        let program = parse(src).unwrap();
+        let body = &program.functions[0].body;
+        // First statement should be an Assign with a Lambda value
+        match &body[0] {
+            Stmt::Assign { value, .. } => {
+                assert!(matches!(value, Expr::Lambda { params, .. } if params.len() == 1));
+            }
+            _ => panic!("expected Assign statement"),
+        }
+    }
+
+    #[test]
+    fn parse_lambda_multi_param() {
+        let src = "main() I { f = |a:I b:I| I { a + b }\n f }";
+        let program = parse(src).unwrap();
+        let body = &program.functions[0].body;
+        match &body[0] {
+            Stmt::Assign { value, .. } => {
+                assert!(matches!(value, Expr::Lambda { params, .. } if params.len() == 2));
+            }
+            _ => panic!("expected Assign statement"),
+        }
     }
 }

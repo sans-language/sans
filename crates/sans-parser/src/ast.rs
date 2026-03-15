@@ -222,6 +222,12 @@ pub enum Expr {
         elements: Vec<Expr>,
         span: Span,
     },
+    Lambda {
+        params: Vec<Param>,
+        return_type: TypeName,
+        body: Vec<Stmt>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
