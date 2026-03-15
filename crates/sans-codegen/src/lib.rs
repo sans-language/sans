@@ -427,6 +427,8 @@ fn generate_llvm<'ctx>(
 
         // Generate instructions
         let mut block_terminated = false;
+        let mut current_label_name: Option<String> = None;
+        let mut ret_terminated_labels: std::collections::HashSet<String> = std::collections::HashSet::new();
         for instr in &func.body {
             // Skip dead code after a terminator (ret/br) until a new label starts a new block
             if block_terminated {
@@ -935,6 +937,9 @@ fn generate_llvm<'ctx>(
                         .build_return(Some(&ret_val))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     block_terminated = true;
+                    if let Some(ref lbl) = current_label_name {
+                        ret_terminated_labels.insert(lbl.clone());
+                    }
                 }
                 Instruction::BoolConst { dest, value } => {
                     let bool_type = context.bool_type();
@@ -1004,6 +1009,7 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::Label { name } => {
+                    current_label_name = Some(name.clone());
                     let bb = label_blocks[name];
                     builder.position_at_end(bb);
                 }
@@ -1034,35 +1040,72 @@ fn generate_llvm<'ctx>(
                     b_val,
                     b_label,
                 } => {
-                    let a = if let Some(v) = regs.get(a_val) {
-                        *v
-                    } else if let Some(p) = ptrs.get(a_val) {
-                        builder.build_ptr_to_int(*p, i64_type, "phi_a")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    } else {
-                        return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
-                    };
-                    let b = if let Some(v) = regs.get(b_val) {
-                        *v
-                    } else if let Some(p) = ptrs.get(b_val) {
-                        builder.build_ptr_to_int(*p, i64_type, "phi_b")
-                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                    } else {
-                        return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
-                    };
-                    let a_bb = label_blocks[a_label];
-                    let b_bb = label_blocks[b_label];
+                    let a_ret_terminated = ret_terminated_labels.contains(a_label);
+                    let b_ret_terminated = ret_terminated_labels.contains(b_label);
 
-                    // Determine the phi type from the incoming values
-                    let phi_type = a.get_type();
-                    let phi = builder
-                        .build_phi(phi_type, dest)
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
-                    regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
-                    // Propagate struct_sizes from either branch for enum Phi results
-                    if let Some(sz) = struct_sizes.get(a_val).or_else(|| struct_sizes.get(b_val)) {
-                        struct_sizes.insert(dest.clone(), *sz);
+                    if a_ret_terminated && b_ret_terminated {
+                        // Both branches returned — this phi is dead code, use a dummy value
+                        regs.insert(dest.clone(), i64_type.const_int(0, false));
+                    } else if a_ret_terminated {
+                        // Only b is a valid predecessor — skip phi, use b directly
+                        let b = if let Some(v) = regs.get(b_val) {
+                            *v
+                        } else if let Some(p) = ptrs.get(b_val) {
+                            builder.build_ptr_to_int(*p, i64_type, "phi_b")
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else {
+                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
+                        };
+                        regs.insert(dest.clone(), b);
+                        if let Some(sz) = struct_sizes.get(b_val) {
+                            struct_sizes.insert(dest.clone(), *sz);
+                        }
+                    } else if b_ret_terminated {
+                        // Only a is a valid predecessor — skip phi, use a directly
+                        let a = if let Some(v) = regs.get(a_val) {
+                            *v
+                        } else if let Some(p) = ptrs.get(a_val) {
+                            builder.build_ptr_to_int(*p, i64_type, "phi_a")
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else {
+                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
+                        };
+                        regs.insert(dest.clone(), a);
+                        if let Some(sz) = struct_sizes.get(a_val) {
+                            struct_sizes.insert(dest.clone(), *sz);
+                        }
+                    } else {
+                        // Normal case — both predecessors are valid
+                        let a = if let Some(v) = regs.get(a_val) {
+                            *v
+                        } else if let Some(p) = ptrs.get(a_val) {
+                            builder.build_ptr_to_int(*p, i64_type, "phi_a")
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else {
+                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
+                        };
+                        let b = if let Some(v) = regs.get(b_val) {
+                            *v
+                        } else if let Some(p) = ptrs.get(b_val) {
+                            builder.build_ptr_to_int(*p, i64_type, "phi_b")
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else {
+                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
+                        };
+                        let a_bb = label_blocks[a_label];
+                        let b_bb = label_blocks[b_label];
+
+                        // Determine the phi type from the incoming values
+                        let phi_type = a.get_type();
+                        let phi = builder
+                            .build_phi(phi_type, dest)
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                        phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
+                        regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
+                        // Propagate struct_sizes from either branch for enum Phi results
+                        if let Some(sz) = struct_sizes.get(a_val).or_else(|| struct_sizes.get(b_val)) {
+                            struct_sizes.insert(dest.clone(), *sz);
+                        }
                     }
                 }
                 Instruction::StringConst { dest, value } => {

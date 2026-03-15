@@ -613,17 +613,17 @@ impl IrBuilder {
                             else_label: false_label.clone(),
                         });
 
-                        self.instructions.push(Instruction::Label { name: rhs_label.clone() });
+                        self.emit_label(rhs_label.clone());
                         let right_reg = self.lower_expr(right);
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
-                        self.instructions.push(Instruction::Label { name: false_label.clone() });
+                        self.emit_label(false_label.clone());
                         let false_reg = self.fresh_reg();
                         self.instructions.push(Instruction::BoolConst { dest: false_reg.clone(), value: false });
                         self.reg_types.insert(false_reg.clone(), IrType::Bool);
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
-                        self.instructions.push(Instruction::Label { name: merge_label.clone() });
+                        self.emit_label(merge_label.clone());
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Phi {
                             dest: dest.clone(),
@@ -647,17 +647,17 @@ impl IrBuilder {
                             else_label: rhs_label.clone(),
                         });
 
-                        self.instructions.push(Instruction::Label { name: true_label.clone() });
+                        self.emit_label(true_label.clone());
                         let true_reg = self.fresh_reg();
                         self.instructions.push(Instruction::BoolConst { dest: true_reg.clone(), value: true });
                         self.reg_types.insert(true_reg.clone(), IrType::Bool);
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
-                        self.instructions.push(Instruction::Label { name: rhs_label.clone() });
+                        self.emit_label(rhs_label.clone());
                         let right_reg = self.lower_expr(right);
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
-                        self.instructions.push(Instruction::Label { name: merge_label.clone() });
+                        self.emit_label(merge_label.clone());
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Phi {
                             dest: dest.clone(),
@@ -2060,7 +2060,7 @@ impl IrBuilder {
                         });
                     }
 
-                    self.instructions.push(Instruction::Label { name: arm_label });
+                    self.emit_label(arm_label);
 
                     // Bind data fields with correct types from enum definition
                     let field_types = self.enum_field_types.get(&(enum_name.clone(), variant_name.clone())).cloned();
@@ -2089,11 +2089,11 @@ impl IrBuilder {
 
                     // If not the last arm, emit the next check label
                     if arm_index < arms.len() - 1 {
-                        self.instructions.push(Instruction::Label { name: next_label });
+                        self.emit_label(next_label);
                     }
                 }
 
-                self.instructions.push(Instruction::Label { name: merge_label });
+                self.emit_label(merge_label);
                 let result_reg = self.fresh_reg();
                 self.instructions.push(Instruction::Load {
                     dest: result_reg.clone(),
@@ -2359,7 +2359,7 @@ impl IrBuilder {
 
                 self.instructions.push(Instruction::Jump { target: cond_label.clone() });
 
-                self.instructions.push(Instruction::Label { name: cond_label.clone() });
+                self.emit_label(cond_label.clone());
                 let cond_reg = self.lower_expr(condition);
                 self.instructions.push(Instruction::Branch {
                     cond: cond_reg,
@@ -2367,13 +2367,13 @@ impl IrBuilder {
                     else_label: end_label.clone(),
                 });
 
-                self.instructions.push(Instruction::Label { name: body_label.clone() });
+                self.emit_label(body_label.clone());
                 for s in body {
                     self.lower_stmt(s);
                 }
                 self.instructions.push(Instruction::Jump { target: cond_label.clone() });
 
-                self.instructions.push(Instruction::Label { name: end_label.clone() });
+                self.emit_label(end_label.clone());
                 self.loop_stack.pop();
             }
             Stmt::Break { .. } => {
@@ -2404,13 +2404,13 @@ impl IrBuilder {
                     else_label: end_label.clone(),
                 });
 
-                self.instructions.push(Instruction::Label { name: then_label });
+                self.emit_label(then_label);
                 for s in body {
                     self.lower_stmt(s);
                 }
                 self.instructions.push(Instruction::Jump { target: end_label.clone() });
 
-                self.instructions.push(Instruction::Label { name: end_label });
+                self.emit_label(end_label);
             }
             Stmt::ForIn { var, iterable, body, .. } => {
                 let arr_reg = self.lower_expr(iterable);
@@ -2444,7 +2444,7 @@ impl IrBuilder {
 
                 self.instructions.push(Instruction::Jump { target: cond_label.clone() });
 
-                self.instructions.push(Instruction::Label { name: cond_label.clone() });
+                self.emit_label(cond_label.clone());
                 // Load idx, compare idx < len
                 let idx_reg = self.fresh_reg();
                 self.instructions.push(Instruction::Load { dest: idx_reg.clone(), ptr: idx_ptr.clone() });
@@ -2461,7 +2461,7 @@ impl IrBuilder {
                     else_label: end_label.clone(),
                 });
 
-                self.instructions.push(Instruction::Label { name: body_label.clone() });
+                self.emit_label(body_label.clone());
                 // x = ArrayGet(arr, idx)
                 let elem_reg = self.fresh_reg();
                 self.instructions.push(Instruction::ArrayGet {
@@ -2480,7 +2480,7 @@ impl IrBuilder {
                 // Jump to increment (so body block has a terminator before inc label)
                 self.instructions.push(Instruction::Jump { target: inc_label.clone() });
                 // Increment label (continue target)
-                self.instructions.push(Instruction::Label { name: inc_label });
+                self.emit_label(inc_label);
 
                 // idx = idx + 1
                 let cur_idx = self.fresh_reg();
@@ -2497,7 +2497,7 @@ impl IrBuilder {
                 self.instructions.push(Instruction::Store { ptr: idx_ptr, value: next_idx });
 
                 self.instructions.push(Instruction::Jump { target: cond_label });
-                self.instructions.push(Instruction::Label { name: end_label });
+                self.emit_label(end_label);
                 self.loop_stack.pop();
             }
             Stmt::LetDestructure { names, value, .. } => {
