@@ -1,0 +1,408 @@
+// ── Sans Self-Hosted Compiler Driver ─────────────────────────────
+// CLI entry point: import resolution, parsing, typeck, IR, codegen, linking
+
+import "compiler/constants"
+import "compiler/lexer"
+import "compiler/parser"
+import "compiler/typeck"
+import "compiler/ir"
+import "compiler/codegen"
+
+// ── String helpers ──────────────────────────────────────────────
+
+// Find last occurrence of character ch in string s, return index or -1
+find_last(s:S ch:I) I {
+  i := slen(s) - 1
+  while i >= 0 {
+    char_at(s, i) == ch ? { return i } : 0
+    i = i - 1
+    0
+  }
+  -1
+}
+
+// Extract directory from file path (everything before last '/')
+dir_of(path:S) S {
+  idx = find_last(path, 47)  // 47 = '/'
+  idx < 0 ? "." : path.substring(0, idx)
+}
+
+// Extract module name from import path (last component after '/')
+mod_name_of(import_path:S) S {
+  idx = find_last(import_path, 47)  // 47 = '/'
+  idx < 0 ? import_path : import_path.substring(idx + 1, slen(import_path))
+}
+
+// Strip .sans extension from filename
+strip_ext(path:S) S {
+  len = slen(path)
+  len > 5 ? path.substring(0, len - 5) : path
+}
+
+// ── ResolvedModule (24 bytes) ───────────────────────────────────
+// offset 0:  name (I) — module name string
+// offset 8:  path (I) — full file path string
+// offset 16: program (I) — parsed Program pointer
+
+make_resolved_module(name:S path:S program:I) I {
+  m = alloc(24)
+  store64(m, name)
+  store64(m + 8, path)
+  store64(m + 16, program)
+  m
+}
+
+rm_name(m:I) S = deref(load64(m))
+rm_path(m:I) S = deref(load64(m + 8))
+rm_program(m:I) I = load64(m + 16)
+
+// ── Import Resolution ───────────────────────────────────────────
+
+resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
+  // Resolve path relative to base_dir
+  file_path = base_dir + "/" + import_path + ".sans"
+
+  // Dedup check
+  visited.has(file_path) ? { return 0 } : 0
+
+  // Circular import check
+  in_progress.has(file_path) ? {
+    p("error: circular import detected: " + import_path)
+    exit(1)
+    0
+  } : 0
+
+  in_progress.set(file_path, 1)
+
+  // Read and parse the module
+  src = fr(file_path)
+  program = parse(src)
+
+  // Recursively resolve sub-imports
+  imports_arr = load64(program)  // offset 0: imports array ptr
+  num_imports = imports_arr.len()
+  ii := 0
+  while ii < num_imports {
+    sub_path_ptr = imports_arr.get(ii)
+    sub_path = deref(sub_path_ptr)
+    resolve_import(sub_path, base_dir, resolved, visited, in_progress)
+    ii = ii + 1
+    0
+  }
+
+  // Mark visited, add to result
+  in_progress.del(file_path)
+  visited.set(file_path, 1)
+
+  name = mod_name_of(import_path)
+  resolved.push(make_resolved_module(name, file_path, program))
+  0
+}
+
+resolve_imports(entry_path:S) I {
+  base_dir = dir_of(entry_path)
+  resolved = [I]()
+  visited = M()
+  in_progress = M()
+
+  // Mark entry file as in_progress
+  in_progress.set(entry_path, 1)
+
+  // Read and parse entry to get its imports
+  src = fr(entry_path)
+  entry_program = parse(src)
+
+  imports_arr = load64(entry_program)
+  num_imports = imports_arr.len()
+  ii := 0
+  while ii < num_imports {
+    import_path_ptr = imports_arr.get(ii)
+    import_path = deref(import_path_ptr)
+    resolve_import(import_path, base_dir, resolved, visited, in_progress)
+    ii = ii + 1
+    0
+  }
+
+  resolved
+}
+
+// ── Build Pipeline ──────────────────────────────────────────────
+
+build(source_path:S output_path:S) I {
+  // 1. Resolve imports (topological order, deps first)
+  modules = resolve_imports(source_path)
+
+  // 2. Parse entry point
+  src = fr(source_path)
+  program = parse(src)
+
+  // 3. Type-check modules in dependency order
+  mod_exports = M()
+  i := 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    mod_prog = rm_program(mod)
+    exports = check_module(mod_prog, mod_exports)
+    mod_exports.set(mod_n, exports)
+    i = i + 1
+    0
+  }
+
+  // 4. Type-check entry point
+  check(program, mod_exports)
+
+  // 5. Build module_fn_ret_types map: "mod__func" -> IrType
+  module_fn_ret_types = M()
+  i = 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    exports = mod_exports.get(mod_n)
+    // exports: offset 0 = structs_map, offset 8 = enums_map, offset 16 = fn_env_map
+    fn_env = load64(exports + 16)
+    fn_keys = fn_env.keys()
+    ki := 0
+    while ki < fn_keys.len() {
+      fname = fn_keys.get(ki)
+      // fn_env value is a fn type: offset 0 = params array, offset 8 = return type
+      fn_sig = fn_env.get(fname)
+      ret_type = load64(fn_sig + 8)
+      // Get the ret type tag name for ir_type_for_return
+      // We need the return type as an IrType tag
+      // The fn_sig stores Type pointers — we need to map to IrType
+      // For the IR, module_fn_ret_types maps "mod__func" -> IrType int tag
+      // We extract from the typeck return type
+      rt_tag = type_tag(ret_type)
+      irty = rt_tag == TY_INT ? IRTY_INT :
+             rt_tag == TY_FLOAT ? IRTY_FLOAT :
+             rt_tag == TY_BOOL ? IRTY_BOOL :
+             rt_tag == TY_STRING ? IRTY_STR :
+             rt_tag == TY_ARRAY ? IRTY_ARRAY :
+             rt_tag == TY_MAP ? IRTY_MAP :
+             rt_tag == TY_JSON ? IRTY_JSON :
+             rt_tag == TY_HTTP_RESP ? IRTY_HTTP_RESP :
+             rt_tag == TY_RESULT ? IRTY_RESULT :
+             rt_tag == TY_STRUCT ? IRTY_STRUCT :
+             rt_tag == TY_ENUM ? IRTY_ENUM :
+             rt_tag == TY_HTTP_REQ ? IRTY_HTTP_REQ :
+             rt_tag == TY_HTTP_SERVER ? IRTY_HTTP_SERVER :
+             rt_tag == TY_SENDER ? IRTY_SENDER :
+             rt_tag == TY_RECEIVER ? IRTY_RECEIVER :
+             rt_tag == TY_JOIN_HANDLE ? IRTY_JOIN_HANDLE :
+             rt_tag == TY_MUTEX ? IRTY_MUTEX :
+             rt_tag == TY_TUPLE ? IRTY_TUPLE :
+             IRTY_INT
+      mangled = mod_n + "__" + deref(fname)
+      irty != IRTY_INT ? { module_fn_ret_types[mangled] = irty } : 0
+      ki = ki + 1
+      0
+    }
+    i = i + 1
+    0
+  }
+
+  // 6. Build extra_struct_defs from module exports
+  extra_struct_defs = M()
+  i = 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    exports = mod_exports.get(mod_n)
+    structs_m = load64(exports)  // offset 0 = structs map
+    skeys = structs_m.keys()
+    ski := 0
+    while ski < skeys.len() {
+      sname = skeys.get(ski)
+      fields_m = structs_m.get(sname)
+      // fields_m is a map: field_name -> type
+      field_names = fields_m.keys()
+      extra_struct_defs[sname] = field_names
+      ski = ski + 1
+      0
+    }
+    i = i + 1
+    0
+  }
+
+  // 7. IR lower each module
+  all_functions = [I]()
+  all_globals = [I]()
+  i = 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    mod_prog = rm_program(mod)
+    ir_mod = lower(mod_prog, mod_n, module_fn_ret_types)
+    // Merge functions
+    mod_funcs = irm_functions(ir_mod)
+    fi := 0
+    while fi < mod_funcs.len() {
+      all_functions.push(mod_funcs.get(fi))
+      fi = fi + 1
+      0
+    }
+    i = i + 1
+    0
+  }
+
+  // 8. IR lower entry point with extra struct defs
+  main_ir = extra_struct_defs.keys().len() > 0 ?
+    lower_with_extra_structs(program, 0, module_fn_ret_types, extra_struct_defs) :
+    lower(program, 0, module_fn_ret_types)
+
+  // Merge main globals
+  main_globals = irm_globals(main_ir)
+  gi := 0
+  while gi < main_globals.len() {
+    all_globals.push(main_globals.get(gi))
+    gi = gi + 1
+    0
+  }
+
+  // Merge main functions
+  main_funcs = irm_functions(main_ir)
+  fi2 := 0
+  while fi2 < main_funcs.len() {
+    all_functions.push(main_funcs.get(fi2))
+    fi2 = fi2 + 1
+    0
+  }
+
+  // Get struct defs from main IR
+  main_struct_defs = irm_struct_defs(main_ir)
+
+  // 9. Create merged IrModule
+  merged = make_ir_module(all_functions, all_globals, main_struct_defs)
+
+  // 10. Codegen — emit LLVM IR
+  ll_path = output_path + ".ll"
+  compile_to_ll(merged, ll_path)
+
+  // 11. Invoke llc to produce object file
+  obj_path = output_path + ".o"
+  sys("llc -filetype=obj -O2 -o " + obj_path + " " + ll_path)
+
+  // 12. Compile runtime .sans modules
+  // Use the Rust compiler (sans) to compile each runtime module to .o
+  // The self-hosted compiler needs pre-compiled runtime, or we use sans
+  runtime_dir = dir_of(source_path) + "/../runtime"
+  runtime_modules = [I]()
+  runtime_modules.push("log")
+  runtime_modules.push("result")
+  runtime_modules.push("functional")
+  runtime_modules.push("array_ext")
+  runtime_modules.push("string_ext")
+  runtime_modules.push("http")
+  runtime_modules.push("server")
+  runtime_modules.push("json")
+  runtime_modules.push("sock")
+  runtime_modules.push("curl")
+  runtime_modules.push("map")
+  runtime_modules.push("arena")
+
+  runtime_o_paths = [I]()
+  ri := 0
+  while ri < runtime_modules.len() {
+    rname = deref(runtime_modules.get(ri))
+    sans_path = runtime_dir + "/" + rname + ".sans"
+    o_path = "/tmp/sans_" + rname + "_runtime.o"
+
+    // Read, parse, typecheck as module, lower (no module prefix), codegen
+    rsrc = fr(sans_path)
+    rprog = parse(rsrc)
+    empty_exports = M()
+    check_module(rprog, empty_exports)
+    empty_fn_ret = M()
+    rir = lower(rprog, 0, empty_fn_ret)
+    r_ll = "/tmp/sans_" + rname + "_runtime.ll"
+    compile_to_ll(rir, r_ll)
+    sys("llc -filetype=obj -O2 -o " + o_path + " " + r_ll)
+    sys("rm -f " + r_ll)
+
+    runtime_o_paths.push(o_path)
+    ri = ri + 1
+    0
+  }
+
+  // 13. Link everything together
+  link_cmd := "cc " + obj_path
+  li := 0
+  while li < runtime_o_paths.len() {
+    link_cmd = link_cmd + " " + deref(runtime_o_paths.get(li))
+    li = li + 1
+    0
+  }
+  link_cmd = link_cmd + " -lcurl -o " + output_path
+  sys(link_cmd)
+
+  // 14. Cleanup
+  sys("rm -f " + ll_path + " " + obj_path)
+  ri = 0
+  while ri < runtime_o_paths.len() {
+    sys("rm -f " + deref(runtime_o_paths.get(ri)))
+    ri = ri + 1
+    0
+  }
+
+  p("Built: " + output_path)
+  0
+}
+
+// ── Run Command ─────────────────────────────────────────────────
+
+run(source_path:S) I {
+  tmp_out = "/tmp/sans_run_out"
+  build(source_path, tmp_out)
+  sys(tmp_out)
+  sys("rm -f " + tmp_out)
+  0
+}
+
+// ── Main Entry Point ────────────────────────────────────────────
+
+main() I {
+  argv = args()
+  argc = argv.len()
+
+  argc < 2 ? {
+    p("usage: sans2 <build|run> <file.sans>")
+    exit(1)
+    0
+  } : 0
+
+  cmd = deref(argv.get(1))
+
+  cmd == "--version" || cmd == "-V" ? {
+    p("sans 0.3.25")
+    exit(0)
+    0
+  } : 0
+
+  argc < 3 ? {
+    p("usage: sans2 <build|run> <file.sans>")
+    exit(1)
+    0
+  } : 0
+
+  file = deref(argv.get(2))
+
+  // Check for -o flag
+  output := ""
+  argc >= 5 ? {
+    flag = deref(argv.get(3))
+    flag == "-o" ? { output = deref(argv.get(4)) } : 0
+    0
+  } : 0
+
+  cmd == "build" ? {
+    out = output == "" ? strip_ext(file) : output
+    build(file, out)
+  } : cmd == "run" ? {
+    run(file)
+  } : {
+    p("unknown command: " + cmd)
+    exit(1)
+    0
+  }
+}
