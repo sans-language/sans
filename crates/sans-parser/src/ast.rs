@@ -218,6 +218,10 @@ pub enum Expr {
         elements: Vec<Expr>,
         span: Span,
     },
+    TupleLiteral {
+        elements: Vec<Expr>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

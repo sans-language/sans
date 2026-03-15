@@ -1275,6 +1275,7 @@ fn expr_span(expr: &Expr) -> &Span {
         Expr::MutexCreate { span, .. } => span,
         Expr::ArrayCreate { span, .. } => span,
         Expr::ArrayLiteral { span, .. } => span,
+        Expr::TupleLiteral { span, .. } => span,
     }
 }
 

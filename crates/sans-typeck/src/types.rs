@@ -6,6 +6,7 @@ pub enum Type {
     String,
     Fn { params: Vec<Type>, ret: Box<Type> },
     Struct { name: String, fields: Vec<(String, Type)> },
+    Tuple { elements: Vec<Type> },
     Enum { name: String, variants: Vec<(String, Vec<Type>)> },
     JoinHandle,
     Sender { inner: Box<Type> },
@@ -29,6 +30,14 @@ impl std::fmt::Display for Type {
             Type::String => write!(f, "String"),
             Type::Struct { name, .. } => write!(f, "{}", name),
             Type::Enum { name, .. } => write!(f, "{}", name),
+            Type::Tuple { elements } => {
+                write!(f, "(")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 { write!(f, " ")?; }
+                    write!(f, "{}", elem)?;
+                }
+                write!(f, ")")
+            }
             Type::JoinHandle => write!(f, "JoinHandle"),
             Type::Sender { inner } => write!(f, "Sender<{}>", inner),
             Type::Receiver { inner } => write!(f, "Receiver<{}>", inner),

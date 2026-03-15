@@ -6,7 +6,7 @@ use sans_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>), HttpServer, HttpRequest }
+pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>), HttpServer, HttpRequest, Tuple(Vec<IrType>) }
 
 pub fn ir_type_for_return(ty: &sans_typeck::types::Type) -> IrType {
     use sans_typeck::types::Type;
@@ -24,6 +24,9 @@ pub fn ir_type_for_return(ty: &sans_typeck::types::Type) -> IrType {
         Type::HttpRequest => IrType::HttpRequest,
         Type::Result { inner } => IrType::Result(Box::new(ir_type_for_return(inner))),
         Type::ResultErr => IrType::Result(Box::new(IrType::Int)), // default inner type for err
+        Type::Tuple { elements } => {
+            IrType::Tuple(elements.iter().map(ir_type_for_return).collect())
+        }
         _ => IrType::Int, // Fallback
     }
 }
@@ -616,6 +619,7 @@ impl IrBuilder {
                         IrType::Result(_) => panic!("cannot print Result"),
                         IrType::HttpServer => panic!("cannot print HttpServer"),
                         IrType::HttpRequest => panic!("cannot print HttpRequest"),
+                        IrType::Tuple(_) => panic!("cannot print Tuple"),
                     }
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
@@ -1755,6 +1759,22 @@ impl IrBuilder {
                     });
                 }
                 self.reg_types.insert(dest.clone(), IrType::Array(Box::new(elem_type)));
+                dest
+            }
+
+            Expr::TupleLiteral { elements, .. } => {
+                // Placeholder: lower each element but tuple codegen not yet implemented
+                let mut elem_regs = Vec::new();
+                let mut elem_types = Vec::new();
+                for elem in elements {
+                    let reg = self.lower_expr(elem);
+                    let ty = self.reg_types.get(&reg).cloned().unwrap_or(IrType::Int);
+                    elem_regs.push(reg);
+                    elem_types.push(ty);
+                }
+                let dest = self.fresh_reg();
+                self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                self.reg_types.insert(dest.clone(), IrType::Tuple(elem_types));
                 dest
             }
         }

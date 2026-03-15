@@ -1670,6 +1670,14 @@ fn check_expr(
             Ok(Type::Array { inner: Box::new(first_ty) })
         }
 
+        Expr::TupleLiteral { elements, .. } => {
+            let mut elem_types = Vec::new();
+            for elem in elements {
+                elem_types.push(check_expr(elem, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?);
+            }
+            Ok(Type::Tuple { elements: elem_types })
+        }
+
         Expr::MethodCall { object, method, args, .. } => {
             // Check if this is a cross-module function call: mod.func(args)
             if let Expr::Identifier { name, .. } = object.as_ref() {
