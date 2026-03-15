@@ -137,6 +137,12 @@ pub enum Stmt {
         body: Vec<Stmt>,
         span: Span,
     },
+    Break {
+        span: Span,
+    },
+    Continue {
+        span: Span,
+    },
     LetDestructure {
         names: Vec<String>,
         value: Expr,

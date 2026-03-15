@@ -103,6 +103,8 @@ pub fn lex(source: &str) -> Result<Vec<Token>, LexError> {
                     "in" => TokenKind::In,
                     "import" => TokenKind::Import,
                     "g" => TokenKind::Global,
+                    "break" => TokenKind::Break,
+                    "continue" => TokenKind::Continue,
                     _ => TokenKind::Identifier(text.to_string()),
                 };
                 tokens.push(Token {

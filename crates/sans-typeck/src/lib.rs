@@ -2122,10 +2122,8 @@ fn check_expr(
                     if key_ty != Type::String {
                         return Err(TypeError::new(format!("set() key must be String, got {}", key_ty)));
                     }
-                    let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if val_ty != Type::Int {
-                        return Err(TypeError::new(format!("set() value must be Int, got {}", val_ty)));
-                    }
+                    // Accept any value type — stored as i64 (pointer for heap types)
+                    check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                     return Ok(Type::Int);
                 }
                 (Type::Map, "has") => {
