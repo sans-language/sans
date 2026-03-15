@@ -126,6 +126,13 @@ const HOVER_DATA: Record<string, string> = {
     'map': '**M**() or **map**()\n\nCreate an empty hash map with string keys.\n\nUsage: `m = M()`\n`m.set("key" 42)`\n`m.get("key")  // 42`',
     'M': '**M**()\n\nCreate an empty hash map (alias for map()).\n\nUsage: `m = M()`\n`m.set("x" 10)`',
 
+    // Try operator (? is not a word token, but 'unwrap' is shown as method after desugaring)
+    'is_err': '**is_err**() -> Bool\n\nCheck if Result is an error.\n\nUsage: `r.is_err()`\n\nSee also: `?` try operator — `r = may_fail()?` unwraps or early-returns error.',
+    'is_ok': '**is_ok**() -> Bool\n\nCheck if Result is ok.\n\nUsage: `r.is_ok()`',
+    'unwrap': '**unwrap**() -> T\n\nUnwrap a Result, exiting on error. Shorthand: `r!`\n\nSee also: `?` try operator — `r = may_fail()?` unwraps or early-returns error.',
+    'unwrap_or': '**unwrap_or**(default: T) -> T\n\nUnwrap a Result, returning default on error.\n\nUsage: `r.unwrap_or(0)`',
+    'error': '**error**() -> String\n\nGet error message from a Result.\n\nUsage: `r.error()`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

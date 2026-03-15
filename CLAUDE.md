@@ -44,6 +44,7 @@ Sans is designed for AI generation, not human readability. All new features, syn
 - `a[0]` not `a.get(0)` (index syntax)
 - `x += 1` not `x = x + 1` (compound assignment)
 - `r!` not `r.unwrap()` (unwrap shorthand)
+- `r = f()?` not `r = f(); if r.is_err() { return r }; r = r!` (try operator)
 - `cond ? a : b` not `if cond { a } else { b }` (ternary)
 - `[1 2 3]` not `[1, 2, 3]` (no commas)
 - `I/S/B/F` not `Int/String/Bool/Float` (short type names)
@@ -86,7 +87,7 @@ All version numbers must stay in sync and follow semver (`x.y.z`).
 
 The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
 
-**Current version: `0.3.7`**
+**Current version: `0.3.8`**
 
 **Checklist before committing:**
 1. Does this commit change code? → Bump version

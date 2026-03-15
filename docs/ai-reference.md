@@ -22,6 +22,7 @@ a[0]                       // index read (= a.get(0))
 a[0] = v                   // index write (= a.set(0 v))
 cond ? a : b               // ternary
 r!                         // unwrap (= r.unwrap())
+r = may_fail()?            // try: unwrap or early-return err
 obj.method                 // no-arg method (parens optional)
 "hello {name}!"            // string interpolation
 "val is {x + 1}"          // expression interpolation
@@ -179,3 +180,4 @@ a.zip(b)                         // [(I I)] — paired tuples
 `== != < > <= >=` comparison (works on I F S B)
 `&& || !` boolean
 `= := += -= *= /= %=` assignment
+`?` try (on R<T>: unwrap or early-return err)

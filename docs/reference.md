@@ -121,7 +121,7 @@ match value {
 | Boolean | `&&`, `\|\|`, `!` |
 | Unary | `-` (negation) |
 | Assignment | `=`, `:=`, `+=`, `-=`, `*=`, `/=`, `%=` |
-| Special | `?:` (ternary), `!` (postfix unwrap), `[]` (index) |
+| Special | `?:` (ternary), `?` (try/propagate), `!` (postfix unwrap), `[]` (index) |
 
 String comparison (`==`, `!=`) is supported.
 
@@ -587,6 +587,23 @@ main() {
     r.is_ok ? r! : 0
 }
 ```
+
+### Error Propagation (`?` operator)
+
+The `?` operator unwraps a `Result<T>` or early-returns the error:
+
+```sans
+safe_div(a:I b:I) R<I> {
+  b == 0 ? err("div by zero") : ok(a / b)
+}
+
+compute(x:I) R<I> {
+  r = safe_div(x 2)?    // unwraps ok(5), or returns err early
+  ok(r + 1)
+}
+```
+
+`x?` desugars to: `if x.is_err() { return x }` followed by `x!` (unwrap).
 
 ---
 

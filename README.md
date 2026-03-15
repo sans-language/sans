@@ -70,7 +70,7 @@ fn main() Int {
 | **HTTP client** | `http_get`, `http_post` |
 | **HTTP server** | `http_listen`, `accept`, `respond` |
 | **Logging** | `log_debug`, `log_info`, `log_warn`, `log_error` |
-| **Error handling** | `Result<T>` with `ok`, `err`, `unwrap`, `is_ok`, `is_err` |
+| **Error handling** | `Result<T>` with `ok`, `err`, `unwrap`, `?` propagation, `is_ok`, `is_err` |
 | **Float math** | `float_sqrt`, `float_to_int`, `int_to_float` |
 
 ## HTTP Server Example

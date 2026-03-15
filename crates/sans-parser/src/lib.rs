@@ -29,11 +29,14 @@ pub fn parse(source: &str) -> Result<Program, ParseError> {
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    /// Set when parse_expr encounters a `?` try operator.
+    /// Contains the original (pre-unwrap) expression for generating the guard stmt.
+    last_try_expr: Option<Expr>,
 }
 
 impl Parser {
     fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser { tokens, pos: 0, last_try_expr: None }
     }
 
     /// Peek at the current token without consuming it.
@@ -486,12 +489,40 @@ impl Parser {
     fn parse_body(&mut self) -> Result<Vec<Stmt>, ParseError> {
         let mut stmts = Vec::new();
         while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
-            stmts.push(self.parse_stmt()?);
+            stmts.extend(self.parse_stmt()?);
         }
         Ok(stmts)
     }
 
-    fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_stmt(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        // Clear any previous try expression
+        self.last_try_expr = None;
+
+        let result = self.parse_stmt_inner()?;
+
+        // If parse_expr set last_try_expr, insert a guard statement before the result
+        if let Some(try_expr) = self.last_try_expr.take() {
+            let span = expr_span(&try_expr).clone();
+            let guard = Stmt::If {
+                condition: Expr::MethodCall {
+                    object: Box::new(try_expr.clone()),
+                    method: "is_err".to_string(),
+                    args: vec![],
+                    span: span.clone(),
+                },
+                body: vec![Stmt::Return {
+                    value: try_expr,
+                    span: span.clone(),
+                }],
+                span,
+            };
+            Ok(vec![guard, result])
+        } else {
+            Ok(vec![result])
+        }
+    }
+
+    fn parse_stmt_inner(&mut self) -> Result<Stmt, ParseError> {
         if self.peek().kind == TokenKind::Let {
             self.parse_let()
         } else if self.peek().kind == TokenKind::While {
@@ -891,21 +922,41 @@ impl Parser {
             };
         }
 
-        // Check for ternary operator: expr ? then_expr : else_expr
+        // Check for ? — either ternary (cond ? a : b) or try operator (result?)
         if min_bp == 0 && self.peek().kind == TokenKind::Question {
+            let save_pos = self.pos;
             self.pos += 1; // consume ?
-            let then_expr = self.parse_expr(0)?;
-            self.expect(&TokenKind::Colon)?;
-            let else_expr = self.parse_expr(0)?;
-            let span = expr_span(&lhs).start..expr_span(&else_expr).end;
-            lhs = Expr::If {
-                condition: Box::new(lhs),
-                then_body: vec![],
-                then_expr: Box::new(then_expr),
-                else_body: vec![],
-                else_expr: Box::new(else_expr),
-                span,
-            };
+
+            // Try ternary: parse then_expr and look for :
+            let maybe_then = self.parse_expr(0);
+            if maybe_then.is_ok() && self.peek().kind == TokenKind::Colon {
+                // It's ternary
+                self.pos += 1; // consume :
+                let else_expr = self.parse_expr(0)?;
+                let then_expr = maybe_then.unwrap();
+                let span = expr_span(&lhs).start..expr_span(&else_expr).end;
+                lhs = Expr::If {
+                    condition: Box::new(lhs),
+                    then_body: vec![],
+                    then_expr: Box::new(then_expr),
+                    else_body: vec![],
+                    else_expr: Box::new(else_expr),
+                    span,
+                };
+            } else {
+                // Not ternary — it's try operator: expr?
+                // Restore to just after ? and desugar to unwrap.
+                // Store original expr for the guard statement (handled by parse_stmt).
+                self.pos = save_pos + 1;
+                let span = expr_span(&lhs).start..self.tokens[self.pos - 1].span.end;
+                self.last_try_expr = Some(lhs.clone());
+                lhs = Expr::MethodCall {
+                    object: Box::new(lhs),
+                    method: "unwrap".to_string(),
+                    args: vec![],
+                    span,
+                };
+            }
         }
 
         Ok(lhs)
@@ -1306,10 +1357,12 @@ impl Parser {
                     self.peek().span.clone(),
                 ));
             }
-            let stmt = self.parse_stmt()?;
-            // If next token is `}`, this stmt should be the final expression
+            let mut parsed = self.parse_stmt()?;
+            // If next token is `}`, the last stmt should be the final expression
             if self.peek().kind == TokenKind::RBrace {
-                match stmt {
+                let last = parsed.pop().unwrap();
+                stmts.extend(parsed); // any preceding stmts (e.g. try guard)
+                match last {
                     Stmt::Expr(expr) => return Ok((stmts, expr)),
                     Stmt::Let { span, .. }
                     | Stmt::While { span, .. }
@@ -1325,7 +1378,7 @@ impl Parser {
                     }
                 }
             }
-            stmts.push(stmt);
+            stmts.extend(parsed);
         }
     }
 
@@ -2119,5 +2172,23 @@ mod tests {
             }
             _ => panic!("expected Assign statement"),
         }
+    }
+
+    #[test]
+    fn parse_try_operator() {
+        let src = "f() R<I> { x = ok(42)\n x? }";
+        let program = parse(src).unwrap();
+        let body = &program.functions[0].body;
+        // x? desugars to: Stmt::If guard (is_err -> return) then Expr(unwrap)
+        assert!(matches!(&body[1], Stmt::If { .. }));
+        assert!(matches!(&body[2], Stmt::Expr(Expr::MethodCall { method, .. }) if method == "unwrap"));
+    }
+
+    #[test]
+    fn parse_ternary_still_works() {
+        let src = "main() I { x = 1\n x > 0 ? 1 : 0 }";
+        let program = parse(src).unwrap();
+        // Should still parse as ternary
+        assert!(program.functions.len() == 1);
     }
 }

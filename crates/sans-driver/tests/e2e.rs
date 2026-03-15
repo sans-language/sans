@@ -539,3 +539,13 @@ fn e2e_string_slice() {
 fn e2e_string_interp_expr() {
     assert_eq!(compile_and_run("string_interp_expr.sans"), 6);
 }
+
+#[test]
+fn e2e_try_operator() {
+    assert_eq!(compile_and_run("try_operator.sans"), 6);
+}
+
+#[test]
+fn e2e_try_operator_err() {
+    assert_eq!(compile_and_run("try_operator_err.sans"), 99);
+}

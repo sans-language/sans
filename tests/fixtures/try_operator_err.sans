@@ -1,0 +1,13 @@
+safe_div(a:I b:I) R<I> {
+  b == 0 ? err("div by zero") : ok(a / b)
+}
+
+compute(x:I) R<I> {
+  r = safe_div(x 0)?
+  ok(r + 1)
+}
+
+main() I {
+  result = compute(10)
+  result.is_err() ? 99 : result!
+}

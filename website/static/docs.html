@@ -539,19 +539,31 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
     r.is_ok ? r! : <span class="num">0</span>
 }</code></pre>
 
+    <h3>Error Propagation (<code>?</code> operator)</h3>
+    <p>The <code>?</code> operator unwraps a <code>Result&lt;T&gt;</code> or early-returns the error:</p>
+    <pre><code><span class="fn">safe_div</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; {
+  b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div by zero"</span>) : <span class="fn">ok</span>(a / b)
+}
+
+<span class="fn">compute</span>(x:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; {
+  r = <span class="fn">safe_div</span>(x <span class="num">2</span>)?    <span class="comment">// unwraps ok(5), or returns err early</span>
+  <span class="fn">ok</span>(r + <span class="num">1</span>)
+}</code></pre>
+    <p><code>x?</code> desugars to: <code>if x.is_err() { return x }</code> followed by <code>x!</code> (unwrap).</p>
+
     <h2>Known Limitations</h2>
     <ul>
       <li>No garbage collector &mdash; all heap memory leaked until process exit</li>
       <li>No array bounds checking &mdash; out-of-bounds is undefined behavior</li>
       <li>Multiple opaque type method calls in complex expressions may crash</li>
-      <li><del>String interpolation only supports identifiers, not expressions</del> &mdash; Expression interpolation now supported (v0.3.7)</li>
+      <li><del>String interpolation only supports identifiers, not expressions</del> &mdash; Expression interpolation now supported (v0.3.8)</li>
       <li>Lambdas with captures work for direct calls and .map()/.filter(); passing capturing closures across modules is not yet supported</li>
     </ul>
   </div>
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.7 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.8 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

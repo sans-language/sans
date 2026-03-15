@@ -426,7 +426,16 @@ fn generate_llvm<'ctx>(
         }
 
         // Generate instructions
+        let mut block_terminated = false;
         for instr in &func.body {
+            // Skip dead code after a terminator (ret/br) until a new label starts a new block
+            if block_terminated {
+                if let Instruction::Label { .. } = instr {
+                    block_terminated = false;
+                } else {
+                    continue;
+                }
+            }
             match instr {
                 Instruction::Const { dest, value } => {
                     let val = i64_type.const_int(*value as u64, true);
@@ -925,6 +934,7 @@ fn generate_llvm<'ctx>(
                     builder
                         .build_return(Some(&ret_val))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    block_terminated = true;
                 }
                 Instruction::BoolConst { dest, value } => {
                     let bool_type = context.bool_type();
@@ -1008,12 +1018,14 @@ fn generate_llvm<'ctx>(
                     builder
                         .build_conditional_branch(cond_val, then_bb, else_bb)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    block_terminated = true;
                 }
                 Instruction::Jump { target } => {
                     let target_bb = label_blocks[target];
                     builder
                         .build_unconditional_branch(target_bb)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    block_terminated = true;
                 }
                 Instruction::Phi {
                     dest,
