@@ -2220,3 +2220,343 @@ lower_array_create(ctx:I expr:I) I {
   ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
   dest
 }
+
+// ── ir_type_for_return ──────────────────────────────────────────
+// Convert a type name string to an IrType tag for return type tracking.
+ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
+  type_name == 0 ? IRTY_INT :
+  type_name == "I" ? IRTY_INT :
+  type_name == "Int" ? IRTY_INT :
+  type_name == "F" ? IRTY_FLOAT :
+  type_name == "Float" ? IRTY_FLOAT :
+  type_name == "B" ? IRTY_BOOL :
+  type_name == "Bool" ? IRTY_BOOL :
+  type_name == "S" ? IRTY_STR :
+  type_name == "String" ? IRTY_STR :
+  type_name == "M" ? IRTY_MAP :
+  type_name == "Map" ? IRTY_MAP :
+  type_name == "JsonValue" ? IRTY_JSON :
+  type_name == "HttpResponse" ? IRTY_HTTP_RESP :
+  type_name == "HttpRequest" ? IRTY_HTTP_REQ :
+  type_name == "HR" ? IRTY_HTTP_REQ :
+  type_name == "HttpServer" ? IRTY_HTTP_SERVER :
+  type_name == "HS" ? IRTY_HTTP_SERVER :
+  type_name == "JoinHandle" ? IRTY_JOIN_HANDLE :
+  // Starts with checks for generic types
+  type_name.sw("Array<") ? IRTY_ARRAY :
+  type_name.sw("[") ? IRTY_ARRAY :
+  type_name.sw("Sender") ? IRTY_SENDER :
+  type_name.sw("Receiver") ? IRTY_RECEIVER :
+  type_name.sw("Mutex") ? IRTY_MUTEX :
+  type_name.sw("Result<") ? IRTY_RESULT :
+  type_name.sw("R<") ? IRTY_RESULT :
+  type_name.sw("(") ? IRTY_TUPLE :
+  // Check struct/enum defs
+  map_has(struct_defs, type_name) == 1 ? IRTY_STRUCT :
+  map_has(enum_defs, type_name) == 1 ? IRTY_ENUM :
+  IRTY_INT
+}
+
+// ── map_has helper ──────────────────────────────────────────────
+// Check if a Map contains a key (returns 1 or 0)
+map_has(m:I key:I) I {
+  v = m[key]
+  v != 0 ? 1 : 0
+}
+
+// ── struct_size_for_param ───────────────────────────────────────
+// Returns number of fields if type is a struct, tag+max_data if enum,
+// element count if tuple, 0 for scalars.
+struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
+  // Check struct
+  map_has(struct_defs, type_name) == 1 ? {
+    fields = struct_defs[type_name]
+    fields.len()
+  } :
+  // Check enum — return 1 + max data fields across variants
+  map_has(enum_defs, type_name) == 1 ? {
+    variants = enum_defs[type_name]
+    max_data := 0
+    i := 0
+    while i < variants.len() {
+      vinfo = variants.get(i)
+      // vinfo is [tag_index, num_data_fields]
+      nd = vinfo.get(1)
+      nd > max_data ? max_data = nd : 0
+      i = i + 1
+      0
+    }
+    1 + max_data
+  } :
+  // Check tuple — count elements from "(I I I)"
+  type_name.sw("(") ? {
+    // Count spaces + 1 for number of tuple elements
+    inner_len = slen(type_name) - 2
+    inner_len <= 0 ? 0 : {
+      count := 1
+      i := 1
+      end = slen(type_name) - 1
+      while i < end {
+        char_at(type_name, i) == 32 ? count = count + 1 : 0
+        i = i + 1
+        0
+      }
+      count
+    }
+  } :
+  0
+}
+
+// ── lower_function_body ─────────────────────────────────────────
+// Lower a single function's body, handling last-statement-as-return.
+// Returns an IrFunction pointer.
+lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
+  // Create fresh context
+  ctx = make_lower_ctx(struct_defs, enum_defs, fn_ret_types, global_names)
+
+  // Set up params
+  params_ast = load64(func + 8)   // Array of Param pointers [name@0, type@8]
+  param_names = [I]()
+  param_sizes = [I]()
+
+  i := 0
+  while i < params_ast.len() {
+    p = params_ast.get(i)
+    pname = load64(p)
+    ptype = load64(p + 8)
+    arg_reg = "arg" + itos(i)
+
+    // Set local binding
+    ctx_set_local(ctx, pname, arg_reg)
+
+    // Set param type in reg_types
+    ptype == "I" ? ctx_set_reg_type(ctx, arg_reg, IRTY_INT) :
+    ptype == "Int" ? ctx_set_reg_type(ctx, arg_reg, IRTY_INT) :
+    ptype == "F" ? ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) :
+    ptype == "Float" ? ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) :
+    ptype == "B" ? ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) :
+    ptype == "Bool" ? ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) :
+    ptype == "S" ? ctx_set_reg_type(ctx, arg_reg, IRTY_STR) :
+    ptype == "String" ? ctx_set_reg_type(ctx, arg_reg, IRTY_STR) :
+    ptype == "M" ? ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) :
+    ptype == "Map" ? ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) :
+    ptype == "JsonValue" ? ctx_set_reg_type(ctx, arg_reg, IRTY_JSON) :
+    ptype == "HttpResponse" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_RESP) :
+    ptype == "HttpRequest" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) :
+    ptype == "HR" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) :
+    ptype == "HttpServer" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) :
+    ptype == "HS" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) :
+    map_has(struct_defs, ptype) == 1 ? ctx_set_reg_type(ctx, arg_reg, IRTY_STRUCT) :
+    map_has(enum_defs, ptype) == 1 ? ctx_set_reg_type(ctx, arg_reg, IRTY_ENUM) :
+    ptype.sw("Array") ? ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) :
+    ptype.sw("[") ? ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) :
+    ptype.sw("Result") ? ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) :
+    ptype.sw("R<") ? ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) :
+    ptype.sw("(") ? ctx_set_reg_type(ctx, arg_reg, IRTY_TUPLE) :
+    ptype.sw("Sender") ? ctx_set_reg_type(ctx, arg_reg, IRTY_SENDER) :
+    ptype.sw("Receiver") ? ctx_set_reg_type(ctx, arg_reg, IRTY_RECEIVER) :
+    ptype.sw("Mutex") ? ctx_set_reg_type(ctx, arg_reg, IRTY_MUTEX) :
+    ctx_set_reg_type(ctx, arg_reg, IRTY_INT)
+
+    param_names.push(arg_reg)
+    param_sizes.push(struct_size_for_param(ptype, struct_defs, enum_defs))
+
+    i = i + 1
+    0
+  }
+
+  // Lower body statements — last statement is treated as return value
+  body = load64(func + 24)  // Array of Stmt pointers
+  j := 0
+  while j < body.len() {
+    is_last = j == body.len() - 1
+    stmt = body.get(j)
+    is_last == 1 ? {
+      stag = load64(stmt)
+      // If last stmt is an expression or return, emit Ret
+      stag == ST_EXPR ? {
+        expr = load64(stmt + 8)
+        reg = lower_expr(ctx, expr)
+        ctx_emit(ctx, ir_ret(reg))
+      } : stag == ST_RETURN ? {
+        val_expr = load64(stmt + 8)
+        reg = lower_expr(ctx, val_expr)
+        ctx_emit(ctx, ir_ret(reg))
+      } : {
+        lower_stmt(ctx, stmt)
+      }
+    } : {
+      lower_stmt(ctx, stmt)
+    }
+    j = j + 1
+    0
+  }
+
+  // Determine return type
+  ret_type_name = load64(func + 16)
+  ret_type = ret_type_name != 0 ? ir_type_for_return(ret_type_name, struct_defs, enum_defs) : IRTY_INT
+
+  make_ir_function(func_name, param_names, ctx_instrs(ctx), ret_type, param_sizes)
+}
+
+// ── lower ───────────────────────────────────────────────────────
+// Top-level entry point: lower a parsed Program to an IrModule.
+lower(program:I module_name:I module_fn_ret_types:I) I {
+  lower_with_extra_structs(program, module_name, module_fn_ret_types, 0)
+}
+
+// ── lower_with_extra_structs ────────────────────────────────────
+lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I) I {
+  // 1. Collect struct definitions: name -> field names array
+  struct_defs = M()
+  // Merge extra_struct_defs first
+  extra_struct_defs != 0 ? {
+    keys = extra_struct_defs.keys()
+    ki := 0
+    while ki < keys.len() {
+      k = keys.get(ki)
+      struct_defs[k] = extra_struct_defs[k]
+      ki = ki + 1
+      0
+    }
+    0
+  } : 0
+
+  // Collect from program's structs
+  prog_structs = load64(program + 24)  // Array of StructDef pointers
+  si := 0
+  while si < prog_structs.len() {
+    sdef = prog_structs.get(si)
+    sname = load64(sdef)           // name
+    sfields = load64(sdef + 8)     // flat array [name0, type0, name1, type1, ...]
+    // Build array of just field names
+    field_names = [I]()
+    fi := 0
+    while fi < sfields.len() {
+      field_names.push(sfields.get(fi))  // name at even indices
+      fi = fi + 2                         // skip type
+      0
+    }
+    struct_defs[sname] = field_names
+    si = si + 1
+    0
+  }
+
+  // 2. Collect enum definitions: name -> array of [variant_name, tag, num_data] arrays
+  enum_defs = M()
+  prog_enums = load64(program + 32)  // Array of EnumDef pointers
+  ei := 0
+  while ei < prog_enums.len() {
+    edef = prog_enums.get(ei)
+    ename = load64(edef)              // name
+    evariants = load64(edef + 8)      // Array of EnumVariant pointers [name@0, fields@8]
+    vinfo_arr = [I]()
+    vi := 0
+    while vi < evariants.len() {
+      variant = evariants.get(vi)
+      vname = load64(variant)
+      vfields = load64(variant + 8)
+      num_data = vfields != 0 ? vfields.len() : 0
+      // Store as [tag_index, num_data_fields] array
+      entry = [I]()
+      entry.push(vi)
+      entry.push(num_data)
+      vinfo_arr.push(entry)
+      // Also store variant name -> [tag, num_data] in enum_defs under "ename::vname"
+      vi = vi + 1
+      0
+    }
+    enum_defs[ename] = vinfo_arr
+    ei = ei + 1
+    0
+  }
+
+  // 3. Build fn_ret_types from program functions
+  fn_ret_types = M()
+  prog_fns = load64(program + 16)  // Array of Function pointers
+  fri := 0
+  while fri < prog_fns.len() {
+    func = prog_fns.get(fri)
+    fname = load64(func)
+    ret_type_name = load64(func + 16)
+    ret_type_name != 0 ? {
+      rt = ir_type_for_return(ret_type_name, struct_defs, enum_defs)
+      rt != IRTY_INT ? fn_ret_types[fname] = rt : 0
+    } : 0
+    fri = fri + 1
+    0
+  }
+  // Merge module_fn_ret_types
+  module_fn_ret_types != 0 ? {
+    mkeys = module_fn_ret_types.keys()
+    mki := 0
+    while mki < mkeys.len() {
+      mk = mkeys.get(mki)
+      fn_ret_types[mk] = module_fn_ret_types[mk]
+      mki = mki + 1
+      0
+    }
+    0
+  } : 0
+
+  // 4. Collect global variable names and types
+  globals_arr = [I]()
+  global_names = M()
+  prog_globals = load64(program + 8)  // Array of GlobalDef pointers
+  gi := 0
+  while gi < prog_globals.len() {
+    gdef = prog_globals.get(gi)
+    gname = load64(gdef)
+    gvalue = load64(gdef + 8)
+    globals_arr.push(gname)
+    // Determine type from value expression tag
+    vtag = load64(gvalue)
+    vtag == EX_INT_LIT ? global_names[gname] = IRTY_INT :
+    vtag == EX_FLOAT_LIT ? global_names[gname] = IRTY_FLOAT :
+    vtag == EX_BOOL_LIT ? global_names[gname] = IRTY_BOOL :
+    vtag == EX_STRING_LIT ? global_names[gname] = IRTY_STR :
+    { global_names[gname] = IRTY_INT }
+    gi = gi + 1
+    0
+  }
+
+  // 5. Lower each function
+  ir_functions = [I]()
+
+  fi2 := 0
+  while fi2 < prog_fns.len() {
+    func = prog_fns.get(fi2)
+    fname = load64(func)
+    // Handle module name mangling
+    func_name = module_name != 0 ? module_name + "__" + fname : fname
+    ir_fn = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names)
+    ir_functions.push(ir_fn)
+    fi2 = fi2 + 1
+    0
+  }
+
+  // 6. Lower impl block methods
+  prog_impls = load64(program + 48)  // Array of ImplBlock pointers
+  ii := 0
+  while ii < prog_impls.len() {
+    impl_block = prog_impls.get(ii)
+    target_type = load64(impl_block + 8)
+    methods = load64(impl_block + 16)
+    mi := 0
+    while mi < methods.len() {
+      method = methods.get(mi)
+      mname = load64(method)
+      // Mangle: module__Type__method or Type_method
+      mangled = module_name != 0 ? module_name + "__" + target_type + "__" + mname : target_type + "_" + mname
+      ir_fn = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names)
+      ir_functions.push(ir_fn)
+      mi = mi + 1
+      0
+    }
+    ii = ii + 1
+    0
+  }
+
+  // 7. Build and return IrModule
+  make_ir_module(ir_functions, globals_arr, struct_defs)
+}
