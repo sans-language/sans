@@ -2806,98 +2806,17 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result_val);
                 }
                 Instruction::ResultUnwrap { dest, result } => {
-                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
                     let res_val = regs[result];
-
-                    // Load tag from result struct (offset 0)
-                    let res_ptr = builder.build_int_to_ptr(res_val, ptr_type, "runwrap_rp")
+                    let fn_ref = llvm_module.get_function("sans_result_unwrap").unwrap();
+                    let call = builder.build_call(fn_ref, &[res_val.into()], dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let tag = builder.build_load(i64_type, res_ptr, "runwrap_tag")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
-
-                    // Check if tag == 0 (ok)
-                    let is_ok = builder.build_int_compare(inkwell::IntPredicate::EQ, tag, i64_type.const_zero(), "runwrap_ok")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    let current_fn = builder.get_insert_block().unwrap().get_parent().unwrap();
-                    let ok_bb = context.append_basic_block(current_fn, "runwrap_ok");
-                    let err_bb = context.append_basic_block(current_fn, "runwrap_err");
-                    let merge_bb = context.append_basic_block(current_fn, "runwrap_merge");
-
-                    builder.build_conditional_branch(is_ok, ok_bb, err_bb)
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // OK path: load value from offset 8
-                    builder.position_at_end(ok_bb);
-                    let val_ptr = unsafe { builder.build_gep(i64_type, res_ptr, &[i64_type.const_int(1, false)], "runwrap_vp") }
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ok_val = builder.build_load(i64_type, val_ptr, "runwrap_val")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
-                    builder.build_unconditional_branch(merge_bb)
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let ok_end = builder.get_insert_block().unwrap();
-
-                    // ERR path: print error message to stderr and exit(1)
-                    builder.position_at_end(err_bb);
-                    // Load error message ptr from offset 16
-                    let err_ptr = unsafe { builder.build_gep(i64_type, res_ptr, &[i64_type.const_int(2, false)], "runwrap_ep") }
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let err_msg_int = builder.build_load(i64_type, err_ptr, "runwrap_em")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?.into_int_value();
-                    let err_msg_ptr = builder.build_int_to_ptr(err_msg_int, ptr_type, "runwrap_emp")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // Write prefix "error: unwrap called on err: " to stderr
-                    let prefix = builder.build_global_string_ptr("error: unwrap called on err: ", "runwrap_prefix")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    let write_fn = llvm_module.get_function("write").unwrap();
-                    let strlen_fn = llvm_module.get_function("strlen").unwrap_or_else(|| {
-                        let strlen_type = i64_type.fn_type(&[ptr_type.into()], false);
-                        llvm_module.add_function("strlen", strlen_type, Some(inkwell::module::Linkage::External))
-                    });
-                    let fd_two = i64_type.const_int(2, false);
-
-                    // strlen and write prefix
-                    let prefix_len = match builder.build_call(strlen_fn, &[prefix.as_pointer_value().into()], "runwrap_plen")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                        .try_as_basic_value() {
+                    let result_val = match call.try_as_basic_value() {
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
-                        _ => return Err(CodegenError::LlvmError("strlen: expected return".into())),
+                        _ => return Err(CodegenError::LlvmError("sans_result_unwrap: expected return".into())),
                     };
-                    builder.build_call(write_fn, &[fd_two.into(), prefix.as_pointer_value().into(), prefix_len.into()], "")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // strlen and write error message
-                    let msg_len = match builder.build_call(strlen_fn, &[err_msg_ptr.into()], "runwrap_mlen")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
-                        .try_as_basic_value() {
-                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
-                        _ => return Err(CodegenError::LlvmError("strlen: expected return".into())),
-                    };
-                    builder.build_call(write_fn, &[fd_two.into(), err_msg_ptr.into(), msg_len.into()], "")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // Write newline
-                    let newline = builder.build_global_string_ptr("\n", "runwrap_nl")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    builder.build_call(write_fn, &[fd_two.into(), newline.as_pointer_value().into(), i64_type.const_int(1, false).into()], "")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // exit(1)
-                    let exit_fn = llvm_module.get_function("exit").unwrap();
-                    builder.build_call(exit_fn, &[i64_type.const_int(1, false).into()], "")
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    builder.build_unreachable()
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-
-                    // Merge (only reachable from OK path)
-                    builder.position_at_end(merge_bb);
-                    let phi = builder.build_phi(i64_type, dest)
-                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
-                    phi.add_incoming(&[(&ok_val, ok_end)]);
-                    let result_val = phi.as_basic_value().into_int_value();
                     regs.insert(dest.clone(), result_val);
                     // For Result<String>, the value is a pointer - also store in ptrs
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
                     let as_ptr = builder.build_int_to_ptr(result_val, ptr_type, "runwrap_ptr")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     ptrs.insert(dest.clone(), as_ptr);

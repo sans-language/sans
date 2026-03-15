@@ -29,7 +29,12 @@ sans_result_is_err(r:I) I {
 
 sans_result_unwrap(r:I) I {
   tag = load64(r)
-  tag == 0 ? load64(r + 8) : exit(1)
+  tag == 0 ? load64(r + 8) : sans_unwrap_fail(r)
+}
+
+sans_unwrap_fail(r:I) I {
+  p("error: unwrap called on err")
+  exit(1)
 }
 
 sans_result_unwrap_or(r:I default_val:I) I {
