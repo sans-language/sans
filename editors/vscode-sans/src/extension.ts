@@ -109,6 +109,9 @@ const HOVER_DATA: Record<string, string> = {
     // Globals
     'g': '**g** — global variable declaration keyword\n\nDeclare a mutable global variable.\n\nUsage: `g counter := 0`',
 
+    // Tuples
+    'tuple': '**Tuple** — (expr1 expr2 ...)\n\nFixed-size ordered collection of values. Access with `.0`, `.1`, `.2` etc.\n\nUsage: `t = (1 "hi" true)`\n`t.0  // 1`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

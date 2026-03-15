@@ -351,6 +351,33 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 
 ---
 
+## Tuples
+
+Tuples are fixed-size, ordered collections of values that can have different types.
+
+### Syntax
+- Literal: `(1 "hello" true)` — no commas, space-separated
+- Access: `t.0`, `t.1`, `t.2` — zero-indexed positional access
+- Type: `(I S B)` — parenthesized type list
+- Return type: `f(x:I) (I S) = (x str(x))`
+
+### Examples
+
+```sans
+t = (10 20 30)
+p(t.0 + t.1 + t.2)  // 60
+
+// Multi-return
+pair(a:I b:I) I {
+  t = (a b)
+  t.0 + t.1
+}
+```
+
+Single expressions in parens are grouping, not tuples: `(1 + 2)` evaluates to `3`, not a 1-tuple.
+
+---
+
 ## Structs
 
 ```sans

@@ -6,6 +6,7 @@ Compact reference for LLM context injection. Use short aliases.
 `I`=Int `F`=Float `B`=Bool `S`=String `R<T>`=Result<T>
 Array<T> JsonValue HttpResponse HttpServer HttpRequest
 Sender<T> Receiver<T> Mutex<T> JoinHandle
+Tuple: `(I S B)` — heterogeneous fixed-size collection
 
 ## Syntax
 ```
@@ -36,6 +37,13 @@ let (tx rx) = channel<I>() // channel
 mutex(val)                 // mutex
 for x in arr { }           // iteration
 while cond { }             // loop
+```
+
+## Tuples
+```
+(1 2 3)            // literal, no commas
+t.0                // access by index
+f() (I S) { ... }  // tuple return type
 ```
 
 ## Functions (short | long)
