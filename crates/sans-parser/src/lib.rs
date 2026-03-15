@@ -455,6 +455,19 @@ impl Parser {
     }
 
     fn parse_type_name(&mut self) -> Result<TypeName, ParseError> {
+        // Tuple type: (I S B)
+        if self.peek().kind == TokenKind::LParen {
+            let start = self.peek().span.start;
+            self.pos += 1; // consume (
+            let mut inner_names = Vec::new();
+            while self.peek().kind != TokenKind::RParen && self.peek().kind != TokenKind::Eof {
+                let inner = self.parse_type_name()?;
+                inner_names.push(inner.name);
+            }
+            let rparen = self.expect(&TokenKind::RParen)?;
+            let name = format!("({})", inner_names.join(" "));
+            return Ok(TypeName { name, span: start..rparen.span.end });
+        }
         let (name, span) = self.expect_ident()?;
         // Handle parameterized types like Result<Int>, Result<String>
         if self.peek().kind == TokenKind::Lt {
@@ -1031,10 +1044,25 @@ impl Parser {
                 Ok(Expr::ChannelCreate { element_type: type_name, capacity, span })
             }
             TokenKind::LParen => {
+                let start = tok.span.start;
                 self.pos += 1;
-                let expr = self.parse_expr(0)?;
-                self.expect(&TokenKind::RParen)?;
-                Ok(expr)
+                let first = self.parse_expr(0)?;
+                if self.peek().kind == TokenKind::RParen {
+                    // Single expression in parens — grouping, not tuple
+                    self.pos += 1;
+                    Ok(first)
+                } else {
+                    // Multiple expressions — tuple literal (no commas)
+                    let mut elements = vec![first];
+                    while self.peek().kind != TokenKind::RParen && self.peek().kind != TokenKind::Eof {
+                        elements.push(self.parse_expr(0)?);
+                    }
+                    let rparen = self.expect(&TokenKind::RParen)?;
+                    Ok(Expr::TupleLiteral {
+                        elements,
+                        span: start..rparen.span.end,
+                    })
+                }
             }
             TokenKind::LBracket => {
                 let start = tok.span.start;
@@ -1951,5 +1979,30 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.message.contains("imports must appear before all declarations"),
             "expected import placement error, got: {}", err.message);
+    }
+
+    #[test]
+    fn parse_tuple_literal() {
+        let src = "main() I { (1 2 3) }";
+        let program = parse(src).unwrap();
+        let body = &program.functions[0].body;
+        assert!(matches!(&body[0], Stmt::Expr(Expr::TupleLiteral { elements, .. }) if elements.len() == 3));
+    }
+
+    #[test]
+    fn parse_paren_grouping_still_works() {
+        let src = "main() I { (1 + 2) }";
+        let program = parse(src).unwrap();
+        let body = &program.functions[0].body;
+        // Should be a BinaryOp, NOT a TupleLiteral
+        assert!(matches!(&body[0], Stmt::Expr(Expr::BinaryOp { .. })));
+    }
+
+    #[test]
+    fn parse_tuple_return_type() {
+        let src = "f(a:I) (I S) { (a str(a)) }";
+        let program = parse(src).unwrap();
+        let ret = &program.functions[0].return_type;
+        assert_eq!(ret.name, "(I S)");
     }
 }
