@@ -49,6 +49,8 @@ impl std::fmt::Display for TypeError {
 fn types_compatible(actual: &Type, expected: &Type) -> bool {
     actual == expected
         || (matches!(actual, Type::ResultErr) && matches!(expected, Type::Result { .. }))
+        // Allow Fn types to be passed as Int (function pointers are i64)
+        || (*expected == Type::Int && matches!(actual, Type::Fn { .. }))
 }
 
 /// Resolve an AST type name string to a `Type`.
@@ -1370,7 +1372,7 @@ fn check_expr(
 
                 for (i, (arg, expected)) in args.iter().zip(param_types.iter()).enumerate() {
                     let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                    if actual != *expected {
+                    if !types_compatible(&actual, expected) {
                         return Err(TypeError::new(format!(
                             "argument {} to '{}': expected {} but got {}",
                             i + 1,
