@@ -748,6 +748,34 @@ fn generate_llvm<'ctx>(
                     };
                     regs.insert(dest.clone(), result);
                 }
+                Instruction::Fcall2 { dest, fn_ptr, arg1, arg2 } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let fn_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+                    let fp = if let Some(p) = ptrs.get(fn_ptr) { *p } else {
+                        builder.build_int_to_ptr(regs[fn_ptr], ptr_type, "fcall2_fp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let call = builder.build_indirect_call(fn_type, fp, &[regs[arg1].into(), regs[arg2].into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("fcall2: expected return value".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::Fcall3 { dest, fn_ptr, arg1, arg2, arg3 } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let fn_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
+                    let fp = if let Some(p) = ptrs.get(fn_ptr) { *p } else {
+                        builder.build_int_to_ptr(regs[fn_ptr], ptr_type, "fcall3_fp").map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let call = builder.build_indirect_call(fn_type, fp, &[regs[arg1].into(), regs[arg2].into(), regs[arg3].into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("fcall3: expected return value".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
                 Instruction::ArrayMap { dest, array, fn_ptr } => {
                     let arr_int = regs[array];
                     let fp_int = regs[fn_ptr];

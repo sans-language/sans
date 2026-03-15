@@ -934,6 +934,44 @@ fn check_expr(
                     return Err(TypeError::new(format!("fcall() arg must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "fcall2" {
+                if args.len() != 3 {
+                    return Err(TypeError::new("fcall2() takes exactly 3 arguments (fn_ptr, arg1, arg2)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall2() fn_ptr must be Int, got {}", ptr_ty)));
+                }
+                let a1_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if a1_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall2() arg1 must be Int, got {}", a1_ty)));
+                }
+                let a2_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if a2_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall2() arg2 must be Int, got {}", a2_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "fcall3" {
+                if args.len() != 4 {
+                    return Err(TypeError::new("fcall3() takes exactly 4 arguments (fn_ptr, arg1, arg2, arg3)"));
+                }
+                let ptr_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if ptr_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall3() fn_ptr must be Int, got {}", ptr_ty)));
+                }
+                let a1_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if a1_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall3() arg1 must be Int, got {}", a1_ty)));
+                }
+                let a2_ty = check_expr(&args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if a2_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall3() arg2 must be Int, got {}", a2_ty)));
+                }
+                let a3_ty = check_expr(&args[3], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if a3_ty != Type::Int {
+                    return Err(TypeError::new(format!("fcall3() arg3 must be Int, got {}", a3_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "wfd" {
                 if args.len() != 2 {
                     return Err(TypeError::new("wfd() takes exactly 2 arguments (fd, msg)"));

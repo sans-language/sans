@@ -193,6 +193,8 @@ pub enum Instruction {
     FnRef { dest: Reg, name: String },
     FptrNamed { dest: Reg, func_name: String },
     Fcall { dest: Reg, fn_ptr: Reg, arg: Reg },
+    Fcall2 { dest: Reg, fn_ptr: Reg, arg1: Reg, arg2: Reg },
+    Fcall3 { dest: Reg, fn_ptr: Reg, arg1: Reg, arg2: Reg, arg3: Reg },
     // Array higher-order methods
     ArrayMap { dest: Reg, array: Reg, fn_ptr: Reg },
     ArrayFilter { dest: Reg, array: Reg, fn_ptr: Reg },

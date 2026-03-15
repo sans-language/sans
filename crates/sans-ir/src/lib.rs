@@ -1111,6 +1111,23 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Fcall { dest: dest.clone(), fn_ptr: fn_ptr_reg, arg: arg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "fcall2" {
+                    let fn_ptr_reg = self.lower_expr(&args[0]);
+                    let a1_reg = self.lower_expr(&args[1]);
+                    let a2_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Fcall2 { dest: dest.clone(), fn_ptr: fn_ptr_reg, arg1: a1_reg, arg2: a2_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "fcall3" {
+                    let fn_ptr_reg = self.lower_expr(&args[0]);
+                    let a1_reg = self.lower_expr(&args[1]);
+                    let a2_reg = self.lower_expr(&args[2]);
+                    let a3_reg = self.lower_expr(&args[3]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Fcall3 { dest: dest.clone(), fn_ptr: fn_ptr_reg, arg1: a1_reg, arg2: a2_reg, arg3: a3_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "wfd" {
                     let fd_reg = self.lower_expr(&args[0]);
                     let msg_reg = self.lower_expr(&args[1]);
