@@ -827,6 +827,9 @@ impl IrBuilder {
                     else_label: else_label.clone(),
                 });
 
+                // Save locals before branches so each branch gets its own scope
+                let saved_locals = self.locals.clone();
+
                 // Then branch
                 self.emit_label(then_label.clone());
                 for stmt in then_body {
@@ -837,6 +840,9 @@ impl IrBuilder {
                 let then_source_label = self.current_label.clone().unwrap_or_else(|| then_label.clone());
                 self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
+                // Restore locals before else branch so it doesn't see then-branch variables
+                self.locals = saved_locals.clone();
+
                 // Else branch
                 self.emit_label(else_label.clone());
                 for stmt in else_body {
@@ -846,6 +852,9 @@ impl IrBuilder {
                 // Capture the actual block that contains else_reg (may differ from else_label if nested)
                 let else_source_label = self.current_label.clone().unwrap_or_else(|| else_label.clone());
                 self.instructions.push(Instruction::Jump { target: merge_label.clone() });
+
+                // Restore locals after both branches (branch-local vars don't leak out)
+                self.locals = saved_locals;
 
                 // Merge
                 self.emit_label(merge_label.clone());
@@ -2437,11 +2446,14 @@ impl IrBuilder {
                     else_label: end_label.clone(),
                 });
 
+                // Save locals so branch-local variables don't leak out
+                let saved_locals = self.locals.clone();
                 self.emit_label(then_label);
                 for s in body {
                     self.lower_stmt(s);
                 }
                 self.instructions.push(Instruction::Jump { target: end_label.clone() });
+                self.locals = saved_locals;
 
                 self.emit_label(end_label);
             }
