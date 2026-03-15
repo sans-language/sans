@@ -188,31 +188,49 @@ nav a.active {
   margin-bottom: 4px;
 }
 
-/* Table of contents */
+/* Docs layout with sticky sidebar */
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.docs-layout .docs {
+  min-width: 0;
+}
+
+/* Table of contents — sticky sidebar */
 
 .toc {
+  position: sticky;
+  top: 16px;
   background: #e6e9ef;
   border: 1px solid #ccd0da;
   border-radius: 8px;
-  padding: 16px 24px;
-  margin-bottom: 24px;
+  padding: 16px 20px;
+  margin-top: 32px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
 }
 
 .toc h3 {
   margin-top: 0;
   border: none;
   padding: 0;
-  font-size: 14px;
+  font-size: 12px;
   color: #6c6f85;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  margin-bottom: 8px;
 }
 
 .toc ul {
   list-style: none;
   padding: 0;
   margin: 0;
-  columns: 2;
+  columns: 1;
 }
 
 .toc li {
@@ -220,7 +238,15 @@ nav a.active {
 }
 
 .toc a {
-  font-size: 14px;
+  font-size: 13px;
+  color: #5c5f77;
+  display: block;
+  padding: 2px 0;
+}
+
+.toc a:hover {
+  color: #1e66f5;
+  text-decoration: none;
 }
 
 /* Comparison section */
@@ -242,6 +268,10 @@ nav a.active {
   gap: 16px;
 }
 
+.compare-grid-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 .compare-grid h4 {
   font-size: 13px;
   font-weight: 600;
@@ -249,6 +279,22 @@ nav a.active {
   letter-spacing: 0.05em;
   color: #6c6f85;
   margin-bottom: 8px;
+}
+
+.token-count {
+  font-weight: 400;
+  font-size: 11px;
+  color: #8c8fa1;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.token-summary {
+  margin-top: 32px;
+}
+
+.token-summary table {
+  max-width: 600px;
 }
 
 /* Code blocks */
@@ -350,6 +396,33 @@ footer a {
 }
 
 /* Responsive */
+
+/* Wider container for docs layout */
+.container-wide {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+@media (max-width: 960px) {
+  .compare-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .toc {
+    position: static;
+    max-height: none;
+    margin-bottom: 24px;
+  }
+
+  .toc ul {
+    columns: 2;
+  }
+}
 
 @media (max-width: 640px) {
   .hero h1 {

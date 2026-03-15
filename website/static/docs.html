@@ -18,35 +18,38 @@
     </div>
   </nav>
 
-  <div class="container docs">
-    <h1>Sans Language Reference</h1>
-    <p>Sans is a compiled programming language optimized for AI code generation. It compiles to native code via LLVM with performance comparable to C, Rust, and Go.</p>
-
+  <div class="container-wide docs-layout">
     <div class="toc">
       <h3>Contents</h3>
       <ul>
         <li><a href="#types">Types</a></li>
         <li><a href="#variables">Variables</a></li>
-        <li><a href="#globals">Global Variables</a></li>
+        <li><a href="#globals">Globals</a></li>
         <li><a href="#functions">Functions</a></li>
         <li><a href="#control-flow">Control Flow</a></li>
         <li><a href="#operators">Operators</a></li>
-        <li><a href="#builtins">Built-in Functions</a></li>
-        <li><a href="#lowlevel">Low-Level Primitives</a></li>
-        <li><a href="#methods">Methods by Type</a></li>
+        <li><a href="#builtins">Built-ins</a></li>
+        <li><a href="#lowlevel">Low-Level</a></li>
+        <li><a href="#methods">Methods</a></li>
         <li><a href="#tuples">Tuples</a></li>
-        <li><a href="#lambdas">Lambdas &amp; Closures</a></li>
-        <li><a href="#iterators">Iterator Chains</a></li>
+        <li><a href="#lambdas">Lambdas</a></li>
+        <li><a href="#iterators">Iterators</a></li>
         <li><a href="#maps">Maps</a></li>
         <li><a href="#structs">Structs</a></li>
         <li><a href="#enums">Enums</a></li>
-        <li><a href="#traits">Traits &amp; Generics</a></li>
+        <li><a href="#traits">Traits</a></li>
         <li><a href="#modules">Modules</a></li>
         <li><a href="#concurrency">Concurrency</a></li>
-        <li><a href="#strings">String Interpolation &amp; Slicing</a></li>
-        <li><a href="#errors">Error Handling</a></li>
+        <li><a href="#strings">Strings</a></li>
+        <li><a href="#errors">Errors</a></li>
+        <li><a href="#arena">Arena GC</a></li>
+        <li><a href="#fileio">File I/O</a></li>
       </ul>
     </div>
+
+  <div class="docs">
+    <h1>Sans Language Reference</h1>
+    <p>Sans is a compiled programming language optimized for AI code generation. It compiles to native code via LLVM with performance comparable to C, Rust, and Go.</p>
 
     <h2 id="types">Types</h2>
     <table>
@@ -601,6 +604,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
       <li><del>String interpolation only supports identifiers, not expressions</del> &mdash; Expression interpolation now supported (v0.3.9)</li>
       <li>Lambdas with captures work for direct calls and .map()/.filter(); passing capturing closures across modules is not yet supported</li>
     </ul>
+  </div>
   </div>
 
   <footer>
