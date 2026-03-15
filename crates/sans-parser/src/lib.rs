@@ -44,6 +44,13 @@ impl Parser {
         &self.tokens[self.pos]
     }
 
+    /// Consume and return the current token, advancing the position.
+    fn advance(&mut self) -> Token {
+        let tok = self.tokens[self.pos].clone();
+        self.pos += 1;
+        tok
+    }
+
     /// Expect the current token to match `kind`, consume it, and return it.
     fn expect(&mut self, kind: &TokenKind) -> Result<Token, ParseError> {
         let tok = self.peek().clone();
@@ -385,8 +392,14 @@ impl Parser {
     }
 
     fn parse_method(&mut self, target_type: &str) -> Result<Function, ParseError> {
-        let fn_tok = self.expect(&TokenKind::Fn)?;
-        let fn_start = fn_tok.span.start;
+        // `fn` keyword is optional — consume it if present
+        let fn_start;
+        if self.peek().kind == TokenKind::Fn {
+            let fn_tok = self.expect(&TokenKind::Fn)?;
+            fn_start = fn_tok.span.start;
+        } else {
+            fn_start = self.peek().span.start;
+        }
         let (name, _) = self.expect_ident()?;
         let type_params = self.parse_type_params()?;
         self.expect(&TokenKind::LParen)?;
@@ -413,7 +426,28 @@ impl Parser {
         }
         self.expect(&TokenKind::RParen)?;
 
-        let return_type = self.parse_type_name()?;
+        // Check for implicit return type (default to I) when next token starts the body
+        let return_type = if self.peek().kind == TokenKind::LBrace || self.peek().kind == TokenKind::Eq {
+            TypeName { name: "I".to_string(), span: self.peek().span.clone() }
+        } else {
+            self.parse_type_name()?
+        };
+
+        // Check for single-expression body with `=`
+        if self.peek().kind == TokenKind::Eq {
+            self.pos += 1; // consume =
+            let expr = self.parse_expr(0)?;
+            let fn_end = expr_span(&expr).end;
+            return Ok(Function {
+                name,
+                type_params,
+                params,
+                return_type,
+                body: vec![Stmt::Expr(expr)],
+                span: fn_start..fn_end,
+            });
+        }
+
         self.expect(&TokenKind::LBrace)?;
         let body = self.parse_body()?;
         let rbrace = self.expect(&TokenKind::RBrace)?;
@@ -527,6 +561,14 @@ impl Parser {
             self.parse_let()
         } else if self.peek().kind == TokenKind::While {
             self.parse_while()
+        } else if self.peek().kind == TokenKind::Break {
+            let span = self.peek().span.clone();
+            self.pos += 1;
+            Ok(Stmt::Break { span })
+        } else if self.peek().kind == TokenKind::Continue {
+            let span = self.peek().span.clone();
+            self.pos += 1;
+            Ok(Stmt::Continue { span })
         } else if self.peek().kind == TokenKind::Return {
             self.parse_return()
         } else if self.peek().kind == TokenKind::If {
@@ -1370,7 +1412,9 @@ impl Parser {
                     | Stmt::Assign { span, .. }
                     | Stmt::If { span, .. }
                     | Stmt::LetDestructure { span, .. }
-                    | Stmt::ForIn { span, .. } => {
+                    | Stmt::ForIn { span, .. }
+                    | Stmt::Break { span, .. }
+                    | Stmt::Continue { span, .. } => {
                         return Err(ParseError::new(
                             "block must end with an expression, not a statement",
                             span,
