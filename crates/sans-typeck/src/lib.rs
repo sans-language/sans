@@ -788,6 +788,11 @@ fn check_expr(
                     return Err(TypeError::new(format!("json_parse() requires String argument, got {}", arg_ty)));
                 }
                 return Ok(Type::JsonValue);
+            } else if function == "map" || function == "M" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("map() takes 0 arguments"));
+                }
+                return Ok(Type::Map);
             } else if function == "json_object" || function == "jobj" || function == "jo" {
                 if !args.is_empty() {
                     return Err(TypeError::new("json_object() takes 0 arguments"));
@@ -2098,6 +2103,61 @@ fn check_expr(
                 }
                 (Type::JsonValue, other) => {
                     return Err(TypeError::new(format!("JsonValue has no method '{}'", other)));
+                }
+                (Type::Map, "get") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("get() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("get() key must be String, got {}", arg_ty)));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::Map, "set") => {
+                    if args.len() != 2 {
+                        return Err(TypeError::new("set() takes exactly 2 arguments (key, value)"));
+                    }
+                    let key_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if key_ty != Type::String {
+                        return Err(TypeError::new(format!("set() key must be String, got {}", key_ty)));
+                    }
+                    let val_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if val_ty != Type::Int {
+                        return Err(TypeError::new(format!("set() value must be Int, got {}", val_ty)));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::Map, "has") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("has() takes exactly 1 argument"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String {
+                        return Err(TypeError::new(format!("has() key must be String, got {}", arg_ty)));
+                    }
+                    return Ok(Type::Bool);
+                }
+                (Type::Map, "len") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("len() takes no arguments"));
+                    }
+                    return Ok(Type::Int);
+                }
+                (Type::Map, "keys") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("keys() takes no arguments"));
+                    }
+                    return Ok(Type::Array { inner: Box::new(Type::String) });
+                }
+                (Type::Map, "vals") => {
+                    if !args.is_empty() {
+                        return Err(TypeError::new("vals() takes no arguments"));
+                    }
+                    return Ok(Type::Array { inner: Box::new(Type::Int) });
+                }
+                (Type::Map, other) => {
+                    return Err(TypeError::new(format!("Map has no method '{}'", other)));
                 }
                 (Type::HttpResponse, "status") => {
                     if !args.is_empty() {

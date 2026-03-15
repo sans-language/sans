@@ -1,0 +1,5 @@
+main() I {
+  m = M()
+  m.set("x" 42)
+  m.has("x") ? m.get("x") : 0
+}

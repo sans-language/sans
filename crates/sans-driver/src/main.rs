@@ -158,7 +158,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     let tmp_dir = std::env::temp_dir();
     let c_runtime_modules: [&str; 0] = [];
     let sans_runtime_modules = [
-        "log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl",
+        "log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl", "map",
     ];
     let mut runtime_o_paths: Vec<PathBuf> = Vec::new();
     for name in &c_runtime_modules {

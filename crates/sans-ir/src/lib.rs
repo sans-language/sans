@@ -6,7 +6,7 @@ use sans_parser::ast::{BinOp, Expr, Program, Stmt};
 use ir::{Instruction, IrBinOp, IrCmpOp, IrFunction, Module, Reg};
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>), HttpServer, HttpRequest, Tuple(Vec<IrType>) }
+pub enum IrType { Int, Float, Bool, Str, Struct(String), Enum(String), Sender, Receiver, JoinHandle, Mutex, Array(Box<IrType>), JsonValue, HttpResponse, Result(Box<IrType>), HttpServer, HttpRequest, Tuple(Vec<IrType>), Map }
 
 pub fn ir_type_for_return(ty: &sans_typeck::types::Type) -> IrType {
     use sans_typeck::types::Type;
@@ -19,6 +19,7 @@ pub fn ir_type_for_return(ty: &sans_typeck::types::Type) -> IrType {
         Type::Enum { name, .. } => IrType::Enum(name.clone()),
         Type::Array { inner } => IrType::Array(Box::new(ir_type_for_return(inner))),
         Type::JsonValue => IrType::JsonValue,
+        Type::Map => IrType::Map,
         Type::HttpResponse => IrType::HttpResponse,
         Type::HttpServer => IrType::HttpServer,
         Type::HttpRequest => IrType::HttpRequest,
@@ -115,6 +116,8 @@ pub fn lower_with_extra_structs(
             IrType::Bool
         } else if ret_name == "JsonValue" {
             IrType::JsonValue
+        } else if ret_name == "Map" || ret_name == "M" {
+            IrType::Map
         } else if ret_name == "HttpResponse" {
             IrType::HttpResponse
         } else if ret_name == "HttpRequest" || ret_name == "HR" {
@@ -186,6 +189,7 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
                     "HttpServer" | "HS" => { builder.reg_types.insert(reg.clone(), IrType::HttpServer); }
                     "HttpResponse" => { builder.reg_types.insert(reg.clone(), IrType::HttpResponse); }
                     "JsonValue" => { builder.reg_types.insert(reg.clone(), IrType::JsonValue); }
+                    "Map" | "M" => { builder.reg_types.insert(reg.clone(), IrType::Map); }
                     _ => {
                         // Result<T> or R<T>
                         let n = &param.type_name.name;
@@ -735,6 +739,7 @@ impl IrBuilder {
                         IrType::Sender | IrType::Receiver | IrType::JoinHandle | IrType::Mutex => panic!("cannot print concurrency type"),
                         IrType::Array(_) => panic!("cannot print array"),
                         IrType::JsonValue => panic!("cannot print JsonValue"),
+                        IrType::Map => panic!("cannot print Map"),
                         IrType::Float => self.instructions.push(Instruction::PrintFloat { value: arg_reg }),
                         IrType::HttpResponse => panic!("cannot print HttpResponse"),
                         IrType::Result(_) => panic!("cannot print Result"),
@@ -813,6 +818,11 @@ impl IrBuilder {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonParse { dest: dest.clone(), source: source_reg });
                     self.reg_types.insert(dest.clone(), IrType::JsonValue);
+                    return dest;
+                } else if function == "map" || function == "M" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::MapCreate { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Map);
                     return dest;
                 } else if function == "json_object" || function == "jobj" || function == "jo" {
                     let dest = self.fresh_reg();
@@ -1682,6 +1692,46 @@ impl IrBuilder {
                         let dest = self.fresh_reg();
                         self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
                         self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Map), "get") => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapGet { dest: dest.clone(), map: obj_reg, key: key_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Map), "set") => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let val_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapSet { dest: dest.clone(), map: obj_reg, key: key_reg, value: val_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Map), "has") => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapHas { dest: dest.clone(), map: obj_reg, key: key_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Map), "len") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapLen { dest: dest.clone(), map: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Map), "keys") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapKeys { dest: dest.clone(), map: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
+                        return dest;
+                    }
+                    (Some(IrType::Map), "vals") => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapVals { dest: dest.clone(), map: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
                         return dest;
                     }
                     (Some(IrType::HttpResponse), "status") => {

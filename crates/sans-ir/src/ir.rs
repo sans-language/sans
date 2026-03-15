@@ -279,6 +279,14 @@ pub enum Instruction {
     Cinfo { dest: Reg, handle: Reg, info: Reg, buf: Reg },
     CurlSlistAppend { dest: Reg, slist: Reg, str_ptr: Reg },
     CurlSlistFree { dest: Reg, slist: Reg },
+    // Map operations
+    MapCreate { dest: Reg },
+    MapGet { dest: Reg, map: Reg, key: Reg },
+    MapSet { dest: Reg, map: Reg, key: Reg, value: Reg },
+    MapHas { dest: Reg, map: Reg, key: Reg },
+    MapLen { dest: Reg, map: Reg },
+    MapKeys { dest: Reg, map: Reg },
+    MapVals { dest: Reg, map: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

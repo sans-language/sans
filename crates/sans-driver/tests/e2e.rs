@@ -32,7 +32,7 @@ fn compile_sans_runtime(manifest_dir: &str, tmp_dir: &std::path::Path, name: &st
 }
 
 const C_RUNTIME_NAMES: &[&str] = &[];
-const SANS_RUNTIME_NAMES: &[&str] = &["log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl"];
+const SANS_RUNTIME_NAMES: &[&str] = &["log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl", "map"];
 
 /// Helper: compile a multi-file fixture directory and run main.sans, returning the exit code.
 fn compile_and_run_dir(fixture_dir: &str) -> i32 {
@@ -356,6 +356,21 @@ fn e2e_http_error_handling() {
 #[test]
 fn e2e_log_levels() {
     assert_eq!(compile_and_run("log_levels.sans"), 0);
+}
+
+#[test]
+fn e2e_map_basic() {
+    assert_eq!(compile_and_run("map_basic.sans"), 30);
+}
+
+#[test]
+fn e2e_map_has() {
+    assert_eq!(compile_and_run("map_has.sans"), 42);
+}
+
+#[test]
+fn e2e_map_len() {
+    assert_eq!(compile_and_run("map_len.sans"), 3);
 }
 
 #[test]

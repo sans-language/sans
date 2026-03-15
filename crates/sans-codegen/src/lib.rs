@@ -198,6 +198,22 @@ fn generate_llvm<'ctx>(
     let json_push_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
     llvm_module.add_function("sans_json_push", json_push_type, Some(Linkage::External));
 
+    // Map operations
+    let map_noarg_type = i64_type.fn_type(&[], false);
+    llvm_module.add_function("sans_map_create", map_noarg_type, Some(Linkage::External));
+
+    let map_2arg_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+    llvm_module.add_function("sans_map_get", map_2arg_type, Some(Linkage::External));
+    llvm_module.add_function("sans_map_has", map_2arg_type, Some(Linkage::External));
+
+    let map_3arg_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
+    llvm_module.add_function("sans_map_set", map_3arg_type, Some(Linkage::External));
+
+    let map_1arg_type = i64_type.fn_type(&[i64_type.into()], false);
+    llvm_module.add_function("sans_map_len", map_1arg_type, Some(Linkage::External));
+    llvm_module.add_function("sans_map_keys", map_1arg_type, Some(Linkage::External));
+    llvm_module.add_function("sans_map_vals", map_1arg_type, Some(Linkage::External));
+
     // Declare strcmp for string comparison
     let strcmp_type = i32_type.fn_type(&[i8_ptr_type.into(), i8_ptr_type.into()], false);
     llvm_module.add_function("strcmp", strcmp_type, Some(Linkage::External));
@@ -2615,6 +2631,60 @@ fn generate_llvm<'ctx>(
                     let arr_val = regs[array]; let val_val = regs[value];
                     let fn_ref = llvm_module.get_function("sans_json_push").unwrap();
                     builder.build_call(fn_ref, &[arr_val.into(), val_val.into()], "").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                }
+                Instruction::MapCreate { dest } => {
+                    let fn_ref = llvm_module.get_function("sans_map_create").unwrap();
+                    let call = builder.build_call(fn_ref, &[], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let as_int = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_map_create: expected return".into())) };
+                    regs.insert(dest.clone(), as_int);
+                    let ptr_val = builder.build_int_to_ptr(as_int, context.ptr_type(inkwell::AddressSpace::default()), "mc_ptr").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::MapGet { dest, map, key } => {
+                    let map_val = regs[map]; let key_val = regs[key];
+                    let fn_ref = llvm_module.get_function("sans_map_get").unwrap();
+                    let call = builder.build_call(fn_ref, &[map_val.into(), key_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_map_get: expected return".into())) };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::MapSet { dest, map, key, value } => {
+                    let map_val = regs[map]; let key_val = regs[key]; let val_val = regs[value];
+                    let fn_ref = llvm_module.get_function("sans_map_set").unwrap();
+                    let call = builder.build_call(fn_ref, &[map_val.into(), key_val.into(), val_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_map_set: expected return".into())) };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::MapHas { dest, map, key } => {
+                    let map_val = regs[map]; let key_val = regs[key];
+                    let fn_ref = llvm_module.get_function("sans_map_has").unwrap();
+                    let call = builder.build_call(fn_ref, &[map_val.into(), key_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_map_has: expected return".into())) };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::MapLen { dest, map } => {
+                    let map_val = regs[map];
+                    let fn_ref = llvm_module.get_function("sans_map_len").unwrap();
+                    let call = builder.build_call(fn_ref, &[map_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_map_len: expected return".into())) };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::MapKeys { dest, map } => {
+                    let map_val = regs[map];
+                    let fn_ref = llvm_module.get_function("sans_map_keys").unwrap();
+                    let call = builder.build_call(fn_ref, &[map_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let as_int = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_map_keys: expected return".into())) };
+                    regs.insert(dest.clone(), as_int);
+                    let ptr_val = builder.build_int_to_ptr(as_int, context.ptr_type(inkwell::AddressSpace::default()), "mk_ptr").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr_val);
+                }
+                Instruction::MapVals { dest, map } => {
+                    let map_val = regs[map];
+                    let fn_ref = llvm_module.get_function("sans_map_vals").unwrap();
+                    let call = builder.build_call(fn_ref, &[map_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let as_int = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_map_vals: expected return".into())) };
+                    regs.insert(dest.clone(), as_int);
+                    let ptr_val = builder.build_int_to_ptr(as_int, context.ptr_type(inkwell::AddressSpace::default()), "mv_ptr").map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::ResultOk { dest, value } => {
                     let val = regs[value];

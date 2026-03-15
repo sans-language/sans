@@ -19,6 +19,7 @@ pub enum Type {
     ResultErr,
     HttpServer,
     HttpRequest,
+    Map,
 }
 
 impl std::fmt::Display for Type {
@@ -49,6 +50,7 @@ impl std::fmt::Display for Type {
             Type::ResultErr => write!(f, "Result<_>"),
             Type::HttpServer => write!(f, "HttpServer"),
             Type::HttpRequest => write!(f, "HttpRequest"),
+            Type::Map => write!(f, "Map"),
             Type::Fn { params, ret } => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {
