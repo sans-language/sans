@@ -1580,7 +1580,17 @@ impl IrBuilder {
                     args: arg_regs,
                 });
                 // Use tracked return type if available (for Result, struct, enum, etc.)
-                let ret_type = self.local_fn_ret_types.get(function).cloned().unwrap_or(IrType::Int);
+                let ret_type = self.local_fn_ret_types.get(function).cloned()
+                    .or_else(|| {
+                        // Check module_fn_ret_types for cross-module calls
+                        for ((m, f), t) in self.module_fn_ret_types.iter() {
+                            if f == function {
+                                return Some(t.clone());
+                            }
+                        }
+                        None
+                    })
+                    .unwrap_or(IrType::Int);
                 self.reg_types.insert(dest.clone(), ret_type);
                 dest
             }
