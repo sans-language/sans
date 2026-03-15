@@ -2175,9 +2175,12 @@ impl IrBuilder {
                     dest: dest.clone(),
                 });
                 let inner_ir_type = match element_type.name.as_str() {
-                    "Int" => IrType::Int,
-                    "Bool" => IrType::Bool,
-                    "String" => IrType::Str,
+                    "Int" | "I" => IrType::Int,
+                    "Bool" | "B" => IrType::Bool,
+                    "String" | "S" => IrType::Str,
+                    "Float" | "F" => IrType::Float,
+                    "Map" | "M" => IrType::Map,
+                    other if self.enum_defs.contains_key(other) => IrType::Enum(other.to_string()),
                     other => IrType::Struct(other.to_string()),
                 };
                 self.reg_types.insert(dest.clone(), IrType::Array(Box::new(inner_ir_type)));
