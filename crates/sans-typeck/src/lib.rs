@@ -51,6 +51,13 @@ fn types_compatible(actual: &Type, expected: &Type) -> bool {
         || (matches!(actual, Type::ResultErr) && matches!(expected, Type::Result { .. }))
         // Allow Fn types to be passed as Int (function pointers are i64)
         || (*expected == Type::Int && matches!(actual, Type::Fn { .. }))
+        // Allow String where Int is expected (strings are pointers = i64)
+        || (*expected == Type::Int && *actual == Type::String)
+        || (*expected == Type::String && *actual == Type::Int)
+        // Allow Map/Array where Int is expected (heap pointers = i64)
+        || (*expected == Type::Int && *actual == Type::Map)
+        || (*expected == Type::Map && *actual == Type::Int)
+        || (*expected == Type::Int && matches!(actual, Type::Array { .. }))
 }
 
 /// Resolve an AST type name string to a `Type`.
@@ -934,6 +941,12 @@ fn check_expr(
                 if msg_ty != Type::String {
                     return Err(TypeError::new(format!("wfd() msg must be String, got {}", msg_ty)));
                 }
+                return Ok(Type::Int);
+            } else if function == "ptr" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("ptr() takes exactly 1 argument"));
+                }
+                check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
                 return Ok(Type::Int);
             } else if function == "alloc" {
                 if args.len() != 1 {

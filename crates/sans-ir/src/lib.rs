@@ -1080,6 +1080,10 @@ impl IrBuilder {
                     self.instructions.push(Instruction::WriteFd { dest: dest.clone(), fd: fd_reg, message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "ptr" {
+                    let arg_reg = self.lower_expr(&args[0]);
+                    // ptr() is a no-op at IR level — the value is already an i64
+                    return arg_reg;
                 } else if function == "alloc" {
                     let size_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
