@@ -464,3 +464,18 @@ fn e2e_global_var() {
     // g counter = 0; inc 3 times; counter = 3
     assert_eq!(compile_and_run("global_var.sans"), 3);
 }
+
+#[test]
+fn e2e_tuple_basic() {
+    assert_eq!(compile_and_run("tuple_basic.sans"), 5);
+}
+
+#[test]
+fn e2e_tuple_return() {
+    assert_eq!(compile_and_run("tuple_return.sans"), 30);
+}
+
+#[test]
+fn e2e_tuple_three() {
+    assert_eq!(compile_and_run("tuple_three.sans"), 42);
+}
