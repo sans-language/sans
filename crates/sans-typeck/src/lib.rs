@@ -1078,6 +1078,19 @@ fn check_expr(
                     return Err(TypeError::new(format!("slen() ptr must be Int, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "char_at" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("char_at() takes exactly 2 arguments (string, index)"));
+                }
+                let s_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if s_ty != Type::String {
+                    return Err(TypeError::new(format!("char_at() first arg must be String, got {}", s_ty)));
+                }
+                let i_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if i_ty != Type::Int {
+                    return Err(TypeError::new(format!("char_at() second arg must be Int, got {}", i_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "load8" {
                 if args.len() != 1 {
                     return Err(TypeError::new("load8() takes exactly 1 argument (ptr)"));

@@ -1135,6 +1135,20 @@ impl IrBuilder {
                     self.instructions.push(Instruction::WriteFd { dest: dest.clone(), fd: fd_reg, message: msg_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "char_at" {
+                    let str_reg = self.lower_expr(&args[0]);
+                    let idx_reg = self.lower_expr(&args[1]);
+                    // Desugar to: ptr_as_int = copy(str), addr = ptr_as_int + idx, load8(addr)
+                    let ptr_reg = self.fresh_reg();
+                    self.instructions.push(Instruction::Copy { dest: ptr_reg.clone(), src: str_reg });
+                    self.reg_types.insert(ptr_reg.clone(), IrType::Int);
+                    let addr_reg = self.fresh_reg();
+                    self.instructions.push(Instruction::BinOp { dest: addr_reg.clone(), op: IrBinOp::Add, left: ptr_reg, right: idx_reg });
+                    self.reg_types.insert(addr_reg.clone(), IrType::Int);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Load8 { dest: dest.clone(), ptr: addr_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "ptr" {
                     let arg_reg = self.lower_expr(&args[0]);
                     // Emit a Copy into a fresh register typed as Int so that
