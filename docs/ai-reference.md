@@ -133,6 +133,17 @@ curl_slist_free(sl)                     I -> I (free headers)
 // Function pointers
 fptr("name")                            S -> I (get fn pointer)
 fcall(ptr arg)                          I I -> I (call fn ptr)
+fcall2(ptr a b)                         I I I -> I (call fn ptr 2 args)
+fcall3(ptr a b c)                       I I I I -> I (call fn ptr 3 args)
+
+// Pointer access
+ptr(s)                                  S/M/Array -> I (raw pointer)
+char_at(s i)                            S I -> I (byte at index)
+
+// File I/O
+read_file(path)                         S -> S (read file)
+write_file(path content)                S S -> I (write file)
+args()                                  -> [S] (command-line args)
 ```
 
 ## Methods

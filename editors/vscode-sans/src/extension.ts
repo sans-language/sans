@@ -142,6 +142,19 @@ const HOVER_DATA: Record<string, string> = {
     'break': '**break**\n\nExit the nearest enclosing `while` or `for` loop immediately.',
     'continue': '**continue**\n\nSkip the rest of the current iteration and jump to the next iteration of the nearest enclosing loop.',
 
+    // Pointer access
+    'ptr': '**ptr**(s: String|Map|Array) -> Int\n\nGet raw i64 pointer of a string, map, or array.\n\nUsage: `p = ptr(s)`\n`load8(ptr(s) + i)  // read byte at index i`',
+    'char_at': '**char_at**(s: String, i: Int) -> Int\n\nRead byte at index i in string. Returns 0-255.\nShorthand for `load8(ptr(s) + i)`.\n\nUsage: `char_at("hello" 1)  // 101 = \'e\'`',
+
+    // Multi-arg function pointer calls
+    'fcall2': '**fcall2**(ptr: Int, a: Int, b: Int) -> Int\n\nCall a function pointer with 2 arguments.\n\nUsage: `add(a:I b:I) I = a + b`\n`fcall2(fptr("add") 10 20)  // 30`',
+    'fcall3': '**fcall3**(ptr: Int, a: Int, b: Int, c: Int) -> Int\n\nCall a function pointer with 3 arguments.\n\nUsage: `fcall3(fptr("f") 1 2 3)`',
+
+    // File I/O (read_file / write_file / args)
+    'read_file': '**read_file**(path: String) -> String\n\nRead entire file contents to string.\n\nUsage: `content = read_file("input.txt")`',
+    'write_file': '**write_file**(path: String, content: String) -> Int\n\nWrite string to file. Returns 1 on success.\n\nUsage: `write_file("output.txt" "hello")`',
+    'args': '**args**() -> Array\\<String\\>\n\nGet command-line arguments as a string array.\n\nUsage: `a = args()`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',

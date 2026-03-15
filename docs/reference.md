@@ -279,6 +279,23 @@ arena_end()  // frees everything at once
 |----------|-----------|-------------|
 | `fptr("name")` | `(String) -> Int` | get pointer to named function |
 | `fcall(ptr, arg)` | `(Int, Int) -> Int` | call function pointer with 1 arg |
+| `fcall2(ptr, a, b)` | `(Int, Int, Int) -> Int` | call function pointer with 2 args |
+| `fcall3(ptr, a, b, c)` | `(Int, Int, Int, Int) -> Int` | call function pointer with 3 args |
+
+#### Pointer Access
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `ptr(s)` | `(String\|Map\|Array) -> Int` | get raw i64 pointer of string, map, or array |
+| `char_at(s, i)` | `(String, Int) -> Int` | read byte at index i (shorthand for `load8(ptr(s) + i)`) |
+
+#### File I/O
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `read_file(path)` | `(String) -> String` | read entire file to string |
+| `write_file(path, content)` | `(String, String) -> Int` | write string to file |
+| `args()` | `() -> Array<String>` | get command-line arguments |
 
 ### Error Handling
 

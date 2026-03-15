@@ -113,6 +113,16 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
 <span class="comment">// For-in loop</span>
 <span class="kw">for</span> item <span class="kw">in</span> array { body }
 
+<span class="comment">// Loop control</span>
+<span class="kw">while</span> cond {
+    <span class="kw">if</span> done { <span class="kw">break</span> }       <span class="comment">// exit loop immediately</span>
+    <span class="kw">if</span> skip { <span class="kw">continue</span> }    <span class="comment">// skip to next iteration</span>
+}
+<span class="kw">for</span> x <span class="kw">in</span> arr {
+    <span class="kw">if</span> x == <span class="num">0</span> { <span class="kw">continue</span> }  <span class="comment">// works in for-in too</span>
+    <span class="kw">if</span> x &lt; <span class="num">0</span> { <span class="kw">break</span> }
+}
+
 <span class="comment">// Match expression</span>
 <span class="kw">match</span> value {
     EnumName::Variant1 => expr1,
@@ -127,7 +137,7 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td>Comparison</td><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code></td></tr>
         <tr><td>Boolean</td><td><code>&amp;&amp;</code>, <code>||</code>, <code>!</code></td></tr>
         <tr><td>Assignment</td><td><code>=</code>, <code>:=</code>, <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code></td></tr>
-        <tr><td>Special</td><td><code>?:</code> (ternary), <code>!</code> (postfix unwrap), <code>[]</code> (index)</td></tr>
+        <tr><td>Special</td><td><code>?:</code> (ternary), <code>?</code> (try/propagate), <code>!</code> (postfix unwrap), <code>[]</code> (index)</td></tr>
       </tbody>
     </table>
 
@@ -285,6 +295,27 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       <tbody>
         <tr><td><code>fptr("name")</code></td><td><code>(String) -&gt; Int</code></td><td>get pointer to named function</td></tr>
         <tr><td><code>fcall(ptr, arg)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>call function pointer with 1 arg</td></tr>
+        <tr><td><code>fcall2(ptr, a, b)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>call function pointer with 2 args</td></tr>
+        <tr><td><code>fcall3(ptr, a, b, c)</code></td><td><code>(Int, Int, Int, Int) -&gt; Int</code></td><td>call function pointer with 3 args</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Pointer Access</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>ptr(s)</code></td><td><code>(String|Map|Array) -&gt; Int</code></td><td>get raw i64 pointer of string, map, or array</td></tr>
+        <tr><td><code>char_at(s, i)</code></td><td><code>(String, Int) -&gt; Int</code></td><td>read byte at index i (shorthand for <code>load8(ptr(s) + i)</code>)</td></tr>
+      </tbody>
+    </table>
+
+    <h4>File I/O</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>read_file(path)</code></td><td><code>(String) -&gt; String</code></td><td>read entire file to string</td></tr>
+        <tr><td><code>write_file(path, content)</code></td><td><code>(String, String) -&gt; Int</code></td><td>write string to file</td></tr>
+        <tr><td><code>args()</code></td><td><code>() -&gt; Array&lt;String&gt;</code></td><td>get command-line arguments</td></tr>
       </tbody>
     </table>
 
