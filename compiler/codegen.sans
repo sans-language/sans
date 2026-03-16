@@ -12,15 +12,16 @@ import "ir"
 // offset 56: has_main     — 1 if module has main function
 
 make_codegen() I {
-  cg = alloc(64)
-  store64(cg, array<I>())
-  store64(cg + 8, 0)
-  store64(cg + 16, M())
-  store64(cg + 24, M())
-  store64(cg + 32, M())
-  store64(cg + 40, M())
-  store64(cg + 48, M())
-  store64(cg + 56, 0)
+  cg = alloc(72)
+  store64(cg, array<I>())       // lines
+  store64(cg + 8, 0)            // reg_counter
+  store64(cg + 16, M())         // string_pool
+  store64(cg + 24, M())         // struct_defs
+  store64(cg + 32, M())         // label_map
+  store64(cg + 40, M())         // reg_map
+  store64(cg + 48, M())         // ptr_set
+  store64(cg + 56, 0)           // has_main
+  store64(cg + 64, array<I>())  // string_const_lines (emitted before functions)
   cg
 }
 
@@ -34,6 +35,14 @@ cg_reg_map(cg:I) I = load64(cg + 40)
 cg_ptr_set(cg:I) I = load64(cg + 48)
 cg_has_main(cg:I) I = load64(cg + 56)
 
+cg_string_const_lines(cg:I) I = load64(cg + 64)
+
+// Emit a global constant line (goes to string_const_lines, not main lines)
+emit_global_const(cg:I line:S) I {
+  sc = cg_string_const_lines(cg)
+  sc.push(ptr(line))
+  0
+}
 cg_set_reg_counter(cg:I v:I) I { store64(cg + 8, v) 0 }
 cg_set_has_main(cg:I v:I) I { store64(cg + 56, v) 0 }
 
@@ -192,7 +201,9 @@ emit_string_const(cg:I value:S) S {
   mset(pool, key, ptr(name))
   escaped = llvm_escape_string(value)
   len = slen(value) + 1
-  emit(cg, name + " = private unnamed_addr constant [" + str(len) + " x i8] c\"" + escaped + "\\00\"")
+  line = name + " = private unnamed_addr constant [" + str(len) + " x i8] c\"" + escaped + "\\00\""
+  sc_lines = cg_string_const_lines(cg)
+  sc_lines.push(ptr(line))
   name
 }
 
@@ -368,7 +379,7 @@ cg_fmt_int(cg:I) S {
   if mhas(pool, "__fmt_int") { return mget(pool, "__fmt_int") }
   name = "@fmt.int"
   mset(pool, "__fmt_int", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\"")
   name
 }
 
@@ -377,7 +388,7 @@ cg_fmt_float(cg:I) S {
   if mhas(pool, "__fmt_float") { return mget(pool, "__fmt_float") }
   name = "@fmt.float"
   mset(pool, "__fmt_float", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%g\\0A\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [4 x i8] c\"%g\\0A\\00\"")
   name
 }
 
@@ -386,7 +397,7 @@ cg_fmt_str(cg:I) S {
   if mhas(pool, "__fmt_str") { return mget(pool, "__fmt_str") }
   name = "@fmt.str"
   mset(pool, "__fmt_str", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"")
   name
 }
 
@@ -395,7 +406,7 @@ cg_bool_true(cg:I) S {
   if mhas(pool, "__bool_true") { return mget(pool, "__bool_true") }
   name = "@bool.true"
   mset(pool, "__bool_true", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [6 x i8] c\"true\\0A\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [6 x i8] c\"true\\0A\\00\"")
   name
 }
 
@@ -404,7 +415,7 @@ cg_bool_false(cg:I) S {
   if mhas(pool, "__bool_false") { return mget(pool, "__bool_false") }
   name = "@bool.false"
   mset(pool, "__bool_false", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [7 x i8] c\"false\\0A\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [7 x i8] c\"false\\0A\\00\"")
   name
 }
 
@@ -414,7 +425,7 @@ cg_fmt_ld(cg:I) S {
   if mhas(pool, "__fmt_ld") { return mget(pool, "__fmt_ld") }
   name = "@fmt.ld"
   mset(pool, "__fmt_ld", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%ld\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [4 x i8] c\"%ld\\00\"")
   name
 }
 
@@ -424,7 +435,7 @@ cg_fmt_g(cg:I) S {
   if mhas(pool, "__fmt_g") { return mget(pool, "__fmt_g") }
   name = "@fmt.g"
   mset(pool, "__fmt_g", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [3 x i8] c\"%g\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [3 x i8] c\"%g\\00\"")
   name
 }
 
@@ -434,7 +445,7 @@ cg_fmode_r(cg:I) S {
   if mhas(pool, "__fmode_r") { return mget(pool, "__fmode_r") }
   name = "@fmode.r"
   mset(pool, "__fmode_r", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"r\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [2 x i8] c\"r\\00\"")
   name
 }
 
@@ -443,7 +454,7 @@ cg_fmode_w(cg:I) S {
   if mhas(pool, "__fmode_w") { return mget(pool, "__fmode_w") }
   name = "@fmode.w"
   mset(pool, "__fmode_w", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"w\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [2 x i8] c\"w\\00\"")
   name
 }
 
@@ -452,7 +463,7 @@ cg_fmode_a(cg:I) S {
   if mhas(pool, "__fmode_a") { return mget(pool, "__fmode_a") }
   name = "@fmode.a"
   mset(pool, "__fmode_a", ptr(name))
-  emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"a\\00\"")
+  emit_global_const(cg, name + " = private unnamed_addr constant [2 x i8] c\"a\\00\"")
   name
 }
 
@@ -2266,8 +2277,8 @@ emit_function_body(cg:I func:I) I {
   emit(cg, "define i64 @" + llvm_name + "(" + param_str + ") {")
   emit(cg, "entry:")
 
-  // Reset per-function state
-  cg_set_reg_counter(cg, np)
+  // Reset per-function state (named params don't consume numbered slots)
+  cg_set_reg_counter(cg, 0)
   store64(cg + 40, M())
   store64(cg + 48, M())
 
@@ -2444,7 +2455,22 @@ compile_to_ll(module:I output_path:S) I {
     0
   }
 
-  // 7. Join all lines into a single string and write to file
+  // 7. Join: prepend string constants before main lines
+  // String constants must be at module level, so prepend them
+  main_lines = cg_lines(cg)
+  sc_lines = cg_string_const_lines(cg)
+  // Build final lines: header+externals+globals (already in main_lines) + string consts + functions
+  // Since string consts were NOT in main_lines, we need to insert them.
+  // Simplest: create new lines array with sc_lines prepended before function definitions.
+  // Actually, since LLVM allows globals anywhere at top-level, just append them to main_lines.
+  si := 0
+  while si < sc_lines.len() {
+    main_lines.push(sc_lines.get(si))
+    si = si + 1
+    0
+  }
+
+  // 8. Join all lines into a single string and write to file
   ll_string = join_lines(cg)
   fw(output_path, ll_string)
   0

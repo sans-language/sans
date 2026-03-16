@@ -1063,8 +1063,8 @@ lower_stmt(ctx:I stmt:I) I {
         ctx_set_local(ctx, name, val_reg)
       }
     } : {
-      // Global store
-      ctx_emit(ctx, ir_global_store(name, val_reg))
+      // New local binding (bare assignment: x = 10)
+      ctx_set_local(ctx, name, val_reg)
     }
     0
   } :
