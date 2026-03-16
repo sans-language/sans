@@ -294,15 +294,7 @@ ctx_get_local(ctx:I name:I) I {
 // Register type tracking
 ctx_set_reg_type(ctx:I reg:I irtype:I) I {
   m = load64(ctx + 32)
-  wfd(2, "srt: m=")
-  wfd(2, itos(m))
-  wfd(2, " reg=")
-  wfd(2, reg)
-  wfd(2, " t=")
-  wfd(2, itos(irtype))
-  wfd(2, "\n")
   mset(m, reg, irtype)
-  wfd(2, "srt: done\n")
   0
 }
 
@@ -747,27 +739,14 @@ lower_call_user(ctx:I name:I args:I) I {
 
 lower_expr(ctx:I expr:I) I {
   tag = load64(expr)
-  wfd(2, "le:")
-  wfd(2, itos(tag))
-  wfd(2, "\n")
 
   // ── EX_INT_LIT ──
   tag == EX_INT_LIT ? {
-    wfd(2, "le: int_lit\n")
     value = load64(expr + 8)
-    wfd(2, "le: value=")
-    wfd(2, itos(value))
-    wfd(2, "\n")
     dest = ctx_fresh_reg(ctx)
-    wfd(2, "le: dest=")
-    wfd(2, dest)
-    wfd(2, "\n")
     inst = ir_const(dest, value)
-    wfd(2, "le: inst ok\n")
     ctx_emit(ctx, inst)
-    wfd(2, "le: emitted\n")
     ctx_set_reg_type(ctx, dest, IRTY_INT)
-    wfd(2, "le: done\n")
     dest
   } :
 
@@ -2338,20 +2317,12 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
 // Lower a single function's body, handling last-statement-as-return.
 // Returns an IrFunction pointer.
 lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  wfd(2, "lfb: start\n")
   // Create fresh context
   ctx = make_lower_ctx(struct_defs, enum_defs, fn_ret_types, global_names)
-  wfd(2, "lfb: ctx created\n")
 
   // Set up params
   params_ast = load64(func + 8)   // Array of Param pointers [name@0, type@8]
-  wfd(2, "lfb: params_ast=")
-  wfd(2, itos(params_ast))
-  wfd(2, "\n")
   nparams = params_ast.len()
-  wfd(2, "lfb: nparams=")
-  wfd(2, itos(nparams))
-  wfd(2, "\n")
   param_names = array<I>()
   param_sizes = array<I>()
 
@@ -2401,35 +2372,18 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
     0
   }
 
-  wfd(2, "lfb: lowering body\n")
   // Lower body statements — last statement is treated as return value
   body = load64(func + 24)  // Array of Stmt pointers
-  wfd(2, "lfb: body ptr=")
-  wfd(2, itos(body))
-  wfd(2, " len=")
-  wfd(2, itos(body.len()))
-  wfd(2, "\n")
   j := 0
   while j < body.len() {
     is_last = j == body.len() - 1
     stmt = body.get(j)
-    wfd(2, "lfb: stmt tag=")
-    wfd(2, itos(load64(stmt)))
-    wfd(2, " ST_EXPR=")
-    wfd(2, itos(ST_EXPR))
-    wfd(2, " is_last=")
-    wfd(2, itos(is_last))
-    wfd(2, "\n")
     is_last == 1 ? {
       stag = load64(stmt)
       // If last stmt is an expression or return, emit Ret
       stag == ST_EXPR ? {
         expr = load64(stmt + 8)
-        wfd(2, "lfb: expr tag=")
-        wfd(2, itos(load64(expr)))
-        wfd(2, "\n")
         reg = lower_expr(ctx, expr)
-        wfd(2, "lfb: lower_expr returned\n")
         ctx_emit(ctx, ir_ret(reg))
       } : stag == ST_RETURN ? {
         val_expr = load64(stmt + 8)
@@ -2460,10 +2414,8 @@ lower(program:I module_name:I module_fn_ret_types:I) I {
 
 // ── lower_with_extra_structs ────────────────────────────────────
 lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I) I {
-  wfd(2, "lwes: start\n")
   // 1. Collect struct definitions: name -> field names array
   struct_defs = M()
-  wfd(2, "lwes: map created\n")
   // Merge extra_struct_defs first
   extra_struct_defs != 0 ? {
     keys = extra_struct_defs.keys()
@@ -2477,10 +2429,8 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     0
   } : 0
 
-  wfd(2, "lwes: collecting structs\n")
   // Collect from program's structs
   prog_structs = load64(program + 24)  // Array of StructDef pointers
-  wfd(2, "lwes: loaded prog_structs\n")
   si := 0
   while si < prog_structs.len() {
     sdef = prog_structs.get(si)
@@ -2499,11 +2449,9 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     0
   }
 
-  wfd(2, "lwes: structs done\n")
   // 2. Collect enum definitions: name -> array of [variant_name, tag, num_data] arrays
   enum_defs = M()
   prog_enums = load64(program + 32)  // Array of EnumDef pointers
-  wfd(2, "lwes: loaded prog_enums\n")
   ei := 0
   while ei < prog_enums.len() {
     edef = prog_enums.get(ei)
@@ -2530,32 +2478,15 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     0
   }
 
-  wfd(2, "lwes: enums done\n")
   // 3. Build fn_ret_types from program functions
   fn_ret_types = M()
   prog_fns = load64(program + 16)  // Array of Function pointers
-  wfd(2, "lwes: loaded prog_fns\n")
-  wfd(2, "lwes: prog_fns ptr=")
-  wfd(2, itos(prog_fns))
-  wfd(2, "\n")
   nfns = prog_fns.len()
-  wfd(2, "lwes: num_fns=")
-  wfd(2, itos(nfns))
-  wfd(2, "\n")
   fri := 0
   while fri < nfns {
     func = prog_fns.get(fri)
-    wfd(2, "lwes: func ptr=")
-    wfd(2, itos(func))
-    wfd(2, "\n")
     fname = load64(func)
-    wfd(2, "lwes: fname=")
-    wfd(2, fname)
-    wfd(2, "\n")
     ret_type_name = load64(func + 16)
-    wfd(2, "lwes: ret=")
-    wfd(2, ret_type_name)
-    wfd(2, "\n")
     ret_type_name != 0 ? {
       rt = ir_type_for_return(ret_type_name, struct_defs, enum_defs)
       if IRTY_INT != rt { mset(fn_ret_types, fname, rt) }
@@ -2576,19 +2507,11 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     0
   } : 0
 
-  wfd(2, "lwes: fn_ret_types done\n")
   // 4. Collect global variable names and types
   globals_arr = array<I>()
   global_names = M()
-  wfd(2, "lwes: loading globals\n")
   prog_globals = load64(program + 8)  // Array of GlobalDef pointers
-  wfd(2, "lwes: prog_globals ptr=")
-  wfd(2, itos(prog_globals))
-  wfd(2, "\n")
   nglobals = prog_globals.len()
-  wfd(2, "lwes: num_globals=")
-  wfd(2, itos(nglobals))
-  wfd(2, "\n")
   gi := 0
   while gi < nglobals {
     gdef = prog_globals.get(gi)
@@ -2606,7 +2529,6 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     0
   }
 
-  wfd(2, "lwes: lowering functions\n")
   // 5. Lower each function
   ir_functions = array<I>()
 
@@ -2614,13 +2536,9 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
   while fi2 < prog_fns.len() {
     func = prog_fns.get(fi2)
     fname = load64(func)
-    wfd(2, "lwes: lowering ")
-    wfd(2, fname)
-    wfd(2, "\n")
     // Handle module name mangling
     func_name = module_name != 0 ? module_name + "__" + fname : fname
     ir_fn = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names)
-    wfd(2, "lwes: lowered ok\n")
     ir_functions.push(ir_fn)
     fi2 = fi2 + 1
     0
