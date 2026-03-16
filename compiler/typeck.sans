@@ -308,13 +308,13 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
   if name == "Fn" || name.sw("Fn(") { return make_type(TY_FN) }
 
   // Check structs map
-  structs != 0 && structs.has(name) ? {
-    return make_struct_type(name, structs.get(name))
+  structs != 0 && mhas(structs, name) ? {
+    return make_struct_type(name, mget(structs, name))
   } : 0
 
   // Check enums map
-  enums != 0 && enums.has(name) ? {
-    return make_enum_type(name, enums.get(name))
+  enums != 0 && mhas(enums, name) ? {
+    return make_enum_type(name, mget(enums, name))
   } : 0
 
   // Check module exports — iterate map keys looking for struct/enum
@@ -324,16 +324,16 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
     mi := 0
     while mi < mk_len {
       mod_name = mkeys[mi]
-      exports = mod_exports.get(mod_name)
+      exports = mget(mod_exports, mod_name)
       // exports is a ptr to module export data
       // exports offset 0: structs map, offset 8: enums map, offset 16: fn_env map
       exp_structs = load64(exports)
       exp_enums = load64(exports + 8)
-      exp_structs != 0 && exp_structs.has(name) ? {
-        return make_struct_type(name, exp_structs.get(name))
+      exp_structs != 0 && mhas(exp_structs, name) ? {
+        return make_struct_type(name, mget(exp_structs, name))
       } : 0
-      exp_enums != 0 && exp_enums.has(name) ? {
-        return make_enum_type(name, exp_enums.get(name))
+      exp_enums != 0 && mhas(exp_enums, name) ? {
+        return make_enum_type(name, mget(exp_enums, name))
       } : 0
       mi += 1
     }
@@ -417,7 +417,7 @@ lookup_local(locals:I name:S) I {
   i := locals.len() - 1
   while i >= 0 {
     scope = locals[i]
-    if scope.has(name) { return scope.get(name) }
+    if mhas(scope, name) { return mget(scope, name) }
     i -= 1
   }
   0
@@ -441,7 +441,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     } : actual
     // Add to current scope (last Map in locals)
     scope = locals[locals.len() - 1]
-    scope.set(name, ty)
+    mset(scope, name, ty)
     return 0
   } : 0
 
@@ -479,7 +479,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       // New variable — bare assignment creates immutable binding
       val_type = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       scope = locals[locals.len() - 1]
-      scope.set(name, val_type)
+      mset(scope, name, val_type)
       0
     }
     return 0
@@ -519,8 +519,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       names_p = load64(names_arr)
       num_names != 2 ? tc_error("channel destructuring requires exactly 2 names") : 0
       scope = locals[locals.len() - 1]
-      scope.set(load64(names_p), make_sender_type(inner))
-      scope.set(load64(names_p + 8), make_receiver_type(inner))
+      mset(scope, load64(names_p), make_sender_type(inner))
+      mset(scope, load64(names_p + 8), make_receiver_type(inner))
       return 0
     } : 0
     tc_error("destructuring let is only supported for channel<T>()")
@@ -537,7 +537,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Add loop var to scope
     push_scope(locals)
     inner_scope = locals[locals.len() - 1]
-    inner_scope.set(var_name, type_inner(iter_ty))
+    mset(inner_scope, var_name, type_inner(iter_ty))
     body_len = body_arr != 0 ? load64(body_arr + 8) : 0
     body_p = body_arr != 0 ? load64(body_arr) : 0
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -582,8 +582,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     t = lookup_local(locals, name)
     if t != 0 { return t }
     // Check function environment — return Fn type
-    fn_env.has(name) ? {
-      sig = fn_env.get(name)
+    mhas(fn_env, name) ? {
+      sig = mget(fn_env, name)
       // sig layout: offset 0 = params array ptr, offset 8 = ret type ptr
       sig_params = load64(sig)
       sig_ret = load64(sig + 8)
@@ -1258,8 +1258,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     } : 0
 
     // ── User-defined function: check fn_env ──────────────────────
-    fn_env.has(name) ? {
-      sig = fn_env.get(name)
+    mhas(fn_env, name) ? {
+      sig = mget(fn_env, name)
       // sig layout: offset 0 = params array ptr, offset 8 = return type ptr
       sig_params = load64(sig)
       sig_ret = load64(sig + 8)
@@ -1304,11 +1304,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     dot_pos >= 0 ? {
       mod_name = name.substring(0, dot_pos)
       func_name = name.substring(dot_pos + 1, slen(name))
-      mod_exports != 0 && mod_exports.has(mod_name) ? {
-        exports = mod_exports.get(mod_name)
+      mod_exports != 0 && mhas(mod_exports, mod_name) ? {
+        exports = mget(mod_exports, mod_name)
         exp_fn_env = load64(exports + 16)
-        exp_fn_env != 0 && exp_fn_env.has(func_name) ? {
-          sig = exp_fn_env.get(func_name)
+        exp_fn_env != 0 && mhas(exp_fn_env, func_name) ? {
+          sig = mget(exp_fn_env, func_name)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
           sig_params_len = sig_params != 0 ? load64(sig_params + 8) : 0
@@ -1341,11 +1341,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Cross-module call: obj is identifier that matches a module name
     load64(mc_object) == EX_IDENT ? {
       mod_name = load64(mc_object + 8)
-      mod_exports != 0 && mod_exports.has(mod_name) ? {
-        exports = mod_exports.get(mod_name)
+      mod_exports != 0 && mhas(mod_exports, mod_name) ? {
+        exports = mget(mod_exports, mod_name)
         exp_fn_env = load64(exports + 16)
-        exp_fn_env != 0 && exp_fn_env.has(mc_method) ? {
-          sig = exp_fn_env.get(mc_method)
+        exp_fn_env != 0 && mhas(exp_fn_env, mc_method) ? {
+          sig = mget(exp_fn_env, mc_method)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
           sig_params_len = sig_params != 0 ? load64(sig_params + 8) : 0
@@ -1817,8 +1817,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     ot == TY_STRUCT || ot == TY_ENUM ? {
       tname = type_data(obj_ty)
       method_key = tname + "." + mc_method
-      methods != 0 && methods.has(method_key) ? {
-        sig = methods.get(method_key)
+      methods != 0 && mhas(methods, method_key) ? {
+        sig = mget(methods, method_key)
         sig_params = load64(sig)
         sig_ret = load64(sig + 8)
         sig_params_len = sig_params != 0 ? load64(sig_params + 8) : 0
@@ -1862,7 +1862,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     obj_tag == TY_STRUCT ? {
       sname = type_data(obj_ty)
       fields_map = type_data2(obj_ty)
-      if fields_map != 0 && fields_map.has(field) { return fields_map.get(field) }
+      if fields_map != 0 && mhas(fields_map, field) { return mget(fields_map, field) }
       return tc_error("no field '" + field + "' on struct '" + sname + "'")
     } : 0
 
@@ -1881,8 +1881,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     field_values_p = load64(field_values_arr)
 
     // Look up struct definition
-    if structs.has(sname) == 0 { return tc_error("undefined struct '" + sname + "'") }
-    expected_fields = structs.get(sname)
+    if mhas(structs, sname) == 0 { return tc_error("undefined struct '" + sname + "'") }
+    expected_fields = mget(structs, sname)
 
     // expected_fields is a Map: field_name → Type ptr
     exp_keys = expected_fields.keys()
@@ -1911,8 +1911,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     while fi < num_fields {
       fname = load64(field_names_p + fi * 8)
       fval = load64(field_values_p + fi * 8)
-      if expected_fields.has(fname) == 0 { return tc_error("unknown field '" + fname + "' on struct '" + sname + "'") }
-      expected_ty = expected_fields.get(fname)
+      if mhas(expected_fields, fname) == 0 { return tc_error("unknown field '" + fname + "' on struct '" + sname + "'") }
+      expected_ty = mget(expected_fields, fname)
       actual_ty = check_expr(fval, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       if type_eq(actual_ty, expected_ty) == 0 { return tc_error("type mismatch for field '" + fname + "' of struct '" + sname + "': expected " + type_to_string(expected_ty) + " but got " + type_to_string(actual_ty)) }
       fi += 1
@@ -1962,8 +1962,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
     enum_name = type_data(scrutinee_ty)
     // Get enum variants from enums map
-    if enums.has(enum_name) == 0 { return tc_error("undefined enum '" + enum_name + "'") }
-    variants = enums.get(enum_name)
+    if mhas(enums, enum_name) == 0 { return tc_error("undefined enum '" + enum_name + "'") }
+    variants = mget(enums, enum_name)
 
     num_arms = load64(arms_arr + 8)
     if num_arms == 0 { return tc_error("match expression has no arms") }
@@ -1983,8 +1983,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if pat_enum != enum_name { return tc_error("pattern enum '" + pat_enum + "' does not match scrutinee enum '" + enum_name + "'") }
 
       // Look up variant in variants map
-      if variants.has(pat_variant) == 0 { return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name + "'") }
-      variant_fields_arr = variants.get(pat_variant)
+      if mhas(variants, pat_variant) == 0 { return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name + "'") }
+      variant_fields_arr = mget(variants, pat_variant)
       // variant_fields_arr is an array of Type ptrs
       variant_fields_p = load64(variant_fields_arr)
       variant_fields_len = load64(variant_fields_arr + 8)
@@ -2001,7 +2001,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       while bi < bindings_len {
         bname = load64(bindings_p + bi * 8)
         btype = load64(variant_fields_p + bi * 8)
-        inner_scope.set(bname, btype)
+        mset(inner_scope, bname, btype)
         bi += 1
       }
 
@@ -2039,7 +2039,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       ptype_name = load64(param + 8)
       pty = resolve_type(ptype_name, structs, enums, mod_exports)
       param_types.push(pty)
-      inner_scope.set(pname, pty)
+      mset(inner_scope, pname, pty)
       pi += 1
     }
 
@@ -2061,8 +2061,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     args_p = load64(args_arr)
     num_args = load64(args_arr + 8)
 
-    if fn_env.has(func_name) == 0 { return tc_error("undefined function '" + func_name + "' in spawn") }
-    sig = fn_env.get(func_name)
+    if mhas(fn_env, func_name) == 0 { return tc_error("undefined function '" + func_name + "' in spawn") }
+    sig = mget(fn_env, func_name)
     sig_params_arr = load64(sig)
     sig_params = sig_params_arr != 0 ? load64(sig_params_arr) : 0
     sig_params_len = sig_params_arr != 0 ? load64(sig_params_arr + 8) : 0
@@ -2112,11 +2112,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     args_p = load64(args_arr)
     num_args = load64(args_arr + 8)
 
-    if enums.has(ename) == 0 { return tc_error("undefined enum '" + ename + "'") }
-    variants = enums.get(ename)
-    if variants.has(vname) == 0 { return tc_error("unknown variant '" + vname + "' on enum '" + ename + "'") }
+    if mhas(enums, ename) == 0 { return tc_error("undefined enum '" + ename + "'") }
+    variants = mget(enums, ename)
+    if mhas(variants, vname) == 0 { return tc_error("unknown variant '" + vname + "' on enum '" + ename + "'") }
 
-    expected_fields_arr = variants.get(vname)
+    expected_fields_arr = mget(variants, vname)
     expected_fields_p = load64(expected_fields_arr)
     expected_len = load64(expected_fields_arr + 8)
 
@@ -2191,10 +2191,10 @@ check_inner(program:I mod_exports:I require_main:I) I {
       fname = load64(fields_flat + fi * 8)
       ftype_name = load64(fields_flat + (fi + 1) * 8)
       fty = resolve_type(ftype_name, structs_map, enums_map, mod_exports)
-      fields_m.set(fname, fty)
+      mset(fields_m, fname, fty)
       fi += 2
     }
-    structs_map.set(sname, fields_m)
+    mset(structs_map, sname, fields_m)
     si += 1
   }
 
@@ -2225,10 +2225,10 @@ check_inner(program:I mod_exports:I require_main:I) I {
         vtypes.push(vty)
         vfi += 1
       }
-      variants_m.set(vname, ptr(vtypes))
+      mset(variants_m, vname, ptr(vtypes))
       vi += 1
     }
-    enums_map.set(ename, variants_m)
+    mset(enums_map, ename, variants_m)
     ei += 1
   }
 
@@ -2270,7 +2270,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       tmethods_arr.push(tm_entry)
       tmi += 1
     }
-    trait_registry.set(tname, ptr(tmethods_arr))
+    mset(trait_registry, tname, ptr(tmethods_arr))
     ti += 1
   }
 
@@ -2288,8 +2288,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
     num_impl_methods = load64(impl_methods_arr + 8)
 
     // Verify trait conformance if trait impl
-    impl_trait_name != 0 && trait_registry.has(impl_trait_name) ? {
-      trait_methods_arr = trait_registry.get(impl_trait_name)
+    impl_trait_name != 0 && mhas(trait_registry, impl_trait_name) ? {
+      trait_methods_arr = mget(trait_registry, impl_trait_name)
       trait_methods_p = load64(trait_methods_arr)
       num_trait_methods = load64(trait_methods_arr + 8)
       tmi := 0
@@ -2356,7 +2356,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       }
       mret = resolve_type(mret_name, structs_map, enums_map, mod_exports)
       method_key = impl_target_type + "." + mname
-      methods_map.set(method_key, make_fn_sig(ptr(method_param_types), mret))
+      mset(methods_map, method_key, make_fn_sig(ptr(method_param_types), mret))
 
       // Also add mangled name to fn_env (with self param included)
       mangled = impl_target_type + "_" + mname
@@ -2368,7 +2368,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
         all_param_types.push(resolve_type(mp_type_name, structs_map, enums_map, mod_exports))
         api += 1
       }
-      fn_env.set(mangled, make_fn_sig(ptr(all_param_types), mret))
+      mset(fn_env, mangled, make_fn_sig(ptr(all_param_types), mret))
       mi += 1
     }
     ii += 1
@@ -2400,11 +2400,11 @@ check_inner(program:I mod_exports:I require_main:I) I {
         pi += 1
       }
       ret_ty = resolve_type(fret_name, structs_map, enums_map, mod_exports)
-      fn_env.set(fname, make_fn_sig(ptr(param_types), ret_ty))
+      mset(fn_env, fname, make_fn_sig(ptr(param_types), ret_ty))
     } : {
       // Generic function — skip for now, store in generic_fns
       // (simplified: just record the name)
-      generic_fns.set(fname, 1)
+      mset(generic_fns, fname, 1)
     }
     fi += 1
   }
@@ -2422,12 +2422,12 @@ check_inner(program:I mod_exports:I require_main:I) I {
     // Create temp locals for globals type checking
     temp_locals = [map()]
     gty = check_expr(gvalue, temp_locals, fn_env, make_type(TY_INT), structs_map, enums_map, methods_map, generic_fns, trait_registry, mod_exports)
-    global_types.set(gname, gty)
+    mset(global_types, gname, gty)
     gi += 1
   }
 
   // ── Require main (unless checking a module) ─────────────────────
-  require_main == 1 && fn_env.has("main") == 0 ? tc_error("missing 'main' function") : 0
+  require_main == 1 && mhas(fn_env, "main") == 0 ? tc_error("missing 'main' function") : 0
 
   // ── Pass 2: type-check each function body ───────────────────────
   fi = 0
@@ -2441,7 +2441,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
     // Skip generic functions
     num_type_params > 0 ? { fi += 1
       0 } : {
-      sig = fn_env.get(fname)
+      sig = mget(fn_env, fname)
       ret_ty = load64(sig + 8)
 
       // Build locals with globals + params
@@ -2453,7 +2453,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       gki := 0
       while gki < gkeys.len() {
         gk = gkeys[gki]
-        scope.set(gk, global_types.get(gk))
+        mset(scope, gk, mget(global_types, gk))
         gki += 1
       }
 
@@ -2467,7 +2467,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
         p_name = load64(p_node)
         p_type_name = load64(p_node + 8)
         pty = resolve_type(p_type_name, structs_map, enums_map, mod_exports)
-        scope.set(p_name, pty)
+        mset(scope, p_name, pty)
         pi += 1
       }
 
@@ -2534,7 +2534,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       gki := 0
       while gki < gkeys.len() {
         gk = gkeys[gki]
-        scope.set(gk, global_types.get(gk))
+        mset(scope, gk, mget(global_types, gk))
         gki += 1
       }
 
@@ -2545,7 +2545,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
         mp_name = load64(mp)
         mp_type_name = load64(mp + 8)
         mpty = resolve_type(mp_type_name, structs_map, enums_map, mod_exports)
-        scope.set(mp_name, mpty)
+        mset(scope, mp_name, mpty)
         mpi += 1
       }
 
@@ -2586,8 +2586,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
     ftype_params_arr3 = load64(func + 32)
     ftype_params_p = load64(ftype_params_arr3)
     num_type_params = load64(ftype_params_arr3 + 8)
-    num_type_params == 0 && fn_env.has(fname) ? {
-      fn_exports.set(fname, fn_env.get(fname))
+    num_type_params == 0 && mhas(fn_env, fname) ? {
+      mset(fn_exports, fname, mget(fn_env, fname))
     } : 0
     fi += 1
   }

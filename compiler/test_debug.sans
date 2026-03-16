@@ -1,0 +1,23 @@
+import "constants"
+import "lexer"
+import "parser"
+import "typeck"
+import "ir"
+import "codegen"
+
+main() I {
+  wfd(2, "start\n")
+  src = fr("/tmp/test_input.sans")
+  prog = parse(src)
+  wfd(2, "parsed\n")
+  mod_exports = M()
+  check(prog, mod_exports)
+  wfd(2, "checked\n")
+  fn_ret_types = M()
+  ir_mod = lower(prog, 0, fn_ret_types)
+  wfd(2, "lowered\n")
+  compile_to_ll(ir_mod, "/tmp/test_output.ll")
+  wfd(2, "codegen done\n")
+  sys("cat /tmp/test_output.ll")
+  0
+}

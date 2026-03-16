@@ -56,27 +56,27 @@ cg_fresh_reg(cg:I) S {
 // Map an IR register to an LLVM value string
 cg_set_val(cg:I ir_reg:I llvm_val:S) I {
   rm = load64(cg + 40)
-  rm.set(ir_reg, ptr(llvm_val))
+  mset(rm, ir_reg, ptr(llvm_val))
   0
 }
 
 // Get the LLVM value for an IR register
 cg_get_val(cg:I ir_reg:I) S {
   rm = load64(cg + 40)
-  rm.has(ir_reg) ? deref(rm.get(ir_reg)) : "0"
+  mhas(rm, ir_reg) ? deref(mget(rm, ir_reg)) : "0"
 }
 
 // Mark a register as holding a pointer
 cg_set_ptr(cg:I ir_reg:I) I {
   ps = load64(cg + 48)
-  ps.set(ir_reg, 1)
+  mset(ps, ir_reg, 1)
   0
 }
 
 // Check if register holds a pointer
 cg_is_ptr(cg:I ir_reg:I) I {
   ps = load64(cg + 48)
-  ps.has(ir_reg)
+  mhas(ps, ir_reg)
 }
 
 // ── String building: join_lines ─────────────────────────────────
@@ -185,11 +185,11 @@ emit_string_const(cg:I value:S) S {
   pool = cg_string_pool(cg)
   hash = djb2_hash(value)
   key = str(hash)
-  if pool.has(key) {
-    return deref(pool.get(key))
+  if mhas(pool, key) {
+    return deref(mget(pool, key))
   }
   name = "@str." + key
-  pool.set(key, ptr(name))
+  mset(pool, key, ptr(name))
   escaped = llvm_escape_string(value)
   len = slen(value) + 1
   emit(cg, name + " = private unnamed_addr constant [" + str(len) + " x i8] c\"" + escaped + "\\00\"")
@@ -366,45 +366,45 @@ emit_externals(cg:I) I {
 
 cg_fmt_int(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmt_int") { return deref(pool.get("__fmt_int")) }
+  if mhas(pool, "__fmt_int") { return deref(mget(pool, "__fmt_int")) }
   name = "@fmt.int"
-  pool.set("__fmt_int", ptr(name))
+  mset(pool, "__fmt_int", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\"")
   name
 }
 
 cg_fmt_float(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmt_float") { return deref(pool.get("__fmt_float")) }
+  if mhas(pool, "__fmt_float") { return deref(mget(pool, "__fmt_float")) }
   name = "@fmt.float"
-  pool.set("__fmt_float", ptr(name))
+  mset(pool, "__fmt_float", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%g\\0A\\00\"")
   name
 }
 
 cg_fmt_str(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmt_str") { return deref(pool.get("__fmt_str")) }
+  if mhas(pool, "__fmt_str") { return deref(mget(pool, "__fmt_str")) }
   name = "@fmt.str"
-  pool.set("__fmt_str", ptr(name))
+  mset(pool, "__fmt_str", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"")
   name
 }
 
 cg_bool_true(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__bool_true") { return deref(pool.get("__bool_true")) }
+  if mhas(pool, "__bool_true") { return deref(mget(pool, "__bool_true")) }
   name = "@bool.true"
-  pool.set("__bool_true", ptr(name))
+  mset(pool, "__bool_true", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [6 x i8] c\"true\\0A\\00\"")
   name
 }
 
 cg_bool_false(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__bool_false") { return deref(pool.get("__bool_false")) }
+  if mhas(pool, "__bool_false") { return deref(mget(pool, "__bool_false")) }
   name = "@bool.false"
-  pool.set("__bool_false", ptr(name))
+  mset(pool, "__bool_false", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [7 x i8] c\"false\\0A\\00\"")
   name
 }
@@ -412,9 +412,9 @@ cg_bool_false(cg:I) S {
 // Format string for %ld (no newline, for snprintf)
 cg_fmt_ld(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmt_ld") { return deref(pool.get("__fmt_ld")) }
+  if mhas(pool, "__fmt_ld") { return deref(mget(pool, "__fmt_ld")) }
   name = "@fmt.ld"
-  pool.set("__fmt_ld", ptr(name))
+  mset(pool, "__fmt_ld", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%ld\\00\"")
   name
 }
@@ -422,9 +422,9 @@ cg_fmt_ld(cg:I) S {
 // Format string for %g (no newline, for snprintf)
 cg_fmt_g(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmt_g") { return deref(pool.get("__fmt_g")) }
+  if mhas(pool, "__fmt_g") { return deref(mget(pool, "__fmt_g")) }
   name = "@fmt.g"
-  pool.set("__fmt_g", ptr(name))
+  mset(pool, "__fmt_g", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [3 x i8] c\"%g\\00\"")
   name
 }
@@ -432,27 +432,27 @@ cg_fmt_g(cg:I) S {
 // File mode strings
 cg_fmode_r(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmode_r") { return deref(pool.get("__fmode_r")) }
+  if mhas(pool, "__fmode_r") { return deref(mget(pool, "__fmode_r")) }
   name = "@fmode.r"
-  pool.set("__fmode_r", ptr(name))
+  mset(pool, "__fmode_r", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"r\\00\"")
   name
 }
 
 cg_fmode_w(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmode_w") { return deref(pool.get("__fmode_w")) }
+  if mhas(pool, "__fmode_w") { return deref(mget(pool, "__fmode_w")) }
   name = "@fmode.w"
-  pool.set("__fmode_w", ptr(name))
+  mset(pool, "__fmode_w", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"w\\00\"")
   name
 }
 
 cg_fmode_a(cg:I) S {
   pool = cg_string_pool(cg)
-  if pool.has("__fmode_a") { return deref(pool.get("__fmode_a")) }
+  if mhas(pool, "__fmode_a") { return deref(mget(pool, "__fmode_a")) }
   name = "@fmode.a"
-  pool.set("__fmode_a", ptr(name))
+  mset(pool, "__fmode_a", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"a\\00\"")
   name
 }
@@ -2278,13 +2278,13 @@ emit_function_body(cg:I func:I) I {
     pname = params.get(i)
     pval = "%p" + str(i)
     rm = load64(cg + 40)
-    rm.set(pname, ptr(pval))
+    mset(rm, pname, ptr(pval))
     // Handle struct params: if param_struct_sizes[i] > 0, convert i64 to ptr
     if param_sizes.get(i) > 0 {
       pp = cg_fresh_reg(cg)
       emit(cg, "  " + pp + " = inttoptr i64 " + pval + " to ptr")
       ps = load64(cg + 48)
-      ps.set(pname, 1)
+      mset(ps, pname, 1)
     }
     i = i + 1
     0
