@@ -2509,8 +2509,7 @@ _find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
   else if stag == ST_WHILE {
     _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
     _find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
-  }
-  0
+  } else { 0 }
 }
 
 _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {

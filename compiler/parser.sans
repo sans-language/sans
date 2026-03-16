@@ -56,11 +56,29 @@ p_at(p:I kind:I) I = if p_peek_kind(p) == kind { 1 } else { 0 }
 // Consume token of expected kind or error
 p_expect(p:I kind:I) I {
   if p_at(p, kind) == 1 { p_advance(p) } else {
-    print("parse error: expected token kind ")
-    print(kind)
-    print(" got ")
-    print(p_peek_kind(p))
-    print("\n")
+    wfd(2, "EXPECT FAIL: want=")
+    wfd(2, itos(kind))
+    wfd(2, " got=")
+    wfd(2, itos(p_peek_kind(p)))
+    wfd(2, " at pos=")
+    wfd(2, itos(p_pos(p)))
+    // Print surrounding tokens for context
+    wfd(2, " context: ")
+    ctx_i := p_pos(p) - 3
+    while ctx_i < p_pos(p) + 3 {
+      if ctx_i >= 0 {
+        tk = p_peek_at(p, ctx_i - p_pos(p))
+        wfd(2, "[")
+        wfd(2, itos(tok_kind(tk)))
+        v = tok_val(tk)
+        if v != 0 { wfd(2, ":")
+          wfd(2, v) }
+        wfd(2, "]")
+      }
+      ctx_i = ctx_i + 1
+      0
+    }
+    wfd(2, "\n")
     exit(1)
     0
   }
@@ -72,9 +90,11 @@ p_expect_ident(p:I) I {
     t = p_advance(p)
     tok_val(t)
   } else {
-    print("parse error: expected identifier, got kind ")
-    print(p_peek_kind(p))
-    print("\n")
+    wfd(2, "IDENT FAIL: got=")
+    wfd(2, itos(p_peek_kind(p)))
+    wfd(2, " at pos=")
+    wfd(2, itos(p_pos(p)))
+    wfd(2, "\n")
     exit(1)
     0
   }
@@ -879,14 +899,19 @@ parse_if_or_if_else(p:I) I {
     p_expect(p, TK_RBRACE)
 
     p_expect(p, TK_ELSE)
-    p_expect(p, TK_LBRACE)
-    else_block = parse_block_body(p)
-    else_stmts_ptr = else_block.get(0)
-    else_expr = else_block.get(1)
-    p_expect(p, TK_RBRACE)
-
-    // then_stmts_ptr and else_stmts_ptr are already raw array pointers
-    make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr))
+    // Support "else if" by recursively parsing
+    if p_at(p, TK_IF) == 1 {
+      else_if_expr = parse_if_expr(p)
+      empty_stmts = array<I>()
+      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr))
+    } else {
+      p_expect(p, TK_LBRACE)
+      else_block = parse_block_body(p)
+      else_stmts_ptr = else_block.get(0)
+      else_expr = else_block.get(1)
+      p_expect(p, TK_RBRACE)
+      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr))
+    }
   } else {
     // if statement (no else)
     body = parse_body(p)
@@ -1063,8 +1088,10 @@ parse_atom(p:I) I {
       return make_call(name, args)
     }
 
-    // Check for struct literal: Name { ... } (uppercase first char)
-    if p_at(p, TK_LBRACE) == 1 && is_upper_start(name) == 1 {
+    // Check for struct literal: Name { field: value, ... } (uppercase first char)
+    // Must verify it's actually a struct literal by checking for "ident :" after the "{"
+    // Otherwise "TY_INT { expr }" in an if-else would be misinterpreted
+    if p_at(p, TK_LBRACE) == 1 && is_upper_start(name) == 1 && p_peek_kind_at(p, 1) == TK_IDENT && p_peek_kind_at(p, 2) == TK_COLON {
       p_advance(p)  // consume {
       field_names = array<I>()
       field_values = array<I>()
@@ -1260,15 +1287,27 @@ parse_if_expr(p:I) I {
   then_expr = then_block.get(1)
   p_expect(p, TK_RBRACE)
 
-  p_expect(p, TK_ELSE)
-  p_expect(p, TK_LBRACE)
-  else_block = parse_block_body(p)
-  else_stmts_ptr = else_block.get(0)
-  else_expr = else_block.get(1)
-  p_expect(p, TK_RBRACE)
-
-  // then_stmts_ptr and else_stmts_ptr are already raw array pointers
-  make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr)
+  // Check for else branch (may not exist at end of else-if chain)
+  if p_at(p, TK_ELSE) == 1 {
+    p_advance(p)  // consume else
+    // Support "else if" by recursively parsing
+    if p_at(p, TK_IF) == 1 {
+      else_if_expr = parse_if_expr(p)
+      empty_stmts = array<I>()
+      make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr)
+    } else {
+      p_expect(p, TK_LBRACE)
+      else_block = parse_block_body(p)
+      else_stmts_ptr = else_block.get(0)
+      else_expr = else_block.get(1)
+      p_expect(p, TK_RBRACE)
+      make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr)
+    }
+  } else {
+    // No else — use 0 as default
+    empty_stmts = array<I>()
+    make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), make_int_lit(0))
+  }
 }
 
 // ── Match expression ─────────────────────────────────────────────
