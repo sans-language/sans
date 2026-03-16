@@ -616,17 +616,31 @@ parse_block_body(p:I) [I] {
         i = i + 1
       }
 
-      // last must be ST_EXPR
-      if load64(last) == ST_EXPR {
+      // last must be ST_EXPR (or ST_RETURN which also has an expression)
+      last_tag = load64(last)
+      if last_tag == ST_EXPR {
         result = array<I>()
         result.push(ptr(stmts))
         result.push(load64(last + 8))  // the expr
         return result
-      } else {
-        print("parse error: block must end with an expression, not a statement\n")
-        exit(1)
         0
-      }
+      } else { if last_tag == ST_RETURN {
+        // return stmt — add it as a regular stmt, use 0 as the block expression
+        stmts.push(last)
+        result = array<I>()
+        result.push(ptr(stmts))
+        result.push(make_int_lit(0))
+        return result
+        0
+      } else {
+        // Other statements (while, if, etc.) — wrap as block returning 0
+        stmts.push(last)
+        result = array<I>()
+        result.push(ptr(stmts))
+        result.push(make_int_lit(0))
+        return result
+        0
+      } }
     } else {
       // Add all parsed stmts
       i := 0

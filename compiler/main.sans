@@ -13,14 +13,17 @@ import "codegen"
 // Find last occurrence of character ch in string s, return index or -1
 find_last(s:S ch:I) I {
   i := slen(s) - 1
+  result := -1
+  found := 0
   while i >= 0 {
-    if char_at(s, i) == ch {
-      return i
+    if found == 0 {
+      if char_at(s, i) == ch { result = i
+        found = 1 }
     }
     i = i - 1
     0
   }
-  -1
+  result
 }
 
 // Extract directory from file path (everything before last '/')
@@ -67,12 +70,14 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   // Dedup check
   if mhas(visited, file_path) {
     return 0
+    0
   }
 
   // Circular import check
   if mhas(in_progress, file_path) {
     p("error: circular import detected: " + import_path)
     exit(1)
+    0
   }
 
   mset(in_progress, file_path, 1)
