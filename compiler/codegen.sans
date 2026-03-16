@@ -13,7 +13,7 @@ import "ir"
 // offset 72: label_counter — separate counter for unique label suffixes
 
 make_codegen() I {
-  cg = alloc(80)
+  cg = alloc(104)
   store64(cg, array<I>())       // lines
   store64(cg + 8, 0)            // reg_counter
   store64(cg + 16, M())         // string_pool
@@ -22,8 +22,11 @@ make_codegen() I {
   store64(cg + 40, M())         // reg_map
   store64(cg + 48, M())         // ptr_set
   store64(cg + 56, 0)           // has_main
-  store64(cg + 64, array<I>())  // string_const_lines (emitted before functions)
+  store64(cg + 64, array<I>())  // string_const_lines
   store64(cg + 72, 0)           // label_counter
+  store64(cg + 80, 0)           // current_ir_label (the IR-level label)
+  store64(cg + 88, M())         // label_end_map: IR label → actual LLVM block
+  store64(cg + 96, 0)           // current_block (the actual LLVM basic block name)
   cg
 }
 
@@ -45,8 +48,27 @@ emit_global_const(cg:I line:S) I {
   sc.push(ptr(line))
   0
 }
+cg_current_label(cg:I) I = load64(cg + 80)  // IR-level label
+cg_set_current_label(cg:I v:I) I { store64(cg + 80, v) 0 }
+cg_label_end_map(cg:I) I = load64(cg + 88)
+cg_current_block(cg:I) I = load64(cg + 96)  // actual LLVM block (may differ after inline ops)
+cg_set_current_block(cg:I v:I) I { store64(cg + 96, v) 0 }
+
 cg_set_reg_counter(cg:I v:I) I { store64(cg + 8, v) 0 }
 cg_set_has_main(cg:I v:I) I { store64(cg + 56, v) 0 }
+
+// Record that the code for IR label `ir_label` actually ends at LLVM label `end_label`
+cg_record_label_end(cg:I ir_label:I end_label:I) I {
+  lem = cg_label_end_map(cg)
+  mset(lem, ir_label, end_label)
+  0
+}
+
+// Get the actual LLVM label that IR label ends at (for PHI predecessors)
+cg_get_label_end(cg:I ir_label:I) I {
+  lem = cg_label_end_map(cg)
+  mhas(lem, ir_label) ? mget(lem, ir_label) : ir_label
+}
 
 // ── Core helpers ────────────────────────────────────────────────
 
@@ -767,6 +789,8 @@ compile_inst(cg:I inst:I) I {
   // ── IR_LABEL (14): [op, label_name] ──
   if op == IR_LABEL {
     label_name = dest
+    cg_set_current_label(cg, label_name)
+    cg_set_current_block(cg, label_name)
     emit(cg, label_name + ":")
     return 0
   }
@@ -776,6 +800,10 @@ compile_inst(cg:I inst:I) I {
     cond_val = cg_get_val(cg, dest)
     then_label = ir_field(inst, 16)
     else_label = ir_field(inst, 24)
+    // Record that the current IR label ends at the actual LLVM block
+    ir_lbl = cg_current_label(cg)
+    cur_blk = cg_current_block(cg)
+    cg_record_label_end(cg, ir_lbl, cur_blk)
     tmp = cg_fresh_reg(cg)
     emit(cg, "  " + tmp + " = trunc i64 " + cond_val + " to i1")
     emit(cg, "  br i1 " + tmp + ", label %" + then_label + ", label %" + else_label)
@@ -785,6 +813,11 @@ compile_inst(cg:I inst:I) I {
   // ── IR_JUMP (16): [op, target_label] ──
   if op == IR_JUMP {
     target = dest
+    // Record that the current IR label ends at the actual LLVM block we're in
+    // (This is the key fix for nested if/else PHI predecessors)
+    ir_lbl = cg_current_label(cg)
+    cur_blk = cg_current_block(cg)
+    cg_record_label_end(cg, ir_lbl, cur_blk)
     emit(cg, "  br label %" + target)
     return 0
   }
@@ -792,9 +825,12 @@ compile_inst(cg:I inst:I) I {
   // ── IR_PHI (17): [op, dest, a_val, a_label, b_val, b_label] ──
   if op == IR_PHI {
     a_val = cg_get_val(cg, ir_field(inst, 16))
-    a_label = ir_field(inst, 24)
+    a_label_ir = ir_field(inst, 24)
     b_val = cg_get_val(cg, ir_field(inst, 32))
-    b_label = ir_field(inst, 40)
+    b_label_ir = ir_field(inst, 40)
+    // Use the actual end labels (handles nested if/else creating extra blocks)
+    a_label = cg_get_label_end(cg, a_label_ir)
+    b_label = cg_get_label_end(cg, b_label_ir)
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = phi i64 [" + a_val + ", %" + a_label + "], [" + b_val + ", %" + b_label + "]")
     cg_set_val(cg, dest, r)
@@ -1111,6 +1147,9 @@ compile_inst(cg:I inst:I) I {
     nl = cg_fresh_reg(cg)
     emit(cg, "  " + nl + " = add i64 " + ln2 + ", 1")
     emit(cg, "  store i64 " + nl + ", ptr " + lp)
+    // Update: record that the original IR label now ends at write_lbl
+    
+    cg_set_current_block(cg, write_lbl)
     return 0
   }
 
@@ -1157,6 +1196,9 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = phi i64 [" + lv + ", %" + then_lbl + "], [0, %" + else_lbl + "]")
     cg_set_val(cg, dest, r)
+    // Update current_label — we're now in merge_lbl
+    
+    cg_set_current_block(cg, merge_lbl)
     return 0
   }
 
@@ -1520,6 +1562,9 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + r + " = phi i64 [" + ei + ", %" + err_lbl + "], [" + bi + ", %" + ok_lbl + "]")
     cg_set_val(cg, dest, r)
     cg_set_ptr(cg, dest)
+    // Update current_label — we're now in merge_lbl
+    
+    cg_set_current_block(cg, merge_lbl)
     return 0
   }
 
@@ -1562,6 +1607,8 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = phi i64 [0, %" + chk_lbl + "], [1, %" + ok_lbl + "]")
     cg_set_val(cg, dest, r)
+    
+    cg_set_current_block(cg, merge_lbl)
     return 0
   }
 
@@ -1604,6 +1651,8 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = phi i64 [0, %" + chk_lbl + "], [1, %" + ok_lbl + "]")
     cg_set_val(cg, dest, r)
+    
+    cg_set_current_block(cg, merge_lbl)
     return 0
   }
 
@@ -2340,9 +2389,12 @@ emit_function_body(cg:I func:I) I {
 
   // Reset per-function state (named params don't consume numbered slots)
   cg_set_reg_counter(cg, 0)
-  store64(cg + 40, M())
-  store64(cg + 48, M())
-  store64(cg + 72, 0)
+  store64(cg + 40, M())   // reg_map
+  store64(cg + 48, M())   // ptr_set
+  store64(cg + 72, 0)     // label_counter
+  cg_set_current_label(cg, "entry")
+  cg_set_current_block(cg, "entry")
+  store64(cg + 88, M())   // label_end_map
 
   // Map parameters: store each param name → %pN in reg_map
   i = 0
