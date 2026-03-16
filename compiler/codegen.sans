@@ -69,7 +69,7 @@ cg_record_label_end(cg:I ir_label:I end_label:I) I {
 // Get the actual LLVM label that IR label ends at (for PHI predecessors)
 cg_get_label_end(cg:I ir_label:I) I {
   lem = cg_label_end_map(cg)
-  mhas(lem, ir_label) ? mget(lem, ir_label) : ir_label
+  if mhas(lem, ir_label) { mget(lem, ir_label) } else { ir_label }
 }
 
 // ── Core helpers ────────────────────────────────────────────────
@@ -98,7 +98,7 @@ cg_set_val(cg:I ir_reg:I llvm_val:S) I {
 // Get the LLVM value for an IR register
 cg_get_val(cg:I ir_reg:I) S {
   rm = load64(cg + 40)
-  mhas(rm, ir_reg) ? mget(rm, ir_reg) : "0"
+  if mhas(rm, ir_reg) { mget(rm, ir_reg) } else { "0" }
 }
 
 // Mark a register as holding a pointer
@@ -158,7 +158,7 @@ djb2_hash(s:S) I {
     i = i + 1
     0
   }
-  h < 0 ? 0 - h : h
+  if h < 0 { 0 - h } else { h }
 }
 
 // ── LLVM string escaping ────────────────────────────────────────
@@ -200,8 +200,8 @@ llvm_escape_string(s:S) S {
       store8(0, buf + pos, 92)
       hi = c / 16
       lo = c % 16
-      store8(0, buf + pos + 1, hi < 10 ? hi + 48 : hi - 10 + 65)
-      store8(0, buf + pos + 2, lo < 10 ? lo + 48 : lo - 10 + 65)
+      store8(0, buf + pos + 1, if hi < 10 { hi + 48 } else { hi - 10 + 65 })
+      store8(0, buf + pos + 2, if lo < 10 { lo + 48 } else { lo - 10 + 65 })
       pos = pos + 3
     } else {
       store8(0, buf + pos, c)
@@ -821,7 +821,7 @@ compile_inst(cg:I inst:I) I {
     left = cg_get_val(cg, ir_field(inst, 24))
     right = cg_get_val(cg, ir_field(inst, 32))
     r = cg_fresh_reg(cg)
-    op_str = binop == 0 ? "add" : binop == 1 ? "sub" : binop == 2 ? "mul" : binop == 3 ? "sdiv" : "srem"
+    op_str = if binop == 0 { "add" } else { if binop == 1 { "sub" } else { if binop == 2 { "mul" } else { if binop == 3 { "sdiv" } else { "srem" } } } }
     emit(cg, "  " + r + " = " + op_str + " i64 " + left + ", " + right)
     cg_set_val(cg, dest, r)
     return 0
@@ -837,7 +837,7 @@ compile_inst(cg:I inst:I) I {
     fr = cg_fresh_reg(cg)
     emit(cg, "  " + fr + " = bitcast i64 " + right + " to double")
     fres = cg_fresh_reg(cg)
-    fop = binop == 0 ? "fadd" : binop == 1 ? "fsub" : binop == 2 ? "fmul" : binop == 3 ? "fdiv" : "frem"
+    fop = if binop == 0 { "fadd" } else { if binop == 1 { "fsub" } else { if binop == 2 { "fmul" } else { if binop == 3 { "fdiv" } else { "frem" } } } }
     emit(cg, "  " + fres + " = " + fop + " double " + fl + ", " + fr)
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = bitcast double " + fres + " to i64")
@@ -850,7 +850,7 @@ compile_inst(cg:I inst:I) I {
     cmpop = ir_field(inst, 16)
     left = cg_get_val(cg, ir_field(inst, 24))
     right = cg_get_val(cg, ir_field(inst, 32))
-    pred = cmpop == 0 ? "eq" : cmpop == 1 ? "ne" : cmpop == 2 ? "slt" : cmpop == 3 ? "sgt" : cmpop == 4 ? "sle" : "sge"
+    pred = if cmpop == 0 { "eq" } else { if cmpop == 1 { "ne" } else { if cmpop == 2 { "slt" } else { if cmpop == 3 { "sgt" } else { if cmpop == 4 { "sle" } else { "sge" } } } } }
     tmp = cg_fresh_reg(cg)
     emit(cg, "  " + tmp + " = icmp " + pred + " i64 " + left + ", " + right)
     r = cg_fresh_reg(cg)
@@ -868,7 +868,7 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + fl + " = bitcast i64 " + left + " to double")
     fr = cg_fresh_reg(cg)
     emit(cg, "  " + fr + " = bitcast i64 " + right + " to double")
-    pred = cmpop == 0 ? "oeq" : cmpop == 1 ? "one" : cmpop == 2 ? "olt" : cmpop == 3 ? "ogt" : cmpop == 4 ? "ole" : "oge"
+    pred = if cmpop == 0 { "oeq" } else { if cmpop == 1 { "one" } else { if cmpop == 2 { "olt" } else { if cmpop == 3 { "ogt" } else { if cmpop == 4 { "ole" } else { "oge" } } } } }
     tmp = cg_fresh_reg(cg)
     emit(cg, "  " + tmp + " = fcmp " + pred + " double " + fl + ", " + fr)
     r = cg_fresh_reg(cg)
@@ -888,7 +888,7 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + p2 + " = inttoptr i64 " + right + " to ptr")
     cmp = cg_fresh_reg(cg)
     emit(cg, "  " + cmp + " = call i32 @strcmp(ptr " + p1 + ", ptr " + p2 + ")")
-    pred = cmpop == 0 ? "eq" : cmpop == 1 ? "ne" : cmpop == 2 ? "slt" : cmpop == 3 ? "sgt" : cmpop == 4 ? "sle" : "sge"
+    pred = if cmpop == 0 { "eq" } else { if cmpop == 1 { "ne" } else { if cmpop == 2 { "slt" } else { if cmpop == 3 { "sgt" } else { if cmpop == 4 { "sle" } else { "sge" } } } } }
     res = cg_fresh_reg(cg)
     emit(cg, "  " + res + " = icmp " + pred + " i32 " + cmp + ", 0")
     r = cg_fresh_reg(cg)
@@ -939,7 +939,7 @@ compile_inst(cg:I inst:I) I {
       0
     }
     // Use __sans_main for "main"
-    llvm_fname = fname == "main" ? "__sans_main" : fname
+    llvm_fname = if fname == "main" { "__sans_main" } else { fname }
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = call i64 @" + llvm_fname + "(" + arg_str + ")")
     cg_set_val(cg, dest, r)
@@ -2142,7 +2142,7 @@ compile_inst(cg:I inst:I) I {
     func_name = ir_field(inst, 16)
     arg_regs = ir_field(inst, 24)
     num_args = arg_regs.len()
-    llvm_fname = func_name == "main" ? "__sans_main" : func_name
+    llvm_fname = if func_name == "main" { "__sans_main" } else { func_name }
 
     // Malloc arg struct (num_args * 8 bytes)
     ap = cg_fresh_reg(cg)
@@ -2499,7 +2499,7 @@ compile_inst(cg:I inst:I) I {
     // [op, dest, name_ptr]: ptrtoint of function pointer
     // In text IR, we emit the function name directly
     fname = ir_field(inst, 16)
-    llvm_fname = fname == "main" ? "__sans_main" : fname
+    llvm_fname = if fname == "main" { "__sans_main" } else { fname }
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
     cg_set_val(cg, dest, r)
@@ -2509,7 +2509,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_FPTR_NAMED {
     // [op, dest, func_name_ptr]: same as FN_REF
     fname = ir_field(inst, 16)
-    llvm_fname = fname == "main" ? "__sans_main" : fname
+    llvm_fname = if fname == "main" { "__sans_main" } else { fname }
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
     cg_set_val(cg, dest, r)
@@ -3139,7 +3139,7 @@ emit_globals(cg:I module:I) I {
 // First pass: declare a function (forward declaration)
 emit_function_decl(cg:I func:I) I {
   fname = irf_name(func)
-  llvm_name = fname == "main" ? "__sans_main" : fname
+  llvm_name = if fname == "main" { "__sans_main" } else { fname }
   params = irf_params(func)
   np = params.len()
   param_str := ""
@@ -3157,7 +3157,7 @@ emit_function_decl(cg:I func:I) I {
 // Second pass: compile a function body
 emit_function_body(cg:I func:I) I {
   fname = irf_name(func)
-  llvm_name = fname == "main" ? "__sans_main" : fname
+  llvm_name = if fname == "main" { "__sans_main" } else { fname }
   params = irf_params(func)
   np = params.len()
   instrs = irf_instrs(func)
@@ -3346,7 +3346,7 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   emit_header(cg)
 
   // 2. Emit external function declarations (skip sans_* for runtime modules)
-  is_runtime == 1 ? emit_externals_core(cg) : emit_externals(cg)
+  if is_runtime == 1 { emit_externals_core(cg) } else { emit_externals(cg) }
 
   // 3. Emit global variable declarations
   emit_globals(cg, module)

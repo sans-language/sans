@@ -27,19 +27,19 @@ find_last(s:S ch:I) I {
 // Extract directory from file path (everything before last '/')
 dir_of(path:S) S {
   idx = find_last(path, 47)  // 47 = '/'
-  idx < 0 ? "." : path.substring(0, idx)
+  if idx < 0 { "." } else { path.substring(0, idx) }
 }
 
 // Extract module name from import path (last component after '/')
 mod_name_of(import_path:S) S {
   idx = find_last(import_path, 47)  // 47 = '/'
-  idx < 0 ? import_path : import_path.substring(idx + 1, slen(import_path))
+  if idx < 0 { import_path } else { import_path.substring(idx + 1, slen(import_path)) }
 }
 
 // Strip .sans extension from filename
 strip_ext(path:S) S {
   len = slen(path)
-  len > 5 ? path.substring(0, len - 5) : path
+  if len > 5 { path.substring(0, len - 5) } else { path }
 }
 
 // ── ResolvedModule (24 bytes) ───────────────────────────────────
@@ -179,25 +179,25 @@ build(source_path:S output_path:S) I {
       // For the IR, module_fn_ret_types maps "mod__func" -> IrType int tag
       // We extract from the typeck return type
       rt_tag = type_tag(ret_type)
-      irty = rt_tag == TY_INT ? IRTY_INT :
-             rt_tag == TY_FLOAT ? IRTY_FLOAT :
-             rt_tag == TY_BOOL ? IRTY_BOOL :
-             rt_tag == TY_STRING ? IRTY_STR :
-             rt_tag == TY_ARRAY ? IRTY_ARRAY :
-             rt_tag == TY_MAP ? IRTY_MAP :
-             rt_tag == TY_JSON ? IRTY_JSON :
-             rt_tag == TY_HTTP_RESP ? IRTY_HTTP_RESP :
-             rt_tag == TY_RESULT ? IRTY_RESULT :
-             rt_tag == TY_STRUCT ? IRTY_STRUCT :
-             rt_tag == TY_ENUM ? IRTY_ENUM :
-             rt_tag == TY_HTTP_REQ ? IRTY_HTTP_REQ :
-             rt_tag == TY_HTTP_SERVER ? IRTY_HTTP_SERVER :
-             rt_tag == TY_SENDER ? IRTY_SENDER :
-             rt_tag == TY_RECEIVER ? IRTY_RECEIVER :
-             rt_tag == TY_JOIN_HANDLE ? IRTY_JOIN_HANDLE :
-             rt_tag == TY_MUTEX ? IRTY_MUTEX :
-             rt_tag == TY_TUPLE ? IRTY_TUPLE :
-             IRTY_INT
+      irty = if rt_tag == TY_INT { IRTY_INT } else {
+             if rt_tag == TY_FLOAT { IRTY_FLOAT } else {
+             if rt_tag == TY_BOOL { IRTY_BOOL } else {
+             if rt_tag == TY_STRING { IRTY_STR } else {
+             if rt_tag == TY_ARRAY { IRTY_ARRAY } else {
+             if rt_tag == TY_MAP { IRTY_MAP } else {
+             if rt_tag == TY_JSON { IRTY_JSON } else {
+             if rt_tag == TY_HTTP_RESP { IRTY_HTTP_RESP } else {
+             if rt_tag == TY_RESULT { IRTY_RESULT } else {
+             if rt_tag == TY_STRUCT { IRTY_STRUCT } else {
+             if rt_tag == TY_ENUM { IRTY_ENUM } else {
+             if rt_tag == TY_HTTP_REQ { IRTY_HTTP_REQ } else {
+             if rt_tag == TY_HTTP_SERVER { IRTY_HTTP_SERVER } else {
+             if rt_tag == TY_SENDER { IRTY_SENDER } else {
+             if rt_tag == TY_RECEIVER { IRTY_RECEIVER } else {
+             if rt_tag == TY_JOIN_HANDLE { IRTY_JOIN_HANDLE } else {
+             if rt_tag == TY_MUTEX { IRTY_MUTEX } else {
+             if rt_tag == TY_TUPLE { IRTY_TUPLE } else {
+             IRTY_INT } } } } } } } } } } } } } } } } } }
       mangled = mod_n + "__" + fname
       if IRTY_INT != irty {
         mset(module_fn_ret_types, mangled, irty)
@@ -255,9 +255,11 @@ build(source_path:S output_path:S) I {
   }
 
   // 8. IR lower entry point with extra struct defs
-  main_ir = extra_struct_defs.keys().len() > 0 ?
-    lower_with_extra_structs(program, 0, module_fn_ret_types, extra_struct_defs) :
+  main_ir = if extra_struct_defs.keys().len() > 0 {
+    lower_with_extra_structs(program, 0, module_fn_ret_types, extra_struct_defs)
+  } else {
     lower(program, 0, module_fn_ret_types)
+  }
 
   // Merge main globals
   main_globals = irm_globals(main_ir)
@@ -299,7 +301,7 @@ build(source_path:S output_path:S) I {
   runtime_dir_cwd = "runtime"
   runtime_dir_src = dir_of(source_path) + "/../runtime"
   // Check if runtime/log.sans exists in CWD-relative path
-  runtime_dir = fexists(runtime_dir_cwd + "/log.sans") == 1 ? runtime_dir_cwd : runtime_dir_src
+  runtime_dir = if fexists(runtime_dir_cwd + "/log.sans") == 1 { runtime_dir_cwd } else { runtime_dir_src }
   runtime_modules = array<I>()
   runtime_modules.push("log")
   runtime_modules.push("result")
@@ -413,7 +415,7 @@ main() I {
   } else { 0 }
 
   if cmd == "build" {
-    out = output == "" ? strip_ext(file) : output
+    out = if output == "" { strip_ext(file) } else { output }
     build(file, out)
   } else { if cmd == "run" {
     run(file)
