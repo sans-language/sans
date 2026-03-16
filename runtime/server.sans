@@ -832,6 +832,259 @@ sans_st_too_many() I = sans_copy_str("Too Many Requests", 17)
 sans_st_bad_gateway() I = sans_copy_str("Bad Gateway", 11)
 sans_st_unavailable() I = sans_copy_str("Service Unavailable", 19)
 
+// ── Form Data Parsing ─────────────────────────────────────────
+
+sans_http_request_form(req:I name:I) I {
+  ct = sans_http_request_header(req, "content-type")
+  ctlen = slen(ct)
+  ctlen == 0 ? sans_empty_str() : sans_http_request_form_dispatch(req, name, ct, ctlen)
+}
+
+sans_http_request_form_dispatch(req:I name:I ct:I ctlen:I) I {
+  // Check for "application/x-www-form-urlencoded"
+  if sans_ct_is_urlencoded(ct, ctlen) == 1 {
+    return sans_parse_urlencoded_form(load64(req + 24), name)
+  } else { 0 }
+  // Check for "multipart/form-data"
+  if sans_ct_is_multipart(ct, ctlen) == 1 {
+    return sans_form_dispatch_multipart(req, name, ct, ctlen)
+  } else { 0 }
+  sans_empty_str()
+}
+
+sans_form_dispatch_multipart(req:I name:I ct:I ctlen:I) I {
+  body = load64(req + 24)
+  boundary = sans_extract_boundary(ct, ctlen)
+  slen(boundary) == 0 ? sans_empty_str() : sans_parse_multipart_form(body, boundary, name)
+}
+
+// Check if content-type starts with "application/x-www-form-urlencoded"
+sans_ct_is_urlencoded(ct:I ctlen:I) I {
+  // "application/x-www-form-urlencoded" = 33 chars
+  if ctlen < 33 { return 0 } else { 0 }
+  mcmp(ct, "application/x-www-form-urlencoded", 33) == 0 ? 1 : 0
+}
+
+// Check if content-type starts with "multipart/form-data"
+sans_ct_is_multipart(ct:I ctlen:I) I {
+  // "multipart/form-data" = 19 chars
+  if ctlen < 19 { return 0 } else { 0 }
+  mcmp(ct, "multipart/form-data", 19) == 0 ? 1 : 0
+}
+
+// Parse URL-encoded form body: key1=value1&key2=value2
+sans_parse_urlencoded_form(body:I name:I) I {
+  blen = slen(body)
+  nlen = slen(name)
+  blen == 0 ? sans_empty_str() : sans_urlenc_find(body, blen, name, nlen, 0)
+}
+
+sans_urlenc_find(body:I blen:I name:I nlen:I pos:I) I {
+  pos >= blen ? sans_empty_str() : sans_urlenc_try(body, blen, name, nlen, pos)
+}
+
+sans_urlenc_try(body:I blen:I name:I nlen:I pos:I) I {
+  // Find end of this pair (next & or end)
+  amp = sans_find_char_in(body, blen, pos, 38)
+  pend = amp < 0 ? blen : amp
+  // Find = in this pair
+  eq = sans_find_char_in(body, pend, pos, 61)
+  eq < 0 ? sans_urlenc_next(body, blen, name, nlen, pend) :
+  sans_urlenc_check(body, blen, name, nlen, pos, eq, pend)
+}
+
+sans_urlenc_check(body:I blen:I name:I nlen:I pos:I eq:I pend:I) I {
+  klen = eq - pos
+  if klen == nlen && mcmp(body + pos, name, nlen) == 0 {
+    return sans_urlenc_extract(body, eq, pend)
+  } else { 0 }
+  sans_urlenc_next(body, blen, name, nlen, pend)
+}
+
+sans_urlenc_extract(body:I eq:I pend:I) I {
+  vstart = eq + 1
+  vlen = pend - vstart
+  raw = sans_copy_str(body + vstart, vlen)
+  sans_url_decode(raw)
+}
+
+sans_urlenc_next(body:I blen:I name:I nlen:I pend:I) I {
+  npos = pend < blen ? pend + 1 : blen
+  sans_urlenc_find(body, blen, name, nlen, npos)
+}
+
+// Extract boundary from Content-Type header: "multipart/form-data; boundary=..."
+sans_extract_boundary(ct:I ctlen:I) I {
+  // Search for "boundary="
+  i := 0
+  found := -1
+  while i + 9 <= ctlen {
+    if mcmp(ct + i, "boundary=", 9) == 0 {
+      found = i + 9
+      i = ctlen
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found < 0 ? sans_empty_str() : sans_copy_str(ct + found, ctlen - found)
+}
+
+// Parse multipart form data
+sans_parse_multipart_form(body:I boundary:I name:I) I {
+  blen = slen(body)
+  bnlen = slen(boundary)
+  nlen = slen(name)
+  // Build delimiter: "--" + boundary
+  dlen = 2 + bnlen
+  delim = alloc(dlen + 1)
+  store8(delim, 45)
+  store8(delim + 1, 45)
+  bnlen > 0 ? mcpy(delim + 2, boundary, bnlen) : 0
+  store8(delim + dlen, 0)
+  sans_multipart_find(body, blen, delim, dlen, name, nlen, 0)
+}
+
+sans_multipart_find(body:I blen:I delim:I dlen:I name:I nlen:I pos:I) I {
+  // Find next delimiter
+  dpos = sans_find_substr(body, blen, delim, dlen, pos)
+  dpos < 0 ? sans_empty_str() : sans_multipart_parse_part(body, blen, delim, dlen, name, nlen, dpos + dlen)
+}
+
+sans_multipart_parse_part(body:I blen:I delim:I dlen:I name:I nlen:I start:I) I {
+  // Skip \r\n after delimiter
+  s := start
+  if s < blen && load8(body + s) == 13 { s = s + 1 0 } else { 0 }
+  if s < blen && load8(body + s) == 10 { s = s + 1 0 } else { 0 }
+  // Check for "--" (end marker)
+  if s + 1 < blen && load8(body + s) == 45 && load8(body + s + 1) == 45 { return sans_empty_str() } else { 0 }
+  // Find Content-Disposition header and extract name
+  sans_multipart_check_name(body, blen, delim, dlen, name, nlen, s)
+}
+
+sans_multipart_check_name(body:I blen:I delim:I dlen:I name:I nlen:I start:I) I {
+  // Find blank line (\r\n\r\n) that separates headers from value
+  blank = sans_find_blank_line(body, blen, start)
+  blank < 0 ? sans_empty_str() : sans_multipart_check_name2(body, blen, delim, dlen, name, nlen, start, blank)
+}
+
+sans_multipart_check_name2(body:I blen:I delim:I dlen:I name:I nlen:I start:I blank:I) I {
+  // Search for name="..." in headers between start and blank
+  field_name = sans_extract_disposition_name(body, start, blank)
+  fnlen = slen(field_name)
+  if fnlen == nlen && mcmp(field_name, name, nlen) == 0 {
+    // Check for filename= (skip file uploads)
+    if sans_has_filename(body, start, blank) == 1 {
+      return sans_multipart_find(body, blen, delim, dlen, name, nlen, blank + 4)
+    } else { 0 }
+    return sans_multipart_extract_value(body, blen, delim, dlen, blank)
+  } else { 0 }
+  sans_multipart_find(body, blen, delim, dlen, name, nlen, blank + 4)
+}
+
+sans_multipart_extract_value(body:I blen:I delim:I dlen:I blank:I) I {
+  vstart = blank + 4
+  ndpos = sans_find_substr(body, blen, delim, dlen, vstart)
+  vend := ndpos < 0 ? blen : ndpos
+  // Trim trailing \r\n
+  if vend > vstart && vend >= 2 && load8(body + vend - 1) == 10 && load8(body + vend - 2) == 13 {
+    vend = vend - 2
+    0
+  } else { 0 }
+  sans_copy_str(body + vstart, vend - vstart)
+}
+
+// Find \r\n\r\n in body starting from pos
+sans_find_blank_line(body:I blen:I pos:I) I {
+  i := pos
+  found := -1
+  while i + 3 < blen {
+    if load8(body + i) == 13 && load8(body + i + 1) == 10 && load8(body + i + 2) == 13 && load8(body + i + 3) == 10 {
+      found = i
+      i = blen
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found
+}
+
+// Find substring in body
+sans_find_substr(body:I blen:I needle:I nlen:I pos:I) I {
+  i := pos
+  found := -1
+  while i + nlen <= blen {
+    if mcmp(body + i, needle, nlen) == 0 {
+      found = i
+      i = blen
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found
+}
+
+// Extract name="value" from Content-Disposition header
+sans_extract_disposition_name(body:I start:I end:I) I {
+  // Search for: name="
+  i := start
+  found := -1
+  while i + 6 <= end {
+    if load8(body + i) == 110 && load8(body + i + 1) == 97 && load8(body + i + 2) == 109 && load8(body + i + 3) == 101 && load8(body + i + 4) == 61 && load8(body + i + 5) == 34 {
+      found = i + 6
+      i = end
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found < 0 ? sans_empty_str() : sans_extract_quoted(body, found, end)
+}
+
+// Extract text until closing quote
+sans_extract_quoted(body:I start:I limit:I) I {
+  i := start
+  while i < limit {
+    if load8(body + i) == 34 {
+      return sans_copy_str(body + start, i - start)
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  sans_empty_str()
+}
+
+// Check if Content-Disposition has filename=
+sans_has_filename(body:I start:I end:I) I {
+  // Search for "filename="
+  i := start
+  found := 0
+  while i + 9 <= end {
+    if load8(body+i)==102 && load8(body+i+1)==105 && load8(body+i+2)==108 && load8(body+i+3)==101 && load8(body+i+4)==110 && load8(body+i+5)==97 && load8(body+i+6)==109 && load8(body+i+7)==101 && load8(body+i+8)==61 {
+      found = 1
+      i = end
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found
+}
+
 // ── Query Parameter Parsing ────────────────────────────────────
 
 sans_http_request_path_only(req:I) I {
@@ -1134,6 +1387,8 @@ sans_str_eq_close(s:I) I {
 // ── Production Server: serve() with auto-threading + keep-alive ─
 
 sans_serve(port:I handler:I) I {
+  signal_handler(2)
+  signal_handler(15)
   fd = sock(2, 1, 0)
   fd < 0 ? 0 : sans_serve_bind(fd, port, handler)
 }
@@ -1158,21 +1413,26 @@ sans_serve_listen(fd:I port:I handler:I) I {
 }
 
 sans_serve_accept_loop(sfd:I handler:I) I {
-  while 1 == 1 {
-    cfd = saccept(sfd)
-    if cfd >= 0 {
-      req = sans_http_accept_read(cfd)
-      rfd = load64(req)
-      if rfd >= 0 {
-        targ = alloc(16)
-        store64(targ, handler)
-        store64(targ + 8, req)
-        spawn sans_serve_worker(targ)
-        0
+  while signal_check() == 0 {
+    ready = spoll(sfd, 1000)
+    if ready > 0 {
+      cfd = saccept(sfd)
+      if cfd >= 0 {
+        req = sans_http_accept_read(cfd)
+        rfd = load64(req)
+        if rfd >= 0 {
+          targ = alloc(16)
+          store64(targ, handler)
+          store64(targ + 8, req)
+          spawn sans_serve_worker(targ)
+          0
+        } else { 0 }
       } else { 0 }
     } else { 0 }
     0
   }
+  p("Shutting down...")
+  sclose(sfd)
   0
 }
 

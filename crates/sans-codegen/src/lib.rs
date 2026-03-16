@@ -346,6 +346,35 @@ fn generate_llvm<'ctx>(
     let arena_end_type = i64_type.fn_type(&[], false);
     llvm_module.add_function("sans_arena_end", arena_end_type, Some(Linkage::External));
 
+    // Form data parsing
+    let form_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+    llvm_module.add_function("sans_http_request_form", form_type, Some(Linkage::External));
+
+    // Signal handling and poll
+    // signal(i32, ptr) -> i64
+    let signal_fn_type = i64_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
+    llvm_module.add_function("signal", signal_fn_type, Some(Linkage::External));
+
+    // poll(ptr, i32, i32) -> i32
+    let poll_fn_type = i32_type.fn_type(&[ptr_type.into(), i32_type.into(), i32_type.into()], false);
+    llvm_module.add_function("poll", poll_fn_type, Some(Linkage::External));
+
+    // Global signal flag
+    let signal_flag = llvm_module.add_global(i64_type, None, "__sans_signal_flag");
+    signal_flag.set_initializer(&i64_type.const_zero());
+    signal_flag.set_linkage(Linkage::Common);
+
+    // Signal handler function: void @__sans_signal_handler(i32)
+    let handler_fn_type = context.void_type().fn_type(&[i32_type.into()], false);
+    let handler_fn = llvm_module.add_function("__sans_signal_handler", handler_fn_type, Some(Linkage::LinkOnceODR));
+    let handler_bb = context.append_basic_block(handler_fn, "entry");
+    builder.position_at_end(handler_bb);
+    let flag_ptr = llvm_module.get_global("__sans_signal_flag").unwrap().as_pointer_value();
+    builder.build_store(flag_ptr, i64_type.const_int(1, false))
+        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+    builder.build_return(None)
+        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
     // Declare HTTP runtime functions (all i64 — Sans ABI)
     let http_get_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("sans_http_get", http_get_type, Some(Linkage::External));
@@ -3390,6 +3419,80 @@ fn generate_llvm<'ctx>(
                         inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
                         _ => return Err(CodegenError::LlvmError("sans_arena_end: expected return".into())),
                     };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::HttpRequestForm { dest, req, name } => {
+                    let req_val = regs[req];
+                    let name_val = regs[name];
+                    let fn_ref = llvm_module.get_function("sans_http_request_form").unwrap();
+                    let call = builder.build_call(fn_ref, &[req_val.into(), name_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_http_request_form: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                    ptrs.insert(dest.clone(), builder.build_int_to_ptr(result, context.ptr_type(inkwell::AddressSpace::default()), &format!("{}_p", dest))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?);
+                }
+                Instruction::SignalHandler { dest, signum } => {
+                    let signum_val = regs[signum];
+                    let i32_type = context.i32_type();
+                    let signum_i32 = builder.build_int_truncate(signum_val, i32_type, "sig_i32")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let handler_fn = llvm_module.get_function("__sans_signal_handler").unwrap();
+                    let handler_ptr = handler_fn.as_global_value().as_pointer_value();
+                    let signal_fn = llvm_module.get_function("signal").unwrap();
+                    let call = builder.build_call(signal_fn, &[signum_i32.into(), handler_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("signal: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::SignalCheck { dest } => {
+                    let flag_global = llvm_module.get_global("__sans_signal_flag").unwrap();
+                    let flag_ptr = flag_global.as_pointer_value();
+                    let result = builder.build_load(i64_type, flag_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::Spoll { dest, fd, timeout } => {
+                    let fd_val = regs[fd];
+                    let to_val = regs[timeout];
+                    let i32_type = context.i32_type();
+                    let i16_type = context.i16_type();
+                    // alloca 8 bytes for pollfd struct
+                    let pfd = builder.build_alloca(i64_type, "pollfd")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store fd as i32 at offset 0
+                    let fd_i32 = builder.build_int_truncate(fd_val, i32_type, "fd_i32")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(pfd, fd_i32)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store events=1 (POLLIN) as i16 at offset 4
+                    let i8_type = context.i8_type();
+                    let events_ptr = unsafe { builder.build_gep(i8_type, pfd, &[i64_type.const_int(4, false)], "events_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))? };
+                    builder.build_store(events_ptr, i16_type.const_int(1, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Call poll(pfd, 1, timeout_i32)
+                    let to_i32 = builder.build_int_truncate(to_val, i32_type, "to_i32")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let poll_fn = llvm_module.get_function("poll").unwrap();
+                    let poll_call = builder.build_call(poll_fn, &[pfd.into(), i32_type.const_int(1, false).into(), to_i32.into()], "poll_r")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let poll_result = match poll_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("poll: expected return".into())),
+                    };
+                    // result > 0 ? 1 : 0
+                    let cmp = builder.build_int_compare(inkwell::IntPredicate::SGT, poll_result, i32_type.const_zero(), "poll_cmp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = builder.build_int_z_extend(cmp, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::Alloc { dest, size } => {

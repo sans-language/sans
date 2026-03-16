@@ -756,25 +756,33 @@ sans_ssl_lit_cka() I {
 // ── serve_tls() — HTTPS production server ──────────────────────
 
 sans_serve_tls(port:I cert:I key:I handler:I) I {
+  signal_handler(2)
+  signal_handler(15)
   srv = sans_https_listen(port, cert, key)
   fd = load64(srv)
   fd < 0 ? 0 : sans_serve_tls_loop(srv, handler)
 }
 
 sans_serve_tls_loop(srv:I handler:I) I {
-  while 1 == 1 {
-    req = sans_https_accept(srv)
-    fd = load64(req)
-    if fd >= 0 {
-      targ = alloc(24)
-      store64(targ, handler)
-      store64(targ + 8, req)
-      store64(targ + 16, srv)
-      spawn sans_ssl_serve_worker(targ)
-      0
+  sfd = load64(srv)
+  while signal_check() == 0 {
+    ready = spoll(sfd, 1000)
+    if ready > 0 {
+      req = sans_https_accept(srv)
+      fd = load64(req)
+      if fd >= 0 {
+        targ = alloc(24)
+        store64(targ, handler)
+        store64(targ + 8, req)
+        store64(targ + 16, srv)
+        spawn sans_ssl_serve_worker(targ)
+        0
+      } else { 0 }
     } else { 0 }
     0
   }
+  p("Shutting down...")
+  sclose(sfd)
   0
 }
 

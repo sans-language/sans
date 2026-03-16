@@ -1249,6 +1249,24 @@ impl IrBuilder {
                     self.instructions.push(Instruction::ArenaEnd { dest: dest.clone() });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "signal_handler" {
+                    let signum_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SignalHandler { dest: dest.clone(), signum: signum_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "signal_check" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SignalCheck { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "spoll" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let timeout_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Spoll { dest: dest.clone(), fd: fd_reg, timeout: timeout_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "alloc" {
                     let size_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
@@ -2126,6 +2144,13 @@ impl IrBuilder {
                             self.instructions.push(Instruction::HttpRespond { dest: dest.clone(), request: obj_reg, status: status_reg, body: body_reg });
                         }
                         self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::HttpRequest), "form") => {
+                        let name_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpRequestForm { dest: dest.clone(), req: obj_reg, name: name_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
                     (Some(IrType::Result(ref inner)), "is_ok") => {

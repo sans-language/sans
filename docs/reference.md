@@ -189,10 +189,17 @@ String comparison (`==`, `!=`) is supported.
 | `serve_tls(port, cert, key, handler)` | — | `(Int, String, String, Fn) -> Int` |
 | `stream_write(writer, data)` | — | `(Int, String) -> Int` |
 | `stream_end(writer)` | — | `(Int) -> Int` |
+| `signal_handler(signum)` | — | `(Int) -> Int` |
+| `signal_check()` | — | `() -> Int` |
+| `spoll(fd, timeout_ms)` | — | `(Int, Int) -> Int` |
 
-`serve(port, handler)` starts a production HTTP server with auto-threading and HTTP/1.1 keep-alive. Each connection is handled in a new thread. The handler receives an `HttpRequest` and should call `respond` or `respond_stream`.
+`serve(port, handler)` starts a production HTTP server with auto-threading and HTTP/1.1 keep-alive. Each connection is handled in a new thread. The handler receives an `HttpRequest` and should call `respond` or `respond_stream`. The server automatically handles SIGINT and SIGTERM for graceful shutdown — in-flight requests complete before the server exits.
 
-`serve_tls(port, cert, key, handler)` is the HTTPS variant.
+`serve_tls(port, cert, key, handler)` is the HTTPS variant with the same graceful shutdown behavior.
+
+#### Signal Handling
+
+`signal_handler(signum)` registers a signal handler that sets a global flag. `signal_check()` returns 1 if the signal was received, 0 otherwise. `spoll(fd, timeout_ms)` polls a file descriptor for readability with a timeout in milliseconds, returning 1 if ready, 0 otherwise. These are used internally by `serve()` and `serve_tls()` but are available for custom server loops.
 
 `req.respond_stream(status)` sends HTTP headers with `Transfer-Encoding: chunked` and returns a writer handle. Use `stream_write(w, data)` to send chunks and `stream_end(w)` to finalize.
 
@@ -443,6 +450,7 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `header(name)` | `(String) -> String` | Get request header value (case-insensitive) |
 | `set_header(name, value)` | `(String, String) -> Int` | Add custom response header (call before respond) |
 | `cookie(name)` | `(String) -> String` | Get cookie value from Cookie header |
+| `form(name)` | `(String) -> String` | Parse form field from POST body (URL-encoded or multipart) |
 | `respond(status, body)` | `(Int, String) -> Int` | Defaults to `text/html` content-type |
 | `respond(status, body, content_type)` | `(Int, String, String) -> Int` | Explicit content-type |
 

@@ -205,10 +205,14 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td><code>serve_tls(port, cert, key, handler)</code></td><td>&mdash;</td><td><code>(Int, String, String, Fn) -&gt; Int</code></td></tr>
         <tr><td><code>stream_write(writer, data)</code></td><td>&mdash;</td><td><code>(Int, String) -&gt; Int</code></td></tr>
         <tr><td><code>stream_end(writer)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td></tr>
+        <tr><td><code>signal_handler(signum)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td></tr>
+        <tr><td><code>signal_check()</code></td><td>&mdash;</td><td><code>() -&gt; Int</code></td></tr>
+        <tr><td><code>spoll(fd, timeout_ms)</code></td><td>&mdash;</td><td><code>(Int, Int) -&gt; Int</code></td></tr>
       </tbody>
     </table>
-    <p><code>serve(port, handler)</code> starts a production server with auto-threading and HTTP/1.1 keep-alive. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>.</p>
+    <p><code>serve(port, handler)</code> starts a production server with auto-threading, HTTP/1.1 keep-alive, and graceful shutdown. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>. On SIGINT/SIGTERM, the server stops accepting new connections, lets in-flight requests finish, and exits cleanly.</p>
     <p><code>req.respond_stream(status)</code> sends chunked HTTP headers and returns a writer. Use <code>stream_write(w, data)</code> to send chunks and <code>stream_end(w)</code> to finalize.</p>
+    <p><code>signal_handler(signum)</code> registers a signal handler that sets a global flag. <code>signal_check()</code> returns 1 if the signal was received. <code>spoll(fd, timeout_ms)</code> polls a file descriptor for readability with timeout, returning 1 if ready, 0 otherwise.</p>
 
     <h3>CORS</h3>
     <table>
@@ -454,6 +458,7 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td>HttpRequest</td><td><code>header(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get request header value (case-insensitive)</td></tr>
         <tr><td>HttpRequest</td><td><code>set_header(name, value)</code></td><td><code>(String, String) -&gt; Int</code></td><td>Add custom response header (call before respond)</td></tr>
         <tr><td>HttpRequest</td><td><code>cookie(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get cookie value from Cookie header</td></tr>
+        <tr><td>HttpRequest</td><td><code>form(name)</code></td><td><code>(String) -&gt; String</code></td><td>Parse form field from POST body (URL-encoded or multipart)</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>Defaults to <code>text/html</code> content-type</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body, content_type)</code></td><td><code>(Int, String, String) -&gt; Int</code></td><td>Explicit content-type</td></tr>
       </tbody>
@@ -660,7 +665,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.35 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.36 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

@@ -296,6 +296,12 @@ pub enum Instruction {
     ArenaEnd { dest: Reg },
     // Command-line args
     Args { dest: Reg },
+    // Form data parsing
+    HttpRequestForm { dest: Reg, req: Reg, name: Reg },
+    // Signal handling / poll
+    SignalHandler { dest: Reg, signum: Reg },
+    SignalCheck { dest: Reg },
+    Spoll { dest: Reg, fd: Reg, timeout: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

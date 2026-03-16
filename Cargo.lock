@@ -106,7 +106,7 @@ checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "sans"
-version = "0.3.35"
+version = "0.3.36"
 dependencies = [
  "sans-codegen",
  "sans-ir",
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "sans-codegen"
-version = "0.3.35"
+version = "0.3.36"
 dependencies = [
  "inkwell",
  "sans-ir",
@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "sans-ir"
-version = "0.3.35"
+version = "0.3.36"
 dependencies = [
  "sans-lexer",
  "sans-parser",
@@ -136,18 +136,18 @@ dependencies = [
 
 [[package]]
 name = "sans-lexer"
-version = "0.3.35"
+version = "0.3.36"
 
 [[package]]
 name = "sans-parser"
-version = "0.3.35"
+version = "0.3.36"
 dependencies = [
  "sans-lexer",
 ]
 
 [[package]]
 name = "sans-typeck"
-version = "0.3.35"
+version = "0.3.36"
 dependencies = [
  "sans-lexer",
  "sans-parser",

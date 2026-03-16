@@ -649,6 +649,11 @@ lower_call(ctx:I name:I args:I) I {
   name == "M" ? lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) :
   name == "map" ? lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) :
 
+  // ── Signal / Poll ──
+  name == "signal_handler" ? lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) :
+  name == "signal_check" ? lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) :
+  name == "spoll" ? lower_call_2(ctx, args, IR_SPOLL, IRTY_INT) :
+
   // ── Misc ──
   name == "args" ? lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) :
   name == "exit" ? lower_call_1(ctx, args, IR_EXIT, IRTY_INT) :
@@ -1979,6 +1984,13 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND_JSON, dest, obj_reg, status_reg, body_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "form" ? {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_FORM, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   } : {
     lower_method_fallback(ctx, obj_reg, method, args)

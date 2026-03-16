@@ -1272,6 +1272,31 @@ fn check_expr(
                     return Err(TypeError::new(format!("system() cmd must be String, got {}", arg_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "signal_handler" {
+                if args.len() != 1 {
+                    return Err(TypeError::new("signal_handler() takes exactly 1 argument (signum)"));
+                }
+                let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if !is_i64_compat(&arg_ty) {
+                    return Err(TypeError::new(format!("signal_handler() signum must be Int, got {}", arg_ty)));
+                }
+                return Ok(Type::Int);
+            } else if function == "signal_check" {
+                if !args.is_empty() {
+                    return Err(TypeError::new("signal_check() takes no arguments"));
+                }
+                return Ok(Type::Int);
+            } else if function == "spoll" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("spoll() takes exactly 2 arguments (fd, timeout_ms)"));
+                }
+                for (i, label) in ["fd", "timeout_ms"].iter().enumerate() {
+                    let t = check_expr(&args[i], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if !is_i64_compat(&t) {
+                        return Err(TypeError::new(format!("spoll() {} must be Int, got {}", label, t)));
+                    }
+                }
+                return Ok(Type::Int);
             } else if function == "sock" {
                 if args.len() != 3 {
                     return Err(TypeError::new("sock() takes exactly 3 arguments (domain, type, proto)"));
@@ -2342,6 +2367,16 @@ fn check_expr(
                         }
                     }
                     return Ok(Type::Int);
+                }
+                (Type::HttpRequest, "form") => {
+                    if args.len() != 1 {
+                        return Err(TypeError::new("form() takes exactly 1 argument (name)"));
+                    }
+                    let arg_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                    if arg_ty != Type::String && arg_ty != Type::Int {
+                        return Err(TypeError::new(format!("form() name must be String, got {}", arg_ty)));
+                    }
+                    return Ok(Type::String);
                 }
                 (Type::HttpRequest, other) => {
                     return Err(TypeError::new(format!("HttpRequest has no method '{}'", other)));

@@ -65,8 +65,8 @@ const HOVER_DATA: Record<string, string> = {
     'http_listen': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
     'hl_s': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nAlias: `hl_s`\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
     'https_listen': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
-    'serve': '**serve**(port: Int, handler: Fn) -> Int\n\nStart a production HTTP server with auto-threading and HTTP/1.1 keep-alive. Each connection is handled in a new thread. The handler receives an HttpRequest.\n\nUsage: `serve(8080 fptr("handle"))`',
-    'serve_tls': '**serve_tls**(port: Int, cert: String, key: String, handler: Fn) -> Int\n\nStart a production HTTPS server with auto-threading and keep-alive.\n\nUsage: `serve_tls(8443 "cert.pem" "key.pem" fptr("handle"))`',
+    'serve': '**serve**(port: Int, handler: Fn) -> Int\n\nStart a production HTTP server with auto-threading, HTTP/1.1 keep-alive, and graceful shutdown (SIGINT/SIGTERM). Each connection is handled in a new thread. The handler receives an HttpRequest.\n\nUsage: `serve(8080 fptr("handle"))`',
+    'serve_tls': '**serve_tls**(port: Int, cert: String, key: String, handler: Fn) -> Int\n\nStart a production HTTPS server with auto-threading, keep-alive, and graceful shutdown.\n\nUsage: `serve_tls(8443 "cert.pem" "key.pem" fptr("handle"))`',
     'stream_write': '**stream_write**(writer: Int, data: String) -> Int\n\nSend a chunk of data in a chunked HTTP response. The writer is obtained from `req.respond_stream(status)`.\n\nUsage: `stream_write(w "hello\\n")`',
     'stream_end': '**stream_end**(writer: Int) -> Int\n\nFinalize a chunked HTTP response by sending the terminal chunk.\n\nUsage: `stream_end(w)`',
     'cors': '**cors**(req: HttpRequest, origin: String) -> Int\n\nSet CORS response headers: `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers`. Call before `respond`.\n\nUsage: `cors(req "https://example.com")`',
@@ -81,6 +81,10 @@ const HOVER_DATA: Record<string, string> = {
     'header': '**header**(name: String) -> String\n\nGet request header value by name (case-insensitive). Returns "" if not found.\n\nUsage: `ct = req.header("Content-Type")`',
     'set_header': '**set_header**(name: String, value: String) -> Int\n\nAdd a custom response header. Must be called before `respond`.\n\nUsage: `req.set_header("X-Request-Id" "abc123")`',
     'cookie': '**cookie**(name: String) -> String\n\nGet cookie value from the `Cookie` request header. Returns "" if not found.\n\nUsage: `token = req.cookie("session")`',
+    'form': '**form**(name: String) -> String\n\nParse form field from POST body. Supports `application/x-www-form-urlencoded` and `multipart/form-data` (text fields only). Returns "" if not found.\n\nUsage: `username = req.form("username")`',
+    'signal_handler': '**signal_handler**(signum: Int) -> Int\n\nRegister a signal handler that sets a global shutdown flag. Used by `serve()` internally for graceful shutdown.\n\nUsage: `signal_handler(2)  // SIGINT`',
+    'signal_check': '**signal_check**() -> Int\n\nReturns 1 if a registered signal was received, 0 otherwise.\n\nUsage: `while signal_check() == 0 { ... }`',
+    'spoll': '**spoll**(fd: Int, timeout_ms: Int) -> Int\n\nPoll a file descriptor for readability with timeout. Returns 1 if ready, 0 on timeout.\n\nUsage: `ready = spoll(fd 1000)`',
 
     // Logging
     'ld': '**log_debug**(msg: String) -> Int\n\nLog message at DEBUG level to stderr.',
