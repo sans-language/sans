@@ -90,6 +90,14 @@ const HOVER_DATA: Record<string, string> = {
     'ws_close': '**ws_close**(ws: Int) -> Int\n\nSend WebSocket close frame and close the socket.\n\nUsage: `ws_close(ws)`',
     'is_ws_upgrade': '**is_ws_upgrade**() -> Int\n\nHttpRequest method. Returns 1 if request is a WebSocket upgrade request, 0 otherwise.\n\nUsage: `req.is_ws_upgrade()`',
     'upgrade_ws': '**upgrade_ws**() -> Int\n\nHttpRequest method. Performs WebSocket handshake (SHA-1 + Base64) and sends 101 response. Returns WebSocket handle.\n\nUsage: `ws = req.upgrade_ws()`',
+    'serve_file': '**serve_file**(req: HttpRequest, dir: String) -> Int\n\nServe a static file from `dir` matching the request path. Handles content-type detection, 404 for missing files, and directory traversal protection.\n\nUsage: `serve_file(req "./public")`',
+    'url_decode': '**url_decode**(s: String) -> String\n\nDecode a URL-encoded string (`%20` becomes space, `+` becomes space).\n\nUsage: `name = url_decode(raw_name)`',
+    'path_segment': '**path_segment**(path: String, idx: Int) -> String\n\nExtract URL path segment at index. Segments are split by `/`.\n\nUsage: `path_segment("/api/users/42" 2)  // "42"`',
+    'query': '**query**(name: String) -> String\n\nHttpRequest method. Get query parameter value by name. Returns "" if not found.\n\nUsage: `page = req.query("page")`',
+    'path_only': '**path_only**() -> String\n\nHttpRequest method. Returns the path without query string.\n\nUsage: `p = req.path_only()`',
+    'content_length': '**content_length**() -> Int\n\nHttpRequest method. Get the Content-Length header value as an integer.\n\nUsage: `len = req.content_length()`',
+    'respond_json': '**respond_json**(status: Int, body: String) -> Int\n\nHttpRequest method. Send a JSON response (sets Content-Type: application/json automatically).\n\nUsage: `req.respond_json(200 jfy(data))`',
+    'respond_stream': '**respond_stream**(status: Int) -> Int\n\nHttpRequest method. Send HTTP headers with Transfer-Encoding: chunked and return a writer handle. Use `stream_write(w, data)` to send chunks and `stream_end(w)` to finalize.\n\nUsage: `w = req.respond_stream(200)`',
 
     // Logging
     'ld': '**log_debug**(msg: String) -> Int\n\nLog message at DEBUG level to stderr.',

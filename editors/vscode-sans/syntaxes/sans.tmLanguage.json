@@ -118,7 +118,7 @@
         },
         {
           "name": "support.function.http.sans",
-          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws)\\b"
+          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws|serve_file|url_decode|path_segment|respond_json|respond_stream|query|path_only|content_length)\\b"
         },
         {
           "name": "support.function.log.sans",

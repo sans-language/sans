@@ -195,6 +195,15 @@ String comparison (`==`, `!=`) is supported.
 | `ws_send(ws, msg)` | — | `(Int, String) -> Int` |
 | `ws_recv(ws)` | — | `(Int) -> String` |
 | `ws_close(ws)` | — | `(Int) -> Int` |
+| `serve_file(req, dir)` | — | `(HttpRequest, String) -> Int` |
+| `url_decode(s)` | — | `(String) -> String` |
+| `path_segment(path, idx)` | — | `(String, Int) -> String` |
+
+`serve_file(req, dir)` serves a static file from `dir` matching the request path. Handles content-type detection, 404 for missing files, and directory traversal protection.
+
+`url_decode(s)` decodes a URL-encoded string (e.g. `%20` to space, `+` to space).
+
+`path_segment(path, idx)` extracts the segment at index `idx` from a URL path. `path_segment("/api/users/42" 2)` returns `"42"`.
 
 `serve(port, handler)` starts a production HTTP server with auto-threading and HTTP/1.1 keep-alive. Each connection is handled in a new thread. The handler receives an `HttpRequest` and should call `respond` or `respond_stream`. The server automatically handles SIGINT and SIGTERM for graceful shutdown — in-flight requests complete before the server exits.
 
@@ -503,10 +512,15 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `body` | `() -> String` | |
 | `header(name)` | `(String) -> String` | Get request header value (case-insensitive) |
 | `set_header(name, value)` | `(String, String) -> Int` | Add custom response header (call before respond) |
+| `query(name)` | `(String) -> String` | Get query parameter value by name |
+| `path_only` | `() -> String` | Path without query string |
+| `content_length` | `() -> Int` | Get Content-Length as int |
 | `cookie(name)` | `(String) -> String` | Get cookie value from Cookie header |
 | `form(name)` | `(String) -> String` | Parse form field from POST body (URL-encoded or multipart) |
 | `respond(status, body)` | `(Int, String) -> Int` | Defaults to `text/html` content-type |
 | `respond(status, body, content_type)` | `(Int, String, String) -> Int` | Explicit content-type |
+| `respond_json(status, body)` | `(Int, String) -> Int` | JSON response (sets Content-Type: application/json) |
+| `respond_stream(status)` | `(Int) -> Int` | Chunked streaming response, returns writer handle |
 | `is_ws_upgrade` | `() -> Int` | Returns 1 if WebSocket upgrade request |
 | `upgrade_ws` | `() -> Int` | Perform WS handshake, return WebSocket handle |
 

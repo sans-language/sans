@@ -211,8 +211,14 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td><code>ws_send(ws, msg)</code></td><td>&mdash;</td><td><code>(Int, String) -&gt; Int</code></td></tr>
         <tr><td><code>ws_recv(ws)</code></td><td>&mdash;</td><td><code>(Int) -&gt; String</code></td></tr>
         <tr><td><code>ws_close(ws)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td></tr>
+        <tr><td><code>serve_file(req, dir)</code></td><td>&mdash;</td><td><code>(HttpRequest, String) -&gt; Int</code></td></tr>
+        <tr><td><code>url_decode(s)</code></td><td>&mdash;</td><td><code>(String) -&gt; String</code></td></tr>
+        <tr><td><code>path_segment(path, idx)</code></td><td>&mdash;</td><td><code>(String, Int) -&gt; String</code></td></tr>
       </tbody>
     </table>
+    <p><code>serve_file(req, dir)</code> serves a static file from <code>dir</code> matching the request path. Handles content-type detection, 404 for missing files, and directory traversal protection.</p>
+    <p><code>url_decode(s)</code> decodes a URL-encoded string (e.g. <code>%20</code> to space, <code>+</code> to space).</p>
+    <p><code>path_segment(path, idx)</code> extracts the segment at index <code>idx</code> from a URL path. <code>path_segment("/api/users/42" 2)</code> returns <code>"42"</code>.</p>
     <p><code>serve(port, handler)</code> starts a production server with auto-threading, HTTP/1.1 keep-alive, automatic gzip compression, and graceful shutdown. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>. On SIGINT/SIGTERM, the server stops accepting new connections, lets in-flight requests finish, and exits cleanly.</p>
     <p><code>req.respond_stream(status)</code> sends chunked HTTP headers and returns a writer. Use <code>stream_write(w, data)</code> to send chunks and <code>stream_end(w)</code> to finalize.</p>
     <p><code>signal_handler(signum)</code> registers a signal handler that sets a global flag. <code>signal_check()</code> returns 1 if the signal was received. <code>spoll(fd, timeout_ms)</code> polls a file descriptor for readability with timeout, returning 1 if ready, 0 otherwise.</p>
@@ -494,10 +500,15 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
         <tr><td>HttpRequest</td><td><code>body</code></td><td><code>() -&gt; String</code></td><td></td></tr>
         <tr><td>HttpRequest</td><td><code>header(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get request header value (case-insensitive)</td></tr>
         <tr><td>HttpRequest</td><td><code>set_header(name, value)</code></td><td><code>(String, String) -&gt; Int</code></td><td>Add custom response header (call before respond)</td></tr>
+        <tr><td>HttpRequest</td><td><code>query(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get query parameter value by name</td></tr>
+        <tr><td>HttpRequest</td><td><code>path_only</code></td><td><code>() -&gt; String</code></td><td>Path without query string</td></tr>
+        <tr><td>HttpRequest</td><td><code>content_length</code></td><td><code>() -&gt; Int</code></td><td>Get Content-Length as int</td></tr>
         <tr><td>HttpRequest</td><td><code>cookie(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get cookie value from Cookie header</td></tr>
         <tr><td>HttpRequest</td><td><code>form(name)</code></td><td><code>(String) -&gt; String</code></td><td>Parse form field from POST body (URL-encoded or multipart)</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>Defaults to <code>text/html</code> content-type</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body, content_type)</code></td><td><code>(Int, String, String) -&gt; Int</code></td><td>Explicit content-type</td></tr>
+        <tr><td>HttpRequest</td><td><code>respond_json(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>JSON response (sets Content-Type: application/json)</td></tr>
+        <tr><td>HttpRequest</td><td><code>respond_stream(status)</code></td><td><code>(Int) -&gt; Int</code></td><td>Chunked streaming response, returns writer handle</td></tr>
         <tr><td>HttpRequest</td><td><code>is_ws_upgrade</code></td><td><code>() -&gt; Int</code></td><td>Returns 1 if WebSocket upgrade request</td></tr>
         <tr><td>HttpRequest</td><td><code>upgrade_ws</code></td><td><code>() -&gt; Int</code></td><td>Perform WS handshake, return WebSocket handle</td></tr>
       </tbody>

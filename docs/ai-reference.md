@@ -89,6 +89,9 @@ spoll(fd timeout_ms)                    I I -> I (poll fd, 1=ready 0=timeout)
 ws_send(ws msg)                         I S -> I (send WS text frame)
 ws_recv(ws)                             I -> S (recv WS frame, "" on close)
 ws_close(ws)                            I -> I (send close frame, close socket)
+serve_file(req dir)                     HttpRequest S -> I (serve static file from dir)
+url_decode(s)                           S -> S (URL-decode string)
+path_segment(path idx)                  S I -> S (extract URL path segment by index)
 ld(msg)           log_debug(msg)        S -> I
 li(msg)           log_info(msg)         S -> I
 lw(msg)           log_warn(msg)         S -> I
@@ -181,7 +184,7 @@ String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
 HttpServer:   accept
-HttpRequest:  path method body header(name) set_header(name val) cookie(name) form(name) respond(status body) respond(status body ct) respond_stream(status) respond_json(status body) is_ws_upgrade upgrade_ws
+HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length cookie(name) form(name) respond(status body) respond(status body ct) respond_json(status body) respond_stream(status) is_ws_upgrade upgrade_ws
               // respond auto-gzips when: body>=1024B + Accept-Encoding:gzip + compressible ct; opt-out: set_header("X-No-Compress" "1")
 Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
 Sender<T>:    send(v)
