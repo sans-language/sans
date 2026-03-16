@@ -1,7 +1,7 @@
 import "constants"
 import "ir"
 
-// ── Codegen state layout (64 bytes) ─────────────────────────────
+// ── Codegen state layout (80 bytes) ─────────────────────────────
 // offset 0:  lines        — Array<I> of string pointers (LLVM IR lines)
 // offset 8:  reg_counter  — next LLVM SSA register number
 // offset 16: string_pool  — Map: hash_key → global name ptr
@@ -10,9 +10,10 @@ import "ir"
 // offset 40: reg_map      — Map: IR register → LLVM value string ptr
 // offset 48: ptr_set      — Map: IR register → 1 (tracks pointer regs)
 // offset 56: has_main     — 1 if module has main function
+// offset 72: label_counter — separate counter for unique label suffixes
 
 make_codegen() I {
-  cg = alloc(72)
+  cg = alloc(80)
   store64(cg, array<I>())       // lines
   store64(cg + 8, 0)            // reg_counter
   store64(cg + 16, M())         // string_pool
@@ -22,6 +23,7 @@ make_codegen() I {
   store64(cg + 48, M())         // ptr_set
   store64(cg + 56, 0)           // has_main
   store64(cg + 64, array<I>())  // string_const_lines (emitted before functions)
+  store64(cg + 72, 0)           // label_counter
   cg
 }
 
@@ -467,11 +469,12 @@ cg_fmode_a(cg:I) S {
   name
 }
 
-// Generate a unique label suffix from the register counter
+// Generate a unique label suffix from a separate label counter
+// (must NOT consume SSA register numbers)
 cg_label_id(cg:I) S {
-  n = cg_reg_counter(cg)
-  cg_set_reg_counter(cg, n + 1)
-  str(n)
+  n = load64(cg + 72)
+  store64(cg + 72, n + 1)
+  "L" + str(n)
 }
 
 // ── Generic runtime call helpers ─────────────────────────────────
@@ -752,8 +755,8 @@ compile_inst(cg:I inst:I) I {
   if op == IR_PRINT_INT {
     val = cg_get_val(cg, dest)
     fmt = cg_fmt_int(cg)
-    cg_fresh_reg(cg)
-    emit(cg, "  call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + val + ")")
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + val + ")")
     return 0
   }
 
@@ -763,8 +766,8 @@ compile_inst(cg:I inst:I) I {
     fl = cg_fresh_reg(cg)
     emit(cg, "  " + fl + " = bitcast i64 " + val + " to double")
     fmt = cg_fmt_float(cg)
-    cg_fresh_reg(cg)
-    emit(cg, "  call i64 (ptr, ...) @printf(ptr " + fmt + ", double " + fl + ")")
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", double " + fl + ")")
     return 0
   }
 
@@ -774,8 +777,8 @@ compile_inst(cg:I inst:I) I {
     p = cg_fresh_reg(cg)
     emit(cg, "  " + p + " = inttoptr i64 " + val + " to ptr")
     fmt = cg_fmt_str(cg)
-    cg_fresh_reg(cg)
-    emit(cg, "  call i64 (ptr, ...) @printf(ptr " + fmt + ", ptr " + p + ")")
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", ptr " + p + ")")
     return 0
   }
 
@@ -788,8 +791,8 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + cond + " = trunc i64 " + val + " to i1")
     sel = cg_fresh_reg(cg)
     emit(cg, "  " + sel + " = select i1 " + cond + ", ptr " + tname + ", ptr " + fname)
-    cg_fresh_reg(cg)
-    emit(cg, "  call i64 (ptr, ...) @printf(ptr " + sel + ")")
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + sel + ")")
     return 0
   }
 
@@ -1032,7 +1035,8 @@ compile_inst(cg:I inst:I) I {
     // memcpy old to new (len * 8)
     csz = cg_fresh_reg(cg)
     emit(cg, "  " + csz + " = mul i64 " + ln + ", 8")
-    emit(cg, "  call ptr @memcpy(ptr " + nb + ", ptr " + odp + ", i64 " + csz + ")")
+    mc1 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc1 + " = call ptr @memcpy(ptr " + nb + ", ptr " + odp + ", i64 " + csz + ")")
     // Free old
     emit(cg, "  call void @free(ptr " + odp + ")")
     // Update data ptr and capacity
@@ -1258,12 +1262,14 @@ compile_inst(cg:I inst:I) I {
     buf = cg_fresh_reg(cg)
     emit(cg, "  " + buf + " = call ptr @malloc(i64 " + asz + ")")
     // memcpy left
-    emit(cg, "  call ptr @memcpy(ptr " + buf + ", ptr " + p1 + ", i64 " + l1 + ")")
+    mc2 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc2 + " = call ptr @memcpy(ptr " + buf + ", ptr " + p1 + ", i64 " + l1 + ")")
     // GEP buf+len1
     mid = cg_fresh_reg(cg)
     emit(cg, "  " + mid + " = getelementptr i8, ptr " + buf + ", i64 " + l1)
     // memcpy right
-    emit(cg, "  call ptr @memcpy(ptr " + mid + ", ptr " + p2 + ", i64 " + l2 + ")")
+    mc3 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc3 + " = call ptr @memcpy(ptr " + mid + ", ptr " + p2 + ", i64 " + l2 + ")")
     // null-terminate
     endp = cg_fresh_reg(cg)
     emit(cg, "  " + endp + " = getelementptr i8, ptr " + buf + ", i64 " + tot)
@@ -1290,7 +1296,8 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
     src = cg_fresh_reg(cg)
     emit(cg, "  " + src + " = getelementptr i8, ptr " + sp + ", i64 " + st)
-    emit(cg, "  call ptr @memcpy(ptr " + buf + ", ptr " + src + ", i64 " + ln + ")")
+    mc4 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc4 + " = call ptr @memcpy(ptr " + buf + ", ptr " + src + ", i64 " + ln + ")")
     endp = cg_fresh_reg(cg)
     emit(cg, "  " + endp + " = getelementptr i8, ptr " + buf + ", i64 " + ln)
     emit(cg, "  store i8 0, ptr " + endp)
@@ -1307,8 +1314,8 @@ compile_inst(cg:I inst:I) I {
     buf = cg_fresh_reg(cg)
     emit(cg, "  " + buf + " = call ptr @malloc(i64 21)")
     fmt = cg_fmt_ld(cg)
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 (ptr, i64, ptr, ...) @snprintf(ptr " + buf + ", i64 21, ptr " + fmt + ", i64 " + val + ")")
+    sn = cg_fresh_reg(cg)
+    emit(cg, "  " + sn + " = call i32 (ptr, i64, ptr, ...) @snprintf(ptr " + buf + ", i64 21, ptr " + fmt + ", i64 " + val + ")")
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
     cg_set_val(cg, dest, r)
@@ -1335,8 +1342,8 @@ compile_inst(cg:I inst:I) I {
     buf = cg_fresh_reg(cg)
     emit(cg, "  " + buf + " = call ptr @malloc(i64 32)")
     fmt = cg_fmt_g(cg)
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 (ptr, i64, ptr, ...) @snprintf(ptr " + buf + ", i64 32, ptr " + fmt + ", double " + fv + ")")
+    sn = cg_fresh_reg(cg)
+    emit(cg, "  " + sn + " = call i32 (ptr, i64, ptr, ...) @snprintf(ptr " + buf + ", i64 32, ptr " + fmt + ", double " + fv + ")")
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
     cg_set_val(cg, dest, r)
@@ -1435,25 +1442,25 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  br label %" + merge_lbl)
     // Success path: fseek/ftell/fread
     emit(cg, ok_lbl + ":")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @fseek(ptr " + fp + ", i64 0, i32 2)")
+    fs1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fs1 + " = call i32 @fseek(ptr " + fp + ", i64 0, i32 2)")
     fsz = cg_fresh_reg(cg)
     emit(cg, "  " + fsz + " = call i64 @ftell(ptr " + fp + ")")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @fseek(ptr " + fp + ", i64 0, i32 0)")
+    fs2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fs2 + " = call i32 @fseek(ptr " + fp + ", i64 0, i32 0)")
     bsz = cg_fresh_reg(cg)
     emit(cg, "  " + bsz + " = add i64 " + fsz + ", 1")
     buf = cg_fresh_reg(cg)
     emit(cg, "  " + buf + " = call ptr @malloc(i64 " + bsz + ")")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i64 @fread(ptr " + buf + ", i64 1, i64 " + fsz + ", ptr " + fp + ")")
+    frd = cg_fresh_reg(cg)
+    emit(cg, "  " + frd + " = call i64 @fread(ptr " + buf + ", i64 1, i64 " + fsz + ", ptr " + fp + ")")
     // null-terminate
     endp = cg_fresh_reg(cg)
     emit(cg, "  " + endp + " = getelementptr i8, ptr " + buf + ", i64 " + fsz)
     emit(cg, "  store i8 0, ptr " + endp)
     // fclose
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @fclose(ptr " + fp + ")")
+    fcl = cg_fresh_reg(cg)
+    emit(cg, "  " + fcl + " = call i32 @fclose(ptr " + fp + ")")
     bi = cg_fresh_reg(cg)
     emit(cg, "  " + bi + " = ptrtoint ptr " + buf + " to i64")
     emit(cg, "  br label %" + merge_lbl)
@@ -1495,10 +1502,10 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  br i1 " + isn + ", label %" + merge_lbl + ", label %" + ok_lbl)
     // Success path
     emit(cg, ok_lbl + ":")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i64 @fwrite(ptr " + cp + ", i64 1, i64 " + cl + ", ptr " + fp + ")")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @fclose(ptr " + fp + ")")
+    fw1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fw1 + " = call i64 @fwrite(ptr " + cp + ", i64 1, i64 " + cl + ", ptr " + fp + ")")
+    fc1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fc1 + " = call i32 @fclose(ptr " + fp + ")")
     emit(cg, "  br label %" + merge_lbl)
     // Merge: phi(0 on null, 1 on success)
     emit(cg, merge_lbl + ":")
@@ -1537,10 +1544,10 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  br i1 " + isn + ", label %" + merge_lbl + ", label %" + ok_lbl)
     // Success path
     emit(cg, ok_lbl + ":")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i64 @fwrite(ptr " + cp + ", i64 1, i64 " + cl + ", ptr " + fp + ")")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @fclose(ptr " + fp + ")")
+    fw2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fw2 + " = call i64 @fwrite(ptr " + cp + ", i64 1, i64 " + cl + ", ptr " + fp + ")")
+    fc2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fc2 + " = call i32 @fclose(ptr " + fp + ")")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
     emit(cg, merge_lbl + ":")
@@ -1635,8 +1642,8 @@ compile_inst(cg:I inst:I) I {
   if op == IR_THREAD_JOIN {
     // dest field holds the handle register
     hv = cg_get_val(cg, dest)
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @pthread_join(i64 " + hv + ", ptr null)")
+    tj = cg_fresh_reg(cg)
+    emit(cg, "  " + tj + " = call i32 @pthread_join(i64 " + hv + ", ptr null)")
     return 0
   }
   if op == IR_CHANNEL_CREATE {
@@ -1686,8 +1693,8 @@ compile_inst(cg:I inst:I) I {
     // Init mutex at offset 8 (64 bytes for pthread_mutex_t)
     mx = cg_fresh_reg(cg)
     emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @pthread_mutex_init(ptr " + mx + ", ptr null)")
+    mi = cg_fresh_reg(cg)
+    emit(cg, "  " + mi + " = call i32 @pthread_mutex_init(ptr " + mx + ", ptr null)")
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr " + mp + " to i64")
     cg_set_val(cg, dest, r)
@@ -1700,8 +1707,8 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + mp + " = inttoptr i64 " + mv + " to ptr")
     mx = cg_fresh_reg(cg)
     emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @pthread_mutex_lock(ptr " + mx + ")")
+    ml = cg_fresh_reg(cg)
+    emit(cg, "  " + ml + " = call i32 @pthread_mutex_lock(ptr " + mx + ")")
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = load i64, ptr " + mp)
     cg_set_val(cg, dest, r)
@@ -1716,8 +1723,8 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  store i64 " + val + ", ptr " + mp)
     mx = cg_fresh_reg(cg)
     emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
-    cg_fresh_reg(cg)
-    emit(cg, "  call i32 @pthread_mutex_unlock(ptr " + mx + ")")
+    mu = cg_fresh_reg(cg)
+    emit(cg, "  " + mu + " = call i32 @pthread_mutex_unlock(ptr " + mx + ")")
     return 0
   }
 
@@ -2161,7 +2168,8 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + dp + " = inttoptr i64 " + dv + " to ptr")
     sp = cg_fresh_reg(cg)
     emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
-    emit(cg, "  call ptr @memcpy(ptr " + dp + ", ptr " + sp + ", i64 " + ln + ")")
+    mc5 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc5 + " = call ptr @memcpy(ptr " + dp + ", ptr " + sp + ", i64 " + ln + ")")
     cg_set_val(cg, dest, dv)
     return 0
   }
@@ -2171,7 +2179,8 @@ compile_inst(cg:I inst:I) I {
     ln = cg_get_val(cg, ir_field(inst, 24))
     pp = cg_fresh_reg(cg)
     emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
-    emit(cg, "  call ptr @memset(ptr " + pp + ", i64 0, i64 " + ln + ")")
+    ms1 = cg_fresh_reg(cg)
+    emit(cg, "  " + ms1 + " = call ptr @memset(ptr " + pp + ", i64 0, i64 " + ln + ")")
     cg_set_val(cg, dest, pv)
     return 0
   }
@@ -2283,6 +2292,7 @@ emit_function_body(cg:I func:I) I {
   cg_set_reg_counter(cg, 0)
   store64(cg + 40, M())
   store64(cg + 48, M())
+  store64(cg + 72, 0)
 
   // Map parameters: store each param name → %pN in reg_map
   i = 0
