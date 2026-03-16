@@ -1,22 +1,22 @@
 sans_string_is_space(c:I) I {
-  c == 32 ? 1 : c == 9 ? 1 : c == 10 ? 1 : c == 13 ? 1 : 0
+  if c == 32 { 1 } else { if c == 9 { 1 } else { if c == 10 { 1 } else { if c == 13 { 1 } else { 0 } } } }
 }
 
 sans_string_starts_with(s:I prefix:I) I {
   pl = slen(prefix)
   sl = slen(s)
-  pl > sl ? 0 : mcmp(s, prefix, pl) == 0 ? 1 : 0
+  if pl > sl { 0 } else { if mcmp(s, prefix, pl) == 0 { 1 } else { 0 } }
 }
 
 sans_string_ends_with(s:I suffix:I) I {
   sl = slen(s)
   xl = slen(suffix)
-  xl > sl ? 0 : mcmp(s + sl - xl, suffix, xl) == 0 ? 1 : 0
+  if xl > sl { 0 } else { if mcmp(s + sl - xl, suffix, xl) == 0 { 1 } else { 0 } }
 }
 
 sans_string_contains(s:I needle:I) I {
   r = strstr(s, needle)
-  r != 0 ? 1 : 0
+  if r != 0 { 1 } else { 0 }
 }
 
 sans_string_trim_start(s:I len:I) I {
@@ -65,7 +65,7 @@ sans_string_trim(s:I) I {
   end = sans_string_trim_end(s, start, len)
   new_len = end - start
   result = alloc(new_len + 1)
-  new_len > 0 ? mcpy(result, s + start, new_len) : 0
+  if new_len > 0 { mcpy(result, s + start, new_len) } else { 0 }
   store8(result + new_len, 0)
   result
 }
@@ -95,12 +95,12 @@ sans_string_split_loop(arr:I s:I delim:I dl:I) I {
   done := 0
   while done == 0 {
     found = strstr(pos, delim)
-    part_len = found != 0 ? found - pos : slen(pos)
+    part_len = if found != 0 { found - pos } else { slen(pos) }
     len = load64(arr + 8)
     cap = load64(arr + 16)
-    len >= cap ? sans_string_split_grow(arr) : 0
+    if len >= cap { sans_string_split_grow(arr) } else { 0 }
     part = alloc(part_len + 1)
-    part_len > 0 ? mcpy(part, pos, part_len) : 0
+    if part_len > 0 { mcpy(part, pos, part_len) } else { 0 }
     store8(part + part_len, 0)
     data = load64(arr)
     store64(data + len * 8, part)
@@ -123,7 +123,7 @@ sans_string_split(s:I delim:I) I {
   store64(arr + 16, 8)
   data = alloc(8 * 8)
   store64(arr, data)
-  dl == 0 ? sans_string_split_single(arr, s) : sans_string_split_loop(arr, s, delim, dl)
+  if dl == 0 { sans_string_split_single(arr, s) } else { sans_string_split_loop(arr, s, delim, dl) }
   arr
 }
 
@@ -141,9 +141,9 @@ sans_string_replace_rest(out:I pos:I) I {
 
 sans_string_replace_part(out:I pos:I found:I new_s:I nl:I) I {
   prefix_len = found - pos
-  prefix_len > 0 ? mcpy(out, pos, prefix_len) : 0
+  if prefix_len > 0 { mcpy(out, pos, prefix_len) } else { 0 }
   out2 = out + prefix_len
-  nl > 0 ? mcpy(out2, new_s, nl) : 0
+  if nl > 0 { mcpy(out2, new_s, nl) } else { 0 }
   out2 + nl
 }
 
@@ -187,5 +187,5 @@ sans_string_replace(s:I old:I new_s:I) I {
   ol = slen(old)
   nl = slen(new_s)
   sl = slen(s)
-  ol == 0 ? sans_string_dup(s, sl) : sans_string_replace_inner(s, old, new_s, ol, nl, sl)
+  if ol == 0 { sans_string_dup(s, sl) } else { sans_string_replace_inner(s, old, new_s, ol, nl, sl) }
 }

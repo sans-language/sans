@@ -14,29 +14,29 @@
 
 sans_ssl_ctx(cert:I key:I) I {
   method = ssl_method()
-  method == 0 ? 0 : sans_ssl_ctx_inner(method, cert, key)
+  if method == 0 { 0 } else { sans_ssl_ctx_inner(method, cert, key) }
 }
 
 sans_ssl_ctx_inner(method:I cert:I key:I) I {
   ctx = ssl_ctx_new(method)
-  ctx == 0 ? 0 : sans_ssl_ctx_load(ctx, cert, key)
+  if ctx == 0 { 0 } else { sans_ssl_ctx_load(ctx, cert, key) }
 }
 
 sans_ssl_ctx_load(ctx:I cert:I key:I) I {
   r1 = ssl_ctx_cert(ctx, cert, 1)
-  r1 <= 0 ? 0 : sans_ssl_ctx_load_key(ctx, key)
+  if r1 <= 0 { 0 } else { sans_ssl_ctx_load_key(ctx, key) }
 }
 
 sans_ssl_ctx_load_key(ctx:I key:I) I {
   r2 = ssl_ctx_key(ctx, key, 1)
-  r2 <= 0 ? 0 : ctx
+  if r2 <= 0 { 0 } else { ctx }
 }
 
 // ── HTTPS Listen ────────────────────────────────────────────────
 
 sans_https_listen(port:I cert:I key:I) I {
   ctx = sans_ssl_ctx(cert, key)
-  ctx == 0 ? sans_ssl_make_error_server(port) : sans_https_listen_bind(port, ctx)
+  if ctx == 0 { sans_ssl_make_error_server(port) } else { sans_https_listen_bind(port, ctx) }
 }
 
 sans_ssl_make_error_server(port:I) I {
@@ -49,7 +49,7 @@ sans_ssl_make_error_server(port:I) I {
 
 sans_https_listen_bind(port:I ctx:I) I {
   fd = sock(2, 1, 0)
-  fd < 0 ? sans_ssl_make_error_server(port) : sans_https_listen_try(fd, port, ctx)
+  if fd < 0 { sans_ssl_make_error_server(port) } else { sans_https_listen_try(fd, port, ctx) }
 }
 
 sans_ssl_bind_port(fd:I port:I) I {
@@ -91,7 +91,7 @@ sans_https_accept(server:I) I {
   sfd = load64(server)
   ctx = load64(server + 16)
   cfd = saccept(sfd)
-  cfd < 0 ? sans_ssl_make_empty_req() : sans_https_accept_ssl(ctx, cfd)
+  if cfd < 0 { sans_ssl_make_empty_req() } else { sans_https_accept_ssl(ctx, cfd) }
 }
 
 sans_https_accept_ssl(ctx:I cfd:I) I {
@@ -133,14 +133,14 @@ sans_https_parse(ssl:I cfd:I buf:I n:I) I {
   store8(buf + n, 0)
   mend = sans_ssl_find_space(buf, n, 0)
   mlen = mend
-  pstart = mend < n ? mend + 1 : mend
+  pstart = if mend < n { mend + 1 } else { mend }
   pend = sans_ssl_find_space(buf, n, pstart)
   plen = pend - pstart
   method = alloc(mlen + 1)
-  mlen > 0 ? mcpy(method, buf, mlen) : 0
+  if mlen > 0 { mcpy(method, buf, mlen) } else { 0 }
   store8(method + mlen, 0)
   path = alloc(plen + 1)
-  plen > 0 ? mcpy(path, buf + pstart, plen) : 0
+  if plen > 0 { mcpy(path, buf + pstart, plen) } else { 0 }
   store8(path + plen, 0)
   bstart = sans_ssl_find_body(buf, n)
   body = sans_ssl_extract_body(buf, n, bstart)
@@ -162,7 +162,7 @@ sans_https_parse(ssl:I cfd:I buf:I n:I) I {
 
 sans_https_respond(req:I status:I body:I ct:I) I {
   fd = load64(req)
-  fd < 0 ? 0 : sans_https_respond_build(req, fd, status, body, ct)
+  if fd < 0 { 0 } else { sans_https_respond_build(req, fd, status, body, ct) }
 }
 
 sans_https_respond_build(req:I fd:I status:I body:I ct:I) I {
@@ -182,7 +182,7 @@ sans_https_respond_build(req:I fd:I status:I body:I ct:I) I {
   custom_len = slen(custom_hdrs)
 
   // Choose connection header based on keep_alive flag
-  conn_hdr = ka == 1 ? sans_ssl_lit_cka() : sans_ssl_lit_cc()
+  conn_hdr = if ka == 1 { sans_ssl_lit_cka() } else { sans_ssl_lit_cc() }
   conn_len = slen(conn_hdr)
 
   header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + custom_len + conn_len
@@ -205,7 +205,7 @@ sans_https_respond_build(req:I fd:I status:I body:I ct:I) I {
   total = pos + body_len
   resp = alloc(total)
   mcpy(resp, buf, pos)
-  body_len > 0 ? mcpy(resp + pos, body, body_len) : 0
+  if body_len > 0 { mcpy(resp + pos, body, body_len) } else { 0 }
   sans_ssl_send_all(ssl, resp, total)
   // Only close if not keep-alive
   if ka != 1 {
@@ -265,7 +265,7 @@ sans_ssl_empty_str() I {
 
 sans_ssl_copy_str(src:I len:I) I {
   s = alloc(len + 1)
-  len > 0 ? mcpy(s, src, len) : 0
+  if len > 0 { mcpy(s, src, len) } else { 0 }
   store8(s + len, 0)
   s
 }
@@ -323,12 +323,12 @@ sans_ssl_find_body(buf:I n:I) I {
       }
     }
   }
-  i + 3 < n ? i + 4 : n
+  if i + 3 < n { i + 4 } else { n }
 }
 
 sans_ssl_extract_body(buf:I n:I bstart:I) I {
   blen = n - bstart
-  blen < 0 ? sans_ssl_empty_str() : sans_ssl_copy_str(buf + bstart, blen)
+  if blen < 0 { sans_ssl_empty_str() } else { sans_ssl_copy_str(buf + bstart, blen) }
 }
 
 // ── Header parsing (duplicated for ssl module) ──────────────────
@@ -339,7 +339,7 @@ sans_ssl_parse_headers(req:I buf:I n:I) I {
   store64(hdrs + 8, 32)
   store64(req + 32, hdrs)
   i := sans_ssl_find_crlf(buf, n, 0)
-  i < 0 ? 0 : sans_ssl_parse_headers_loop(hdrs, buf, n, i + 2)
+  if i < 0 { 0 } else { sans_ssl_parse_headers_loop(hdrs, buf, n, i + 2) }
 }
 
 sans_ssl_find_crlf(buf:I n:I start:I) I {
@@ -390,7 +390,7 @@ sans_ssl_parse_headers_loop(hdrs:I buf:I n:I pos:I) I {
 
 sans_ssl_parse_one_header(hdrs:I buf:I n:I pos:I) I {
   colon := sans_ssl_find_char(buf, n, pos, 58)
-  colon < 0 ? sans_ssl_skip_line(buf, n, pos) : sans_ssl_parse_header_kv(hdrs, buf, n, pos, colon)
+  if colon < 0 { sans_ssl_skip_line(buf, n, pos) } else { sans_ssl_parse_header_kv(hdrs, buf, n, pos, colon) }
 }
 
 sans_ssl_parse_header_kv(hdrs:I buf:I n:I pos:I colon:I) I {
@@ -403,16 +403,16 @@ sans_ssl_parse_header_kv(hdrs:I buf:I n:I pos:I colon:I) I {
     } else { 0 }
   } else { 0 }
   eol = sans_ssl_find_crlf(buf, n, vstart)
-  vend = eol < 0 ? n : eol
+  vend = if eol < 0 { n } else { eol }
   value = sans_ssl_copy_str(buf + vstart, vend - vstart)
   sans_ssl_hdrs_add(hdrs, name, value)
-  eol < 0 ? n : eol + 2
+  if eol < 0 { n } else { eol + 2 }
 }
 
 sans_ssl_hdrs_add(hdrs:I name:I value:I) I {
   count = load64(hdrs)
   cap = load64(hdrs + 8)
-  count < cap ? sans_ssl_hdrs_add_inner(hdrs, count, name, value) : 0
+  if count < cap { sans_ssl_hdrs_add_inner(hdrs, count, name, value) } else { 0 }
 }
 
 sans_ssl_hdrs_add_inner(hdrs:I count:I name:I value:I) I {
@@ -446,7 +446,7 @@ sans_ssl_find_char(buf:I n:I start:I ch:I) I {
 
 sans_ssl_skip_line(buf:I n:I pos:I) I {
   eol = sans_ssl_find_crlf(buf, n, pos)
-  eol < 0 ? n : eol + 2
+  if eol < 0 { n } else { eol + 2 }
 }
 
 sans_ssl_lowercase_slice(buf:I start:I end:I) I {
@@ -455,7 +455,7 @@ sans_ssl_lowercase_slice(buf:I start:I end:I) I {
   i := 0
   while i < len {
     ch = load8(buf + start + i)
-    lc = ch >= 65 && ch <= 90 ? ch + 32 : ch
+    lc = if ch >= 65 && ch <= 90 { ch + 32 } else { ch }
     store8(s + i, lc)
     i += 1
     0
@@ -468,12 +468,12 @@ sans_ssl_lowercase_slice(buf:I start:I end:I) I {
 
 sans_ssl_build_resp_headers(req:I) I {
   arr = load64(req + 40)
-  arr == 0 ? sans_ssl_empty_str() : sans_ssl_build_resp_headers_inner(arr)
+  if arr == 0 { sans_ssl_empty_str() } else { sans_ssl_build_resp_headers_inner(arr) }
 }
 
 sans_ssl_build_resp_headers_inner(arr:I) I {
   count = load64(arr)
-  count == 0 ? sans_ssl_empty_str() : sans_ssl_build_resp_hdrs_loop(arr, count)
+  if count == 0 { sans_ssl_empty_str() } else { sans_ssl_build_resp_hdrs_loop(arr, count) }
 }
 
 sans_ssl_build_resp_hdrs_loop(arr:I count:I) I {
@@ -499,12 +499,12 @@ sans_ssl_build_resp_hdrs_loop(arr:I count:I) I {
     store8(buf + pos, 13)
     store8(buf + pos + 1, 10)
     pos = pos + 2
-    nlen > 0 ? mcpy(buf + pos, name, nlen) : 0
+    if nlen > 0 { mcpy(buf + pos, name, nlen) } else { 0 }
     pos = pos + nlen
     store8(buf + pos, 58)
     store8(buf + pos + 1, 32)
     pos = pos + 2
-    vlen > 0 ? mcpy(buf + pos, value, vlen) : 0
+    if vlen > 0 { mcpy(buf + pos, value, vlen) } else { 0 }
     pos = pos + vlen
     i += 1
     0
@@ -516,12 +516,12 @@ sans_ssl_build_resp_hdrs_loop(arr:I count:I) I {
 // ── HTTP literal helpers (duplicated, prefixed) ─────────────────
 
 sans_ssl_bw(buf:I pos:I src:I len:I) I {
-  len > 0 ? mcpy(buf + pos, src, len) : 0
+  if len > 0 { mcpy(buf + pos, src, len) } else { 0 }
   pos + len
 }
 
 sans_ssl_int_to_buf(n:I) I {
-  n == 0 ? sans_ssl_int_zero() : sans_ssl_int_to_buf_pos(n)
+  if n == 0 { sans_ssl_int_zero() } else { sans_ssl_int_to_buf_pos(n) }
 }
 
 sans_ssl_int_zero() I {
@@ -551,7 +551,7 @@ sans_ssl_int_to_buf_pos(n:I) I {
 }
 
 sans_ssl_status_text(s:I) I {
-  s == 404 ? sans_ssl_st_nf() : s == 500 ? sans_ssl_st_ie() : s == 400 ? sans_ssl_st_br() : sans_ssl_st_ok()
+  if s == 404 { sans_ssl_st_nf() } else { if s == 500 { sans_ssl_st_ie() } else { if s == 400 { sans_ssl_st_br() } else { sans_ssl_st_ok() } } }
 }
 
 sans_ssl_st_ok() I {
@@ -733,8 +733,7 @@ sans_ssl_lit_cka() I {
   store8(buf + 9, 105)  // i
   store8(buf + 10, 111) // o
   store8(buf + 11, 110) // n
-  store8(buf + 12, 58)  // :
-  store8(buf + 13, 32)  //
+  store8(buf + 12, 58)  // : store8(buf + 13, 32)  //
   store8(buf + 14, 107) // k
   store8(buf + 15, 101) // e
   store8(buf + 16, 101) // e
@@ -760,7 +759,7 @@ sans_serve_tls(port:I cert:I key:I handler:I) I {
   signal_handler(15)
   srv = sans_https_listen(port, cert, key)
   fd = load64(srv)
-  fd < 0 ? 0 : sans_serve_tls_loop(srv, handler)
+  if fd < 0 { 0 } else { sans_serve_tls_loop(srv, handler) }
 }
 
 sans_serve_tls_loop(srv:I handler:I) I {
@@ -825,14 +824,14 @@ sans_ssl_serve_worker_loop(handler:I req:I) I {
     ssl_free(ssl)
     0
   } else { 0 }
-  cfd >= 0 ? sclose(cfd) : 0
+  if cfd >= 0 { sclose(cfd) } else { 0 }
   store64(cur, -1)
   0
 }
 
 sans_ssl_check_close(req:I) I {
   hdrs = load64(req + 32)
-  hdrs == 0 ? 0 : sans_ssl_check_close_inner(hdrs)
+  if hdrs == 0 { 0 } else { sans_ssl_check_close_inner(hdrs) }
 }
 
 sans_ssl_check_close_inner(hdrs:I) I {
@@ -843,7 +842,7 @@ sans_ssl_check_close_inner(hdrs:I) I {
 }
 
 sans_ssl_check_close_at(hdrs:I name:I nlen:I count:I i:I) I {
-  i >= count ? 0 : sans_ssl_check_close_check(hdrs, name, nlen, count, i)
+  if i >= count { 0 } else { sans_ssl_check_close_check(hdrs, name, nlen, count, i) }
 }
 
 sans_ssl_check_close_check(hdrs:I name:I nlen:I count:I i:I) I {
@@ -853,42 +852,40 @@ sans_ssl_check_close_check(hdrs:I name:I nlen:I count:I i:I) I {
   if hlen == nlen && mcmp(hname, name, nlen) == 0 {
     val = load64(hdrs + off + 8)
     lval = sans_ssl_lowercase_slice(val, 0, slen(val))
-    slen(lval) == 5 && load8(lval) == 99 && load8(lval+1) == 108 && load8(lval+2) == 111 && load8(lval+3) == 115 && load8(lval+4) == 101 ? 1 : 0
+    if slen(lval) == 5 && load8(lval) == 99 && load8(lval+1) == 108 && load8(lval+2) == 111 && load8(lval+3) == 115 && load8(lval+4) == 101 { 1 } else { 0 }
   } else {
     sans_ssl_check_close_at(hdrs, name, nlen, count, i + 1)
   }
 }
 
 sans_ssl_read_next_request(fd:I ssl:I) I {
-  fd < 0 ? sans_ssl_make_empty_req() :
-  ssl != 0 ? sans_ssl_read_next_ssl(fd, ssl) :
-  sans_ssl_read_next_plain(fd)
+  if fd < 0 { sans_ssl_make_empty_req() } else { if ssl != 0 { sans_ssl_read_next_ssl(fd, ssl) } else { sans_ssl_read_next_plain(fd) } }
 }
 
 sans_ssl_read_next_plain(fd:I) I {
   buf = alloc(65536)
   n = srecv(fd, buf, 65535)
-  n <= 0 ? sans_ssl_make_empty_req() : sans_ssl_parse_next_request(fd, 0, buf, n)
+  if n <= 0 { sans_ssl_make_empty_req() } else { sans_ssl_parse_next_request(fd, 0, buf, n) }
 }
 
 sans_ssl_read_next_ssl(fd:I ssl:I) I {
   buf = alloc(65536)
   n = ssl_read(ssl, buf, 65535)
-  n <= 0 ? sans_ssl_make_empty_req() : sans_ssl_parse_next_request(fd, ssl, buf, n)
+  if n <= 0 { sans_ssl_make_empty_req() } else { sans_ssl_parse_next_request(fd, ssl, buf, n) }
 }
 
 sans_ssl_parse_next_request(fd:I ssl:I buf:I n:I) I {
   store8(buf + n, 0)
   mend = sans_ssl_find_space(buf, n, 0)
   mlen = mend
-  pstart = mend < n ? mend + 1 : mend
+  pstart = if mend < n { mend + 1 } else { mend }
   pend = sans_ssl_find_space(buf, n, pstart)
   plen = pend - pstart
   method = alloc(mlen + 1)
-  mlen > 0 ? mcpy(method, buf, mlen) : 0
+  if mlen > 0 { mcpy(method, buf, mlen) } else { 0 }
   store8(method + mlen, 0)
   path = alloc(plen + 1)
-  plen > 0 ? mcpy(path, buf + pstart, plen) : 0
+  if plen > 0 { mcpy(path, buf + pstart, plen) } else { 0 }
   store8(path + plen, 0)
   bstart = sans_ssl_find_body(buf, n)
   body = sans_ssl_extract_body(buf, n, bstart)

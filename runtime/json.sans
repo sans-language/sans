@@ -11,7 +11,7 @@ sans_json_null() I {
 
 sans_json_bool(b:I) I {
   v = sans_json_alloc(1)
-  store64(v + 8, b != 0 ? 1 : 0)
+  store64(v + 8, if b != 0 { 1 } else { 0 })
   v
 }
 
@@ -51,7 +51,7 @@ sans_json_hash(key:I) I {
     c = load8(key + i)
     0
   }
-  h == 0 ? 1 : h
+  if h == 0 { 1 } else { h }
 }
 
 sans_json_object() I {
@@ -74,12 +74,12 @@ sans_json_object() I {
 sans_json_str_eq(a:I b:I) I {
   la = slen(a)
   lb = slen(b)
-  la != lb ? 0 : mcmp(a, b, la) == 0 ? 1 : 0
+  if la != lb { 0 } else { if mcmp(a, b, la) == 0 { 1 } else { 0 } }
 }
 
 sans_json_ht_slot(h:I cap:I) I {
   s = h % cap
-  s < 0 ? s + cap : s
+  if s < 0 { s + cap } else { s }
 }
 
 sans_json_ht_probe(obj:I key:I h:I) I {
@@ -188,7 +188,7 @@ sans_json_ht_grow(o:I) I {
 
 sans_json_get(o:I key:I) I {
   tag = load64(o)
-  tag != 5 ? sans_json_null() : sans_json_get_inner(o, key)
+  if tag != 5 { sans_json_null() } else { sans_json_get_inner(o, key) }
 }
 
 sans_json_get_inner(o:I key:I) I {
@@ -197,24 +197,24 @@ sans_json_get_inner(o:I key:I) I {
   slot = sans_json_ht_probe(obj, key, h)
   hashes = load64(obj)
   sh = load64(hashes + slot * 8)
-  sh == 0 ? sans_json_null() : load64(load64(obj + 16) + slot * 8)
+  if sh == 0 { sans_json_null() } else { load64(load64(obj + 16) + slot * 8) }
 }
 
 sans_json_get_index(arr:I idx:I) I {
   tag = load64(arr)
-  tag != 4 ? sans_json_null() : sans_json_get_index_inner(arr, idx)
+  if tag != 4 { sans_json_null() } else { sans_json_get_index_inner(arr, idx) }
 }
 
 sans_json_get_index_inner(arr:I idx:I) I {
   ad = load64(arr + 8)
   items = load64(ad)
   len = load64(ad + 8)
-  idx < 0 ? sans_json_null() : idx >= len ? sans_json_null() : load64(items + idx * 8)
+  if idx < 0 { sans_json_null() } else { if idx >= len { sans_json_null() } else { load64(items + idx * 8) } }
 }
 
 sans_json_get_string(v:I) I {
   tag = load64(v)
-  tag == 3 ? sans_json_get_string_copy(v) : sans_json_get_string_empty()
+  if tag == 3 { sans_json_get_string_copy(v) } else { sans_json_get_string_empty() }
 }
 
 sans_json_get_string_copy(v:I) I {
@@ -233,12 +233,12 @@ sans_json_get_string_empty() I {
 
 sans_json_get_int(v:I) I {
   tag = load64(v)
-  tag == 2 ? load64(v + 8) : 0
+  if tag == 2 { load64(v + 8) } else { 0 }
 }
 
 sans_json_get_bool(v:I) I {
   tag = load64(v)
-  tag == 1 ? load64(v + 8) : 0
+  if tag == 1 { load64(v + 8) } else { 0 }
 }
 
 sans_json_len(v:I) I {
@@ -355,7 +355,7 @@ sans_json_mkstr_object() I {
 
 sans_json_set(o:I key:I val:I) I {
   tag = load64(o)
-  tag == 5 ? sans_json_set_inner(o, key, val) : 0
+  if tag == 5 { sans_json_set_inner(o, key, val) } else { 0 }
 }
 
 sans_json_set_inner(o:I key:I val:I) I {
@@ -401,7 +401,7 @@ sans_json_obj_append(o:I key:I val:I) I {
 
 sans_json_push(arr:I val:I) I {
   tag = load64(arr)
-  tag == 4 ? sans_json_push_inner(arr, val) : 0
+  if tag == 4 { sans_json_push_inner(arr, val) } else { 0 }
 }
 
 sans_json_push_inner(arr:I val:I) I {
@@ -434,7 +434,7 @@ sans_json_sb_init() I {
 }
 
 sans_json_sb_ensure(cx:I need:I) I {
-  load64(cx + 8) + need + 1 > load64(cx + 16) ? sans_json_sb_grow(cx, need) : 0
+  if load64(cx + 8) + need + 1 > load64(cx + 16) { sans_json_sb_grow(cx, need) } else { 0 }
 }
 
 sans_json_sb_grow(cx:I need:I) I {
@@ -487,7 +487,7 @@ sans_json_stringify_string(cx:I s:I) I {
   len = slen(s)
   sans_json_sb_ensure(cx, len + 2)
   needs_escape = sans_json_needs_escape(s, len)
-  needs_escape != 0 ? sans_json_stringify_string_slow(cx, s, len) : sans_json_stringify_string_fast(cx, s, len)
+  if needs_escape != 0 { sans_json_stringify_string_slow(cx, s, len) } else { sans_json_stringify_string_fast(cx, s, len) }
 }
 
 sans_json_stringify_string_fast(cx:I s:I len:I) I {
@@ -694,7 +694,7 @@ sans_json_stringify_value(cx:I v:I) I {
   } else {
     if tag == 1 {
       bv = load64(v + 8)
-      bv != 0 ? sans_json_sb_append_true(cx) : sans_json_sb_append_false(cx)
+      if bv != 0 { sans_json_sb_append_true(cx) } else { sans_json_sb_append_false(cx) }
     } else {
       if tag == 2 {
         n = load64(v + 8)
@@ -726,7 +726,7 @@ sans_json_stringify_array(cx:I v:I) I {
   sans_json_sb_append_char(cx, 91)
   i := 0
   while i < len {
-    i > 0 ? sans_json_sb_append_char(cx, 44) : 0
+    if i > 0 { sans_json_sb_append_char(cx, 44) } else { 0 }
     elem = load64(items + i * 8)
     sans_json_stringify_value(cx, elem)
     i = i + 1
@@ -873,7 +873,7 @@ sans_json_p_match_null(px:I) I {
 }
 
 sans_json_p_string_raw(px:I) I {
-  sans_json_p_ch(px) != 34 ? 0 : sans_json_p_string_body(px)
+  if sans_json_p_ch(px) != 34 { 0 } else { sans_json_p_string_body(px) }
 }
 
 sans_json_p_string_body(px:I) I {
@@ -967,7 +967,7 @@ sans_json_p_string_body_slow(px:I) I {
 
 sans_json_p_escape_char(px:I) I {
   c = sans_json_p_ch(px)
-  c == 34 ? 34 : c == 92 ? 92 : c == 47 ? 47 : c == 110 ? 10 : c == 116 ? 9 : c == 114 ? 13 : c == 98 ? 8 : c == 102 ? 12 : c
+  if c == 34 { 34 } else { if c == 92 { 92 } else { if c == 47 { 47 } else { if c == 110 { 10 } else { if c == 116 { 9 } else { if c == 114 { 13 } else { if c == 98 { 8 } else { if c == 102 { 12 } else { c } } } } } } } }
 }
 
 sans_json_p_node(px:I tag:I) I {
@@ -1013,11 +1013,11 @@ sans_json_p_number(px:I) I {
   }
   sans_json_p_num_digits(px)
   c2 = sans_json_p_ch(px)
-  c2 == 46 ? sans_json_p_skip_frac(px) : 0
+  if c2 == 46 { sans_json_p_skip_frac(px) } else { 0 }
   c3 = sans_json_p_ch(px)
-  c3 == 101 ? sans_json_p_skip_exp(px) : c3 == 69 ? sans_json_p_skip_exp(px) : 0
+  if c3 == 101 { sans_json_p_skip_exp(px) } else { if c3 == 69 { sans_json_p_skip_exp(px) } else { 0 } }
   end = load64(px + 8)
-  end == start ? 0 : sans_json_p_make_number(px, start, end)
+  if end == start { 0 } else { sans_json_p_make_number(px, start, end) }
 }
 
 sans_json_p_num_digits(px:I) I {
@@ -1052,7 +1052,7 @@ sans_json_p_skip_frac(px:I) I {
 sans_json_p_skip_exp(px:I) I {
   sans_json_p_adv(px)
   c = sans_json_p_ch(px)
-  c == 43 ? sans_json_p_adv(px) : c == 45 ? sans_json_p_adv(px) : 0
+  if c == 43 { sans_json_p_adv(px) } else { if c == 45 { sans_json_p_adv(px) } else { 0 } }
   sans_json_p_num_digits(px)
   0
 }
@@ -1093,7 +1093,7 @@ sans_json_p_atoi(px:I start:I end:I) I {
       0
     }
   }
-  neg != 0 ? 0 - acc : acc
+  if neg != 0 { 0 - acc } else { acc }
 }
 
 sans_json_p_object(px:I) I {
@@ -1233,13 +1233,13 @@ sans_json_p_value(px:I) I {
             } else { 0 }
           } else {
             if c == 110 {
-              sans_json_p_match_null(px) != 0 ? sans_json_p_node(px, 0) : 0
+              if sans_json_p_match_null(px) != 0 { sans_json_p_node(px, 0) } else { 0 }
             } else {
               if c == 45 {
                 sans_json_p_number(px)
               } else {
                 if c >= 48 {
-                  c <= 57 ? sans_json_p_number(px) : 0
+                  if c <= 57 { sans_json_p_number(px) } else { 0 }
                 } else {
                   0
                 }
@@ -1253,7 +1253,7 @@ sans_json_p_value(px:I) I {
 }
 
 sans_json_parse(src:I) I {
-  src == 0 ? sans_json_null() : sans_json_parse_inner(src)
+  if src == 0 { sans_json_null() } else { sans_json_parse_inner(src) }
 }
 
 sans_json_parse_inner(src:I) I {
@@ -1268,5 +1268,5 @@ sans_json_parse_inner(src:I) I {
   store64(px + 32, pool_cap)
   result = sans_json_p_value(px)
   dealloc(px)
-  result == 0 ? sans_json_null() : result
+  if result == 0 { sans_json_null() } else { result }
 }

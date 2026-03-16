@@ -13,7 +13,7 @@ sans_bind_port(fd:I port:I) I {
 
 sans_http_listen(port:I) I {
   fd = sock(2, 1, 0)
-  fd < 0 ? sans_make_error_server(port) : sans_http_listen_try(fd, port)
+  if fd < 0 { sans_make_error_server(port) } else { sans_http_listen_try(fd, port) }
 }
 
 sans_http_listen_try(fd:I port:I) I {

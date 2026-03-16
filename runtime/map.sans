@@ -23,13 +23,13 @@ sans_map_hash(key:I) I {
     c = load8(key + i)
     0
   }
-  h == 0 ? 1 : h
+  if h == 0 { 1 } else { h }
 }
 
 sans_map_str_eq(a:I b:I) I {
   la = slen(a)
   lb = slen(b)
-  la != lb ? 0 : mcmp(a, b, la) == 0 ? 1 : 0
+  if la != lb { 0 } else { if mcmp(a, b, la) == 0 { 1 } else { 0 } }
 }
 
 sans_map_probe(m:I key:I h:I) I {
@@ -171,7 +171,7 @@ sans_map_get(m:I key:I) I {
   slot = sans_map_probe(m, key, h)
   hashes = load64(m)
   sh = load64(hashes + slot * 8)
-  sh == 0 ? 0 : load64(load64(m + 16) + slot * 8)
+  if sh == 0 { 0 } else { load64(load64(m + 16) + slot * 8) }
 }
 
 sans_map_has(m:I key:I) I {
@@ -179,7 +179,7 @@ sans_map_has(m:I key:I) I {
   slot = sans_map_probe(m, key, h)
   hashes = load64(m)
   sh = load64(hashes + slot * 8)
-  sh == 0 ? 0 : 1
+  if sh == 0 { 0 } else { 1 }
 }
 
 sans_map_len(m:I) I {
