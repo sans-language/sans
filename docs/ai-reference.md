@@ -86,6 +86,9 @@ cors_all(req)                           HttpRequest -> I (set CORS headers wildc
 signal_handler(signum)                  I -> I (register signal handler)
 signal_check()                          -> I (1 if signal received)
 spoll(fd timeout_ms)                    I I -> I (poll fd, 1=ready 0=timeout)
+ws_send(ws msg)                         I S -> I (send WS text frame)
+ws_recv(ws)                             I -> S (recv WS frame, "" on close)
+ws_close(ws)                            I -> I (send close frame, close socket)
 ld(msg)           log_debug(msg)        S -> I
 li(msg)           log_info(msg)         S -> I
 lw(msg)           log_warn(msg)         S -> I
@@ -177,7 +180,7 @@ String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
 HttpServer:   accept
-HttpRequest:  path method body header(name) set_header(name val) cookie(name) form(name) respond(status body) respond(status body ct) respond_stream(status) respond_json(status body)
+HttpRequest:  path method body header(name) set_header(name val) cookie(name) form(name) respond(status body) respond(status body ct) respond_stream(status) respond_json(status body) is_ws_upgrade upgrade_ws
 Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
 Sender<T>:    send(v)
 Receiver<T>:  recv

@@ -85,6 +85,11 @@ const HOVER_DATA: Record<string, string> = {
     'signal_handler': '**signal_handler**(signum: Int) -> Int\n\nRegister a signal handler that sets a global shutdown flag. Used by `serve()` internally for graceful shutdown.\n\nUsage: `signal_handler(2)  // SIGINT`',
     'signal_check': '**signal_check**() -> Int\n\nReturns 1 if a registered signal was received, 0 otherwise.\n\nUsage: `while signal_check() == 0 { ... }`',
     'spoll': '**spoll**(fd: Int, timeout_ms: Int) -> Int\n\nPoll a file descriptor for readability with timeout. Returns 1 if ready, 0 on timeout.\n\nUsage: `ready = spoll(fd 1000)`',
+    'ws_send': '**ws_send**(ws: Int, msg: String) -> Int\n\nSend a WebSocket text frame.\n\nUsage: `ws_send(ws "hello")`',
+    'ws_recv': '**ws_recv**(ws: Int) -> String\n\nReceive next WebSocket text frame. Handles ping/pong automatically. Returns "" on close.\n\nUsage: `msg = ws_recv(ws)`',
+    'ws_close': '**ws_close**(ws: Int) -> Int\n\nSend WebSocket close frame and close the socket.\n\nUsage: `ws_close(ws)`',
+    'is_ws_upgrade': '**is_ws_upgrade**() -> Int\n\nHttpRequest method. Returns 1 if request is a WebSocket upgrade request, 0 otherwise.\n\nUsage: `req.is_ws_upgrade()`',
+    'upgrade_ws': '**upgrade_ws**() -> Int\n\nHttpRequest method. Performs WebSocket handshake (SHA-1 + Base64) and sends 101 response. Returns WebSocket handle.\n\nUsage: `ws = req.upgrade_ws()`',
 
     // Logging
     'ld': '**log_debug**(msg: String) -> Int\n\nLog message at DEBUG level to stderr.',

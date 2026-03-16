@@ -208,11 +208,35 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td><code>signal_handler(signum)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td></tr>
         <tr><td><code>signal_check()</code></td><td>&mdash;</td><td><code>() -&gt; Int</code></td></tr>
         <tr><td><code>spoll(fd, timeout_ms)</code></td><td>&mdash;</td><td><code>(Int, Int) -&gt; Int</code></td></tr>
+        <tr><td><code>ws_send(ws, msg)</code></td><td>&mdash;</td><td><code>(Int, String) -&gt; Int</code></td></tr>
+        <tr><td><code>ws_recv(ws)</code></td><td>&mdash;</td><td><code>(Int) -&gt; String</code></td></tr>
+        <tr><td><code>ws_close(ws)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td></tr>
       </tbody>
     </table>
     <p><code>serve(port, handler)</code> starts a production server with auto-threading, HTTP/1.1 keep-alive, and graceful shutdown. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>. On SIGINT/SIGTERM, the server stops accepting new connections, lets in-flight requests finish, and exits cleanly.</p>
     <p><code>req.respond_stream(status)</code> sends chunked HTTP headers and returns a writer. Use <code>stream_write(w, data)</code> to send chunks and <code>stream_end(w)</code> to finalize.</p>
     <p><code>signal_handler(signum)</code> registers a signal handler that sets a global flag. <code>signal_check()</code> returns 1 if the signal was received. <code>spoll(fd, timeout_ms)</code> polls a file descriptor for readability with timeout, returning 1 if ready, 0 otherwise.</p>
+
+    <h4>WebSocket</h4>
+    <p><code>req.is_ws_upgrade()</code> returns 1 if the request is a WebSocket upgrade request. <code>req.upgrade_ws()</code> performs the handshake and returns a WebSocket handle.</p>
+    <p><code>ws_send(ws, msg)</code> sends a text frame. <code>ws_recv(ws)</code> receives the next text frame (handles ping/pong automatically, returns <code>""</code> on close). <code>ws_close(ws)</code> sends a close frame and closes the socket.</p>
+    <pre><code><span class="fn">handle</span>(req:<span class="ty">I</span>) <span class="ty">I</span> {
+  req.<span class="fn">is_ws_upgrade</span>() ? {
+    ws = req.<span class="fn">upgrade_ws</span>()
+    msg := <span class="fn">ws_recv</span>(ws)
+    <span class="kw">while</span> <span class="fn">slen</span>(msg) &gt; <span class="num">0</span> {
+      <span class="fn">ws_send</span>(ws <span class="str">"echo: "</span> + msg)
+      msg = <span class="fn">ws_recv</span>(ws)
+    }
+    <span class="fn">ws_close</span>(ws)
+  } : {
+    req.<span class="fn">respond</span>(<span class="num">200</span> <span class="str">"WebSocket server"</span>)
+  }
+}
+
+<span class="fn">main</span>() <span class="ty">I</span> {
+  <span class="fn">serve</span>(<span class="num">8080</span> <span class="fn">fptr</span>(<span class="str">"handle"</span>))
+}</code></pre>
 
     <h3>CORS</h3>
     <table>
@@ -461,6 +485,8 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td>HttpRequest</td><td><code>form(name)</code></td><td><code>(String) -&gt; String</code></td><td>Parse form field from POST body (URL-encoded or multipart)</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>Defaults to <code>text/html</code> content-type</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body, content_type)</code></td><td><code>(Int, String, String) -&gt; Int</code></td><td>Explicit content-type</td></tr>
+        <tr><td>HttpRequest</td><td><code>is_ws_upgrade</code></td><td><code>() -&gt; Int</code></td><td>Returns 1 if WebSocket upgrade request</td></tr>
+        <tr><td>HttpRequest</td><td><code>upgrade_ws</code></td><td><code>() -&gt; Int</code></td><td>Perform WS handshake, return WebSocket handle</td></tr>
       </tbody>
     </table>
 
@@ -665,7 +691,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.36 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.37 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

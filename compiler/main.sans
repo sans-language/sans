@@ -388,7 +388,7 @@ main() I {
   cmd = argv.get(1)
 
   if cmd == "--version" || cmd == "-V" {
-    p("sans 0.3.36")
+    p("sans 0.3.37")
     exit(0)
     0
   } else { 0 }

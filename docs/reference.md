@@ -192,6 +192,9 @@ String comparison (`==`, `!=`) is supported.
 | `signal_handler(signum)` | — | `(Int) -> Int` |
 | `signal_check()` | — | `() -> Int` |
 | `spoll(fd, timeout_ms)` | — | `(Int, Int) -> Int` |
+| `ws_send(ws, msg)` | — | `(Int, String) -> Int` |
+| `ws_recv(ws)` | — | `(Int) -> String` |
+| `ws_close(ws)` | — | `(Int) -> Int` |
 
 `serve(port, handler)` starts a production HTTP server with auto-threading and HTTP/1.1 keep-alive. Each connection is handled in a new thread. The handler receives an `HttpRequest` and should call `respond` or `respond_stream`. The server automatically handles SIGINT and SIGTERM for graceful shutdown — in-flight requests complete before the server exits.
 
@@ -207,6 +210,34 @@ String comparison (`==`, `!=`) is supported.
 handle(req:HR) I {
   path = req.path()
   path == "/" ? req.respond(200 "Hello!") : req.respond(404 "Not Found")
+}
+
+main() I {
+  serve(8080 fptr("handle"))
+}
+```
+
+#### WebSocket
+
+`req.is_ws_upgrade()` returns 1 if the request is a WebSocket upgrade request (has `Upgrade: websocket` header), 0 otherwise.
+
+`req.upgrade_ws()` performs the WebSocket handshake (SHA-1 + Base64 of the `Sec-WebSocket-Key` header concatenated with the magic GUID) and sends the 101 Switching Protocols response. Returns a WebSocket handle.
+
+`ws_send(ws, msg)` sends a text frame. `ws_recv(ws)` receives the next text frame (handles ping/pong automatically, returns `""` on close). `ws_close(ws)` sends a close frame and closes the socket.
+
+```sans
+handle(req:I) I {
+  req.is_ws_upgrade() ? {
+    ws = req.upgrade_ws()
+    msg := ws_recv(ws)
+    while slen(msg) > 0 {
+      ws_send(ws "echo: " + msg)
+      msg = ws_recv(ws)
+    }
+    ws_close(ws)
+  } : {
+    req.respond(200 "WebSocket server")
+  }
 }
 
 main() I {
@@ -453,6 +484,8 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `form(name)` | `(String) -> String` | Parse form field from POST body (URL-encoded or multipart) |
 | `respond(status, body)` | `(Int, String) -> Int` | Defaults to `text/html` content-type |
 | `respond(status, body, content_type)` | `(Int, String, String) -> Int` | Explicit content-type |
+| `is_ws_upgrade` | `() -> Int` | Returns 1 if WebSocket upgrade request |
+| `upgrade_ws` | `() -> Int` | Perform WS handshake, return WebSocket handle |
 
 ### Result\<T\>
 

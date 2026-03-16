@@ -552,6 +552,9 @@ lower_call(ctx:I name:I args:I) I {
   name == "url_decode" ? lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) :
   name == "path_segment" ? lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) :
   name == "serve_file" ? lower_call_2(ctx, args, IR_SERVE_FILE, IRTY_INT) :
+  name == "ws_send" ? lower_call_2(ctx, args, IR_WS_SEND, IRTY_INT) :
+  name == "ws_recv" ? lower_call_1(ctx, args, IR_WS_RECV, IRTY_STR) :
+  name == "ws_close" ? lower_call_1(ctx, args, IR_WS_CLOSE, IRTY_INT) :
   name == "serve" ? lower_call_2(ctx, args, IR_SERVE, IRTY_INT) :
   name == "serve_tls" ? lower_call_4(ctx, args, IR_SERVE_TLS, IRTY_INT) :
   name == "stream_write" ? lower_call_2(ctx, args, IR_STREAM_WRITE, IRTY_INT) :
@@ -1991,6 +1994,18 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_FORM, dest, obj_reg, name_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "is_ws_upgrade" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_WS_IS_UPGRADE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "upgrade_ws" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_WS_UPGRADE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } : {
     lower_method_fallback(ctx, obj_reg, method, args)
