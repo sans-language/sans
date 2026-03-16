@@ -542,6 +542,29 @@ lower_call(ctx:I name:I args:I) I {
   name == "http_listen" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
   name == "listen" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
   name == "hl" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
+  name == "https_listen" ? lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) :
+  name == "hl_s" ? lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) :
+  name == "mget" ? lower_call_2(ctx, args, IR_MAP_GET, IRTY_INT) :
+  name == "mset" ? lower_call_3(ctx, args, IR_MAP_SET, IRTY_INT) :
+  name == "mhas" ? lower_call_2(ctx, args, IR_MAP_HAS, IRTY_INT) :
+  name == "cors" ? lower_call_2(ctx, args, IR_CORS, IRTY_INT) :
+  name == "cors_all" ? lower_call_1(ctx, args, IR_CORS_ALL, IRTY_INT) :
+  name == "url_decode" ? lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) :
+  name == "path_segment" ? lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) :
+  name == "serve_file" ? lower_call_2(ctx, args, IR_SERVE_FILE, IRTY_INT) :
+
+  // ── SSL low-level ──
+  name == "ssl_method" ? lower_call_0(ctx, IR_SSL_METHOD, IRTY_INT) :
+  name == "ssl_ctx_new" ? lower_call_1(ctx, args, IR_SSL_CTX_NEW, IRTY_INT) :
+  name == "ssl_ctx_cert" ? lower_call_3(ctx, args, IR_SSL_CTX_CERT, IRTY_INT) :
+  name == "ssl_ctx_key" ? lower_call_3(ctx, args, IR_SSL_CTX_KEY, IRTY_INT) :
+  name == "ssl_new" ? lower_call_1(ctx, args, IR_SSL_NEW, IRTY_INT) :
+  name == "ssl_set_fd" ? lower_call_2(ctx, args, IR_SSL_SET_FD, IRTY_INT) :
+  name == "ssl_do_accept" ? lower_call_1(ctx, args, IR_SSL_DO_ACCEPT, IRTY_INT) :
+  name == "ssl_read" ? lower_call_3(ctx, args, IR_SSL_READ, IRTY_INT) :
+  name == "ssl_write" ? lower_call_3(ctx, args, IR_SSL_WRITE, IRTY_INT) :
+  name == "ssl_shutdown" ? lower_call_1(ctx, args, IR_SSL_SHUTDOWN, IRTY_INT) :
+  name == "ssl_free" ? lower_call_1(ctx, args, IR_SSL_FREE, IRTY_INT) :
 
   // ── Logging ──
   name == "log_debug" ? lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) :
@@ -1895,6 +1918,55 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
     } : {
       ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND, dest, obj_reg, status_reg, body_reg))
     }
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "header" ? {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_HEADER, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "set_header" ? {
+    name_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_HTTP_REQUEST_SET_HEADER, dest, obj_reg, name_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "cookie" ? {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_COOKIE, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "query" ? {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_QUERY, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "path_only" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_PATH_ONLY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } :
+  method == "content_length" ? {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_CONTENT_LENGTH, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+  method == "respond_json" ? {
+    status_reg = lower_expr(ctx, args.get(0))
+    body_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND_JSON, dest, obj_reg, status_reg, body_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } : {

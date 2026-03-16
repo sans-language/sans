@@ -291,6 +291,20 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare i64 @close(i64)")
   emit(cg, "declare i64 @setsockopt(i64, i64, i64, ptr, i64)")
 
+  // ── OpenSSL ──
+  emit(cg, "declare ptr @TLS_server_method()")
+  emit(cg, "declare ptr @SSL_CTX_new(ptr)")
+  emit(cg, "declare i32 @SSL_CTX_use_certificate_file(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_CTX_use_PrivateKey_file(ptr, ptr, i32)")
+  emit(cg, "declare ptr @SSL_new(ptr)")
+  emit(cg, "declare i32 @SSL_set_fd(ptr, i32)")
+  emit(cg, "declare i32 @SSL_accept(ptr)")
+  emit(cg, "declare i32 @SSL_read(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_write(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_shutdown(ptr)")
+  emit(cg, "declare void @SSL_free(ptr)")
+
+
   // ── LLVM intrinsics ──
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
 
@@ -443,6 +457,36 @@ emit_externals(cg:I) I {
   // ── Sans runtime: Socket helper ──
   emit(cg, "declare i64 @sans_bind_port(i64, i64)")
 
+  // ── Sans runtime: HTTPS / SSL ──
+  emit(cg, "declare i64 @sans_https_listen(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_https_accept(i64)")
+  emit(cg, "declare i64 @sans_https_respond(i64, i64, i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_header(i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_set_header(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_cookie(i64, i64)")
+  emit(cg, "declare i64 @sans_cors(i64, i64)")
+  emit(cg, "declare i64 @sans_cors_all(i64)")
+  emit(cg, "declare i64 @sans_http_request_query(i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_path_only(i64)")
+  emit(cg, "declare i64 @sans_http_request_content_length(i64)")
+  emit(cg, "declare i64 @sans_http_respond_json(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_url_decode(i64)")
+  emit(cg, "declare i64 @sans_path_segment(i64, i64)")
+  emit(cg, "declare i64 @sans_serve_file(i64, i64)")
+
+  // ── OpenSSL ──
+  emit(cg, "declare ptr @TLS_server_method()")
+  emit(cg, "declare ptr @SSL_CTX_new(ptr)")
+  emit(cg, "declare i32 @SSL_CTX_use_certificate_file(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_CTX_use_PrivateKey_file(ptr, ptr, i32)")
+  emit(cg, "declare ptr @SSL_new(ptr)")
+  emit(cg, "declare i32 @SSL_set_fd(ptr, i32)")
+  emit(cg, "declare i32 @SSL_accept(ptr)")
+  emit(cg, "declare i32 @SSL_read(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_write(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_shutdown(ptr)")
+  emit(cg, "declare void @SSL_free(ptr)")
+
   // __sans_args is defined inline (not declared as external)
 
   // ── LLVM intrinsics ──
@@ -450,6 +494,81 @@ emit_externals(cg:I) I {
 
   emit(cg, "")
   0
+}
+
+// ── SSL-aware dispatch helpers ────────────────────────────────────
+
+// server.accept() — check if server has SSL context at offset 16
+// If non-zero: call sans_https_accept, else call sans_http_accept
+compile_http_accept(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  a = cg_get_val(cg, ir_field(inst, 16))
+  uid = cg_label_id(cg)
+  // Load offset 16 of server struct (SSL context ptr)
+  sp = cg_fresh_reg(cg)
+  emit(cg, "  " + sp + " = inttoptr i64 " + a + " to ptr")
+  ssl_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_ptr + " = getelementptr i8, ptr " + sp + ", i64 16")
+  ssl_val = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_val + " = load i64, ptr " + ssl_ptr)
+  cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp + " = icmp ne i64 " + ssl_val + ", 0")
+  ssl_lbl = "accept_ssl_" + uid
+  plain_lbl = "accept_plain_" + uid
+  merge_lbl = "accept_merge_" + uid
+  emit(cg, "  br i1 " + cmp + ", label %" + ssl_lbl + ", label %" + plain_lbl)
+  // SSL path
+  emit(cg, ssl_lbl + ":")
+  r_ssl = cg_fresh_reg(cg)
+  emit(cg, "  " + r_ssl + " = call i64 @sans_https_accept(i64 " + a + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Plain path
+  emit(cg, plain_lbl + ":")
+  r_plain = cg_fresh_reg(cg)
+  emit(cg, "  " + r_plain + " = call i64 @sans_http_accept(i64 " + a + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Merge
+  emit(cg, merge_lbl + ":")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = phi i64 [" + r_ssl + ", %" + ssl_lbl + "], [" + r_plain + ", %" + plain_lbl + "]")
+  cg_set_val(cg, dest, r)
+  cg_set_current_block(cg, merge_lbl)
+  0
+}
+
+// req.respond() — check if request has SSL at offset 48
+// If non-zero: call sans_https_respond, else call sans_http_respond
+compile_http_respond(cg:I req_v:S status_v:S body_v:S ct_v:S) I {
+  uid = cg_label_id(cg)
+  // Load offset 48 of request struct (SSL ptr)
+  rp = cg_fresh_reg(cg)
+  emit(cg, "  " + rp + " = inttoptr i64 " + req_v + " to ptr")
+  ssl_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_ptr + " = getelementptr i8, ptr " + rp + ", i64 48")
+  ssl_val = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_val + " = load i64, ptr " + ssl_ptr)
+  cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp + " = icmp ne i64 " + ssl_val + ", 0")
+  ssl_lbl = "respond_ssl_" + uid
+  plain_lbl = "respond_plain_" + uid
+  merge_lbl = "respond_merge_" + uid
+  emit(cg, "  br i1 " + cmp + ", label %" + ssl_lbl + ", label %" + plain_lbl)
+  // SSL path
+  emit(cg, ssl_lbl + ":")
+  r_ssl = cg_fresh_reg(cg)
+  emit(cg, "  " + r_ssl + " = call i64 @sans_https_respond(i64 " + req_v + ", i64 " + status_v + ", i64 " + body_v + ", i64 " + ct_v + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Plain path
+  emit(cg, plain_lbl + ":")
+  r_plain = cg_fresh_reg(cg)
+  emit(cg, "  " + r_plain + " = call i64 @sans_http_respond(i64 " + req_v + ", i64 " + status_v + ", i64 " + body_v + ", i64 " + ct_v + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Merge
+  emit(cg, merge_lbl + ":")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = phi i64 [" + r_ssl + ", %" + ssl_lbl + "], [" + r_plain + ", %" + plain_lbl + "]")
+  cg_set_current_block(cg, merge_lbl)
+  r
 }
 
 // ── Format string globals (emitted once, lazily) ────────────────
@@ -1720,10 +1839,169 @@ compile_inst(cg:I inst:I) I {
 
   // ── HTTP Server (83-89) ──
   if op == IR_HTTP_LISTEN { return compile_rt1(cg, inst, "sans_http_listen") }
-  if op == IR_HTTP_ACCEPT { return compile_rt1(cg, inst, "sans_http_accept") }
+  if op == IR_HTTP_ACCEPT { return compile_http_accept(cg, inst) }
   if op == IR_HTTP_REQUEST_PATH { return compile_rt1(cg, inst, "sans_http_request_path") }
   if op == IR_HTTP_REQUEST_METHOD { return compile_rt1(cg, inst, "sans_http_request_method") }
   if op == IR_HTTP_REQUEST_BODY { return compile_rt1(cg, inst, "sans_http_request_body") }
+  if op == IR_HTTPS_LISTEN { return compile_rt3(cg, inst, "sans_https_listen") }
+  if op == IR_HTTP_REQUEST_HEADER { return compile_rt2(cg, inst, "sans_http_request_header") }
+  if op == IR_HTTP_REQUEST_SET_HEADER { return compile_rt3(cg, inst, "sans_http_request_set_header") }
+  if op == IR_HTTP_REQUEST_COOKIE { return compile_rt2(cg, inst, "sans_http_request_cookie") }
+  if op == IR_CORS { return compile_rt2(cg, inst, "sans_cors") }
+  if op == IR_CORS_ALL { return compile_rt1(cg, inst, "sans_cors_all") }
+  if op == IR_HTTP_REQUEST_QUERY { return compile_rt2(cg, inst, "sans_http_request_query") }
+  if op == IR_HTTP_REQUEST_PATH_ONLY { return compile_rt1(cg, inst, "sans_http_request_path_only") }
+  if op == IR_HTTP_REQUEST_CONTENT_LENGTH { return compile_rt1(cg, inst, "sans_http_request_content_length") }
+  if op == IR_HTTP_RESPOND_JSON { return compile_rt3(cg, inst, "sans_http_respond_json") }
+  if op == IR_URL_DECODE { return compile_rt1(cg, inst, "sans_url_decode") }
+  if op == IR_PATH_SEGMENT { return compile_rt2(cg, inst, "sans_path_segment") }
+  if op == IR_SERVE_FILE { return compile_rt2(cg, inst, "sans_serve_file") }
+
+  // ── SSL low-level ──
+  if op == IR_SSL_METHOD {
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @TLS_server_method()")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_CTX_NEW {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @SSL_CTX_new(ptr " + ap + ")")
+    r2 = cg_fresh_reg(cg)
+    emit(cg, "  " + r2 + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r2)
+    return 0
+  }
+  if op == IR_SSL_CTX_CERT {
+    ctx_v = cg_get_val(cg, ir_field(inst, 16))
+    file_v = cg_get_val(cg, ir_field(inst, 24))
+    typ_v = cg_get_val(cg, ir_field(inst, 32))
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + ctx_v + " to ptr")
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + file_v + " to ptr")
+    ti = cg_fresh_reg(cg)
+    emit(cg, "  " + ti + " = trunc i64 " + typ_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_CTX_use_certificate_file(ptr " + cp + ", ptr " + fp + ", i32 " + ti + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_CTX_KEY {
+    ctx_v = cg_get_val(cg, ir_field(inst, 16))
+    file_v = cg_get_val(cg, ir_field(inst, 24))
+    typ_v = cg_get_val(cg, ir_field(inst, 32))
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + ctx_v + " to ptr")
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + file_v + " to ptr")
+    ti = cg_fresh_reg(cg)
+    emit(cg, "  " + ti + " = trunc i64 " + typ_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_CTX_use_PrivateKey_file(ptr " + cp + ", ptr " + fp + ", i32 " + ti + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_NEW {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @SSL_new(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_SET_FD {
+    ssl_v = cg_get_val(cg, ir_field(inst, 16))
+    fd_v = cg_get_val(cg, ir_field(inst, 24))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + ssl_v + " to ptr")
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = trunc i64 " + fd_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_set_fd(ptr " + sp + ", i32 " + fi + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_DO_ACCEPT {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_accept(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_READ {
+    ssl_v = cg_get_val(cg, ir_field(inst, 16))
+    buf_v = cg_get_val(cg, ir_field(inst, 24))
+    len_v = cg_get_val(cg, ir_field(inst, 32))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + ssl_v + " to ptr")
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf_v + " to ptr")
+    li = cg_fresh_reg(cg)
+    emit(cg, "  " + li + " = trunc i64 " + len_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_read(ptr " + sp + ", ptr " + bp + ", i32 " + li + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_WRITE {
+    ssl_v = cg_get_val(cg, ir_field(inst, 16))
+    buf_v = cg_get_val(cg, ir_field(inst, 24))
+    len_v = cg_get_val(cg, ir_field(inst, 32))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + ssl_v + " to ptr")
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf_v + " to ptr")
+    li = cg_fresh_reg(cg)
+    emit(cg, "  " + li + " = trunc i64 " + len_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_write(ptr " + sp + ", ptr " + bp + ", i32 " + li + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_SHUTDOWN {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_shutdown(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_FREE {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    emit(cg, "  call void @SSL_free(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = add i64 0, 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
   if op == IR_HTTP_RESPOND {
     // 3 IR args + default content type = 4 C args
     a = cg_get_val(cg, ir_field(inst, 16))
@@ -1732,8 +2010,7 @@ compile_inst(cg:I inst:I) I {
     ct_name = emit_string_const(cg, "text/html; charset=utf-8")
     ct = cg_fresh_reg(cg)
     emit(cg, "  " + ct + " = ptrtoint ptr " + ct_name + " to i64")
-    d = cg_fresh_reg(cg)
-    emit(cg, "  " + d + " = call i64 @sans_http_respond(i64 " + a + ", i64 " + b + ", i64 " + c + ", i64 " + ct + ")")
+    d = compile_http_respond(cg, a, b, c, ct)
     cg_set_val(cg, dest, d)
     return 0
   }
@@ -1743,8 +2020,7 @@ compile_inst(cg:I inst:I) I {
     b = cg_get_val(cg, ir_field(inst, 24))
     c = cg_get_val(cg, ir_field(inst, 32))
     e = cg_get_val(cg, ir_field(inst, 40))
-    d = cg_fresh_reg(cg)
-    emit(cg, "  " + d + " = call i64 @sans_http_respond(i64 " + a + ", i64 " + b + ", i64 " + c + ", i64 " + e + ")")
+    d = compile_http_respond(cg, a, b, c, e)
     cg_set_val(cg, dest, d)
     return 0
   }

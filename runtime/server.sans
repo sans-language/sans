@@ -1,5 +1,15 @@
+// ── HTTP Server Runtime ─────────────────────────────────────────
+// Request struct layout (56 bytes):
+//   offset  0: client fd (I)
+//   offset  8: method (S)
+//   offset 16: path (S)
+//   offset 24: body (S)
+//   offset 32: headers map (I) — 0 if not parsed
+//   offset 40: response headers array (I) — 0 if none
+//   offset 48: ssl ptr (I) — 0 for plain HTTP
+
 sans_make_empty_request() I {
-  req = alloc(32)
+  req = alloc(56)
   store64(req, -1)
   empty = alloc(1)
   store8(empty, 0)
@@ -10,6 +20,9 @@ sans_make_empty_request() I {
   e3 = alloc(1)
   store8(e3, 0)
   store64(req + 24, e3)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, 0)
   req
 }
 
@@ -24,8 +37,8 @@ sans_http_accept_inner(sfd:I) I {
 }
 
 sans_http_accept_read(cfd:I) I {
-  buf = alloc(8192)
-  n = srecv(cfd, buf, 8191)
+  buf = alloc(65536)
+  n = srecv(cfd, buf, 65535)
   n <= 0 ? sans_http_accept_fail(cfd, buf) : sans_http_accept_parse(cfd, buf, n)
 }
 
@@ -49,11 +62,15 @@ sans_http_accept_parse(cfd:I buf:I n:I) I {
   store8(path + plen, 0)
   bstart = sans_find_body(buf, n)
   body = sans_extract_body(buf, n, bstart)
-  req = alloc(32)
+  req = alloc(56)
   store64(req, cfd)
   store64(req + 8, method)
   store64(req + 16, path)
   store64(req + 24, body)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, 0)
+  sans_parse_headers(req, buf, n)
   req
 }
 
@@ -135,12 +152,233 @@ sans_http_request_path(req:I) I = load64(req + 16)
 sans_http_request_method(req:I) I = load64(req + 8)
 sans_http_request_body(req:I) I = load64(req + 24)
 
-sans_http_respond(req:I status:I body:I ct:I) I {
-  fd = load64(req)
-  fd < 0 ? 0 : sans_http_respond_inner(req, fd, status, body, ct)
+// ── Header Parsing ──────────────────────────────────────────────
+
+// Header storage: simple array at offset 32 of req
+// Layout: offset 0 = count, offset 8 = capacity, offset 16+ = entries (16 bytes each: name, value)
+sans_parse_headers(req:I buf:I n:I) I {
+  hdrs = alloc(16 + 32 * 16)
+  store64(hdrs, 0)
+  store64(hdrs + 8, 32)
+  store64(req + 32, hdrs)
+  // Skip first line (request line) — find \r\n
+  i := sans_find_crlf(buf, n, 0)
+  i < 0 ? 0 : sans_parse_headers_loop(hdrs, buf, n, i + 2)
 }
 
-sans_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
+sans_find_crlf(buf:I n:I start:I) I {
+  i := start
+  found := -1
+  while i + 1 < n {
+    if load8(buf + i) == 13 {
+      if load8(buf + i + 1) == 10 {
+        found = i
+        i = n
+        0
+      } else {
+        i += 1
+        0
+      }
+    } else {
+      i += 1
+      0
+    }
+  }
+  found
+}
+
+sans_parse_headers_loop(hdrs:I buf:I n:I pos:I) I {
+  done := 0
+  cur := pos
+  while done == 0 {
+    if cur + 1 >= n {
+      done = 1
+      0
+    } else {
+      // Check for blank line (\r\n = end of headers)
+      if load8(buf + cur) == 13 {
+        if load8(buf + cur + 1) == 10 {
+          done = 1
+          0
+        } else {
+          cur = sans_parse_one_header(hdrs, buf, n, cur)
+          0
+        }
+      } else {
+        cur = sans_parse_one_header(hdrs, buf, n, cur)
+        0
+      }
+    }
+  }
+  0
+}
+
+sans_parse_one_header(hdrs:I buf:I n:I pos:I) I {
+  // Find colon
+  colon := sans_find_char(buf, n, pos, 58)
+  colon < 0 ? sans_skip_line(buf, n, pos) : sans_parse_header_kv(hdrs, buf, n, pos, colon)
+}
+
+sans_parse_header_kv(hdrs:I buf:I n:I pos:I colon:I) I {
+  // Extract name (lowercase)
+  name = sans_lowercase_slice(buf, pos, colon)
+  // Skip colon + optional space
+  vstart := colon + 1
+  vstart = vstart < n && load8(buf + vstart) == 32 ? vstart + 1 : vstart
+  // Find end of line
+  eol = sans_find_crlf(buf, n, vstart)
+  vend = eol < 0 ? n : eol
+  value = sans_copy_str(buf + vstart, vend - vstart)
+  sans_hdrs_add(hdrs, name, value)
+  eol < 0 ? n : eol + 2
+}
+
+sans_hdrs_add(hdrs:I name:I value:I) I {
+  count = load64(hdrs)
+  cap = load64(hdrs + 8)
+  count < cap ? sans_hdrs_add_inner(hdrs, count, name, value) : 0
+}
+
+sans_hdrs_add_inner(hdrs:I count:I name:I value:I) I {
+  off = 16 + count * 16
+  store64(hdrs + off, name)
+  store64(hdrs + off + 8, value)
+  store64(hdrs, count + 1)
+  0
+}
+
+sans_find_char(buf:I n:I start:I ch:I) I {
+  i := start
+  found := -1
+  while i < n {
+    if load8(buf + i) == ch {
+      found = i
+      i = n
+      0
+    } else {
+      // Stop at \r (end of header line)
+      if load8(buf + i) == 13 {
+        i = n
+        0
+      } else {
+        i += 1
+        0
+      }
+    }
+  }
+  found
+}
+
+sans_skip_line(buf:I n:I pos:I) I {
+  eol = sans_find_crlf(buf, n, pos)
+  eol < 0 ? n : eol + 2
+}
+
+sans_lowercase_slice(buf:I start:I end:I) I {
+  len = end - start
+  s = alloc(len + 1)
+  i := 0
+  while i < len {
+    ch = load8(buf + start + i)
+    // A-Z (65-90) -> a-z (97-122)
+    lc = ch >= 65 && ch <= 90 ? ch + 32 : ch
+    store8(s + i, lc)
+    i += 1
+    0
+  }
+  store8(s + len, 0)
+  s
+}
+
+// ── Header Access ───────────────────────────────────────────────
+
+sans_http_request_header(req:I name:I) I {
+  hdrs = load64(req + 32)
+  hdrs == 0 ? sans_empty_str() : sans_http_request_header_lookup(hdrs, name)
+}
+
+sans_http_request_header_lookup(hdrs:I name:I) I {
+  // Lowercase the name for lookup
+  lname = sans_lowercase_string(name)
+  sans_hdrs_find(hdrs, lname)
+}
+
+sans_lowercase_string(s:I) I {
+  len = slen(s)
+  r = alloc(len + 1)
+  i := 0
+  while i < len {
+    ch = load8(s + i)
+    lc = ch >= 65 && ch <= 90 ? ch + 32 : ch
+    store8(r + i, lc)
+    i += 1
+    0
+  }
+  store8(r + len, 0)
+  r
+}
+
+sans_hdrs_find(hdrs:I name:I) I {
+  count = load64(hdrs)
+  nlen = slen(name)
+  sans_hdrs_find_at(hdrs, name, nlen, count, 0)
+}
+
+sans_hdrs_find_at(hdrs:I name:I nlen:I count:I i:I) I {
+  i >= count ? sans_empty_str() : sans_hdrs_find_check(hdrs, name, nlen, count, i)
+}
+
+sans_hdrs_find_check(hdrs:I name:I nlen:I count:I i:I) I {
+  off = 16 + i * 16
+  hname = load64(hdrs + off)
+  hlen = slen(hname)
+  hlen == nlen && mcmp(hname, name, nlen) == 0 ? load64(hdrs + off + 8) : sans_hdrs_find_at(hdrs, name, nlen, count, i + 1)
+}
+
+// ── Response Headers (set_header) ───────────────────────────────
+
+sans_http_request_set_header(req:I name:I value:I) I {
+  arr = load64(req + 40)
+  arr == 0 ? sans_set_header_init(req, name, value) : sans_resp_headers_add(arr, name, value)
+}
+
+sans_set_header_init(req:I name:I value:I) I {
+  arr = sans_resp_headers_init()
+  store64(req + 40, arr)
+  sans_resp_headers_add(arr, name, value)
+}
+
+sans_resp_headers_init() I {
+  // Simple array: pairs of (name, value) stored sequentially
+  // offset 0: count, offset 8: capacity, offset 16+: pairs (16 bytes each)
+  arr = alloc(16 + 16 * 16)
+  store64(arr, 0)
+  store64(arr + 8, 16)
+  arr
+}
+
+sans_resp_headers_add(arr:I name:I value:I) I {
+  count = load64(arr)
+  cap = load64(arr + 8)
+  count < cap ? sans_resp_headers_add_inner(arr, count, name, value) : 0
+}
+
+sans_resp_headers_add_inner(arr:I count:I name:I value:I) I {
+  off = 16 + count * 16
+  store64(arr + off, name)
+  store64(arr + off + 8, value)
+  store64(arr, count + 1)
+  0
+}
+
+// ── HTTP Respond (SSL-aware) ────────────────────────────────────
+
+sans_http_respond(req:I status:I body:I ct:I) I {
+  fd = load64(req)
+  fd < 0 ? 0 : sans_http_respond_build(req, fd, status, body, ct)
+}
+
+sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
   body_len = slen(body)
   status_str = sans_int_to_buf(status)
   status_str_len = slen(status_str)
@@ -149,7 +387,12 @@ sans_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
   st = sans_status_text(status)
   st_len = slen(st)
   ct_len = slen(ct)
-  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + 23
+
+  // Build custom response headers string
+  custom_hdrs = sans_build_resp_headers(req)
+  custom_len = slen(custom_hdrs)
+
+  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + custom_len + 23
   buf = alloc(header_len + 1)
   pos := 0
   pos = sans_buf_write(buf, pos, sans_lit_http11(), 9)
@@ -160,17 +403,155 @@ sans_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
   pos = sans_buf_write(buf, pos, blen_str, blen_str_len)
   pos = sans_buf_write(buf, pos, sans_lit_content_type(), 16)
   pos = sans_buf_write(buf, pos, ct, ct_len)
+  if custom_len > 0 {
+    pos = sans_buf_write(buf, pos, custom_hdrs, custom_len)
+    0
+  } else { 0 }
   pos = sans_buf_write(buf, pos, sans_lit_conn_close(), 23)
   store8(buf + pos, 0)
-  total = header_len + body_len
+  total = pos + body_len
   resp = alloc(total)
-  mcpy(resp, buf, header_len)
-  body_len > 0 ? mcpy(resp + header_len, body, body_len) : 0
+  mcpy(resp, buf, pos)
+  body_len > 0 ? mcpy(resp + pos, body, body_len) : 0
+
+  sans_http_respond_plain(req, fd, resp, total)
+}
+
+sans_http_respond_plain(req:I fd:I resp:I total:I) I {
   sans_send_all(fd, resp, total)
   sclose(fd)
   store64(req, -1)
   1
 }
+
+sans_build_resp_headers(req:I) I {
+  arr = load64(req + 40)
+  arr == 0 ? sans_empty_str() : sans_build_resp_headers_inner(arr)
+}
+
+sans_build_resp_headers_inner(arr:I) I {
+  count = load64(arr)
+  count == 0 ? sans_empty_str() : sans_build_resp_headers_loop(arr, count)
+}
+
+sans_build_resp_headers_loop(arr:I count:I) I {
+  // Each header: "\r\nName: Value"
+  // Pre-calculate total length
+  total := 0
+  i := 0
+  while i < count {
+    off = 16 + i * 16
+    name = load64(arr + off)
+    value = load64(arr + off + 8)
+    total = total + 2 + slen(name) + 2 + slen(value)
+    i += 1
+    0
+  }
+  buf = alloc(total + 1)
+  pos := 0
+  i = 0
+  while i < count {
+    off = 16 + i * 16
+    name = load64(arr + off)
+    value = load64(arr + off + 8)
+    nlen = slen(name)
+    vlen = slen(value)
+    store8(buf + pos, 13)
+    store8(buf + pos + 1, 10)
+    pos = pos + 2
+    nlen > 0 ? mcpy(buf + pos, name, nlen) : 0
+    pos = pos + nlen
+    store8(buf + pos, 58)
+    store8(buf + pos + 1, 32)
+    pos = pos + 2
+    vlen > 0 ? mcpy(buf + pos, value, vlen) : 0
+    pos = pos + vlen
+    i += 1
+    0
+  }
+  store8(buf + pos, 0)
+  buf
+}
+
+// ── CORS helpers ────────────────────────────────────────────────
+
+sans_cors(req:I origin:I) I {
+  sans_http_request_set_header(req, "Access-Control-Allow-Origin", origin)
+  sans_http_request_set_header(req, "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+  sans_http_request_set_header(req, "Access-Control-Allow-Headers", "Content-Type, Authorization")
+  0
+}
+
+sans_cors_all(req:I) I = sans_cors(req, "*")
+
+// ── Cookie parsing ──────────────────────────────────────────────
+
+sans_http_request_cookie(req:I name:I) I {
+  hdr = sans_http_request_header(req, "cookie")
+  slen(hdr) == 0 ? sans_empty_str() : sans_parse_cookie_value(hdr, name)
+}
+
+sans_parse_cookie_value(hdr:I name:I) I {
+  nlen = slen(name)
+  hlen = slen(hdr)
+  sans_parse_cookie_at(hdr, hlen, name, nlen, 0)
+}
+
+sans_parse_cookie_at(hdr:I hlen:I name:I nlen:I pos:I) I {
+  pos >= hlen ? sans_empty_str() : sans_parse_cookie_skip(hdr, hlen, name, nlen, pos)
+}
+
+sans_parse_cookie_skip(hdr:I hlen:I name:I nlen:I pos:I) I {
+  // Skip whitespace
+  p = pos < hlen && load8(hdr + pos) == 32 ? pos + 1 : pos
+  p >= hlen ? sans_empty_str() : sans_parse_cookie_try(hdr, hlen, name, nlen, p)
+}
+
+sans_parse_cookie_try(hdr:I hlen:I name:I nlen:I pos:I) I {
+  sans_cookie_name_match(hdr, hlen, pos, name, nlen) == 1 ?
+    sans_parse_cookie_extract(hdr, hlen, pos + nlen + 1) :
+    sans_parse_cookie_next(hdr, hlen, name, nlen, pos)
+}
+
+sans_parse_cookie_extract(hdr:I hlen:I vstart:I) I {
+  vend = sans_find_cookie_end(hdr, hlen, vstart)
+  sans_copy_str(hdr + vstart, vend - vstart)
+}
+
+sans_parse_cookie_next(hdr:I hlen:I name:I nlen:I pos:I) I {
+  end = sans_find_cookie_end(hdr, hlen, pos)
+  npos = end < hlen && load8(hdr + end) == 59 ? end + 1 : end
+  sans_parse_cookie_at(hdr, hlen, name, nlen, npos)
+}
+
+sans_cookie_name_match(hdr:I hlen:I pos:I name:I nlen:I) I {
+  pos + nlen >= hlen ? 0 :
+  load8(hdr + pos + nlen) != 61 ? 0 :
+  mcmp(hdr + pos, name, nlen) == 0 ? 1 : 0
+}
+
+sans_find_cookie_end(hdr:I hlen:I start:I) I {
+  i := start
+  done := 0
+  while done == 0 {
+    if i >= hlen {
+      done = 1
+      0
+    } else {
+      if load8(hdr + i) == 59 {
+        done = 1
+        0
+      } else {
+        i += 1
+        0
+      }
+      0
+    }
+  }
+  i
+}
+
+// ── Helper functions ────────────────────────────────────────────
 
 sans_buf_write(buf:I pos:I src:I len:I) I {
   len > 0 ? mcpy(buf + pos, src, len) : 0
@@ -208,7 +589,23 @@ sans_int_to_buf_pos(n:I) I {
 }
 
 sans_status_text(s:I) I {
-  s == 404 ? sans_st_not_found() : s == 500 ? sans_st_internal_error() : s == 400 ? sans_st_bad_request() : sans_st_ok()
+  if s == 200 { return sans_st_ok() } else { 0 }
+  if s == 201 { return sans_st_created() } else { 0 }
+  if s == 204 { return sans_st_no_content() } else { 0 }
+  if s == 301 { return sans_st_moved() } else { 0 }
+  if s == 302 { return sans_st_found() } else { 0 }
+  if s == 304 { return sans_st_not_modified() } else { 0 }
+  if s == 400 { return sans_st_bad_request() } else { 0 }
+  if s == 401 { return sans_st_unauthorized() } else { 0 }
+  if s == 403 { return sans_st_forbidden() } else { 0 }
+  if s == 404 { return sans_st_not_found() } else { 0 }
+  if s == 405 { return sans_st_method_not_allowed() } else { 0 }
+  if s == 409 { return sans_st_conflict() } else { 0 }
+  if s == 429 { return sans_st_too_many() } else { 0 }
+  if s == 500 { return sans_st_internal_error() } else { 0 }
+  if s == 502 { return sans_st_bad_gateway() } else { 0 }
+  if s == 503 { return sans_st_unavailable() } else { 0 }
+  sans_st_ok()
 }
 
 sans_st_ok() I {
@@ -275,6 +672,22 @@ sans_st_bad_request() I {
   store8(buf + 9, 115)
   store8(buf + 10, 116)
   store8(buf + 11, 0)
+  buf
+}
+
+sans_st_no_content() I {
+  buf = alloc(11)
+  store8(buf, 78)
+  store8(buf + 1, 111)
+  store8(buf + 2, 32)
+  store8(buf + 3, 67)
+  store8(buf + 4, 111)
+  store8(buf + 5, 110)
+  store8(buf + 6, 116)
+  store8(buf + 7, 101)
+  store8(buf + 8, 110)
+  store8(buf + 9, 116)
+  store8(buf + 10, 0)
   buf
 }
 
@@ -393,4 +806,265 @@ sans_send_all(fd:I data:I total:I) I {
     }
   }
   ok
+}
+
+// ── Extended Status Texts ──────────────────────────────────────
+
+sans_st_created() I = sans_copy_str("Created", 7)
+sans_st_moved() I = sans_copy_str("Moved Permanently", 17)
+sans_st_found() I = sans_copy_str("Found", 5)
+sans_st_not_modified() I = sans_copy_str("Not Modified", 12)
+sans_st_unauthorized() I = sans_copy_str("Unauthorized", 12)
+sans_st_forbidden() I = sans_copy_str("Forbidden", 9)
+sans_st_method_not_allowed() I = sans_copy_str("Method Not Allowed", 18)
+sans_st_conflict() I = sans_copy_str("Conflict", 8)
+sans_st_too_many() I = sans_copy_str("Too Many Requests", 17)
+sans_st_bad_gateway() I = sans_copy_str("Bad Gateway", 11)
+sans_st_unavailable() I = sans_copy_str("Service Unavailable", 19)
+
+// ── Query Parameter Parsing ────────────────────────────────────
+
+sans_http_request_path_only(req:I) I {
+  path = load64(req + 16)
+  plen = slen(path)
+  qpos = sans_find_char_in(path, plen, 0, 63)
+  qpos < 0 ? path : sans_copy_str(path, qpos)
+}
+
+sans_find_char_in(buf:I len:I start:I ch:I) I {
+  i := start
+  found := -1
+  while i < len {
+    if load8(buf + i) == ch {
+      found = i
+      i = len
+      0
+    } else {
+      i += 1
+      0
+    }
+  }
+  found
+}
+
+sans_http_request_query(req:I name:I) I {
+  path = load64(req + 16)
+  plen = slen(path)
+  qpos = sans_find_char_in(path, plen, 0, 63)
+  qpos < 0 ? sans_empty_str() : sans_query_find(path + qpos + 1, plen - qpos - 1, name)
+}
+
+sans_query_find(qs:I qlen:I name:I) I {
+  nlen = slen(name)
+  pos := 0
+  result := 0
+  done := 0
+  while done == 0 {
+    if pos >= qlen {
+      done = 1
+      0
+    } else {
+      // Check if name matches at pos
+      if sans_query_name_match(qs, qlen, pos, name, nlen) == 1 {
+        result = sans_query_extract_val(qs, qlen, pos + nlen + 1)
+        done = 1
+        0
+      } else {
+        // Skip to next &
+        nxt = sans_find_char_in(qs, qlen, pos, 38)
+        pos = nxt < 0 ? qlen : nxt + 1
+        0
+      }
+    }
+  }
+  result == 0 ? sans_empty_str() : result
+}
+
+sans_query_name_match(qs:I qlen:I pos:I name:I nlen:I) I {
+  if pos + nlen >= qlen { return 0 } else { 0 }
+  if load8(qs + pos + nlen) != 61 { return 0 } else { 0 }
+  mcmp(qs + pos, name, nlen) == 0 ? 1 : 0
+}
+
+sans_query_extract_val(qs:I qlen:I vstart:I) I {
+  vend = sans_find_char_in(qs, qlen, vstart, 38)
+  vend = vend < 0 ? qlen : vend
+  sans_copy_str(qs + vstart, vend - vstart)
+}
+
+// ── URL Decoding ───────────────────────────────────────────────
+
+sans_url_decode(s:I) I {
+  len = slen(s)
+  buf = alloc(len + 1)
+  si := 0
+  di := 0
+  while si < len {
+    ch = load8(s + si)
+    if ch == 43 {
+      // '+' -> space
+      store8(buf + di, 32)
+      si += 1
+      di += 1
+      0
+    } else {
+      if ch == 37 && si + 2 < len {
+        h1 = sans_hex_val(load8(s + si + 1))
+        h2 = sans_hex_val(load8(s + si + 2))
+        if h1 >= 0 && h2 >= 0 {
+          store8(buf + di, h1 * 16 + h2)
+          si += 3
+          di += 1
+          0
+        } else {
+          store8(buf + di, ch)
+          si += 1
+          di += 1
+          0
+        }
+      } else {
+        store8(buf + di, ch)
+        si += 1
+        di += 1
+        0
+      }
+    }
+    0
+  }
+  store8(buf + di, 0)
+  buf
+}
+
+sans_hex_val(ch:I) I {
+  if ch >= 48 && ch <= 57 { return ch - 48 } else { 0 }
+  if ch >= 65 && ch <= 70 { return ch - 55 } else { 0 }
+  if ch >= 97 && ch <= 102 { return ch - 87 } else { 0 }
+  -1
+}
+
+// ── Path Segment Extraction ────────────────────────────────────
+
+sans_path_segment(path:I index:I) I {
+  len = slen(path)
+  // Strip query string
+  qpos = sans_find_char_in(path, len, 0, 63)
+  plen = qpos < 0 ? len : qpos
+  // Skip leading /
+  pos := 0
+  if pos < plen && load8(path + pos) == 47 {
+    pos += 1
+    0
+  } else { 0 }
+  seg := 0
+  done := 0
+  result := 0
+  while done == 0 {
+    if pos >= plen {
+      done = 1
+      0
+    } else {
+      // Find end of segment (next / or end)
+      send = sans_find_char_in(path, plen, pos, 47)
+      send = send < 0 ? plen : send
+      if seg == index {
+        result = sans_copy_str(path + pos, send - pos)
+        done = 1
+        0
+      } else {
+        seg += 1
+        pos = send + 1
+        0
+      }
+      0
+    }
+  }
+  result == 0 ? sans_empty_str() : result
+}
+
+// ── Static File Serving ────────────────────────────────────────
+
+sans_serve_file(req:I base_dir:I) I {
+  path = sans_http_request_path_only(req)
+  plen = slen(path)
+  blen = slen(base_dir)
+  full = alloc(blen + plen + 1)
+  blen > 0 ? mcpy(full, base_dir, blen) : 0
+  plen > 0 ? mcpy(full + blen, path, plen) : 0
+  store8(full + blen + plen, 0)
+  content = fread(full)
+  slen(content) == 0 ? 0 : sans_serve_file_respond(req, content, path, plen)
+}
+
+sans_serve_file_respond(req:I content:I path:I plen:I) I {
+  ct = sans_detect_content_type(path, plen)
+  sans_http_respond(req, 200, content, ct)
+}
+
+sans_detect_content_type(path:I plen:I) I {
+  // Find last dot
+  dot := -1
+  i := plen - 1
+  while i >= 0 {
+    if load8(path + i) == 46 {
+      dot = i
+      i = -1
+      0
+    } else {
+      i -= 1
+      0
+    }
+    0
+  }
+  dot < 0 ? "application/octet-stream" : sans_ext_to_ct(path + dot, plen - dot)
+}
+
+sans_ext_to_ct(ext:I len:I) I {
+  // .html
+  if len == 5 && load8(ext+1)==104 && load8(ext+2)==116 && load8(ext+3)==109 && load8(ext+4)==108 { return "text/html" } else { 0 }
+  // .css
+  if len == 4 && load8(ext+1)==99 && load8(ext+2)==115 && load8(ext+3)==115 { return "text/css" } else { 0 }
+  // .js
+  if len == 3 && load8(ext+1)==106 && load8(ext+2)==115 { return "application/javascript" } else { 0 }
+  // .json
+  if len == 5 && load8(ext+1)==106 && load8(ext+2)==115 && load8(ext+3)==111 && load8(ext+4)==110 { return "application/json" } else { 0 }
+  // .png
+  if len == 4 && load8(ext+1)==112 && load8(ext+2)==110 && load8(ext+3)==103 { return "image/png" } else { 0 }
+  // .jpg
+  if len == 4 && load8(ext+1)==106 && load8(ext+2)==112 && load8(ext+3)==103 { return "image/jpeg" } else { 0 }
+  // .jpeg
+  if len == 5 && load8(ext+1)==106 && load8(ext+2)==112 && load8(ext+3)==101 && load8(ext+4)==103 { return "image/jpeg" } else { 0 }
+  // .svg
+  if len == 4 && load8(ext+1)==115 && load8(ext+2)==118 && load8(ext+3)==103 { return "image/svg+xml" } else { 0 }
+  // .txt
+  if len == 4 && load8(ext+1)==116 && load8(ext+2)==120 && load8(ext+3)==116 { return "text/plain" } else { 0 }
+  "application/octet-stream"
+}
+
+// ── Content-Length ──────────────────────────────────────────────
+
+sans_http_request_content_length(req:I) I {
+  val = sans_http_request_header(req, "content-length")
+  slen(val) == 0 ? 0 : sans_parse_int(val)
+}
+
+sans_parse_int(s:I) I {
+  len = slen(s)
+  result := 0
+  i := 0
+  while i < len {
+    ch = load8(s + i)
+    if ch >= 48 && ch <= 57 {
+      result = result * 10 + (ch - 48)
+      0
+    } else { 0 }
+    i += 1
+    0
+  }
+  result
+}
+
+// ── JSON Response Helper ───────────────────────────────────────
+
+sans_http_respond_json(req:I status:I body:I) I {
+  sans_http_respond(req, status, body, "application/json")
 }
