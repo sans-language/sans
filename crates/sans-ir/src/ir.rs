@@ -273,12 +273,6 @@ pub enum Instruction {
     Srecv { dest: Reg, fd: Reg, buf: Reg, len: Reg },
     Ssend { dest: Reg, fd: Reg, buf: Reg, len: Reg },
     Sclose { dest: Reg, fd: Reg },
-    // SSL/TLS (OpenSSL)
-    SslCtx { dest: Reg, cert: Reg, key: Reg },
-    SslAccept { dest: Reg, ctx: Reg, fd: Reg },
-    SslRead { dest: Reg, ssl: Reg, buf: Reg, len: Reg },
-    SslWrite { dest: Reg, ssl: Reg, buf: Reg, len: Reg },
-    SslClose { dest: Reg, ssl: Reg },
     // libcurl primitives
     Cinit { dest: Reg },
     Csets { dest: Reg, handle: Reg, opt: Reg, val: Reg },

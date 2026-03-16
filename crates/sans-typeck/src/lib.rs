@@ -1345,26 +1345,6 @@ fn check_expr(
                     return Err(TypeError::new(format!("sclose() fd must be Int, got {}", t)));
                 }
                 return Ok(Type::Int);
-            } else if function == "ssl_ctx" {
-                if args.len() != 2 { return Err(TypeError::new("ssl_ctx() takes 2 arguments (cert, key)")); }
-                for arg in args { check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?; }
-                return Ok(Type::Int);
-            } else if function == "ssl_accept" {
-                if args.len() != 2 { return Err(TypeError::new("ssl_accept() takes 2 arguments (ctx, fd)")); }
-                for arg in args { check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?; }
-                return Ok(Type::Int);
-            } else if function == "ssl_read" {
-                if args.len() != 3 { return Err(TypeError::new("ssl_read() takes 3 arguments (ssl, buf, len)")); }
-                for arg in args { check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?; }
-                return Ok(Type::Int);
-            } else if function == "ssl_write" {
-                if args.len() != 3 { return Err(TypeError::new("ssl_write() takes 3 arguments (ssl, buf, len)")); }
-                for arg in args { check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?; }
-                return Ok(Type::Int);
-            } else if function == "ssl_close" {
-                if args.len() != 1 { return Err(TypeError::new("ssl_close() takes 1 argument (ssl)")); }
-                check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                return Ok(Type::Int);
             } else if function == "cinit" {
                 if !args.is_empty() {
                     return Err(TypeError::new("cinit() takes no arguments"));
