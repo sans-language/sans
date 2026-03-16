@@ -55,8 +55,8 @@ make_resolved_module(name:S path:S program:I) I {
   m
 }
 
-rm_name(m:I) S = deref(load64(m))
-rm_path(m:I) S = deref(load64(m + 8))
+rm_name(m:I) S = load64(m)
+rm_path(m:I) S = load64(m + 8)
 rm_program(m:I) I = load64(m + 16)
 
 // ── Import Resolution ───────────────────────────────────────────
@@ -90,7 +90,7 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   ii := 0
   while ii < num_imports {
     sub_path_ptr = imports_arr.get(ii)
-    sub_path = deref(sub_path_ptr)
+    sub_path = sub_path_ptr
     resolve_import(sub_path, base_dir, resolved, visited, in_progress)
     ii = ii + 1
     0
@@ -122,7 +122,7 @@ resolve_imports(entry_path:S) I {
   ii := 0
   while ii < num_imports {
     import_path_ptr = imports_arr.get(ii)
-    import_path = deref(import_path_ptr)
+    import_path = import_path_ptr
     resolve_import(import_path, base_dir, resolved, visited, in_progress)
     ii = ii + 1
     0
@@ -198,7 +198,7 @@ build(source_path:S output_path:S) I {
              rt_tag == TY_MUTEX ? IRTY_MUTEX :
              rt_tag == TY_TUPLE ? IRTY_TUPLE :
              IRTY_INT
-      mangled = mod_n + "__" + deref(fname)
+      mangled = mod_n + "__" + fname
       if IRTY_INT != irty {
         mset(module_fn_ret_types, mangled, irty)
         0
@@ -312,7 +312,7 @@ build(source_path:S output_path:S) I {
   runtime_o_paths = array<I>()
   ri := 0
   while ri < runtime_modules.len() {
-    rname = deref(runtime_modules.get(ri))
+    rname = runtime_modules.get(ri)
     sans_path = runtime_dir + "/" + rname + ".sans"
     o_path = "/tmp/sans_" + rname + "_runtime.o"
 
@@ -337,7 +337,7 @@ build(source_path:S output_path:S) I {
   link_cmd := "cc " + obj_path
   li := 0
   while li < runtime_o_paths.len() {
-    link_cmd = link_cmd + " " + deref(runtime_o_paths.get(li))
+    link_cmd = link_cmd + " " + runtime_o_paths.get(li)
     li = li + 1
     0
   }
@@ -348,7 +348,7 @@ build(source_path:S output_path:S) I {
   sys("rm -f " + ll_path + " " + obj_path)
   ri = 0
   while ri < runtime_o_paths.len() {
-    sys("rm -f " + deref(runtime_o_paths.get(ri)))
+    sys("rm -f " + runtime_o_paths.get(ri))
     ri = ri + 1
     0
   }
@@ -379,7 +379,7 @@ main() I {
     0
   } else { 0 }
 
-  cmd = deref(argv.get(1))
+  cmd = argv.get(1)
 
   if cmd == "--version" || cmd == "-V" {
     p("sans 0.3.25")
@@ -393,14 +393,14 @@ main() I {
     0
   } else { 0 }
 
-  file = deref(argv.get(2))
+  file = argv.get(2)
 
   // Check for -o flag
   output := ""
   if argc >= 5 {
-    flag = deref(argv.get(3))
+    flag = argv.get(3)
     if flag == "-o" {
-      output = deref(argv.get(4))
+      output = argv.get(4)
       0
     } else { 0 }
     0
