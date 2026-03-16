@@ -234,7 +234,7 @@ irm_struct_defs(m:I) I = load64(m + 16)
 // offset 104: variant_fields_map (I) — Map: variant_name -> array of field type name strings
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(112)
+  ctx = alloc(136)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -249,6 +249,9 @@ make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   store64(ctx + 88, ptr(M()))    // reg_struct_names map
   store64(ctx + 96, 0)           // variant_tag_map (set later)
   store64(ctx + 104, 0)          // variant_fields_map (set later)
+  store64(ctx + 112, ptr(array<I>()))  // lifted_fns array (for lambdas)
+  store64(ctx + 120, 0)          // lambda_counter
+  store64(ctx + 128, ptr(M()))   // closure_info: reg -> [lambda_name, cap0, cap1, ...] or 0 for non-capturing
   ctx
 }
 
@@ -277,6 +280,16 @@ ctx_set_struct_name(ctx:I reg:I name:I) I {
 ctx_get_struct_name(ctx:I reg:I) I {
   m = load64(ctx + 88)
   mget(m, reg)
+}
+ctx_lifted_fns(ctx:I) I = load64(ctx + 112)
+ctx_lambda_counter(ctx:I) I = load64(ctx + 120)
+ctx_closure_info(ctx:I) I = load64(ctx + 128)
+ctx_set_lambda_counter(ctx:I v:I) I { store64(ctx + 120, v)
+  0 }
+ctx_fresh_lambda_id(ctx:I) I {
+  n := load64(ctx + 120)
+  store64(ctx + 120, n + 1)
+  n
 }
 
 // Emit: push instruction onto the instructions array
@@ -743,18 +756,85 @@ lower_call_ptr(ctx:I args:I) I {
 
 // ── User-defined function call ──────────────────────────────────
 lower_call_user(ctx:I name:I args:I) I {
-  arg_regs = array<I>()
-  i := 0
-  while i < args.len() {
-    arg_regs.push(lower_expr(ctx, args.get(i)))
-    i = i + 1
-    0
+  // Check if the name is a local variable holding a lambda/fn ref
+  local_reg = ctx_get_local(ctx, name)
+  local_reg != 0 ? {
+    ci_map = ctx_closure_info(ctx)
+    cinfo = mget(ci_map, local_reg)
+    cinfo != 0 ? {
+      // This is a lambda call — emit direct Call to lifted function with captures prepended
+      lambda_fn_name = cinfo.get(0)
+      all_args = array<I>()
+      // Prepend capture values
+      cai := 1
+      while cai < cinfo.len() {
+        cap_name = cinfo.get(cai)
+        cap_reg = ctx_get_local(ctx, cap_name)
+        all_args.push(cap_reg)
+        cai = cai + 1
+        0
+      }
+      // Append explicit args
+      eai := 0
+      while eai < args.len() {
+        all_args.push(lower_expr(ctx, args.get(eai)))
+        eai = eai + 1
+        0
+      }
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_call(dest, lambda_fn_name, all_args))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } : {
+      // Local variable holding a non-lambda fn ref — use fcall
+      // Lower the explicit args
+      arg_regs = array<I>()
+      fai := 0
+      while fai < args.len() {
+        arg_regs.push(lower_expr(ctx, args.get(fai)))
+        fai = fai + 1
+        0
+      }
+      args.len() == 1 ? {
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst2(IR_FCALL, dest, local_reg, arg_regs.get(0)))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      } : args.len() == 2 ? {
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst3(IR_FCALL2, dest, local_reg, arg_regs.get(0), arg_regs.get(1)))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      } : args.len() == 3 ? {
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst4(IR_FCALL3, dest, local_reg, arg_regs.get(0), arg_regs.get(1), arg_regs.get(2)))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      } : {
+        // 0 args — just call it as fcall with dummy
+        dest = ctx_fresh_reg(ctx)
+        zero_reg = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_const(zero_reg, 0))
+        ctx_emit(ctx, ir_inst2(IR_FCALL, dest, local_reg, zero_reg))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      }
+    }
+  } : {
+    // Regular user-defined function call
+    arg_regs = array<I>()
+    i := 0
+    while i < args.len() {
+      arg_regs.push(lower_expr(ctx, args.get(i)))
+      i = i + 1
+      0
+    }
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_call(dest, name, arg_regs))
+    rt = ctx_get_fn_ret_type(ctx, name)
+    ctx_set_reg_type(ctx, dest, rt != 0 ? rt : IRTY_INT)
+    dest
   }
-  dest = ctx_fresh_reg(ctx)
-  ctx_emit(ctx, ir_call(dest, name, arg_regs))
-  rt = ctx_get_fn_ret_type(ctx, name)
-  ctx_set_reg_type(ctx, dest, rt != 0 ? rt : IRTY_INT)
-  dest
 }
 
 // ── lower_expr ──────────────────────────────────────────────────
@@ -1702,27 +1782,15 @@ lower_json_method(ctx:I obj_reg:I method:I args:I) I {
   method == "set" ? {
     key_reg = lower_expr(ctx, args.get(0))
     val_reg = lower_expr(ctx, args.get(1))
-    n = alloc(40)
-    store64(n, IR_JSON_SET)
-    store64(n + 8, obj_reg)
-    store64(n + 16, key_reg)
-    store64(n + 24, val_reg)
-    store64(n + 32, 0)
-    ctx_emit(ctx, n)
     dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_emit(ctx, ir_inst3(IR_JSON_SET, dest, obj_reg, key_reg, val_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } :
   method == "push" ? {
     val_reg = lower_expr(ctx, args.get(0))
-    n = alloc(24)
-    store64(n, IR_JSON_PUSH)
-    store64(n + 8, obj_reg)
-    store64(n + 16, val_reg)
-    ctx_emit(ctx, n)
     dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_emit(ctx, ir_inst2(IR_JSON_PUSH, dest, obj_reg, val_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } :
@@ -1893,6 +1961,16 @@ lower_field_access(ctx:I expr:I) I {
 
   // Tuple field access (field is a numeric string like "0", "1")
   obj_type == IRTY_TUPLE ? {
+    field_idx = stoi(field)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, 2))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } :
+
+  // If type is INT but field is numeric (e.g. "0", "1"), treat as tuple field access
+  // This handles cases where tuple type info was lost (e.g. from array.get())
+  char_at(field, 0) >= 48 && char_at(field, 0) <= 57 ? {
     field_idx = stoi(field)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, 2))
@@ -2111,25 +2189,267 @@ lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
 }
 
 // ── lower_lambda ────────────────────────────────────────────────
-// For the self-hosting compiler, lambdas are simplified:
-// We don't do full capture analysis. Instead, we emit a FnRef.
-// Capturing lambdas create a closure struct.
+// Compile lambda body as a lifted function and emit FnRef.
+// Handles both non-capturing and capturing lambdas.
 lower_lambda(ctx:I expr:I) I {
   params = load64(expr + 8)
   ret_type = load64(expr + 16)
   body_stmts = load64(expr + 24)
 
-  // Generate unique lambda name
-  lambda_name = "__lambda_" + itos(ctx_label_counter(ctx))
-  // Bump label counter to avoid collisions
-  ctx_fresh_label(ctx)
+  // Generate unique lambda name using lambda counter
+  lambda_id = ctx_fresh_lambda_id(ctx)
+  lambda_name = "__lambda_" + itos(lambda_id)
 
-  // For simplicity in the self-hosting compiler, emit a FnRef
-  // The lambda body will be emitted as a separate function during module lowering
+  // Find captured variables: variables referenced in body that are defined
+  // in the enclosing scope (in ctx locals) but not in lambda params
+  param_name_set = M()
+  pi := 0
+  while pi < params.len() {
+    p = params.get(pi)
+    mset(param_name_set, load64(p), 1)
+    pi = pi + 1
+    0
+  }
+  captures = find_captures_in_stmts(body_stmts, param_name_set, ctx)
+
+  // Create a new lowering context for the lambda body
+  lctx = make_lower_ctx(ctx_struct_defs(ctx), ctx_enum_defs(ctx), ctx_fn_ret_types(ctx), ctx_global_names(ctx))
+  store64(lctx + 96, load64(ctx + 96))   // variant_tag_map
+  store64(lctx + 104, load64(ctx + 104)) // variant_fields_map
+  // Share lambda counter to avoid collisions with nested lambdas
+  store64(lctx + 120, load64(ctx + 120))
+
+  // Add capture params first (they come before the actual params)
+  lifted_param_names = array<I>()
+  lifted_param_sizes = array<I>()
+  ci := 0
+  while ci < captures.len() {
+    cap_name = captures.get(ci)
+    arg_reg = "arg" + itos(ci)
+    ctx_set_local(lctx, cap_name, arg_reg)
+    // Copy type from enclosing scope
+    enc_reg = ctx_get_local(ctx, cap_name)
+    enc_reg != 0 ? {
+      ety = ctx_get_reg_type(ctx, enc_reg)
+      ctx_set_reg_type(lctx, arg_reg, ety)
+      // Copy struct name if applicable
+      esn = ctx_get_struct_name(ctx, enc_reg)
+      esn != 0 ? ctx_set_struct_name(lctx, arg_reg, esn) : 0
+    } : 0
+    lifted_param_names.push(arg_reg)
+    lifted_param_sizes.push(0)
+    ci = ci + 1
+    0
+  }
+
+  // Add actual lambda params
+  li := 0
+  while li < params.len() {
+    p = params.get(li)
+    pname = load64(p)
+    ptype = load64(p + 8)
+    arg_reg = "arg" + itos(captures.len() + li)
+    ctx_set_local(lctx, pname, arg_reg)
+    // Set type
+    ptype == "I" ? ctx_set_reg_type(lctx, arg_reg, IRTY_INT) :
+    ptype == "Int" ? ctx_set_reg_type(lctx, arg_reg, IRTY_INT) :
+    ptype == "F" ? ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) :
+    ptype == "Float" ? ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) :
+    ptype == "B" ? ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) :
+    ptype == "Bool" ? ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) :
+    ptype == "S" ? ctx_set_reg_type(lctx, arg_reg, IRTY_STR) :
+    ptype == "String" ? ctx_set_reg_type(lctx, arg_reg, IRTY_STR) :
+    ctx_set_reg_type(lctx, arg_reg, IRTY_INT)
+    lifted_param_names.push(arg_reg)
+    lifted_param_sizes.push(0)
+    li = li + 1
+    0
+  }
+
+  // Lower body statements — last statement is return value
+  bj := 0
+  while bj < body_stmts.len() {
+    is_last = bj == body_stmts.len() - 1
+    stmt = body_stmts.get(bj)
+    is_last == 1 ? {
+      stag = load64(stmt)
+      stag == ST_EXPR ? {
+        bexpr = load64(stmt + 8)
+        reg = lower_expr(lctx, bexpr)
+        ctx_emit(lctx, ir_ret(reg))
+      } : stag == ST_RETURN ? {
+        val_expr = load64(stmt + 8)
+        reg = lower_expr(lctx, val_expr)
+        ctx_emit(lctx, ir_ret(reg))
+      } : {
+        lower_stmt(lctx, stmt)
+      }
+    } : {
+      lower_stmt(lctx, stmt)
+    }
+    bj = bj + 1
+    0
+  }
+
+  // Sync lambda counter back from nested context
+  store64(ctx + 120, load64(lctx + 120))
+
+  // Create IrFunction for the lifted lambda
+  lifted_fn = make_ir_function(lambda_name, lifted_param_names, ctx_instrs(lctx), IRTY_INT, lifted_param_sizes)
+
+  // Add to lifted functions list (parent ctx)
+  lifted = ctx_lifted_fns(ctx)
+  lifted.push(lifted_fn)
+  // Also add any nested lifted fns from the lambda's context
+  nested_lifted = ctx_lifted_fns(lctx)
+  nli := 0
+  while nli < nested_lifted.len() {
+    lifted.push(nested_lifted.get(nli))
+    nli = nli + 1
+    0
+  }
+
+  // Store closure info so call sites can emit direct calls with captures prepended
+  // closure_info maps: lambda_name -> [lambda_name, cap0_name, cap1_name, ...]
+  cinfo = array<I>()
+  cinfo.push(lambda_name)
+  cci := 0
+  while cci < captures.len() {
+    cinfo.push(captures.get(cci))
+    cci = cci + 1
+    0
+  }
+
+  // Emit FnRef for the lambda (needed when passed as argument to other functions)
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_fn_ref(dest, lambda_name))
   ctx_set_reg_type(ctx, dest, IRTY_INT)
+
+  // Store closure info keyed by the dest register name
+  ci_map = ctx_closure_info(ctx)
+  mset(ci_map, dest, cinfo)
+
   dest
+}
+
+// Find captured variables in a list of statements
+// Returns array of variable names that are in enclosing scope but not in param_set
+find_captures_in_stmts(stmts:I param_set:I ctx:I) I {
+  result = array<I>()
+  seen = M()
+  _find_captures_stmts(stmts, param_set, ctx, result, seen, M())
+  result
+}
+
+_find_captures_stmts(stmts:I param_set:I ctx:I result:I seen:I local_set:I) I {
+  i := 0
+  while i < stmts.len() {
+    _find_captures_stmt(stmts.get(i), param_set, ctx, result, seen, local_set)
+    i = i + 1
+    0
+  }
+  0
+}
+
+_find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
+  stag = load64(stmt)
+  stag == ST_EXPR ? _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) :
+  stag == ST_LET ? {
+    val = load64(stmt + 16)
+    _find_captures_expr(val, param_set, ctx, result, seen, local_set)
+    // Add the let-bound name to local_set so it's not treated as a capture
+    mset(local_set, load64(stmt + 8), 1)
+  } :
+  stag == ST_ASSIGN ? {
+    _find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    // The assigned name might itself be a capture
+    aname = load64(stmt + 8)
+    mget(param_set, aname) == 0 && mget(local_set, aname) == 0 && mget(seen, aname) == 0 && ctx_get_local(ctx, aname) != 0 ? {
+      mset(seen, aname, 1)
+      result.push(aname)
+    } : 0
+  } :
+  stag == ST_RETURN ? _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) :
+  stag == ST_IF ? {
+    _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
+    _find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    else_stmts = load64(stmt + 24)
+    else_stmts != 0 ? _find_captures_stmts(else_stmts, param_set, ctx, result, seen, local_set) : 0
+  } :
+  stag == ST_WHILE ? {
+    _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
+    _find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+  } :
+  0
+  0
+}
+
+_find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
+  if expr == 0 { return 0 }
+  etag = load64(expr)
+  etag == EX_IDENT ? {
+    name = load64(expr + 8)
+    // It's a capture if: not a param, not locally defined, not already seen, and exists in enclosing ctx
+    mget(param_set, name) == 0 && mget(local_set, name) == 0 && mget(seen, name) == 0 && ctx_get_local(ctx, name) != 0 ? {
+      mset(seen, name, 1)
+      result.push(name)
+    } : 0
+  } :
+  etag == EX_CALL ? {
+    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    args = load64(expr + 16)
+    ai := 0
+    while ai < args.len() {
+      _find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  } :
+  etag == EX_BINOP ? {
+    _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    _find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+  } :
+  etag == EX_UNARYOP ? {
+    _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+  } :
+  etag == EX_METHOD_CALL ? {
+    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    args = load64(expr + 24)
+    ai := 0
+    while ai < args.len() {
+      _find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  } :
+  etag == EX_FIELD_ACCESS ? {
+    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+  } :
+  etag == EX_IF ? {
+    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    _find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+  } :
+  etag == EX_ARRAY_LIT ? {
+    elems = load64(expr + 8)
+    ai := 0
+    while ai < elems.len() {
+      _find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  } :
+  etag == EX_TUPLE_LIT ? {
+    elems = load64(expr + 8)
+    ai := 0
+    while ai < elems.len() {
+      _find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  } :
+  0
+  0
 }
 
 // ── lower_array_lit ─────────────────────────────────────────────
@@ -2481,7 +2801,23 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
   ret_type_name = load64(func + 16)
   ret_type = ret_type_name != 0 ? ir_type_for_return(ret_type_name, struct_defs, enum_defs) : IRTY_INT
 
-  make_ir_function(func_name, param_names, ctx_instrs(ctx), ret_type, param_sizes)
+  ir_fn = make_ir_function(func_name, param_names, ctx_instrs(ctx), ret_type, param_sizes)
+
+  // Collect lifted functions (lambdas) from this function's context
+  // We return them by storing in a temporary global-like mechanism:
+  // The caller (lower_with_extra_structs) will read ctx_lifted_fns after this call
+  // Store lifted fns in the function object temporarily at a known location
+  // Actually, use a simpler approach: return an array [ir_fn, lifted0, lifted1, ...]
+  result_arr = array<I>()
+  result_arr.push(ir_fn)
+  lfns = ctx_lifted_fns(ctx)
+  lfi := 0
+  while lfi < lfns.len() {
+    result_arr.push(lfns.get(lfi))
+    lfi = lfi + 1
+    0
+  }
+  result_arr
 }
 
 // ── lower ───────────────────────────────────────────────────────
@@ -2626,8 +2962,15 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     fname = load64(func)
     // Handle module name mangling
     func_name = module_name != 0 ? module_name + "__" + fname : fname
-    ir_fn = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map)
-    ir_functions.push(ir_fn)
+    fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map)
+    // fn_result is [ir_fn, lifted0, lifted1, ...]
+    ir_functions.push(fn_result.get(0))
+    fri2 := 1
+    while fri2 < fn_result.len() {
+      ir_functions.push(fn_result.get(fri2))
+      fri2 = fri2 + 1
+      0
+    }
     fi2 = fi2 + 1
     0
   }
@@ -2645,8 +2988,14 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       mname = load64(method)
       // Mangle: module__Type__method or Type_method
       mangled = module_name != 0 ? module_name + "__" + target_type + "__" + mname : target_type + "_" + mname
-      ir_fn = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map)
-      ir_functions.push(ir_fn)
+      mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map)
+      ir_functions.push(mfn_result.get(0))
+      mfri := 1
+      while mfri < mfn_result.len() {
+        ir_functions.push(mfn_result.get(mfri))
+        mfri = mfri + 1
+        0
+      }
       mi = mi + 1
       0
     }
