@@ -452,7 +452,7 @@ lower_binop_arith_or_cmp(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
       ctx_emit(ctx, ir_float_cmpop(dest, cmpop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
-    } else if left_type == IRTY_STR {
+    } else { if left_type == IRTY_STR {
       ctx_emit(ctx, ir_string_cmpop(dest, cmpop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
@@ -460,7 +460,7 @@ lower_binop_arith_or_cmp(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
       ctx_emit(ctx, ir_cmpop(dest, cmpop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
-    }
+    } }
   }
 }
 
@@ -839,12 +839,12 @@ lower_call_user(ctx:I name:I args:I) I {
         ctx_emit(ctx, ir_inst2(IR_FCALL, dest, local_reg, arg_regs.get(0)))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
-      } else if args.len() == 2 {
+      } else { if args.len() == 2 {
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_inst3(IR_FCALL2, dest, local_reg, arg_regs.get(0), arg_regs.get(1)))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
-      } else if args.len() == 3 {
+      } else { if args.len() == 3 {
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_inst4(IR_FCALL3, dest, local_reg, arg_regs.get(0), arg_regs.get(1), arg_regs.get(2)))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
@@ -857,7 +857,7 @@ lower_call_user(ctx:I name:I args:I) I {
         ctx_emit(ctx, ir_inst2(IR_FCALL, dest, local_reg, zero_reg))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
-      }
+      } } }
     }
   } else {
     // Regular user-defined function call
@@ -2407,13 +2407,13 @@ lower_lambda(ctx:I expr:I) I {
         bexpr = load64(stmt + 8)
         reg = lower_expr(lctx, bexpr)
         ctx_emit(lctx, ir_ret(reg))
-      } else if stag == ST_RETURN {
+      } else { if stag == ST_RETURN {
         val_expr = load64(stmt + 8)
         reg = lower_expr(lctx, val_expr)
         ctx_emit(lctx, ir_ret(reg))
       } else {
         lower_stmt(lctx, stmt)
-      }
+      } }
     } else {
       lower_stmt(lctx, stmt)
     }
@@ -2913,13 +2913,13 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
         expr = load64(stmt + 8)
         reg = lower_expr(ctx, expr)
         ctx_emit(ctx, ir_ret(reg))
-      } else if stag == ST_RETURN {
+      } else { if stag == ST_RETURN {
         val_expr = load64(stmt + 8)
         reg = lower_expr(ctx, val_expr)
         ctx_emit(ctx, ir_ret(reg))
       } else {
         lower_stmt(ctx, stmt)
-      }
+      } }
     } else {
       lower_stmt(ctx, stmt)
     }

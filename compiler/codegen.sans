@@ -177,25 +177,25 @@ llvm_escape_string(s:S) S {
       store8(0, buf + pos + 1, 48)
       store8(0, buf + pos + 2, 65)
       pos = pos + 3
-    } else if c == 9 {
+    } else { if c == 9 {
       // \t -> \09
       store8(0, buf + pos, 92)
       store8(0, buf + pos + 1, 48)
       store8(0, buf + pos + 2, 57)
       pos = pos + 3
-    } else if c == 92 {
+    } else { if c == 92 {
       // \ -> \5C
       store8(0, buf + pos, 92)
       store8(0, buf + pos + 1, 53)
       store8(0, buf + pos + 2, 67)
       pos = pos + 3
-    } else if c == 34 {
+    } else { if c == 34 {
       // " -> \22
       store8(0, buf + pos, 92)
       store8(0, buf + pos + 1, 50)
       store8(0, buf + pos + 2, 50)
       pos = pos + 3
-    } else if c < 32 {
+    } else { if c < 32 {
       // Other control chars -> \HH
       store8(0, buf + pos, 92)
       hi = c / 16
@@ -206,7 +206,7 @@ llvm_escape_string(s:S) S {
     } else {
       store8(0, buf + pos, c)
       pos = pos + 1
-    }
+    } } } } }
     i = i + 1
     0
   }

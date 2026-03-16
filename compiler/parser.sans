@@ -1331,10 +1331,10 @@ desugar_interp_string(p:I parts_ptr:I) I {
     expr := 0
     if tag == INTERP_LITERAL {
       expr = make_string_lit(val)
-    } else if tag == INTERP_IDENT {
+    } else { if tag == INTERP_IDENT {
       // Just create an identifier (type checker handles str conversion)
       expr = make_ident(val)
-    } else if tag == INTERP_EXPR {
+    } else { if tag == INTERP_EXPR {
       // Re-lex the expression text, parse it, wrap in str()
       expr_text = val  // string pointer
       sub_tokens = lex(expr_text)
@@ -1343,7 +1343,7 @@ desugar_interp_string(p:I parts_ptr:I) I {
       str_args = array<I>()
       str_args.push(inner_expr)
       expr = make_call(ptr("str"), str_args)
-    }
+    } } }
 
     if result == 0 {
       result = expr
@@ -1590,19 +1590,19 @@ parse_program(p:I) I {
 
     if kind == TK_IMPORT {
       imports.push(parse_import(p))
-    } else if kind == TK_GLOBAL {
+    } else { if kind == TK_GLOBAL {
       globals.push(parse_global_def(p))
-    } else if kind == TK_ENUM {
+    } else { if kind == TK_ENUM {
       enums.push(parse_enum_def(p))
-    } else if kind == TK_STRUCT {
+    } else { if kind == TK_STRUCT {
       structs.push(parse_struct_def(p))
-    } else if kind == TK_TRAIT {
+    } else { if kind == TK_TRAIT {
       traits.push(parse_trait_def(p))
-    } else if kind == TK_IMPL {
+    } else { if kind == TK_IMPL {
       impls.push(parse_impl_block(p))
-    } else if kind == TK_FN {
+    } else { if kind == TK_FN {
       functions.push(parse_function(p))
-    } else if kind == TK_IDENT {
+    } else { if kind == TK_IDENT {
       // Check if next token is ( or < — if so, parse as fn without keyword
       next_kind = p_peek_kind_at(p, 1)
       if next_kind == TK_LPAREN || next_kind == TK_LT {
@@ -1618,7 +1618,7 @@ parse_program(p:I) I {
       print(kind)
       print("\n")
       exit(1)
-    }
+    } } } } } } } }
   }
 
   make_program(imports, globals, functions, structs, enums, traits, impls)

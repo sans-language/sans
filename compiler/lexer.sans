@@ -91,13 +91,13 @@ lx_skip_block_comment(lx:I src:S) I {
       lx_advance(lx, src)
       lx_advance(lx, src)
       depth = depth + 1
-    } else if ch == 42 && lx_peek_at(lx, src, 1) == 47 {
+    } else { if ch == 42 && lx_peek_at(lx, src, 1) == 47 {
       lx_advance(lx, src)
       lx_advance(lx, src)
       depth = depth - 1
     } else {
       lx_advance(lx, src)
-    }
+    } }
   }
   0
 }
@@ -191,22 +191,22 @@ lx_build_escaped(src:S start:I end:I) S {
       if nc == 110 {
         result = result + "\n"
         i = i + 2
-      } else if nc == 116 {
+      } else { if nc == 116 {
         result = result + "\t"
         i = i + 2
-      } else if nc == 92 {
+      } else { if nc == 92 {
         result = result + "\\"
         i = i + 2
-      } else if nc == 34 {
+      } else { if nc == 34 {
         result = result + "\""
         i = i + 2
-      } else if nc == 123 {
+      } else { if nc == 123 {
         result = result + "{"
         i = i + 2
       } else {
         result = result + "\\"
         i = i + 1
-      }
+      } } } } }
     } else {
       result = result + src[i:i + 1]
       i = i + 1
@@ -268,7 +268,7 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
     if ch == 92 {
       // backslash escape — skip 2 chars
       i = i + 2
-    } else if ch == 123 {
+    } else { if ch == 123 {
       // '{' — start of interpolation
       // Scan for matching closing brace
       probe := i + 1
@@ -277,11 +277,11 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
         pc = char_at(src, probe)
         if pc == 34 || pc == 92 {
           depth = -1
-        } else if pc == 123 {
+        } else { if pc == 123 {
           depth = depth + 1
-        } else if pc == 125 {
+        } else { if pc == 125 {
           depth = depth - 1
-        }
+        } } }
         if depth > 0 { probe = probe + 1 }
       }
 
@@ -331,7 +331,7 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
       }
     } else {
       i = i + 1
-    }
+    } }
   }
 
   // Flush remaining literal text
@@ -364,7 +364,7 @@ lx_string(lx:I src:S) I {
       // backslash — skip next char too
       lx_advance(lx, src)
       if lx_at_end(lx) == 0 { lx_advance(lx, src) }
-    } else if ch == 123 {
+    } else { if ch == 123 {
       // Check if this is a valid interpolation (scan for matching })
       cur_pos = lx_pos(lx)
       probe := cur_pos + 1
@@ -374,11 +374,11 @@ lx_string(lx:I src:S) I {
         pc = char_at(src, probe)
         if pc == 34 || pc == 92 {
           depth = -1
-        } else if pc == 123 {
+        } else { if pc == 123 {
           depth = depth + 1
-        } else if pc == 125 {
+        } else { if pc == 125 {
           depth = depth - 1
-        }
+        } } }
         if depth > 0 { probe = probe + 1 }
       }
       if probe < src_len && depth == 0 {
@@ -387,7 +387,7 @@ lx_string(lx:I src:S) I {
       lx_advance(lx, src)
     } else {
       lx_advance(lx, src)
-    }
+    } }
   }
 
   content_end = lx_pos(lx)
@@ -414,87 +414,87 @@ lx_op(lx:I src:S ch:I line:I col:I) I {
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_PLUS_EQ, 0, line, col) }
     else { make_token(TK_PLUS, 0, line, col) }
-  } else if ch == 45 {
+  } else { if ch == 45 {
     // '-'
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_MINUS_EQ, 0, line, col) }
     else { make_token(TK_MINUS, 0, line, col) }
-  } else if ch == 42 {
+  } else { if ch == 42 {
     // '*'
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_STAR_EQ, 0, line, col) }
     else { make_token(TK_STAR, 0, line, col) }
-  } else if ch == 47 {
+  } else { if ch == 47 {
     // '/' (not comment — those handled before)
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_SLASH_EQ, 0, line, col) }
     else { make_token(TK_SLASH, 0, line, col) }
-  } else if ch == 37 {
+  } else { if ch == 37 {
     // '%'
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_PERCENT_EQ, 0, line, col) }
     else { make_token(TK_PERCENT, 0, line, col) }
-  } else if ch == 61 {
+  } else { if ch == 61 {
     // '='
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_EQ_EQ, 0, line, col) }
     else if nx == 62 { lx_advance(lx, src)
       make_token(TK_FAT_ARROW, 0, line, col) }
     else { make_token(TK_EQ, 0, line, col) }
-  } else if ch == 33 {
+  } else { if ch == 33 {
     // '!'
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_NOT_EQ, 0, line, col) }
     else { make_token(TK_BANG, 0, line, col) }
-  } else if ch == 60 {
+  } else { if ch == 60 {
     // '<'
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_LT_EQ, 0, line, col) }
     else { make_token(TK_LT, 0, line, col) }
-  } else if ch == 62 {
+  } else { if ch == 62 {
     // '>'
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_GT_EQ, 0, line, col) }
     else { make_token(TK_GT, 0, line, col) }
-  } else if ch == 38 {
+  } else { if ch == 38 {
     // '&' — must be &&
     if nx == 38 { lx_advance(lx, src)
       make_token(TK_AND, 0, line, col) }
     else { 0 }
-  } else if ch == 124 {
+  } else { if ch == 124 {
     // '|'
     if nx == 124 { lx_advance(lx, src)
       make_token(TK_OR, 0, line, col) }
     else { make_token(TK_PIPE, 0, line, col) }
-  } else if ch == 58 {
+  } else { if ch == 58 {
     // ':'
     if nx == 58 { lx_advance(lx, src)
       make_token(TK_COLON_COLON, 0, line, col) }
     else if nx == 61 { lx_advance(lx, src)
       make_token(TK_COLON_EQ, 0, line, col) }
     else { make_token(TK_COLON, 0, line, col) }
-  } else if ch == 40 {
+  } else { if ch == 40 {
     make_token(TK_LPAREN, 0, line, col)
-  } else if ch == 41 {
+  } else { if ch == 41 {
     make_token(TK_RPAREN, 0, line, col)
-  } else if ch == 123 {
+  } else { if ch == 123 {
     make_token(TK_LBRACE, 0, line, col)
-  } else if ch == 125 {
+  } else { if ch == 125 {
     make_token(TK_RBRACE, 0, line, col)
-  } else if ch == 91 {
+  } else { if ch == 91 {
     make_token(TK_LBRACKET, 0, line, col)
-  } else if ch == 93 {
+  } else { if ch == 93 {
     make_token(TK_RBRACKET, 0, line, col)
-  } else if ch == 44 {
+  } else { if ch == 44 {
     make_token(TK_COMMA, 0, line, col)
-  } else if ch == 46 {
+  } else { if ch == 46 {
     make_token(TK_DOT, 0, line, col)
-  } else if ch == 63 {
+  } else { if ch == 63 {
     make_token(TK_QUESTION, 0, line, col)
   } else {
     // Unknown character — skip
     0
-  }
+  } } } } } } } } } } } } } } } } } } } } }
 }
 
 // ── Main entry point ───────────────────────────────────────────────
