@@ -2146,7 +2146,13 @@ impl IrBuilder {
                     (Some(IrType::Int), _) if method == "get" => {
                         let key_reg = self.lower_expr(&args[0]);
                         let dest = self.fresh_reg();
-                        self.instructions.push(Instruction::MapGet { dest: dest.clone(), map: obj_reg, key: key_reg });
+                        // Disambiguate: if arg is String → MapGet, else → ArrayGet
+                        let arg_type = self.reg_types.get(&key_reg).cloned().unwrap_or(IrType::Int);
+                        if arg_type == IrType::Str {
+                            self.instructions.push(Instruction::MapGet { dest: dest.clone(), map: obj_reg, key: key_reg });
+                        } else {
+                            self.instructions.push(Instruction::ArrayGet { dest: dest.clone(), array: obj_reg, index: key_reg });
+                        }
                         self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
@@ -2154,7 +2160,14 @@ impl IrBuilder {
                         let key_reg = self.lower_expr(&args[0]);
                         let val_reg = self.lower_expr(&args[1]);
                         let dest = self.fresh_reg();
-                        self.instructions.push(Instruction::MapSet { dest: dest.clone(), map: obj_reg, key: key_reg, value: val_reg });
+                        // Disambiguate: if first arg is String → MapSet, else → ArraySet
+                        let arg_type = self.reg_types.get(&key_reg).cloned().unwrap_or(IrType::Int);
+                        if arg_type == IrType::Str {
+                            self.instructions.push(Instruction::MapSet { dest: dest.clone(), map: obj_reg, key: key_reg, value: val_reg });
+                        } else {
+                            self.instructions.push(Instruction::ArraySet { array: obj_reg, index: key_reg, value: val_reg });
+                            self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        }
                         self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
@@ -2219,10 +2232,114 @@ impl IrBuilder {
                         return dest;
                     }
                     (Some(IrType::Int), _) if method == "contains" => {
-                        let needle_reg = self.lower_expr(&args[0]);
+                        let arg_reg = self.lower_expr(&args[0]);
                         let dest = self.fresh_reg();
-                        self.instructions.push(Instruction::StringContains { dest: dest.clone(), string: obj_reg, needle: needle_reg });
+                        let arg_type = self.reg_types.get(&arg_reg).cloned().unwrap_or(IrType::Int);
+                        if arg_type == IrType::Str {
+                            self.instructions.push(Instruction::StringContains { dest: dest.clone(), string: obj_reg, needle: arg_reg });
+                        } else {
+                            self.instructions.push(Instruction::ArrayContains { dest: dest.clone(), array: obj_reg, value: arg_reg });
+                        }
                         self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "map" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayMap { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "filter" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayFilter { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "any" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayAny { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "find" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayFind { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "enumerate" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayEnumerate { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "zip" => {
+                        let other_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayZip { dest: dest.clone(), array: obj_reg, other: other_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "starts_with" || method == "sw" => {
+                        let prefix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringStartsWith { dest: dest.clone(), string: obj_reg, prefix: prefix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "ends_with" || method == "ew" => {
+                        let suffix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringEndsWith { dest: dest.clone(), string: obj_reg, suffix: suffix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "add" => {
+                        let other_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringConcat { dest: dest.clone(), left: obj_reg, right: other_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "unwrap" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultUnwrap { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "is_ok" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultIsOk { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "is_err" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultIsErr { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "error" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultError { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "unwrap_or" => {
+                        let default_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultUnwrapOr { dest: dest.clone(), result: obj_reg, default: default_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "stringify" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
                     (Some(IrType::Int), _) if method == "split" => {

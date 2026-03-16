@@ -218,7 +218,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     for o_path in &runtime_o_paths {
         link_args.push(o_path.to_str().unwrap().to_string());
     }
-    link_args.extend(["-lcurl".to_string(), "-o".to_string(), output_path_str.to_string()]);
+    link_args.extend(["-lcurl".to_string(), "-Wl,-stack_size,0x4000000".to_string(), "-o".to_string(), output_path_str.to_string()]);
 
     let link_status = process::Command::new("cc")
         .args(&link_args)
