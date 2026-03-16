@@ -228,9 +228,11 @@ irm_struct_defs(m:I) I = load64(m + 16)
 // offset 56: fn_ret_types (I) — Map: func name -> IrType tag
 // offset 64: break_label (I) — current loop break label (or 0)
 // offset 72: global_names (I) — Map: global name -> IrType tag
+// offset 80: continue_label (I) — current loop continue label (or 0)
+// offset 88: reg_struct_names (I) — Map: register name -> struct name (for struct field access)
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(80)
+  ctx = alloc(96)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -241,6 +243,8 @@ make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   store64(ctx + 56, fn_ret_types)
   store64(ctx + 64, 0)           // break_label
   store64(ctx + 72, global_names)
+  store64(ctx + 80, 0)           // continue_label
+  store64(ctx + 88, ptr(M()))    // reg_struct_names map
   ctx
 }
 
@@ -257,6 +261,19 @@ ctx_break_label(ctx:I) I = load64(ctx + 64)
 ctx_set_break_label(ctx:I v:I) I { store64(ctx + 64, v)
   0 }
 ctx_global_names(ctx:I) I = load64(ctx + 72)
+ctx_continue_label(ctx:I) I = load64(ctx + 80)
+ctx_set_continue_label(ctx:I v:I) I { store64(ctx + 80, v)
+  0 }
+ctx_reg_struct_names(ctx:I) I = load64(ctx + 88)
+ctx_set_struct_name(ctx:I reg:I name:I) I {
+  m = load64(ctx + 88)
+  mset(m, reg, name)
+  0
+}
+ctx_get_struct_name(ctx:I reg:I) I {
+  m = load64(ctx + 88)
+  mget(m, reg)
+}
 
 // Emit: push instruction onto the instructions array
 ctx_emit(ctx:I inst:I) I {
@@ -311,6 +328,8 @@ ctx_reset(ctx:I) I {
   store64(ctx + 24, ptr(M()))    // fresh locals
   store64(ctx + 32, ptr(M()))    // fresh reg_types
   store64(ctx + 64, 0)           // break_label
+  store64(ctx + 80, 0)           // continue_label
+  store64(ctx + 88, ptr(M()))    // reg_struct_names map
   0
 }
 
@@ -799,9 +818,9 @@ lower_expr(ctx:I expr:I) I {
     } : {
       // Not a local — check globals
       gmap = ctx_global_names(ctx)
-      gtype = mget(gmap, name)
-      gtype != 0 ? {
+      mhas(gmap, name) == 1 ? {
         // Global variable — emit GlobalLoad
+        gtype = mget(gmap, name)
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_global_load(dest, name))
         ctx_set_reg_type(ctx, dest, gtype)
@@ -1063,8 +1082,15 @@ lower_stmt(ctx:I stmt:I) I {
         ctx_set_local(ctx, name, val_reg)
       }
     } : {
-      // New local binding (bare assignment: x = 10)
-      ctx_set_local(ctx, name, val_reg)
+      // Check if it's a global variable
+      gmap = ctx_global_names(ctx)
+      mhas(gmap, name) == 1 ? {
+        // Global variable — emit GlobalStore
+        ctx_emit(ctx, ir_global_store(name, val_reg))
+      } : {
+        // New local binding (bare assignment: x = 10)
+        ctx_set_local(ctx, name, val_reg)
+      }
     }
     0
   } :
@@ -1085,9 +1111,11 @@ lower_stmt(ctx:I stmt:I) I {
     body_label = ctx_fresh_label(ctx)
     end_label = ctx_fresh_label(ctx)
 
-    // Save old break label
+    // Save old break/continue labels
     old_break = ctx_break_label(ctx)
+    old_continue = ctx_continue_label(ctx)
     ctx_set_break_label(ctx, end_label)
+    ctx_set_continue_label(ctx, cond_label)
 
     ctx_emit(ctx, ir_jump(cond_label))
     ctx_emit(ctx, ir_label(cond_label))
@@ -1098,8 +1126,9 @@ lower_stmt(ctx:I stmt:I) I {
     ctx_emit(ctx, ir_jump(cond_label))
     ctx_emit(ctx, ir_label(end_label))
 
-    // Restore old break label
+    // Restore old break/continue labels
     ctx_set_break_label(ctx, old_break)
+    ctx_set_continue_label(ctx, old_continue)
     0
   } :
 
@@ -1130,8 +1159,10 @@ lower_stmt(ctx:I stmt:I) I {
     0
   } :
 
-  // ST_CONTINUE — jump back to loop condition (not fully tracked; stub)
+  // ST_CONTINUE — jump back to loop condition
   tag == ST_CONTINUE ? {
+    cl = ctx_continue_label(ctx)
+    cl != 0 ? ctx_emit(ctx, ir_jump(cl)) : 0
     0
   } :
 
@@ -1218,7 +1249,9 @@ lower_for_in(ctx:I stmt:I) I {
   end_label = ctx_fresh_label(ctx)
 
   old_break = ctx_break_label(ctx)
+  old_continue = ctx_continue_label(ctx)
   ctx_set_break_label(ctx, end_label)
+  ctx_set_continue_label(ctx, cond_label)
 
   ctx_emit(ctx, ir_jump(cond_label))
   ctx_emit(ctx, ir_label(cond_label))
@@ -1260,6 +1293,7 @@ lower_for_in(ctx:I stmt:I) I {
   ctx_emit(ctx, ir_jump(cond_label))
   ctx_emit(ctx, ir_label(end_label))
   ctx_set_break_label(ctx, old_break)
+  ctx_set_continue_label(ctx, old_continue)
   0
 }
 
@@ -1821,12 +1855,30 @@ lower_field_access(ctx:I expr:I) I {
 
   // Struct field access
   obj_type == IRTY_STRUCT ? {
-    // Look up field index from struct_defs
+    // Look up field index from struct_defs using tracked struct name
     sd = ctx_struct_defs(ctx)
-    // We need the struct name — for now we don't track it in reg_types
-    // Use field_load with best-effort index
+    struct_name = ctx_get_struct_name(ctx, obj_reg)
+    struct_fields = struct_name != 0 ? mget(sd, struct_name) : 0
+    num_fields = struct_fields != 0 ? struct_fields.len() : 1
+
+    // Find field index using map with proper string comparison
+    field_idx := 0
+    struct_fields != 0 ? {
+      fi_map = M()
+      k := 0
+      while k < struct_fields.len() {
+        mset(fi_map, struct_fields.get(k), k + 1)
+        k = k + 1
+        0
+      }
+      looked = mget(fi_map, field)
+      looked != 0 ? { field_idx = looked - 1
+        0 } : 0
+      0
+    } : 0
+
     dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_field_load(dest, obj_reg, 0, 1))
+    ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, num_fields))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } :
@@ -2097,6 +2149,20 @@ lower_struct_lit(ctx:I expr:I) I {
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_struct_alloc(dest, num_fields))
   ctx_set_reg_type(ctx, dest, IRTY_STRUCT)
+  ctx_set_struct_name(ctx, dest, name)
+
+  // Build map from field name -> (index + 1) for O(1) lookup with proper string comparison
+  // Store index+1 so that index 0 is distinguishable from "not found" (mget returns 0)
+  field_index_map = M()
+  struct_fields != 0 ? {
+    j := 0
+    while j < struct_fields.len() {
+      mset(field_index_map, struct_fields.get(j), j + 1)
+      j = j + 1
+      0
+    }
+    0
+  } : 0
 
   i := 0
   while i < field_names.len() {
@@ -2104,20 +2170,13 @@ lower_struct_lit(ctx:I expr:I) I {
     val_reg = lower_expr(ctx, field_values.get(i))
 
     // Find field index in struct definition
-    field_idx = 0
+    field_idx := i
     struct_fields != 0 ? {
-      j := 0
-      while j < struct_fields.len() {
-        struct_fields.get(j) == fname ? { field_idx = j
-          0 } : 0
-        j = j + 1
-        0
-      }
+      looked_up = mget(field_index_map, fname)
+      looked_up != 0 ? { field_idx = looked_up - 1
+        0 } : 0
       0
-    } : {
-      field_idx = i
-      0
-    }
+    } : 0
 
     ctx_emit(ctx, ir_field_store(dest, field_idx, val_reg))
     i = i + 1

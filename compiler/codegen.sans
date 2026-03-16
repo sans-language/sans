@@ -541,12 +541,14 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FLOAT_CONST (1): [op, dest, bits] ──
+  // ── IR_FLOAT_CONST (1): [op, dest, float_str_ptr] ──
   if op == IR_FLOAT_CONST {
-    bits = ir_field(inst, 16)
-    r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = add i64 " + str(bits) + ", 0")
-    cg_set_val(cg, dest, r)
+    float_str = ir_field(inst, 16)
+    // float_str is a string pointer containing the float text (e.g. "3.14")
+    // Emit LLVM bitcast from double to i64
+    ftmp = cg_fresh_reg(cg)
+    emit(cg, "  " + ftmp + " = bitcast double " + float_str + " to i64")
+    cg_set_val(cg, dest, ftmp)
     return 0
   }
 
