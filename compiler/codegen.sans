@@ -352,8 +352,7 @@ emit_externals(cg:I) I {
   // ── Sans runtime: Socket helper ──
   emit(cg, "declare i64 @sans_bind_port(i64, i64)")
 
-  // ── Sans runtime: Args helper ──
-  emit(cg, "declare i64 @__sans_args()")
+  // __sans_args is defined inline (not declared as external)
 
   // ── LLVM intrinsics ──
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
@@ -2428,13 +2427,7 @@ compile_to_ll(module:I output_path:S) I {
   // 3. Emit global variable declarations
   emit_globals(cg, module)
 
-  // 4. First pass: declare all functions
-  i = 0
-  while i < nf {
-    emit_function_decl(cg, funcs.get(i))
-    i = i + 1
-    0
-  }
+  // 4. Skip function declarations — LLVM IR doesn't require forward decls
   emit(cg, "")
 
   // 5. If has_main: emit main wrapper and __sans_args
