@@ -294,7 +294,12 @@ build(source_path:S output_path:S) I {
   // 12. Compile runtime .sans modules
   // Use the Rust compiler (sans) to compile each runtime module to .o
   // The self-hosted compiler needs pre-compiled runtime, or we use sans
-  runtime_dir = dir_of(source_path) + "/../runtime"
+  // Use runtime/ relative to CWD (compiler is run from repo root),
+  // or fall back to source-relative path for in-compiler-dir builds
+  runtime_dir_cwd = "runtime"
+  runtime_dir_src = dir_of(source_path) + "/../runtime"
+  // Check if runtime/log.sans exists in CWD-relative path
+  runtime_dir = fexists(runtime_dir_cwd + "/log.sans") == 1 ? runtime_dir_cwd : runtime_dir_src
   runtime_modules = array<I>()
   runtime_modules.push("log")
   runtime_modules.push("result")
@@ -324,7 +329,7 @@ build(source_path:S output_path:S) I {
     empty_fn_ret = M()
     rir = lower(rprog, 0, empty_fn_ret)
     r_ll = "/tmp/sans_" + rname + "_runtime.ll"
-    compile_to_ll(rir, r_ll)
+    compile_to_ll_runtime(rir, r_ll)
     sys("llc -filetype=obj -O2 -o " + o_path + " " + r_ll)
     sys("rm -f " + r_ll)
 

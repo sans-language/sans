@@ -1056,14 +1056,14 @@ parse_atom(p:I) I {
     p_at(p, TK_COLON_COLON) == 1 ? {
       p_advance(p)  // consume ::
       variant_name = p_expect_ident(p)
-      args = array<I>()
+      ev_args := array<I>()
       p_at(p, TK_LPAREN) == 1 ? {
         p_advance(p)  // consume (
-        args = parse_call_args(p)
+        ev_args = parse_call_args(p)
         p_expect(p, TK_RPAREN)
         0
       } : 0
-      return make_enum_variant(name, variant_name, args)
+      return make_enum_variant(name, variant_name, ev_args)
     } : 0
 
     // Check for function call: Name(args)

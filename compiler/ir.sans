@@ -217,7 +217,7 @@ irm_functions(m:I) I = load64(m)
 irm_globals(m:I) I = load64(m + 8)
 irm_struct_defs(m:I) I = load64(m + 16)
 
-// ── Lowering Context (80 bytes) ────────────────────────────────
+// ── Lowering Context (112 bytes) ───────────────────────────────
 // offset 0:  instructions (I) — Array of instruction pointers
 // offset 8:  reg_counter (I) — next register number
 // offset 16: label_counter (I) — next label number
@@ -230,9 +230,11 @@ irm_struct_defs(m:I) I = load64(m + 16)
 // offset 72: global_names (I) — Map: global name -> IrType tag
 // offset 80: continue_label (I) — current loop continue label (or 0)
 // offset 88: reg_struct_names (I) — Map: register name -> struct name (for struct field access)
+// offset 96: variant_tag_map (I) — Map: variant_name -> tag_index
+// offset 104: variant_fields_map (I) — Map: variant_name -> array of field type name strings
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(96)
+  ctx = alloc(112)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -245,6 +247,8 @@ make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   store64(ctx + 72, global_names)
   store64(ctx + 80, 0)           // continue_label
   store64(ctx + 88, ptr(M()))    // reg_struct_names map
+  store64(ctx + 96, 0)           // variant_tag_map (set later)
+  store64(ctx + 104, 0)          // variant_fields_map (set later)
   ctx
 }
 
@@ -387,20 +391,22 @@ is_arith_op(op:I) I {
 
 // ── lower_binop_normal ──────────────────────────────────────────
 // Handle non-short-circuit binary operators after both sides evaluated.
-lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
-  // String + String → StringConcat
-  op == OP_ADD ? left_type == IRTY_STR ? {
+lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I {
+  // String + String → StringConcat (if either side is string)
+  eff_type = left_type == IRTY_STR || right_type == IRTY_STR ? IRTY_STR :
+             left_type == IRTY_FLOAT || right_type == IRTY_FLOAT ? IRTY_FLOAT : left_type
+  op == OP_ADD ? eff_type == IRTY_STR ? {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_string_concat(dest, left_reg, right_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } : lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, left_type)
+  } : lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type)
   :
   // Arithmetic operators (SUB, MUL, DIV, MOD — ADD handled above)
-  is_arith_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, left_type)
+  is_arith_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type)
   :
   // Comparison operators
-  is_cmp_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, left_type)
+  is_cmp_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type)
   : {
     // Fallback — should not reach for valid programs
     dest = ctx_fresh_reg(ctx)
@@ -902,7 +908,8 @@ lower_expr(ctx:I expr:I) I {
       left_reg = lower_expr(ctx, left)
       right_reg = lower_expr(ctx, right)
       left_type = ctx_get_reg_type(ctx, left_reg)
-      lower_binop_normal(ctx, op, left_reg, right_reg, left_type)
+      right_type = ctx_get_reg_type(ctx, right_reg)
+      lower_binop_normal(ctx, op, left_reg, right_reg, left_type, right_type)
     }
   } :
 
@@ -1409,8 +1416,9 @@ lower_method_call(ctx:I expr:I) I {
 
 // ── lower_method_fallback (user-defined struct/enum methods) ────
 lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
-  // Mangle name as "Type_method" — for now default to calling method directly
-  // with obj as first arg
+  // Mangle name as "Type_method"
+  type_name = ctx_get_struct_name(ctx, obj_reg)
+  mangled = type_name != 0 ? type_name + "_" + method : method
   arg_regs = array<I>()
   arg_regs.push(obj_reg)
   i := 0
@@ -1420,7 +1428,7 @@ lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
     0
   }
   dest = ctx_fresh_reg(ctx)
-  ctx_emit(ctx, ir_call(dest, method, arg_regs))
+  ctx_emit(ctx, ir_call(dest, mangled, arg_regs))
   ctx_set_reg_type(ctx, dest, IRTY_INT)
   dest
 }
@@ -2009,7 +2017,7 @@ lower_match(ctx:I expr:I) I {
       ctx_emit(ctx, ir_label(arm_label))
 
       // Bind data fields
-      lower_match_bindings(ctx, scrutinee_reg, bindings)
+      lower_match_bindings(ctx, scrutinee_reg, bindings, variant_name)
 
       // Lower body
       body_reg = lower_expr(ctx, body_expr)
@@ -2024,7 +2032,7 @@ lower_match(ctx:I expr:I) I {
       ctx_emit(ctx, ir_label(arm_label))
 
       // Bind data fields
-      lower_match_bindings(ctx, scrutinee_reg, bindings)
+      lower_match_bindings(ctx, scrutinee_reg, bindings, variant_name)
 
       // Lower body
       body_reg = lower_expr(ctx, body_expr)
@@ -2047,45 +2055,54 @@ lower_match(ctx:I expr:I) I {
 // ── lower_match_lookup_tag ──────────────────────────────────────
 // Look up the tag index for a variant name from enum_defs.
 // enum_defs is Map: enum_name -> variants_array
-// Each variant in the array: [name, tag, num_data_fields]
+// Each variant entry array: [tag_index, num_data, field_type1, ...]
+// Variants are stored in order, so tag = position index.
+// We search by comparing variant_name against enum_name from the pattern.
 lower_match_lookup_tag(ctx:I scrutinee_reg:I variant_name:I) I {
-  // For now, use a simple sequential tag index.
-  // The enum_defs maps enum_name -> array of [name, tag, num_data]
-  // Since we don't track the enum name in reg_types, we search all enums.
-  ed = ctx_enum_defs(ctx)
-  keys = ed.keys()
-  i := 0
-  result := 0
-  while i < keys.len() {
-    enum_name = keys.get(i)
-    variants = mget(ed, enum_name)
-    variants != 0 ? {
-      j := 0
-      while j < variants.len() {
-        v = variants.get(j)
-        vname = load64(v)
-        vtag = load64(v + 8)
-        vname == variant_name ? { result = vtag
-          0 } : 0
-        j = j + 1
-        0
-      }
-      0
-    } : 0
-    i = i + 1
-    0
-  }
-  result
+  // We use the enum_defs to find which tag index a variant has.
+  // Since enum_defs stores variants in order, tag = array index.
+  // But we need to match by variant name, which isn't stored in vinfo_arr.
+  // Instead, we look at the parser's enum AST to find the tag.
+  // Workaround: search the enum_defs for the variant by name.
+  // The enum variants from the parser are stored as [name@0, fields@8] pointers.
+  // In the IR lower step, we built vinfo_arr from these, in order.
+  // So the tag index IS the position in the vinfo_arr.
+  // Since we don't store variant names in vinfo_arr, we need another approach.
+  // We'll store a separate map: "EnumName::VariantName" -> tag_index
+  // For now, use the enum_variant_tags map stored in the context.
+
+  // Search the variant_tags map at ctx offset 88... but that's reg_struct_names.
+  // Actually, let's use a simpler approach: search all enums' variant name arrays.
+  // The enum_defs format after our change stores [tag_index, num_data, ...].
+  // We need variant names too. Let's store them differently.
+
+  // Simplest fix: iterate and use the variant index as the tag.
+  // The variant_name comes from the match pattern. We need to find which
+  // enum contains it and what its position is.
+  // The tag is just the position within the enum definition.
+
+  // Use the enum_variant_tag_map that we'll build in the lowering init
+  tmap = load64(ctx + 96)  // variant_tag_map: "variant_name" -> tag_index
+  tmap != 0 && mhas(tmap, variant_name) ? mget(tmap, variant_name) : 0
 }
 
 // ── lower_match_bindings ────────────────────────────────────────
-lower_match_bindings(ctx:I scrutinee_reg:I bindings:I) I {
+lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
+  // Look up field types from variant_fields_map
+  vfmap = load64(ctx + 104)
+  field_types = vfmap != 0 && mhas(vfmap, variant_name) ? mget(vfmap, variant_name) : 0
   i := 0
   while i < bindings.len() {
     binding_name = bindings.get(i)
     data_reg = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_enum_data(data_reg, scrutinee_reg, i))
-    ctx_set_reg_type(ctx, data_reg, IRTY_INT)
+    // Determine the IR type from the field type name
+    irty := IRTY_INT
+    field_types != 0 && i < field_types.len() ? {
+      ft_name = field_types.get(i)
+      irty = ir_type_for_return(ft_name, ctx_struct_defs(ctx), ctx_enum_defs(ctx))
+    } : 0
+    ctx_set_reg_type(ctx, data_reg, irty)
     ctx_set_local(ctx, binding_name, data_reg)
     i = i + 1
     0
@@ -2210,21 +2227,20 @@ lower_enum_variant(ctx:I expr:I) I {
   variant_name = load64(expr + 16)
   args = load64(expr + 24)
 
-  // Look up variant info from enum_defs
+  // Look up tag from variant_tag_map
+  tmap = load64(ctx + 96)
+  tag_idx = tmap != 0 && mhas(tmap, variant_name) ? mget(tmap, variant_name) : 0
+
+  // Compute max_data from all variants in this enum
   ed = ctx_enum_defs(ctx)
   variants = mget(ed, enum_name)
-  tag_idx := 0
   max_data := 0
-
   variants != 0 ? {
     i := 0
     while i < variants.len() {
       v = variants.get(i)
-      vname = load64(v)
-      vtag = load64(v + 8)
-      vnum = load64(v + 16)
-      vname == variant_name ? { tag_idx = vtag
-        0 } : 0
+      // entry array: [tag_index, num_data, ...]; access element at index 1
+      vnum = v.get(1)
       vnum > max_data ? { max_data = vnum
         0 } : 0
       i = i + 1
@@ -2375,9 +2391,11 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
 // ── lower_function_body ─────────────────────────────────────────
 // Lower a single function's body, handling last-statement-as-return.
 // Returns an IrFunction pointer.
-lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
+lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I vtag_map:I vfields_map:I) I {
   // Create fresh context
   ctx = make_lower_ctx(struct_defs, enum_defs, fn_ret_types, global_names)
+  store64(ctx + 96, vtag_map)
+  store64(ctx + 104, vfields_map)
 
   // Set up params
   params_ast = load64(func + 8)   // Array of Param pointers [name@0, type@8]
@@ -2412,7 +2430,8 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
     ptype == "HR" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) :
     ptype == "HttpServer" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) :
     ptype == "HS" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) :
-    mhas(struct_defs, ptype) == 1 ? ctx_set_reg_type(ctx, arg_reg, IRTY_STRUCT) :
+    mhas(struct_defs, ptype) == 1 ? { ctx_set_reg_type(ctx, arg_reg, IRTY_STRUCT)
+      ctx_set_struct_name(ctx, arg_reg, ptype) } :
     mhas(enum_defs, ptype) == 1 ? ctx_set_reg_type(ctx, arg_reg, IRTY_ENUM) :
     ptype.sw("Array") ? ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) :
     ptype.sw("[") ? ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) :
@@ -2510,6 +2529,8 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
 
   // 2. Collect enum definitions: name -> array of [variant_name, tag, num_data] arrays
   enum_defs = M()
+  variant_tag_map = M()       // variant_name -> tag_index
+  variant_fields_map = M()    // variant_name -> array of field type name strings
   prog_enums = load64(program + 32)  // Array of EnumDef pointers
   ei := 0
   while ei < prog_enums.len() {
@@ -2523,12 +2544,20 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       vname = load64(variant)
       vfields = load64(variant + 8)
       num_data = vfields != 0 ? vfields.len() : 0
-      // Store as [tag_index, num_data_fields] array
+      // Store as [tag_index, num_data_fields, field_type_name1, field_type_name2, ...] array
       entry = array<I>()
       entry.push(vi)
       entry.push(num_data)
+      vfi := 0
+      while vfi < num_data {
+        entry.push(vfields.get(vfi))
+        vfi = vfi + 1
+        0
+      }
       vinfo_arr.push(entry)
-      // Also store variant name -> [tag, num_data] in enum_defs under "ename::vname"
+      // Store variant name -> tag index and field types
+      mset(variant_tag_map, vname, vi)
+      num_data > 0 ? mset(variant_fields_map, vname, vfields) : 0
       vi = vi + 1
       0
     }
@@ -2597,7 +2626,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     fname = load64(func)
     // Handle module name mangling
     func_name = module_name != 0 ? module_name + "__" + fname : fname
-    ir_fn = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names)
+    ir_fn = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map)
     ir_functions.push(ir_fn)
     fi2 = fi2 + 1
     0
@@ -2616,7 +2645,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       mname = load64(method)
       // Mangle: module__Type__method or Type_method
       mangled = module_name != 0 ? module_name + "__" + target_type + "__" + mname : target_type + "_" + mname
-      ir_fn = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names)
+      ir_fn = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map)
       ir_functions.push(ir_fn)
       mi = mi + 1
       0

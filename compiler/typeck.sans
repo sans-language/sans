@@ -7,10 +7,14 @@ import "parser"
 // offset 16: data (I)   — extra data (struct: name, enum: name, fn: params array)
 // offset 24: data2 (I)  — secondary (fn: ret type, tuple: elements, struct: fields map, enum: variants map)
 
+// Cast i64 pointer to string type (identity at runtime, but tells IR it's a string)
+as_str(v:I) S = v
+
 // ── Type accessors ──────────────────────────────────────────────────
 type_tag(t:I) I = load64(t)
 type_inner(t:I) I = load64(t + 8)
 type_data(t:I) I = load64(t + 16)
+type_data_s(t:I) S = as_str(load64(t + 16))
 type_data2(t:I) I = load64(t + 24)
 
 // ── Type constructors ───────────────────────────────────────────────
@@ -142,11 +146,11 @@ type_eq(a:I b:I) I {
     }
     return 1
   } : 0
-  // Struct/Enum: compare names
+  // Struct/Enum: compare names (use string comparison, not pointer)
   ta == TY_STRUCT || ta == TY_ENUM ? {
-    name_a = type_data(a)
-    name_b = type_data(b)
-    return name_a == name_b ? 1 : 0
+    sname_a = type_data_s(a)
+    sname_b = type_data_s(b)
+    return sname_a == sname_b ? 1 : 0
   } : 0
   // Fn: compare param count, each param, and return type
   ta == TY_FN ? {
@@ -1328,13 +1332,57 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       } : 0
     } : 0
 
+    // ── Check generic functions ──────────────────────────────────
+    mhas(generic_fns, name) ? {
+      gfunc = mget(generic_fns, name)
+      // gfunc is the function AST node: offset 0=name, 8=params, 16=ret_type, 24=body, 32=type_params
+      gparams_arr = load64(gfunc + 8)
+      gparams_p = load64(gparams_arr)
+      gnum_params = load64(gparams_arr + 8)
+      gret_name = load64(gfunc + 16)
+      gtype_params_arr = load64(gfunc + 32)
+      gtype_params_p = load64(gtype_params_arr)
+      gnum_type_params = load64(gtype_params_arr + 8)
+
+      nargs != gnum_params ? tc_error("wrong argument count calling '" + name + "': expected " + str(gnum_params) + " argument(s) but got " + str(nargs)) : 0
+
+      // Infer type parameters from arguments
+      type_map = map()
+      gi := 0
+      while gi < nargs {
+        actual_ty = check_expr(args[gi], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        gp = load64(gparams_p + gi * 8)
+        gp_type_name = as_str(load64(gp + 8))
+        // Check if param type name is one of the type params
+        is_tp := 0
+        tpi := 0
+        while tpi < gnum_type_params {
+          tp_node = load64(gtype_params_p + tpi * 8)
+          tp_name = as_str(load64(tp_node))
+          tp_name == gp_type_name ? { is_tp = 1 } : 0
+          tpi += 1
+        }
+        is_tp == 1 ? {
+          mset(type_map, gp_type_name, actual_ty)
+        } : 0
+        gi += 1
+      }
+      // Resolve return type: if it's a type param, use inferred type
+      gret_name_s = as_str(gret_name)
+      mhas(type_map, gret_name_s) ? {
+        return mget(type_map, gret_name_s)
+      } : {
+        return resolve_type(gret_name_s, structs, enums, mod_exports)
+      }
+    } : 0
+
     return tc_error("undefined function '" + name + "'")
   } : 0
 
   // ── Method call ─────────────────────────────────────────────────
   tag == EX_METHOD_CALL ? {
     mc_object = load64(expr + 8)
-    mc_method = load64(expr + 16)
+    mc_method = as_str(load64(expr + 16))
     mc_args = load64(expr + 24)
     mc_nargs = mc_args.len()
 
@@ -1866,9 +1914,13 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       return tc_error("no field '" + field + "' on struct '" + sname + "'")
     } : 0
 
-    // Fallback: treat as no-arg method call (e.g. array.len)
-    // Construct a synthetic method call and check it
-    // For now, return error
+    // Fallback: treat as no-arg method call (e.g. array.len, string.len)
+    field_s = as_str(field)
+    obj_tag == TY_ARRAY && field_s == "len" ? { return make_type(TY_INT) } : 0
+    obj_tag == TY_STRING && field_s == "len" ? { return make_type(TY_INT) } : 0
+    obj_tag == TY_MAP && field_s == "len" ? { return make_type(TY_INT) } : 0
+    obj_tag == TY_MAP && field_s == "keys" ? { return make_array_type(make_type(TY_STRING)) } : 0
+    obj_tag == TY_MAP && field_s == "vals" ? { return make_array_type(make_type(TY_INT)) } : 0
     return tc_error("field access on non-struct/tuple type " + type_to_string(obj_ty))
   } : 0
 
@@ -1960,10 +2012,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if type_tag(scrutinee_ty) != TY_ENUM { return tc_error("match scrutinee must be an enum type, got " + type_to_string(scrutinee_ty)) }
 
-    enum_name = type_data(scrutinee_ty)
+    enum_name_s = type_data_s(scrutinee_ty)
     // Get enum variants from enums map
-    if mhas(enums, enum_name) == 0 { return tc_error("undefined enum '" + enum_name + "'") }
-    variants = mget(enums, enum_name)
+    if mhas(enums, enum_name_s) == 0 { return tc_error("undefined enum '" + enum_name_s + "'") }
+    variants = mget(enums, enum_name_s)
 
     num_arms = load64(arms_arr + 8)
     if num_arms == 0 { return tc_error("match expression has no arms") }
@@ -1977,13 +2029,13 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       arm_body = load64(arm + 8)
 
       // pattern layout: offset 0 = enum_name, offset 8 = variant_name, offset 16 = bindings array ptr
-      pat_enum = load64(pattern)
+      pat_enum_s = as_str(load64(pattern))
       pat_variant = load64(pattern + 8)
 
-      if pat_enum != enum_name { return tc_error("pattern enum '" + pat_enum + "' does not match scrutinee enum '" + enum_name + "'") }
+      if pat_enum_s != enum_name_s { return tc_error("pattern enum '" + pat_enum_s + "' does not match scrutinee enum '" + enum_name_s + "'") }
 
       // Look up variant in variants map
-      if mhas(variants, pat_variant) == 0 { return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name + "'") }
+      if mhas(variants, pat_variant) == 0 { return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name_s + "'") }
       variant_fields_arr = mget(variants, pat_variant)
       // variant_fields_arr is an array of Type ptrs
       variant_fields_p = load64(variant_fields_arr)
@@ -1992,7 +2044,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       bindings_arr = load64(pattern + 16)
       bindings_p = load64(bindings_arr)
       bindings_len = load64(bindings_arr + 8)
-      if bindings_len != variant_fields_len { return tc_error("pattern '" + enum_name + "::" + pat_variant + "' expects " + str(variant_fields_len) + " binding(s) but got " + str(bindings_len)) }
+      if bindings_len != variant_fields_len { return tc_error("pattern '" + enum_name_s + "::" + pat_variant + "' expects " + str(variant_fields_len) + " binding(s) but got " + str(bindings_len)) }
 
       // Create new scope with bindings
       push_scope(locals)
@@ -2304,8 +2356,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
         imi := 0
         while imi < num_impl_methods {
           mdef = load64(impl_methods_p + imi * 8)
-          mdef_name = load64(mdef)
-          mdef_name == tm_name ? {
+          mdef_name = as_str(load64(mdef))
+          mdef_name == as_str(tm_name) ? {
             found = 1
             // Check params (skip self = first param)
             mparams_arr2 = load64(mdef + 8)
@@ -2402,9 +2454,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
       ret_ty = resolve_type(fret_name, structs_map, enums_map, mod_exports)
       mset(fn_env, fname, make_fn_sig(ptr(param_types), ret_ty))
     } : {
-      // Generic function — skip for now, store in generic_fns
-      // (simplified: just record the name)
-      mset(generic_fns, fname, 1)
+      // Generic function — store function node for call-site inference
+      mset(generic_fns, fname, func)
     }
     fi += 1
   }
