@@ -130,12 +130,14 @@ type_eq(a:I b:I) I {
   ta == TY_TUPLE ? {
     elems_a = type_data2(a)
     elems_b = type_data2(b)
-    len_a = load64(elems_a - 8)
-    len_b = load64(elems_b - 8)
+    len_a = load64(elems_a + 8)
+    len_b = load64(elems_b + 8)
     if len_a != len_b { return 0 }
+    elems_a_d = load64(elems_a)
+    elems_b_d = load64(elems_b)
     i := 0
     while i < len_a {
-      if type_eq(load64(elems_a + i * 8), load64(elems_b + i * 8)) == 0 { return 0 }
+      if type_eq(load64(elems_a_d + i * 8), load64(elems_b_d + i * 8)) == 0 { return 0 }
       i += 1
     }
     return 1
@@ -155,12 +157,14 @@ type_eq(a:I b:I) I {
     // If both have no params arrays, check return
     if params_a == 0 && params_b == 0 { return type_eq(ret_a, ret_b) }
     if params_a == 0 || params_b == 0 { return 0 }
-    len_a = load64(params_a - 8)
-    len_b = load64(params_b - 8)
+    len_a = load64(params_a + 8)
+    len_b = load64(params_b + 8)
     if len_a != len_b { return 0 }
+    params_a_d = load64(params_a)
+    params_b_d = load64(params_b)
     i := 0
     while i < len_a {
-      if type_eq(load64(params_a + i * 8), load64(params_b + i * 8)) == 0 { return 0 }
+      if type_eq(load64(params_a_d + i * 8), load64(params_b_d + i * 8)) == 0 { return 0 }
       i += 1
     }
     return type_eq(ret_a, ret_b)
@@ -364,12 +368,13 @@ type_to_string(t:I) S {
   tag == TY_TUPLE ? {
     elems = type_data2(t)
     if elems == 0 { return "()" }
-    len = load64(elems - 8)
+    len = load64(elems + 8)
+    elems_d = load64(elems)
     s := "("
     i := 0
     while i < len {
       if i > 0 { s = s + " " }
-      s = s + type_to_string(load64(elems + i * 8))
+      s = s + type_to_string(load64(elems_d + i * 8))
       i += 1
     }
     return s + ")"
@@ -379,11 +384,12 @@ type_to_string(t:I) S {
     ret = type_data2(t)
     s := "fn("
     params != 0 ? {
-      len = load64(params - 8)
+      len = load64(params + 8)
+      params_d = load64(params)
       i := 0
       while i < len {
         if i > 0 { s = s + ", " }
-        s = s + type_to_string(load64(params + i * 8))
+        s = s + type_to_string(load64(params_d + i * 8))
         i += 1
       }
     } : 0
@@ -442,10 +448,11 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   // ST_WHILE: [tag, cond, body_stmts_p]
   tag == ST_WHILE ? {
     cond = load64(stmt + 8)
-    body_p = load64(stmt + 16)
+    body_arr = load64(stmt + 16)
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     type_tag(cond_ty) != TY_BOOL ? tc_error("while condition must be Bool, got " + type_to_string(cond_ty)) : 0
-    body_len = body_p != 0 ? load64(body_p - 8) : 0
+    body_len = body_arr != 0 ? load64(body_arr + 8) : 0
+    body_p = body_arr != 0 ? load64(body_arr) : 0
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     return 0
   } : 0
@@ -481,10 +488,11 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   // ST_IF: [tag, cond, body_stmts_p]
   tag == ST_IF ? {
     cond = load64(stmt + 8)
-    body_p = load64(stmt + 16)
+    body_arr = load64(stmt + 16)
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     type_tag(cond_ty) != TY_BOOL ? tc_error("if condition must be Bool, got " + type_to_string(cond_ty)) : 0
-    body_len = body_p != 0 ? load64(body_p - 8) : 0
+    body_len = body_arr != 0 ? load64(body_arr + 8) : 0
+    body_p = body_arr != 0 ? load64(body_arr) : 0
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     return 0
   } : 0
@@ -495,7 +503,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_LET_DESTR: [tag, names_p, value_expr]
   tag == ST_LET_DESTR ? {
-    names_p = load64(stmt + 8)
+    names_arr = load64(stmt + 8)
     value_expr = load64(stmt + 16)
     // Check if value is channel create (EX_CHANNEL)
     val_tag = load64(value_expr)
@@ -507,7 +515,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       } : 0
       elem_type_name = load64(value_expr + 8)
       inner = resolve_type(elem_type_name, structs, enums, mod_exports)
-      num_names = load64(names_p - 8)
+      num_names = load64(names_arr + 8)
+      names_p = load64(names_arr)
       num_names != 2 ? tc_error("channel destructuring requires exactly 2 names") : 0
       scope = locals[locals.len() - 1]
       scope.set(load64(names_p), make_sender_type(inner))
@@ -522,14 +531,15 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   tag == ST_FOR_IN ? {
     var_name = load64(stmt + 8)
     iterable = load64(stmt + 16)
-    body_p = load64(stmt + 24)
+    body_arr = load64(stmt + 24)
     iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     type_tag(iter_ty) != TY_ARRAY ? tc_error("for-in requires Array, got " + type_to_string(iter_ty)) : 0
     // Add loop var to scope
     push_scope(locals)
     inner_scope = locals[locals.len() - 1]
     inner_scope.set(var_name, type_inner(iter_ty))
-    body_len = body_p != 0 ? load64(body_p - 8) : 0
+    body_len = body_arr != 0 ? load64(body_arr + 8) : 0
+    body_p = body_arr != 0 ? load64(body_arr) : 0
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     pop_scope(locals)
     return 0
@@ -657,21 +667,23 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   // ── If expression ─────────────────────────────────────────────
   tag == EX_IF ? {
     cond = load64(expr + 8)
-    then_stmts_p = load64(expr + 16)
+    then_stmts_arr = load64(expr + 16)
     then_expr = load64(expr + 24)
-    else_stmts_p = load64(expr + 32)
+    else_stmts_arr = load64(expr + 32)
     else_expr = load64(expr + 40)
 
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if type_tag(cond_ty) != TY_BOOL { return tc_error("if condition must be Bool, got " + type_to_string(cond_ty)) }
 
     // Check then branch stmts
-    then_stmts_len = then_stmts_p != 0 ? load64(then_stmts_p - 8) : 0
+    then_stmts_len = then_stmts_arr != 0 ? load64(then_stmts_arr + 8) : 0
+    then_stmts_p = then_stmts_arr != 0 ? load64(then_stmts_arr) : 0
     check_stmts(then_stmts_p, then_stmts_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     then_ty = check_expr(then_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
 
     // Check else branch stmts
-    else_stmts_len = else_stmts_p != 0 ? load64(else_stmts_p - 8) : 0
+    else_stmts_len = else_stmts_arr != 0 ? load64(else_stmts_arr + 8) : 0
+    else_stmts_p = else_stmts_arr != 0 ? load64(else_stmts_arr) : 0
     check_stmts(else_stmts_p, else_stmts_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     else_ty = check_expr(else_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
 
@@ -1251,14 +1263,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       // sig layout: offset 0 = params array ptr, offset 8 = return type ptr
       sig_params = load64(sig)
       sig_ret = load64(sig + 8)
-      sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+      sig_params_len = sig_params != 0 ? load64(sig_params + 8) : 0
+      sig_params_d = sig_params != 0 ? load64(sig_params) : 0
 
       nargs != sig_params_len ? tc_error("wrong argument count calling '" + name + "': expected " + str(sig_params_len) + " argument(s) but got " + str(nargs)) : 0
 
       ci := 0
       while ci < nargs {
         actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-        expected = load64(sig_params + ci * 8)
+        expected = load64(sig_params_d + ci * 8)
         types_compatible(actual, expected) == 0 ? tc_error("argument " + str(ci + 1) + " to '" + name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
         ci += 1
       }
@@ -1270,14 +1283,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     local_ty != 0 && type_tag(local_ty) == TY_FN ? {
       fn_params = type_data(local_ty)
       fn_ret = type_data2(local_ty)
-      fn_params_len = fn_params != 0 ? load64(fn_params - 8) : 0
+      fn_params_len = fn_params != 0 ? load64(fn_params + 8) : 0
+      fn_params_d = fn_params != 0 ? load64(fn_params) : 0
 
       nargs != fn_params_len ? tc_error("wrong argument count calling '" + name + "': expected " + str(fn_params_len) + " argument(s) but got " + str(nargs)) : 0
 
       ci := 0
       while ci < nargs {
         actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-        expected = load64(fn_params + ci * 8)
+        expected = load64(fn_params_d + ci * 8)
         type_eq(actual, expected) == 0 ? tc_error("argument " + str(ci + 1) + " to '" + name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
         ci += 1
       }
@@ -1297,14 +1311,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           sig = exp_fn_env.get(func_name)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
-          sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+          sig_params_len = sig_params != 0 ? load64(sig_params + 8) : 0
+          sig_params_d = sig_params != 0 ? load64(sig_params) : 0
 
           nargs != sig_params_len ? tc_error("wrong argument count calling '" + name + "': expected " + str(sig_params_len) + " argument(s) but got " + str(nargs)) : 0
 
           ci := 0
           while ci < nargs {
             actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-            expected = load64(sig_params + ci * 8)
+            expected = load64(sig_params_d + ci * 8)
             types_compatible(actual, expected) == 0 ? tc_error("argument " + str(ci + 1) + " to '" + name + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
             ci += 1
           }
@@ -1333,12 +1348,13 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           sig = exp_fn_env.get(mc_method)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
-          sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+          sig_params_len = sig_params != 0 ? load64(sig_params + 8) : 0
+          sig_params_d = sig_params != 0 ? load64(sig_params) : 0
           mc_nargs != sig_params_len ? tc_error("function '" + mc_method + "' in module '" + mod_name + "' expects " + str(sig_params_len) + " arguments, got " + str(mc_nargs)) : 0
           mci := 0
           while mci < mc_nargs {
             actual = check_expr(mc_args[mci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-            expected = load64(sig_params + mci * 8)
+            expected = load64(sig_params_d + mci * 8)
             types_compatible(actual, expected) == 0 ? tc_error("argument " + str(mci + 1) + " to '" + mod_name + "." + mc_method + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
             mci += 1
           }
@@ -1434,8 +1450,9 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         type_tag(at) == TY_FN ? {
           fn_params = type_data(at)
           fn_ret = type_data2(at)
-          fn_plen = fn_params != 0 ? load64(fn_params - 8) : 0
-          fn_plen == 1 && type_eq(load64(fn_params), arr_inner) == 1 ? {
+          fn_plen = fn_params != 0 ? load64(fn_params + 8) : 0
+          fn_params_d = fn_params != 0 ? load64(fn_params) : 0
+          fn_plen == 1 && type_eq(load64(fn_params_d), arr_inner) == 1 ? {
             return make_array_type(fn_ret)
           } : 0
         } : 0
@@ -1448,8 +1465,9 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         type_tag(at) == TY_FN ? {
           fn_params = type_data(at)
           fn_ret = type_data2(at)
-          fn_plen = fn_params != 0 ? load64(fn_params - 8) : 0
-          fn_plen == 1 && type_eq(load64(fn_params), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL ? {
+          fn_plen = fn_params != 0 ? load64(fn_params + 8) : 0
+          fn_params_d = fn_params != 0 ? load64(fn_params) : 0
+          fn_plen == 1 && type_eq(load64(fn_params_d), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL ? {
             return make_array_type(arr_inner)
           } : 0
         } : 0
@@ -1462,8 +1480,9 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         type_tag(at) == TY_FN ? {
           fn_params = type_data(at)
           fn_ret = type_data2(at)
-          fn_plen = fn_params != 0 ? load64(fn_params - 8) : 0
-          fn_plen == 1 && type_eq(load64(fn_params), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL ? {
+          fn_plen = fn_params != 0 ? load64(fn_params + 8) : 0
+          fn_params_d = fn_params != 0 ? load64(fn_params) : 0
+          fn_plen == 1 && type_eq(load64(fn_params_d), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL ? {
             return make_type(TY_BOOL)
           } : 0
         } : 0
@@ -1476,8 +1495,9 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         type_tag(at) == TY_FN ? {
           fn_params = type_data(at)
           fn_ret = type_data2(at)
-          fn_plen = fn_params != 0 ? load64(fn_params - 8) : 0
-          fn_plen == 1 && type_eq(load64(fn_params), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL ? {
+          fn_plen = fn_params != 0 ? load64(fn_params + 8) : 0
+          fn_params_d = fn_params != 0 ? load64(fn_params) : 0
+          fn_plen == 1 && type_eq(load64(fn_params_d), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL ? {
             return arr_inner
           } : 0
         } : 0
@@ -1801,12 +1821,13 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         sig = methods.get(method_key)
         sig_params = load64(sig)
         sig_ret = load64(sig + 8)
-        sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+        sig_params_len = sig_params != 0 ? load64(sig_params + 8) : 0
+        sig_params_d = sig_params != 0 ? load64(sig_params) : 0
         mc_nargs != sig_params_len ? tc_error("method '" + mc_method + "' on '" + tname + "' expects " + str(sig_params_len) + " argument(s) but got " + str(mc_nargs)) : 0
         mci := 0
         while mci < mc_nargs {
           actual = check_expr(mc_args[mci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-          expected = load64(sig_params + mci * 8)
+          expected = load64(sig_params_d + mci * 8)
           types_compatible(actual, expected) == 0 ? tc_error("argument " + str(mci + 1) + " to method '" + mc_method + "': expected " + type_to_string(expected) + " but got " + type_to_string(actual)) : 0
           mci += 1
         }
@@ -1829,11 +1850,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     obj_tag == TY_TUPLE ? {
       elems = type_data2(obj_ty)
       if elems == 0 { return tc_error("tuple has no elements") }
-      len = load64(elems - 8)
+      len = load64(elems + 8)
+      elems_d = load64(elems)
       // Parse field name as integer index
       idx = stoi(field)
       if idx < 0 || idx >= len { return tc_error("tuple index out of bounds") }
-      return load64(elems + idx * 8)
+      return load64(elems_d + idx * 8)
     } : 0
 
     // Struct: look up field in fields map
@@ -1853,8 +1875,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   // ── Struct literal ────────────────────────────────────────────
   tag == EX_STRUCT_LIT ? {
     sname = load64(expr + 8)
-    field_names_p = load64(expr + 16)
-    field_values_p = load64(expr + 24)
+    field_names_arr = load64(expr + 16)
+    field_names_p = load64(field_names_arr)
+    field_values_arr = load64(expr + 24)
+    field_values_p = load64(field_values_arr)
 
     // Look up struct definition
     if structs.has(sname) == 0 { return tc_error("undefined struct '" + sname + "'") }
@@ -1865,7 +1889,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     exp_len = exp_keys.len()
 
     // Number of provided fields
-    num_fields = load64(field_names_p - 8)
+    num_fields = load64(field_names_arr + 8)
 
     // Check for missing fields
     ei := 0
@@ -1899,8 +1923,9 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ── Tuple literal ─────────────────────────────────────────────
   tag == EX_TUPLE_LIT ? {
-    elems_p = load64(expr + 8)
-    num_elems = load64(elems_p - 8)
+    elems_arr = load64(expr + 8)
+    elems_p = load64(elems_arr)
+    num_elems = load64(elems_arr + 8)
     elem_types = array<I>()
     i := 0
     while i < num_elems {
@@ -1913,8 +1938,9 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ── Array literal ─────────────────────────────────────────────
   tag == EX_ARRAY_LIT ? {
-    elems_p = load64(expr + 8)
-    num_elems = load64(elems_p - 8)
+    elems_arr = load64(expr + 8)
+    elems_p = load64(elems_arr)
+    num_elems = load64(elems_arr + 8)
     if num_elems == 0 { return tc_error("empty array literal — cannot infer element type") }
     first_ty = check_expr(load64(elems_p), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     i := 1
@@ -1929,7 +1955,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   // ── Match expression ──────────────────────────────────────────
   tag == EX_MATCH ? {
     scrutinee = load64(expr + 8)
-    arms_p = load64(expr + 16)
+    arms_arr = load64(expr + 16)
+    arms_p = load64(arms_arr)
     scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if type_tag(scrutinee_ty) != TY_ENUM { return tc_error("match scrutinee must be an enum type, got " + type_to_string(scrutinee_ty)) }
 
@@ -1938,7 +1965,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if enums.has(enum_name) == 0 { return tc_error("undefined enum '" + enum_name + "'") }
     variants = enums.get(enum_name)
 
-    num_arms = load64(arms_p - 8)
+    num_arms = load64(arms_arr + 8)
     if num_arms == 0 { return tc_error("match expression has no arms") }
 
     result_ty := 0
@@ -1952,17 +1979,19 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       // pattern layout: offset 0 = enum_name, offset 8 = variant_name, offset 16 = bindings array ptr
       pat_enum = load64(pattern)
       pat_variant = load64(pattern + 8)
-      bindings_p = load64(pattern + 16)
 
       if pat_enum != enum_name { return tc_error("pattern enum '" + pat_enum + "' does not match scrutinee enum '" + enum_name + "'") }
 
       // Look up variant in variants map
       if variants.has(pat_variant) == 0 { return tc_error("unknown variant '" + pat_variant + "' on enum '" + enum_name + "'") }
-      variant_fields_p = variants.get(pat_variant)
-      // variant_fields_p is a raw array of Type ptrs
-      variant_fields_len = load64(variant_fields_p - 8)
+      variant_fields_arr = variants.get(pat_variant)
+      // variant_fields_arr is an array of Type ptrs
+      variant_fields_p = load64(variant_fields_arr)
+      variant_fields_len = load64(variant_fields_arr + 8)
 
-      bindings_len = load64(bindings_p - 8)
+      bindings_arr = load64(pattern + 16)
+      bindings_p = load64(bindings_arr)
+      bindings_len = load64(bindings_arr + 8)
       if bindings_len != variant_fields_len { return tc_error("pattern '" + enum_name + "::" + pat_variant + "' expects " + str(variant_fields_len) + " binding(s) but got " + str(bindings_len)) }
 
       // Create new scope with bindings
@@ -1991,16 +2020,17 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ── Lambda ────────────────────────────────────────────────────
   tag == EX_LAMBDA ? {
-    params_p = load64(expr + 8)
+    params_arr = load64(expr + 8)
+    params_p = load64(params_arr)
     ret_type_name = load64(expr + 16)
-    body_stmts_p = load64(expr + 24)
+    body_stmts_arr = load64(expr + 24)
 
     // Build param types and add to new scope
     push_scope(locals)
     inner_scope = locals[locals.len() - 1]
     param_types = array<I>()
 
-    num_params = load64(params_p - 8)
+    num_params = load64(params_arr + 8)
     pi := 0
     while pi < num_params {
       param = load64(params_p + pi * 8)
@@ -2016,7 +2046,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     ret_ty = resolve_type(ret_type_name, structs, enums, mod_exports)
 
     // Check body stmts
-    body_len = body_stmts_p != 0 ? load64(body_stmts_p - 8) : 0
+    body_stmts_p = body_stmts_arr != 0 ? load64(body_stmts_arr) : 0
+    body_len = body_stmts_arr != 0 ? load64(body_stmts_arr + 8) : 0
     check_stmts(body_stmts_p, body_len, locals, fn_env, ret_ty, structs, enums, methods, generic_fns, traits, mod_exports)
 
     pop_scope(locals)
@@ -2026,13 +2057,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   // ── Spawn ─────────────────────────────────────────────────────
   tag == EX_SPAWN ? {
     func_name = load64(expr + 8)
-    args_p = load64(expr + 16)
-    num_args = load64(args_p - 8)
+    args_arr = load64(expr + 16)
+    args_p = load64(args_arr)
+    num_args = load64(args_arr + 8)
 
     if fn_env.has(func_name) == 0 { return tc_error("undefined function '" + func_name + "' in spawn") }
     sig = fn_env.get(func_name)
-    sig_params = load64(sig)
-    sig_params_len = sig_params != 0 ? load64(sig_params - 8) : 0
+    sig_params_arr = load64(sig)
+    sig_params = sig_params_arr != 0 ? load64(sig_params_arr) : 0
+    sig_params_len = sig_params_arr != 0 ? load64(sig_params_arr + 8) : 0
 
     if num_args != sig_params_len { return tc_error("wrong argument count calling '" + func_name + "': expected " + str(sig_params_len) + " but got " + str(num_args)) }
 
@@ -2075,15 +2108,17 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   tag == EX_ENUM_VARIANT ? {
     ename = load64(expr + 8)
     vname = load64(expr + 16)
-    args_p = load64(expr + 24)
-    num_args = load64(args_p - 8)
+    args_arr = load64(expr + 24)
+    args_p = load64(args_arr)
+    num_args = load64(args_arr + 8)
 
     if enums.has(ename) == 0 { return tc_error("undefined enum '" + ename + "'") }
     variants = enums.get(ename)
     if variants.has(vname) == 0 { return tc_error("unknown variant '" + vname + "' on enum '" + ename + "'") }
 
-    expected_fields_p = variants.get(vname)
-    expected_len = load64(expected_fields_p - 8)
+    expected_fields_arr = variants.get(vname)
+    expected_fields_p = load64(expected_fields_arr)
+    expected_len = load64(expected_fields_arr + 8)
 
     if num_args != expected_len { return tc_error("variant '" + ename + "::" + vname + "' expects " + str(expected_len) + " argument(s) but got " + str(num_args)) }
 
@@ -2140,14 +2175,16 @@ check_inner(program:I mod_exports:I require_main:I) I {
   generic_fns = map()
 
   // ── Pass 0a: collect struct definitions ─────────────────────────
-  structs_p = load64(program + 24)
-  num_structs = load64(structs_p - 8)
+  structs_arr = load64(program + 24)
+  structs_p = load64(structs_arr)
+  num_structs = load64(structs_arr + 8)
   si := 0
   while si < num_structs {
     sdef = load64(structs_p + si * 8)
     sname = load64(sdef)
-    fields_flat = load64(sdef + 8)   // raw ptr: name0, type0, name1, type1, ...
-    num_flat = load64(fields_flat - 8)
+    fields_flat_arr = load64(sdef + 8)   // array: name0, type0, name1, type1, ...
+    fields_flat = load64(fields_flat_arr)
+    num_flat = load64(fields_flat_arr + 8)
     fields_m = map()
     fi := 0
     while fi < num_flat {
@@ -2162,21 +2199,24 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   // ── Pass 0b: collect enum definitions ───────────────────────────
-  enums_p = load64(program + 32)
-  num_enums = load64(enums_p - 8)
+  enums_arr = load64(program + 32)
+  enums_p = load64(enums_arr)
+  num_enums = load64(enums_arr + 8)
   ei := 0
   while ei < num_enums {
     edef = load64(enums_p + ei * 8)
     ename = load64(edef)
-    variants_p = load64(edef + 8)   // raw ptr to array of variant defs
-    num_variants = load64(variants_p - 8)
+    variants_arr = load64(edef + 8)   // array of variant defs
+    variants_p = load64(variants_arr)
+    num_variants = load64(variants_arr + 8)
     variants_m = map()
     vi := 0
     while vi < num_variants {
       vdef = load64(variants_p + vi * 8)
       vname = load64(vdef)
-      vfields_p = load64(vdef + 8)  // raw ptr to array of type name strings
-      num_vfields = load64(vfields_p - 8)
+      vfields_arr = load64(vdef + 8)  // array of type name strings
+      vfields_p = load64(vfields_arr)
+      num_vfields = load64(vfields_arr + 8)
       vtypes = array<I>()
       vfi := 0
       while vfi < num_vfields {
@@ -2193,23 +2233,26 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   // ── Pass 0c: collect trait definitions ──────────────────────────
-  traits_p = load64(program + 40)
-  num_traits = load64(traits_p - 8)
+  traits_arr = load64(program + 40)
+  traits_p = load64(traits_arr)
+  num_traits = load64(traits_arr + 8)
   ti := 0
   while ti < num_traits {
     tdef = load64(traits_p + ti * 8)
     tname = load64(tdef)
-    tmethods_p = load64(tdef + 8)
-    num_tmethods = load64(tmethods_p - 8)
+    tmethods_src_arr = load64(tdef + 8)
+    tmethods_p = load64(tmethods_src_arr)
+    num_tmethods = load64(tmethods_src_arr + 8)
     tmethods_arr = array<I>()
     tmi := 0
     while tmi < num_tmethods {
       tmsig = load64(tmethods_p + tmi * 8)
       // trait method sig: offset 0 = name, offset 8 = params_p, offset 16 = ret_type_name
       tm_name = load64(tmsig)
-      tm_params_p = load64(tmsig + 8)
+      tm_params_arr = load64(tmsig + 8)
+      tm_params_p = load64(tm_params_arr)
       tm_ret_name = load64(tmsig + 16)
-      num_tparams = load64(tm_params_p - 8)
+      num_tparams = load64(tm_params_arr + 8)
       tparam_types = array<I>()
       tpi := 0
       while tpi < num_tparams {
@@ -2232,25 +2275,29 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   // ── Pass 0d: collect impl blocks → method registry ─────────────
-  impls_p = load64(program + 48)
-  num_impls = load64(impls_p - 8)
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
   ii := 0
   while ii < num_impls {
     impl_block = load64(impls_p + ii * 8)
     impl_trait_name = load64(impl_block)
     impl_target_type = load64(impl_block + 8)
-    impl_methods_p = load64(impl_block + 16)
-    num_impl_methods = load64(impl_methods_p - 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_impl_methods = load64(impl_methods_arr + 8)
 
     // Verify trait conformance if trait impl
     impl_trait_name != 0 && trait_registry.has(impl_trait_name) ? {
-      trait_methods_p = trait_registry.get(impl_trait_name)
-      num_trait_methods = load64(trait_methods_p - 8)
+      trait_methods_arr = trait_registry.get(impl_trait_name)
+      trait_methods_p = load64(trait_methods_arr)
+      num_trait_methods = load64(trait_methods_arr + 8)
       tmi := 0
       while tmi < num_trait_methods {
         tm_entry = load64(trait_methods_p + tmi * 8)
         tm_name = load64(tm_entry)
-        tm_params_p = load64(tm_entry + 8)
+        tm_params_arr2 = load64(tm_entry + 8)
+        tm_params_p = load64(tm_params_arr2)
         tm_ret = load64(tm_entry + 16)
         // Find matching method in impl
         found := 0
@@ -2261,9 +2308,10 @@ check_inner(program:I mod_exports:I require_main:I) I {
           mdef_name == tm_name ? {
             found = 1
             // Check params (skip self = first param)
-            mparams_p = load64(mdef + 8)
-            num_mparams = load64(mparams_p - 8)
-            num_tm_params = load64(tm_params_p - 8)
+            mparams_arr2 = load64(mdef + 8)
+            mparams_p = load64(mparams_arr2)
+            num_mparams = load64(mparams_arr2 + 8)
+            num_tm_params = load64(tm_params_arr2 + 8)
             // Actual params = mparams - 1 (skip self)
             num_mparams - 1 != num_tm_params ? tc_error("method '" + tm_name + "' params don't match trait '" + impl_trait_name + "' signature") : 0
             pi := 1
@@ -2293,9 +2341,10 @@ check_inner(program:I mod_exports:I require_main:I) I {
     while mi < num_impl_methods {
       mdef = load64(impl_methods_p + mi * 8)
       mname = load64(mdef)
-      mparams_p = load64(mdef + 8)
+      mparams_arr3 = load64(mdef + 8)
+      mparams_p = load64(mparams_arr3)
       mret_name = load64(mdef + 16)
-      num_mparams = load64(mparams_p - 8)
+      num_mparams = load64(mparams_arr3 + 8)
       // Build param types skipping self (index 0)
       method_param_types = array<I>()
       mpi := 1
@@ -2326,19 +2375,22 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   // ── Pass 1: collect function signatures ─────────────────────────
-  funcs_p = load64(program + 16)
-  num_funcs = load64(funcs_p - 8)
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
   fi := 0
   while fi < num_funcs {
     func = load64(funcs_p + fi * 8)
     fname = load64(func)
-    fparams_p = load64(func + 8)
+    fparams_arr = load64(func + 8)
+    fparams_p = load64(fparams_arr)
     fret_name = load64(func + 16)
-    ftype_params_p = load64(func + 32)
-    num_type_params = load64(ftype_params_p - 8)
+    ftype_params_arr = load64(func + 32)
+    ftype_params_p = load64(ftype_params_arr)
+    num_type_params = load64(ftype_params_arr + 8)
 
     num_type_params == 0 ? {
-      num_fparams = load64(fparams_p - 8)
+      num_fparams = load64(fparams_arr + 8)
       param_types = array<I>()
       pi := 0
       while pi < num_fparams {
@@ -2358,8 +2410,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   // ── Pass 1b: type-check global variable definitions ─────────────
-  globals_p = load64(program + 8)
-  num_globals = load64(globals_p - 8)
+  globals_arr = load64(program + 8)
+  globals_p = load64(globals_arr)
+  num_globals = load64(globals_arr + 8)
   global_types = map()
   gi := 0
   while gi < num_globals {
@@ -2381,8 +2434,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
   while fi < num_funcs {
     func = load64(funcs_p + fi * 8)
     fname = load64(func)
-    ftype_params_p = load64(func + 32)
-    num_type_params = load64(ftype_params_p - 8)
+    ftype_params_arr2 = load64(func + 32)
+    ftype_params_p = load64(ftype_params_arr2)
+    num_type_params = load64(ftype_params_arr2 + 8)
 
     // Skip generic functions
     num_type_params > 0 ? { fi += 1
@@ -2404,8 +2458,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
       }
 
       // Add function params
-      fparams_p = load64(func + 8)
-      num_fparams = load64(fparams_p - 8)
+      fparams_arr2 = load64(func + 8)
+      fparams_p = load64(fparams_arr2)
+      num_fparams = load64(fparams_arr2 + 8)
       pi := 0
       while pi < num_fparams {
         p_node = load64(fparams_p + pi * 8)
@@ -2416,8 +2471,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
         pi += 1
       }
 
-      body_p = load64(func + 24)
-      body_len = load64(body_p - 8)
+      body_arr2 = load64(func + 24)
+      body_p = load64(body_arr2)
+      body_len = load64(body_arr2 + 8)
 
       body_len == 0 ? tc_error("function '" + fname + "': missing return expression") : 0
 
@@ -2452,18 +2508,21 @@ check_inner(program:I mod_exports:I require_main:I) I {
   while ii < num_impls {
     impl_block = load64(impls_p + ii * 8)
     impl_target_type = load64(impl_block + 8)
-    impl_methods_p = load64(impl_block + 16)
-    num_impl_methods = load64(impl_methods_p - 8)
+    impl_methods_arr3 = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr3)
+    num_impl_methods = load64(impl_methods_arr3 + 8)
 
     mi := 0
     while mi < num_impl_methods {
       mdef = load64(impl_methods_p + mi * 8)
       mname = load64(mdef)
-      mparams_p = load64(mdef + 8)
+      mparams_arr4 = load64(mdef + 8)
+      mparams_p = load64(mparams_arr4)
       mret_name = load64(mdef + 16)
-      mbody_p = load64(mdef + 24)
-      num_mparams = load64(mparams_p - 8)
-      mbody_len = load64(mbody_p - 8)
+      mbody_arr3 = load64(mdef + 24)
+      mbody_p = load64(mbody_arr3)
+      num_mparams = load64(mparams_arr4 + 8)
+      mbody_len = load64(mbody_arr3 + 8)
       mret_ty = resolve_type(mret_name, structs_map, enums_map, mod_exports)
 
       // Build locals
@@ -2524,8 +2583,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
   while fi < num_funcs {
     func = load64(funcs_p + fi * 8)
     fname = load64(func)
-    ftype_params_p = load64(func + 32)
-    num_type_params = load64(ftype_params_p - 8)
+    ftype_params_arr3 = load64(func + 32)
+    ftype_params_p = load64(ftype_params_arr3)
+    num_type_params = load64(ftype_params_arr3 + 8)
     num_type_params == 0 && fn_env.has(fname) ? {
       fn_exports.set(fname, fn_env.get(fname))
     } : 0
