@@ -176,6 +176,16 @@ type_eq(a:I b:I) I {
   0
 }
 
+// ── i64-compatible type check ────────────────────────────────────────
+is_i64_compat(t:I) I {
+  tag = type_tag(t)
+  if tag == TY_INT || tag == TY_STRING || tag == TY_BOOL || tag == TY_ARRAY ||
+     tag == TY_MAP || tag == TY_FN || tag == TY_JSON || tag == TY_HTTP_RESP ||
+     tag == TY_HTTP_SERVER || tag == TY_HTTP_REQ || tag == TY_JOIN_HANDLE ||
+     tag == TY_SENDER || tag == TY_RECEIVER || tag == TY_MUTEX { return 1 }
+  0
+}
+
 // ── Type compatibility (covariance) ─────────────────────────────────
 types_compatible(actual:I expected:I) I {
   if type_eq(actual, expected) == 1 { return 1 }
@@ -183,26 +193,8 @@ types_compatible(actual:I expected:I) I {
   et = type_tag(expected)
   // ResultErr matches any Result<T>
   if at == TY_RESULT_ERR && et == TY_RESULT { return 1 }
-  // Fn types stored as i64 — compatible with Int
-  if et == TY_INT && at == TY_FN { return 1 }
-  // String where Int expected (strings are pointers = i64)
-  if et == TY_INT && at == TY_STRING { return 1 }
-  if et == TY_STRING && at == TY_INT { return 1 }
-  // Map/Array where Int expected (heap pointers = i64)
-  if et == TY_INT && at == TY_MAP { return 1 }
-  if et == TY_MAP && at == TY_INT { return 1 }
-  if et == TY_INT && at == TY_ARRAY { return 1 }
-  // Reverse: Int where Fn expected
-  if at == TY_INT && et == TY_FN { return 1 }
-  // Opaque heap types compatible with Int
-  if et == TY_INT && at == TY_JSON { return 1 }
-  if et == TY_INT && at == TY_HTTP_RESP { return 1 }
-  if et == TY_INT && at == TY_HTTP_SERVER { return 1 }
-  if et == TY_INT && at == TY_HTTP_REQ { return 1 }
-  if et == TY_INT && at == TY_JOIN_HANDLE { return 1 }
-  if et == TY_INT && at == TY_SENDER { return 1 }
-  if et == TY_INT && at == TY_RECEIVER { return 1 }
-  if et == TY_INT && at == TY_MUTEX { return 1 }
+  // All i64-compatible types are interchangeable (matches Rust typeck)
+  if is_i64_compat(actual) == 1 && is_i64_compat(expected) == 1 { return 1 }
   0
 }
 
@@ -454,7 +446,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     cond = load64(stmt + 8)
     body_arr = load64(stmt + 16)
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-    type_tag(cond_ty) != TY_BOOL ? tc_error("while condition must be Bool, got " + type_to_string(cond_ty)) : 0
+    ct = type_tag(cond_ty)
+    ct != TY_BOOL && ct != TY_INT ? tc_error("while condition must be Bool or Int, got " + type_to_string(cond_ty)) : 0
     body_len = body_arr != 0 ? load64(body_arr + 8) : 0
     body_p = body_arr != 0 ? load64(body_arr) : 0
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -494,7 +487,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     cond = load64(stmt + 8)
     body_arr = load64(stmt + 16)
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-    type_tag(cond_ty) != TY_BOOL ? tc_error("if condition must be Bool, got " + type_to_string(cond_ty)) : 0
+    ct2 = type_tag(cond_ty)
+    ct2 != TY_BOOL && ct2 != TY_INT ? tc_error("if condition must be Bool or Int, got " + type_to_string(cond_ty)) : 0
     body_len = body_arr != 0 ? load64(body_arr + 8) : 0
     body_p = body_arr != 0 ? load64(body_arr) : 0
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -622,26 +616,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     op >= OP_EQ && op <= OP_GTEQ ? {
       // Float == Float → Bool
       if lt_tag == TY_FLOAT && rt_tag == TY_FLOAT { return make_type(TY_BOOL) }
-      // String == / != String → Bool
-      lt_tag == TY_STRING && rt_tag == TY_STRING ? {
-        if op == OP_EQ || op == OP_NEQ { return make_type(TY_BOOL) }
-        return tc_error("String only supports == and != comparison")
-      } : 0
-      // Bool == / != Bool → Bool
-      lt_tag == TY_BOOL && rt_tag == TY_BOOL ? {
-        if op == OP_EQ || op == OP_NEQ { return make_type(TY_BOOL) }
-        return tc_error("Bool only supports == and != comparison")
-      } : 0
-      // Int cmp Int → Bool
-      if lt_tag != TY_INT { return tc_error("comparison operator requires matching operands, left operand is " + type_to_string(lt)) }
-      if rt_tag != TY_INT { return tc_error("comparison operator requires matching operands, right operand is " + type_to_string(rt)) }
-      return make_type(TY_BOOL)
+      // Any i64-compatible types can be compared (matches Rust typeck)
+      if is_i64_compat(lt) == 1 && is_i64_compat(rt) == 1 { return make_type(TY_BOOL) }
+      return tc_error("comparison operator requires compatible operands, got " + type_to_string(lt) + " and " + type_to_string(rt))
     } : 0
 
     // Logical: OP_AND(11), OP_OR(12)
     op == OP_AND || op == OP_OR ? {
-      if lt_tag != TY_BOOL { return tc_error("boolean operator requires Bool operands, left operand is " + type_to_string(lt)) }
-      if rt_tag != TY_BOOL { return tc_error("boolean operator requires Bool operands, right operand is " + type_to_string(rt)) }
+      if lt_tag != TY_BOOL && lt_tag != TY_INT { return tc_error("boolean operator requires Bool or Int operands, left operand is " + type_to_string(lt)) }
+      if rt_tag != TY_BOOL && rt_tag != TY_INT { return tc_error("boolean operator requires Bool or Int operands, right operand is " + type_to_string(rt)) }
       return make_type(TY_BOOL)
     } : 0
 
@@ -656,7 +639,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     ot_tag = type_tag(ot)
 
     op == UOP_NOT ? {
-      if ot_tag != TY_BOOL { return tc_error("'!' operator requires Bool operand, got " + type_to_string(ot)) }
+      if ot_tag != TY_BOOL && ot_tag != TY_INT { return tc_error("'!' operator requires Bool or Int operand, got " + type_to_string(ot)) }
       return make_type(TY_BOOL)
     } : 0
 
@@ -677,7 +660,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     else_expr = load64(expr + 40)
 
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-    if type_tag(cond_ty) != TY_BOOL { return tc_error("if condition must be Bool, got " + type_to_string(cond_ty)) }
+    ct3 = type_tag(cond_ty)
+    if ct3 != TY_BOOL && ct3 != TY_INT { return tc_error("if condition must be Bool or Int, got " + type_to_string(cond_ty)) }
 
     // Check then branch stmts
     then_stmts_len = then_stmts_arr != 0 ? load64(then_stmts_arr + 8) : 0
@@ -700,6 +684,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if then_tag == TY_RESULT_ERR && else_tag == TY_RESULT { return else_ty }
     if else_tag == TY_RESULT_ERR && then_tag == TY_RESULT { return then_ty }
     if then_tag == TY_RESULT_ERR && else_tag == TY_RESULT_ERR { return then_ty }
+    // i64-compatible types can coexist in branches (matches Rust typeck)
+    if is_i64_compat(then_ty) == 1 && is_i64_compat(else_ty) == 1 { return make_type(TY_INT) }
 
     return tc_error("if/else branch type mismatch: then branch is " + type_to_string(then_ty) + " but else branch is " + type_to_string(else_ty))
   } : 0
