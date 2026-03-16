@@ -202,7 +202,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     let tmp_dir = std::env::temp_dir();
     let c_runtime_modules: [&str; 0] = [];
     let sans_runtime_modules = [
-        "log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl", "map", "arena",
+        "log", "result", "functional", "array_ext", "string_ext", "http", "server", "json", "sock", "curl", "map", "arena", "ssl",
     ];
     let mut runtime_o_paths: Vec<PathBuf> = Vec::new();
     for name in &c_runtime_modules {
@@ -218,7 +218,7 @@ fn build(source_path: &PathBuf) -> Result<(), String> {
     for o_path in &runtime_o_paths {
         link_args.push(o_path.to_str().unwrap().to_string());
     }
-    link_args.extend(["-lcurl".to_string(), "-Wl,-stack_size,0x4000000".to_string(), "-o".to_string(), output_path_str.to_string()]);
+    link_args.extend(["-lcurl".to_string(), "-lssl".to_string(), "-lcrypto".to_string(), "-Wl,-stack_size,0x4000000".to_string(), "-o".to_string(), output_path_str.to_string()]);
 
     let link_status = process::Command::new("cc")
         .args(&link_args)

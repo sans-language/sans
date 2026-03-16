@@ -1447,6 +1447,42 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Sclose { dest: dest.clone(), fd: fd_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "ssl_ctx" {
+                    let cert = self.lower_expr(&args[0]);
+                    let key = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SslCtx { dest: dest.clone(), cert, key });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "ssl_accept" {
+                    let ctx = self.lower_expr(&args[0]);
+                    let fd = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SslAccept { dest: dest.clone(), ctx, fd });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "ssl_read" {
+                    let ssl = self.lower_expr(&args[0]);
+                    let buf = self.lower_expr(&args[1]);
+                    let len = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SslRead { dest: dest.clone(), ssl, buf, len });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "ssl_write" {
+                    let ssl = self.lower_expr(&args[0]);
+                    let buf = self.lower_expr(&args[1]);
+                    let len = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SslWrite { dest: dest.clone(), ssl, buf, len });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "ssl_close" {
+                    let ssl = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SslClose { dest: dest.clone(), ssl });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "cinit" {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Cinit { dest: dest.clone() });
