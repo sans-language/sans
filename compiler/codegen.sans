@@ -63,7 +63,7 @@ cg_set_val(cg:I ir_reg:I llvm_val:S) I {
 // Get the LLVM value for an IR register
 cg_get_val(cg:I ir_reg:I) S {
   rm = load64(cg + 40)
-  mhas(rm, ir_reg) ? deref(mget(rm, ir_reg)) : "0"
+  mhas(rm, ir_reg) ? mget(rm, ir_reg) : "0"
 }
 
 // Mark a register as holding a pointer
@@ -108,7 +108,7 @@ join_lines(cg:I) S {
     0
   }
   store8(0, buf + pos, 0)
-  deref(buf)
+  buf
 }
 
 // ── Hash helper (djb2) ──────────────────────────────────────────
@@ -176,7 +176,7 @@ llvm_escape_string(s:S) S {
     0
   }
   store8(0, buf + pos, 0)
-  deref(buf)
+  buf
 }
 
 // ── String constant emission ────────────────────────────────────
@@ -186,7 +186,7 @@ emit_string_const(cg:I value:S) S {
   hash = djb2_hash(value)
   key = str(hash)
   if mhas(pool, key) {
-    return deref(mget(pool, key))
+    return mget(pool, key)
   }
   name = "@str." + key
   mset(pool, key, ptr(name))
@@ -366,7 +366,7 @@ emit_externals(cg:I) I {
 
 cg_fmt_int(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmt_int") { return deref(mget(pool, "__fmt_int")) }
+  if mhas(pool, "__fmt_int") { return mget(pool, "__fmt_int") }
   name = "@fmt.int"
   mset(pool, "__fmt_int", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\"")
@@ -375,7 +375,7 @@ cg_fmt_int(cg:I) S {
 
 cg_fmt_float(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmt_float") { return deref(mget(pool, "__fmt_float")) }
+  if mhas(pool, "__fmt_float") { return mget(pool, "__fmt_float") }
   name = "@fmt.float"
   mset(pool, "__fmt_float", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%g\\0A\\00\"")
@@ -384,7 +384,7 @@ cg_fmt_float(cg:I) S {
 
 cg_fmt_str(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmt_str") { return deref(mget(pool, "__fmt_str")) }
+  if mhas(pool, "__fmt_str") { return mget(pool, "__fmt_str") }
   name = "@fmt.str"
   mset(pool, "__fmt_str", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"")
@@ -393,7 +393,7 @@ cg_fmt_str(cg:I) S {
 
 cg_bool_true(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__bool_true") { return deref(mget(pool, "__bool_true")) }
+  if mhas(pool, "__bool_true") { return mget(pool, "__bool_true") }
   name = "@bool.true"
   mset(pool, "__bool_true", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [6 x i8] c\"true\\0A\\00\"")
@@ -402,7 +402,7 @@ cg_bool_true(cg:I) S {
 
 cg_bool_false(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__bool_false") { return deref(mget(pool, "__bool_false")) }
+  if mhas(pool, "__bool_false") { return mget(pool, "__bool_false") }
   name = "@bool.false"
   mset(pool, "__bool_false", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [7 x i8] c\"false\\0A\\00\"")
@@ -412,7 +412,7 @@ cg_bool_false(cg:I) S {
 // Format string for %ld (no newline, for snprintf)
 cg_fmt_ld(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmt_ld") { return deref(mget(pool, "__fmt_ld")) }
+  if mhas(pool, "__fmt_ld") { return mget(pool, "__fmt_ld") }
   name = "@fmt.ld"
   mset(pool, "__fmt_ld", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [4 x i8] c\"%ld\\00\"")
@@ -422,7 +422,7 @@ cg_fmt_ld(cg:I) S {
 // Format string for %g (no newline, for snprintf)
 cg_fmt_g(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmt_g") { return deref(mget(pool, "__fmt_g")) }
+  if mhas(pool, "__fmt_g") { return mget(pool, "__fmt_g") }
   name = "@fmt.g"
   mset(pool, "__fmt_g", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [3 x i8] c\"%g\\00\"")
@@ -432,7 +432,7 @@ cg_fmt_g(cg:I) S {
 // File mode strings
 cg_fmode_r(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmode_r") { return deref(mget(pool, "__fmode_r")) }
+  if mhas(pool, "__fmode_r") { return mget(pool, "__fmode_r") }
   name = "@fmode.r"
   mset(pool, "__fmode_r", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"r\\00\"")
@@ -441,7 +441,7 @@ cg_fmode_r(cg:I) S {
 
 cg_fmode_w(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmode_w") { return deref(mget(pool, "__fmode_w")) }
+  if mhas(pool, "__fmode_w") { return mget(pool, "__fmode_w") }
   name = "@fmode.w"
   mset(pool, "__fmode_w", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"w\\00\"")
@@ -450,7 +450,7 @@ cg_fmode_w(cg:I) S {
 
 cg_fmode_a(cg:I) S {
   pool = cg_string_pool(cg)
-  if mhas(pool, "__fmode_a") { return deref(mget(pool, "__fmode_a")) }
+  if mhas(pool, "__fmode_a") { return mget(pool, "__fmode_a") }
   name = "@fmode.a"
   mset(pool, "__fmode_a", ptr(name))
   emit(cg, name + " = private unnamed_addr constant [2 x i8] c\"a\\00\"")
@@ -551,7 +551,7 @@ compile_inst(cg:I inst:I) I {
 
   // ── IR_STRING_CONST (3): [op, dest, string_ptr] ──
   if op == IR_STRING_CONST {
-    str_val = deref(ir_field(inst, 16))
+    str_val = ir_field(inst, 16)
     global_name = emit_string_const(cg, str_val)
     len = slen(str_val) + 1
     r = cg_fresh_reg(cg)
@@ -672,7 +672,7 @@ compile_inst(cg:I inst:I) I {
   // ── IR_CALL (12): [op, dest, fname, args_array] ──
   if op == IR_CALL {
     fname_ptr = ir_field(inst, 16)
-    fname = deref(fname_ptr)
+    fname = fname_ptr
     args = ir_field(inst, 24)
     nargs = args.len()
     // Build arg list string: "i64 %a, i64 %b, ..."
@@ -701,7 +701,7 @@ compile_inst(cg:I inst:I) I {
 
   // ── IR_LABEL (14): [op, label_name] ──
   if op == IR_LABEL {
-    label_name = deref(dest)
+    label_name = dest
     emit(cg, label_name + ":")
     return 0
   }
@@ -709,8 +709,8 @@ compile_inst(cg:I inst:I) I {
   // ── IR_BRANCH (15): [op, cond, then_label, else_label] ──
   if op == IR_BRANCH {
     cond_val = cg_get_val(cg, dest)
-    then_label = deref(ir_field(inst, 16))
-    else_label = deref(ir_field(inst, 24))
+    then_label = ir_field(inst, 16)
+    else_label = ir_field(inst, 24)
     tmp = cg_fresh_reg(cg)
     emit(cg, "  " + tmp + " = trunc i64 " + cond_val + " to i1")
     emit(cg, "  br i1 " + tmp + ", label %" + then_label + ", label %" + else_label)
@@ -719,7 +719,7 @@ compile_inst(cg:I inst:I) I {
 
   // ── IR_JUMP (16): [op, target_label] ──
   if op == IR_JUMP {
-    target = deref(dest)
+    target = dest
     emit(cg, "  br label %" + target)
     return 0
   }
@@ -727,9 +727,9 @@ compile_inst(cg:I inst:I) I {
   // ── IR_PHI (17): [op, dest, a_val, a_label, b_val, b_label] ──
   if op == IR_PHI {
     a_val = cg_get_val(cg, ir_field(inst, 16))
-    a_label = deref(ir_field(inst, 24))
+    a_label = ir_field(inst, 24)
     b_val = cg_get_val(cg, ir_field(inst, 32))
-    b_label = deref(ir_field(inst, 40))
+    b_label = ir_field(inst, 40)
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = phi i64 [" + a_val + ", %" + a_label + "], [" + b_val + ", %" + b_label + "]")
     cg_set_val(cg, dest, r)
@@ -900,7 +900,7 @@ compile_inst(cg:I inst:I) I {
 
   // ── IR_GLOBAL_LOAD (31): [op, dest, name] ──
   if op == IR_GLOBAL_LOAD {
-    gname = deref(ir_field(inst, 16))
+    gname = ir_field(inst, 16)
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = load i64, ptr @" + gname)
     cg_set_val(cg, dest, r)
@@ -909,7 +909,7 @@ compile_inst(cg:I inst:I) I {
 
   // ── IR_GLOBAL_STORE (32): [op, name, value_reg] ──
   if op == IR_GLOBAL_STORE {
-    gname = deref(dest)
+    gname = dest
     val = cg_get_val(cg, ir_field(inst, 16))
     emit(cg, "  store i64 " + val + ", ptr @" + gname)
     return 0
@@ -1713,7 +1713,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_FN_REF {
     // [op, dest, name_ptr]: ptrtoint of function pointer
     // In text IR, we emit the function name directly
-    fname = deref(ir_field(inst, 16))
+    fname = ir_field(inst, 16)
     llvm_fname = fname == "main" ? "__sans_main" : fname
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
@@ -1723,7 +1723,7 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_FPTR_NAMED {
     // [op, dest, func_name_ptr]: same as FN_REF
-    fname = deref(ir_field(inst, 16))
+    fname = ir_field(inst, 16)
     llvm_fname = fname == "main" ? "__sans_main" : fname
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
@@ -2217,7 +2217,7 @@ emit_globals(cg:I module:I) I {
   ng = globals.len()
   i := 0
   while i < ng {
-    gname = deref(globals.get(i))
+    gname = globals.get(i)
     emit(cg, "@" + gname + " = global i64 0")
     i = i + 1
     0
@@ -2228,7 +2228,7 @@ emit_globals(cg:I module:I) I {
 
 // First pass: declare a function (forward declaration)
 emit_function_decl(cg:I func:I) I {
-  fname = deref(irf_name(func))
+  fname = irf_name(func)
   llvm_name = fname == "main" ? "__sans_main" : fname
   params = irf_params(func)
   np = params.len()
@@ -2246,7 +2246,7 @@ emit_function_decl(cg:I func:I) I {
 
 // Second pass: compile a function body
 emit_function_body(cg:I func:I) I {
-  fname = deref(irf_name(func))
+  fname = irf_name(func)
   llvm_name = fname == "main" ? "__sans_main" : fname
   params = irf_params(func)
   np = params.len()
@@ -2411,7 +2411,7 @@ compile_to_ll(module:I output_path:S) I {
   i := 0
   while i < nf {
     f = funcs.get(i)
-    fname = deref(irf_name(f))
+    fname = irf_name(f)
     if fname == "main" {
       cg_set_has_main(cg, 1)
     }
