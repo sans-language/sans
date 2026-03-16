@@ -355,6 +355,7 @@ g IR_WS_UPGRADE = 207
 g IR_WS_SEND = 208
 g IR_WS_RECV = 209
 g IR_WS_CLOSE = 210
+g IR_GZIP_COMPRESS = 211
 
 // String interpolation part tags
 g INTERP_LITERAL = 0

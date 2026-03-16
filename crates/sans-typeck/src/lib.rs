@@ -1254,6 +1254,19 @@ fn check_expr(
                     return Err(TypeError::new(format!("strstr() needle must be Int, got {}", needle_ty)));
                 }
                 return Ok(Type::Int);
+            } else if function == "gzip_compress" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("gzip_compress() takes exactly 2 arguments (data, len)"));
+                }
+                let data_ty = check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if !is_i64_compat(&data_ty) {
+                    return Err(TypeError::new(format!("gzip_compress() data must be Int, got {}", data_ty)));
+                }
+                let len_ty = check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                if !is_i64_compat(&len_ty) {
+                    return Err(TypeError::new(format!("gzip_compress() len must be Int, got {}", len_ty)));
+                }
+                return Ok(Type::Int);
             } else if function == "exit" {
                 if args.len() != 1 {
                     return Err(TypeError::new("exit() takes exactly 1 argument (code)"));

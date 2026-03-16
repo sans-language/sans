@@ -1403,6 +1403,13 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Strstr { dest: dest.clone(), haystack: haystack_reg, needle: needle_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "gzip_compress" {
+                    let data_reg = self.lower_expr(&args[0]);
+                    let len_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::GzipCompress { dest: dest.clone(), data: data_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "exit" {
                     let code_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();

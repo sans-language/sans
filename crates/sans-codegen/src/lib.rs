@@ -168,6 +168,19 @@ fn generate_llvm<'ctx>(
     let memcmp_type = i32_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("memcmp", memcmp_type, Some(Linkage::External));
 
+    // zlib
+    let deflate_init2_type = i32_type.fn_type(&[ptr_type.into(), i32_type.into(), i32_type.into(), i32_type.into(), i32_type.into(), i32_type.into(), ptr_type.into(), i32_type.into()], false);
+    llvm_module.add_function("deflateInit2_", deflate_init2_type, Some(Linkage::External));
+
+    let deflate_type = i32_type.fn_type(&[ptr_type.into(), i32_type.into()], false);
+    llvm_module.add_function("deflate", deflate_type, Some(Linkage::External));
+
+    let deflate_end_type = i32_type.fn_type(&[ptr_type.into()], false);
+    llvm_module.add_function("deflateEnd", deflate_end_type, Some(Linkage::External));
+
+    let deflate_bound_type = i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("deflateBound", deflate_bound_type, Some(Linkage::External));
+
     let snprintf_type = i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], true);
     llvm_module.add_function("snprintf", snprintf_type, Some(Linkage::External));
 
@@ -3726,6 +3739,152 @@ fn generate_llvm<'ctx>(
                     let int_val = builder.build_ptr_to_int(result, i64_type, dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), int_val);
+                }
+                Instruction::GzipCompress { dest, data, len } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let i32_type_local = context.i32_type();
+
+                    // Allocate z_stream (112 bytes) and zero it
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let memset_fn = llvm_module.get_function("memset").unwrap();
+
+                    let zs_call = builder.build_call(malloc_fn, &[i64_type.const_int(112, false).into()], "gz_zs")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let zs = match zs_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc zs failed".into())),
+                    };
+                    builder.build_call(memset_fn, &[zs.into(), i64_type.const_int(0, false).into(), i64_type.const_int(112, false).into()], "gz_zs_zero")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Version string "1.3.0"
+                    let vs_call = builder.build_call(malloc_fn, &[i64_type.const_int(6, false).into()], "gz_vs")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let vs = match vs_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc vs failed".into())),
+                    };
+                    builder.build_call(memset_fn, &[vs.into(), i64_type.const_int(0, false).into(), i64_type.const_int(6, false).into()], "gz_vs_zero")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store "1.3.0\0"
+                    let i8_type = context.i8_type();
+                    for (i, ch) in [49u8, 46, 51, 46, 48].iter().enumerate() {
+                        let gep = unsafe { builder.build_gep(i8_type, vs, &[i64_type.const_int(i as u64, false)], "gz_vg") }
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                        builder.build_store(gep, i8_type.const_int(*ch as u64, false))
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    }
+
+                    // deflateInit2_(stream, 6, 8, 31, 8, 0, version, 112)
+                    let di_fn = llvm_module.get_function("deflateInit2_").unwrap();
+                    builder.build_call(di_fn, &[
+                        zs.into(),
+                        i32_type_local.const_int(6, false).into(),
+                        i32_type_local.const_int(8, false).into(),
+                        i32_type_local.const_int(31, false).into(),
+                        i32_type_local.const_int(8, false).into(),
+                        i32_type_local.const_int(0, false).into(),
+                        vs.into(),
+                        i32_type_local.const_int(112, false).into(),
+                    ], "gz_di")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Set next_in (offset 0) = inttoptr data
+                    let dp = builder.build_int_to_ptr(regs[data], ptr_type, "gz_dp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ni_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(0, false)], "gz_ni") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(ni_ptr, dp)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Set avail_in (offset 8) = trunc len to i32
+                    let lt = builder.build_int_truncate(regs[len], i32_type_local, "gz_lt")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ai_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(8, false)], "gz_ai") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(ai_ptr, lt)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // deflateBound
+                    let db_fn = llvm_module.get_function("deflateBound").unwrap();
+                    let db_call = builder.build_call(db_fn, &[zs.into(), regs[len].into()], "gz_db")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let db = match db_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: deflateBound failed".into())),
+                    };
+
+                    // Malloc output buffer
+                    let ob_call = builder.build_call(malloc_fn, &[db.into()], "gz_ob")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ob = match ob_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc ob failed".into())),
+                    };
+
+                    // Set next_out (offset 24)
+                    let no_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(24, false)], "gz_no") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(no_ptr, ob)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Set avail_out (offset 32) = trunc bound to i32
+                    let bt = builder.build_int_truncate(db, i32_type_local, "gz_bt")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ao_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(32, false)], "gz_ao") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(ao_ptr, bt)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // deflate(stream, Z_FINISH=4)
+                    let df_fn = llvm_module.get_function("deflate").unwrap();
+                    builder.build_call(df_fn, &[zs.into(), i32_type_local.const_int(4, false).into()], "gz_df")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Read avail_out back (offset 32)
+                    let ao2_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(32, false)], "gz_ao2") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ao2 = builder.build_load(i32_type_local, ao2_ptr, "gz_ao2v")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    let ao2x = builder.build_int_z_extend(ao2, i64_type, "gz_ao2x")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // compressed_len = bound - avail_out
+                    let cl = builder.build_int_sub(db, ao2x, "gz_cl")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // deflateEnd
+                    let de_fn = llvm_module.get_function("deflateEnd").unwrap();
+                    builder.build_call(de_fn, &[zs.into()], "gz_de")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Malloc result struct (16 bytes): [ptr_as_i64, len_as_i64]
+                    let rs_call = builder.build_call(malloc_fn, &[i64_type.const_int(16, false).into()], "gz_rs")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let rs = match rs_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc rs failed".into())),
+                    };
+
+                    // Store output ptr as i64
+                    let oi = builder.build_ptr_to_int(ob, i64_type, "gz_oi")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let rp0 = unsafe { builder.build_gep(i8_type, rs, &[i64_type.const_int(0, false)], "gz_rp0") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(rp0, oi)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store compressed len
+                    let rp1 = unsafe { builder.build_gep(i8_type, rs, &[i64_type.const_int(8, false)], "gz_rp1") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(rp1, cl)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Return result struct pointer as i64
+                    let result = builder.build_ptr_to_int(rs, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
                 }
                 Instruction::Exit { dest, code } => {
                     let fn_ref = llvm_module.get_function("exit").unwrap();

@@ -347,7 +347,7 @@ build(source_path:S output_path:S) I {
     li = li + 1
     0
   }
-  link_cmd = link_cmd + " -lcurl $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -o " + output_path
+  link_cmd = link_cmd + " -lcurl -lz $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -o " + output_path
   sys(link_cmd)
 
   // 14. Cleanup
@@ -388,7 +388,7 @@ main() I {
   cmd = argv.get(1)
 
   if cmd == "--version" || cmd == "-V" {
-    p("sans 0.3.37")
+    p("sans 0.3.38")
     exit(0)
     0
   } else { 0 }

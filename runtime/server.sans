@@ -374,6 +374,60 @@ sans_resp_headers_add_inner(arr:I count:I name:I value:I) I {
   0
 }
 
+// ── Gzip Auto-Compression ────────────────────────────────────────
+
+sans_is_compressible_ct(ct:I) I {
+  // text/* -> compressible
+  slen(ct) >= 5 && load8(ct) == 116 && load8(ct+1) == 101 && load8(ct+2) == 120 && load8(ct+3) == 116 && load8(ct+4) == 47 ? 1 :
+  ct == "application/json" ? 1 :
+  ct == "application/javascript" ? 1 :
+  ct == "application/xml" ? 1 :
+  ct == "image/svg+xml" ? 1 :
+  0
+}
+
+sans_should_compress(req:I body_len:I ct:I) I {
+  body_len < 1024 ? 0 : sans_should_compress_ae(req, ct)
+}
+
+sans_should_compress_ae(req:I ct:I) I {
+  ae = sans_http_request_header(req, "accept-encoding")
+  slen(ae) == 0 ? 0 : sans_should_compress_ae2(req, ae, ct)
+}
+
+sans_should_compress_ae2(req:I ae:I ct:I) I {
+  strstr(ae, "gzip") == 0 ? 0 : sans_should_compress_nc(req, ct)
+}
+
+sans_should_compress_nc(req:I ct:I) I {
+  // Check X-No-Compress response header
+  nc = sans_get_resp_header(req, "X-No-Compress")
+  nc == 1 ? 0 : sans_is_compressible_ct(ct)
+}
+
+sans_get_resp_header(req:I name:I) I {
+  arr = load64(req + 40)
+  arr == 0 ? 0 : sans_get_resp_header_search(arr, name)
+}
+
+sans_get_resp_header_search(arr:I name:I) I {
+  count = load64(arr)
+  nlen = slen(name)
+  sans_get_resp_header_at(arr, name, nlen, count, 0)
+}
+
+sans_get_resp_header_at(arr:I name:I nlen:I count:I i:I) I {
+  i >= count ? 0 : sans_get_resp_header_check(arr, name, nlen, count, i)
+}
+
+sans_get_resp_header_check(arr:I name:I nlen:I count:I i:I) I {
+  off = 16 + i * 16
+  hname = load64(arr + off)
+  hval = load64(arr + off + 8)
+  hlen = slen(hname)
+  hlen == nlen && mcmp(hname, name, nlen) == 0 && hval == "1" ? 1 : sans_get_resp_header_at(arr, name, nlen, count, i + 1)
+}
+
 // ── HTTP Respond (SSL-aware) ────────────────────────────────────
 
 sans_http_respond(req:I status:I body:I ct:I) I {
@@ -382,7 +436,18 @@ sans_http_respond(req:I status:I body:I ct:I) I {
 }
 
 sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
-  body_len = slen(body)
+  body_len := slen(body)
+  body_ptr := body
+
+  // Auto-compress if conditions met
+  if sans_should_compress(req, body_len, ct) == 1 {
+    gz = gzip_compress(body, body_len)
+    body_ptr = load64(gz)
+    body_len = load64(gz + 8)
+    sans_http_request_set_header(req, "Content-Encoding", "gzip")
+    0
+  } else { 0 }
+
   status_str = sans_int_to_buf(status)
   status_str_len = slen(status_str)
   blen_str = sans_int_to_buf(body_len)
@@ -420,7 +485,7 @@ sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
   total = pos + body_len
   resp = alloc(total)
   mcpy(resp, buf, pos)
-  body_len > 0 ? mcpy(resp + pos, body, body_len) : 0
+  body_len > 0 ? mcpy(resp + pos, body_ptr, body_len) : 0
 
   sans_http_respond_plain(req, fd, resp, total)
 }

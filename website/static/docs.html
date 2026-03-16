@@ -213,9 +213,21 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td><code>ws_close(ws)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td></tr>
       </tbody>
     </table>
-    <p><code>serve(port, handler)</code> starts a production server with auto-threading, HTTP/1.1 keep-alive, and graceful shutdown. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>. On SIGINT/SIGTERM, the server stops accepting new connections, lets in-flight requests finish, and exits cleanly.</p>
+    <p><code>serve(port, handler)</code> starts a production server with auto-threading, HTTP/1.1 keep-alive, automatic gzip compression, and graceful shutdown. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>. On SIGINT/SIGTERM, the server stops accepting new connections, lets in-flight requests finish, and exits cleanly.</p>
     <p><code>req.respond_stream(status)</code> sends chunked HTTP headers and returns a writer. Use <code>stream_write(w, data)</code> to send chunks and <code>stream_end(w)</code> to finalize.</p>
     <p><code>signal_handler(signum)</code> registers a signal handler that sets a global flag. <code>signal_check()</code> returns 1 if the signal was received. <code>spoll(fd, timeout_ms)</code> polls a file descriptor for readability with timeout, returning 1 if ready, 0 otherwise.</p>
+
+    <h4>Automatic Gzip Compression</h4>
+    <p><code>respond()</code> automatically gzip-compresses response bodies when all conditions are met:</p>
+    <ul>
+      <li>Client sent <code>Accept-Encoding</code> containing <code>gzip</code></li>
+      <li>Response body &ge; 1024 bytes</li>
+      <li>No <code>X-No-Compress: 1</code> response header set by user</li>
+      <li>Content-Type is compressible (<code>text/*</code>, <code>application/json</code>, <code>application/javascript</code>, <code>application/xml</code>, <code>image/svg+xml</code>)</li>
+    </ul>
+    <p>No code changes needed &mdash; compression is transparent. Opt out with:</p>
+    <pre><code>req.<span class="fn">set_header</span>(<span class="str">"X-No-Compress"</span> <span class="str">"1"</span>)
+req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</code></pre>
 
     <h4>WebSocket</h4>
     <p><code>req.is_ws_upgrade()</code> returns 1 if the request is a WebSocket upgrade request. <code>req.upgrade_ws()</code> performs the handshake and returns a WebSocket handle.</p>
@@ -291,6 +303,7 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td><code>bswap16(val)</code></td><td><code>(Int) -&gt; Int</code></td><td>byte-swap 16-bit (htons)</td></tr>
         <tr><td><code>exit(code)</code></td><td><code>(Int) -&gt; Int</code></td><td>exit process</td></tr>
         <tr><td><code>system(cmd)</code> / <code>sys(cmd)</code></td><td><code>(String) -&gt; Int</code></td><td>run shell command, return exit code</td></tr>
+        <tr><td><code>gzip_compress(data, len)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>gzip-compress data; returns ptr to [compressed_ptr, compressed_len]</td></tr>
       </tbody>
     </table>
 
@@ -691,7 +704,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.37 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.38 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

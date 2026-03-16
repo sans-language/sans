@@ -77,7 +77,7 @@ hg(url)           http_get(url)         S -> HttpResponse
 hp(url body ct)   http_post(u b c)      S S S -> HttpResponse
 listen(port)      http_listen(port)     I -> HttpServer
 hl_s(port cert key) https_listen(p c k) I S S -> HttpServer (HTTPS/TLS)
-serve(port handler)                     I Fn -> I (production server, auto-threading + keep-alive)
+serve(port handler)                     I Fn -> I (production server, auto-threading + keep-alive + auto-gzip)
 serve_tls(port cert key handler)        I S S Fn -> I (production HTTPS server)
 stream_write(w data)                    I S -> I (send chunked data)
 stream_end(w)                           I -> I (end chunked stream)
@@ -117,6 +117,7 @@ bswap16(v)                              I -> I (byte swap 16)
 exit(code)                              I -> I (exit process)
 system(cmd) / sys(cmd)                  S -> I (run shell cmd, return exit code)
 wfd(fd msg)                             I S -> I (write to fd)
+gzip_compress(data len)                 I I -> I (gzip compress, returns ptr to [ptr, len])
 
 // Arena allocator (phase-based, stackable up to 8 deep)
 arena_begin()                           -> I (push new arena)
@@ -181,6 +182,7 @@ JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) 
 HttpResponse: status body header(n) ok
 HttpServer:   accept
 HttpRequest:  path method body header(name) set_header(name val) cookie(name) form(name) respond(status body) respond(status body ct) respond_stream(status) respond_json(status body) is_ws_upgrade upgrade_ws
+              // respond auto-gzips when: body>=1024B + Accept-Encoding:gzip + compressible ct; opt-out: set_header("X-No-Compress" "1")
 Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
 Sender<T>:    send(v)
 Receiver<T>:  recv

@@ -114,6 +114,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];
     link_args.extend(runtime_objs.iter().map(|p| p.to_str().unwrap().to_string()));
     link_args.push("-lcurl".to_string());
+    link_args.push("-lz".to_string());
     link_args.push("-o".to_string());
     link_args.push(bin_path.to_str().unwrap().to_string());
     let link_status = Command::new("cc")
@@ -175,6 +176,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];
     link_args.extend(runtime_objs.iter().map(|p| p.to_str().unwrap().to_string()));
     link_args.push("-lcurl".to_string());
+    link_args.push("-lz".to_string());
     link_args.push("-o".to_string());
     link_args.push(bin_path.to_str().unwrap().to_string());
     let link_status = Command::new("cc")

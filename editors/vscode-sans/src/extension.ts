@@ -128,6 +128,9 @@ const HOVER_DATA: Record<string, string> = {
     'system': '**system**(cmd: String) -> Int\n\nRun a shell command via libc `system()` and return the exit code.\n\nAlias: `sys`\n\nUsage: `r = system("ls -la")`',
     'sys': '**sys**(cmd: String) -> Int\n\nAlias for `system()`. Run a shell command and return the exit code.\n\nUsage: `r = sys("make")`',
 
+    // Compression
+    'gzip_compress': '**gzip_compress**(data: Int, len: Int) -> Int\n\nGzip-compress `len` bytes at `data` pointer. Returns pointer to a 16-byte struct: `[compressed_ptr (i64), compressed_len (i64)]`.\n\nUsage: `result = gzip_compress(buf, buf_len)`\n`ptr = load64(result)`\n`clen = load64(result + 8)`',
+
     // Arena allocator
     'arena_begin': '**arena_begin**() -> Int\n\nPush a new arena onto the stack. All subsequent `arena_alloc()` calls allocate from this arena until `arena_end()`. Nestable up to 8 deep.\n\nUsage: `arena_begin()`',
     'arena_alloc': '**arena_alloc**(size: Int) -> Int\n\nBump-allocate `size` bytes (8-byte aligned) from the current arena. Falls back to `alloc()` if no arena is active.\n\nUsage: `ptr = arena_alloc(24)`',

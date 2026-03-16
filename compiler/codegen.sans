@@ -311,6 +311,12 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare void @SSL_free(ptr)")
 
 
+  // ── zlib ──
+  emit(cg, "declare i32 @deflateInit2_(ptr, i32, i32, i32, i32, i32, ptr, i32)")
+  emit(cg, "declare i32 @deflate(ptr, i32)")
+  emit(cg, "declare i32 @deflateEnd(ptr)")
+  emit(cg, "declare i64 @deflateBound(ptr, i64)")
+
   // ── LLVM intrinsics ──
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
 
@@ -518,6 +524,12 @@ emit_externals(cg:I) I {
   emit(cg, "declare void @SSL_free(ptr)")
 
   // __sans_args is defined inline (not declared as external)
+
+  // ── zlib ──
+  emit(cg, "declare i32 @deflateInit2_(ptr, i32, i32, i32, i32, i32, ptr, i32)")
+  emit(cg, "declare i32 @deflate(ptr, i32)")
+  emit(cg, "declare i32 @deflateEnd(ptr)")
+  emit(cg, "declare i64 @deflateBound(ptr, i64)")
 
   // ── LLVM intrinsics ──
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
@@ -2966,6 +2978,129 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + bv + " = load i8, ptr " + ep)
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = zext i8 " + bv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ── gzip_compress (211) ──
+  if op == IR_GZIP_COMPRESS {
+    // gzip_compress(data_ptr, len) -> ptr to [compressed_ptr, compressed_len]
+    dv = cg_get_val(cg, ir_field(inst, 16))
+    lv = cg_get_val(cg, ir_field(inst, 24))
+
+    // Allocate z_stream (112 bytes) and zero it
+    zs = cg_fresh_reg(cg)
+    emit(cg, "  " + zs + " = call ptr @malloc(i64 112)")
+    zs2 = cg_fresh_reg(cg)
+    emit(cg, "  " + zs2 + " = call ptr @memset(ptr " + zs + ", i64 0, i64 112)")
+
+    // Version string for deflateInit2_
+    vs = cg_fresh_reg(cg)
+    emit(cg, "  " + vs + " = call ptr @malloc(i64 6)")
+    vs1 = cg_fresh_reg(cg)
+    emit(cg, "  " + vs1 + " = call ptr @memset(ptr " + vs + ", i64 0, i64 6)")
+    // Store "1.3.0" manually
+    vg0 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg0 + " = getelementptr i8, ptr " + vs + ", i64 0")
+    emit(cg, "  store i8 49, ptr " + vg0)
+    vg1 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg1 + " = getelementptr i8, ptr " + vs + ", i64 1")
+    emit(cg, "  store i8 46, ptr " + vg1)
+    vg2 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg2 + " = getelementptr i8, ptr " + vs + ", i64 2")
+    emit(cg, "  store i8 51, ptr " + vg2)
+    vg3 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg3 + " = getelementptr i8, ptr " + vs + ", i64 3")
+    emit(cg, "  store i8 46, ptr " + vg3)
+    vg4 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg4 + " = getelementptr i8, ptr " + vs + ", i64 4")
+    emit(cg, "  store i8 48, ptr " + vg4)
+
+    // deflateInit2_(stream, level=6, method=8, windowBits=31, memLevel=8, strategy=0, version, stream_size=112)
+    di = cg_fresh_reg(cg)
+    emit(cg, "  " + di + " = call i32 @deflateInit2_(ptr " + zs + ", i32 6, i32 8, i32 31, i32 8, i32 0, ptr " + vs + ", i32 112)")
+
+    // Set next_in (offset 0) = inttoptr data
+    dp = cg_fresh_reg(cg)
+    emit(cg, "  " + dp + " = inttoptr i64 " + dv + " to ptr")
+    ni_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ni_ptr + " = getelementptr i8, ptr " + zs + ", i64 0")
+    emit(cg, "  store ptr " + dp + ", ptr " + ni_ptr)
+
+    // Set avail_in (offset 8) = trunc len to i32
+    lt = cg_fresh_reg(cg)
+    emit(cg, "  " + lt + " = trunc i64 " + lv + " to i32")
+    ai_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ai_ptr + " = getelementptr i8, ptr " + zs + ", i64 8")
+    ai_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + ai_bc + " = bitcast ptr " + ai_ptr + " to ptr")
+    emit(cg, "  store i32 " + lt + ", ptr " + ai_bc)
+
+    // Call deflateBound to get max output size
+    db = cg_fresh_reg(cg)
+    emit(cg, "  " + db + " = call i64 @deflateBound(ptr " + zs + ", i64 " + lv + ")")
+
+    // Malloc output buffer
+    ob = cg_fresh_reg(cg)
+    emit(cg, "  " + ob + " = call ptr @malloc(i64 " + db + ")")
+
+    // Set next_out (offset 24)
+    no_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + no_ptr + " = getelementptr i8, ptr " + zs + ", i64 24")
+    emit(cg, "  store ptr " + ob + ", ptr " + no_ptr)
+
+    // Set avail_out (offset 32) = trunc bound to i32
+    bt = cg_fresh_reg(cg)
+    emit(cg, "  " + bt + " = trunc i64 " + db + " to i32")
+    ao_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ao_ptr + " = getelementptr i8, ptr " + zs + ", i64 32")
+    ao_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + ao_bc + " = bitcast ptr " + ao_ptr + " to ptr")
+    emit(cg, "  store i32 " + bt + ", ptr " + ao_bc)
+
+    // Call deflate(stream, Z_FINISH=4)
+    df = cg_fresh_reg(cg)
+    emit(cg, "  " + df + " = call i32 @deflate(ptr " + zs + ", i32 4)")
+
+    // Read avail_out back (offset 32)
+    ao2_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2_ptr + " = getelementptr i8, ptr " + zs + ", i64 32")
+    ao2_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2_bc + " = bitcast ptr " + ao2_ptr + " to ptr")
+    ao2 = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2 + " = load i32, ptr " + ao2_bc)
+    ao2x = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2x + " = zext i32 " + ao2 + " to i64")
+
+    // compressed_len = bound - avail_out
+    cl = cg_fresh_reg(cg)
+    emit(cg, "  " + cl + " = sub i64 " + db + ", " + ao2x)
+
+    // deflateEnd
+    de = cg_fresh_reg(cg)
+    emit(cg, "  " + de + " = call i32 @deflateEnd(ptr " + zs + ")")
+
+    // Malloc result struct (16 bytes): [ptr_as_i64, len_as_i64]
+    rs = cg_fresh_reg(cg)
+    emit(cg, "  " + rs + " = call ptr @malloc(i64 16)")
+    // Store output ptr as i64
+    oi = cg_fresh_reg(cg)
+    emit(cg, "  " + oi + " = ptrtoint ptr " + ob + " to i64")
+    rp0 = cg_fresh_reg(cg)
+    emit(cg, "  " + rp0 + " = getelementptr i8, ptr " + rs + ", i64 0")
+    rp0_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + rp0_bc + " = bitcast ptr " + rp0 + " to ptr")
+    emit(cg, "  store i64 " + oi + ", ptr " + rp0_bc)
+    // Store compressed len
+    rp1 = cg_fresh_reg(cg)
+    emit(cg, "  " + rp1 + " = getelementptr i8, ptr " + rs + ", i64 8")
+    rp1_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + rp1_bc + " = bitcast ptr " + rp1 + " to ptr")
+    emit(cg, "  store i64 " + cl + ", ptr " + rp1_bc)
+
+    // Return result struct pointer as i64
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rs + " to i64")
     cg_set_val(cg, dest, r)
     return 0
   }

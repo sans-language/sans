@@ -633,6 +633,7 @@ lower_call(ctx:I name:I args:I) I {
   name == "rbind" ? lower_call_3(ctx, args, IR_RBIND, IRTY_INT) :
   name == "rsetsockopt" ? lower_call_5(ctx, args, IR_RSETSOCKOPT, IRTY_INT) :
   name == "strstr" ? lower_call_2(ctx, args, IR_STRSTR, IRTY_INT) :
+  name == "gzip_compress" ? lower_call_2(ctx, args, IR_GZIP_COMPRESS, IRTY_INT) :
 
   // ── Curl ──
   name == "cinit" ? lower_call_0(ctx, IR_CINIT, IRTY_INT) :

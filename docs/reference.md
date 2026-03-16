@@ -200,6 +200,28 @@ String comparison (`==`, `!=`) is supported.
 
 `serve_tls(port, cert, key, handler)` is the HTTPS variant with the same graceful shutdown behavior.
 
+#### Automatic Gzip Compression
+
+`respond()` automatically gzip-compresses response bodies when all conditions are met:
+
+1. Client sent `Accept-Encoding` containing `gzip`
+2. Response body >= 1024 bytes
+3. No `X-No-Compress: 1` response header set by user
+4. Content-Type is compressible (`text/*`, `application/json`, `application/javascript`, `application/xml`, `image/svg+xml`)
+
+No code changes needed — compression is transparent:
+
+```sans
+req.respond(200 large_body)  // auto-gzipped if client supports it
+```
+
+Opt out for a specific response:
+
+```sans
+req.set_header("X-No-Compress" "1")
+req.respond(200 large_body)  // not compressed
+```
+
 #### Signal Handling
 
 `signal_handler(signum)` registers a signal handler that sets a global flag. `signal_check()` returns 1 if the signal was received, 0 otherwise. `spoll(fd, timeout_ms)` polls a file descriptor for readability with a timeout in milliseconds, returning 1 if ready, 0 otherwise. These are used internally by `serve()` and `serve_tls()` but are available for custom server loops.
@@ -303,6 +325,7 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `bswap16(val)` | `(Int) -> Int` | byte-swap 16-bit (htons) |
 | `exit(code)` | `(Int) -> Int` | exit process |
 | `system(cmd)` / `sys(cmd)` | `(String) -> Int` | run shell command, return exit code |
+| `gzip_compress(data, len)` | `(Int, Int) -> Int` | gzip-compress data; returns ptr to `[compressed_ptr, compressed_len]` |
 
 #### Arena Allocator
 
