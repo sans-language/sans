@@ -141,6 +141,11 @@ fcall3(ptr a b c)                       I I I I -> I (call fn ptr 3 args)
 ptr(s)                                  S/M/Array -> I (raw pointer)
 char_at(s i)                            S I -> I (byte at index)
 
+// Map operations (explicit, for when Map is stored as Int)
+mget(map key)                           I S -> I (map get, 0 if missing)
+mset(map key val)                       I S I -> I (map set)
+mhas(map key)                           I S -> I (map has key, 1/0)
+
 // File I/O
 read_file(path)                         S -> S (read file)
 write_file(path content)                S S -> I (write file)

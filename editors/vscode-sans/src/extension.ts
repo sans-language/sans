@@ -152,6 +152,11 @@ const HOVER_DATA: Record<string, string> = {
     'fcall2': '**fcall2**(ptr: Int, a: Int, b: Int) -> Int\n\nCall a function pointer with 2 arguments.\n\nUsage: `add(a:I b:I) I = a + b`\n`fcall2(fptr("add") 10 20)  // 30`',
     'fcall3': '**fcall3**(ptr: Int, a: Int, b: Int, c: Int) -> Int\n\nCall a function pointer with 3 arguments.\n\nUsage: `fcall3(fptr("f") 1 2 3)`',
 
+    // Map operations (explicit built-ins)
+    'mget': '**mget**(map: Int, key: String) -> Int\n\nGet value from Map by string key. Returns 0 if not found.\nUse when a Map is stored as Int (e.g. from `load64`) and `.get()` would dispatch incorrectly.\n\nUsage: `v = mget(m "key")`',
+    'mset': '**mset**(map: Int, key: String, val: Int) -> Int\n\nSet key-value pair in Map.\nUse when a Map is stored as Int (e.g. from `load64`) and `.set()` would dispatch incorrectly.\n\nUsage: `mset(m "key" 42)`',
+    'mhas': '**mhas**(map: Int, key: String) -> Int\n\nCheck if Map contains key. Returns 1 if found, 0 if not.\nUse when a Map is stored as Int (e.g. from `load64`) and `.has()` would dispatch incorrectly.\n\nUsage: `mhas(m "key")  // 1 or 0`',
+
     // File I/O (read_file / write_file / args)
     'read_file': '**read_file**(path: String) -> String\n\nRead entire file contents to string.\n\nUsage: `content = read_file("input.txt")`',
     'write_file': '**write_file**(path: String, content: String) -> Int\n\nWrite string to file. Returns 1 on success.\n\nUsage: `write_file("output.txt" "hello")`',

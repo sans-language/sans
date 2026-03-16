@@ -313,6 +313,17 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       </tbody>
     </table>
 
+    <h4>Map Operations</h4>
+    <p>Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from <code>load64</code>) and method dispatch cannot determine the correct type.</p>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>mget(map, key)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>get value from Map by key (0 if not found)</td></tr>
+        <tr><td><code>mset(map, key, val)</code></td><td><code>(Int, String, Int) -&gt; Int</code></td><td>set key-value pair in Map</td></tr>
+        <tr><td><code>mhas(map, key)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>check if Map contains key (1=yes, 0=no)</td></tr>
+      </tbody>
+    </table>
+
     <h4>File I/O</h4>
     <table>
       <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>

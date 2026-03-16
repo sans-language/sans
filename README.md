@@ -1,6 +1,6 @@
 # Sans
 
-A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
+A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies. **Sans is self-hosted** -- the compiler's runtime is written entirely in Sans itself.
 
 ## Quick Start
 
@@ -117,7 +117,7 @@ The compiler is split into 6 Rust crates forming a pipeline:
 5. **sans-codegen** -- LLVM IR generation
 6. **sans-driver** -- CLI, linking, and orchestration
 
-The runtime layer consists of 8 C files (`runtime/*.c`) providing built-in capabilities: strings, arrays, functional combinators, JSON, HTTP client/server, file I/O, logging, and error handling.
+The runtime is **100% self-hosted** -- written entirely in Sans, with zero C files remaining. Built-in capabilities (strings, arrays, maps, JSON, HTTP, file I/O, logging, error handling) are implemented using Sans's low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, curl bindings, etc.).
 
 ## Known Limitations
 

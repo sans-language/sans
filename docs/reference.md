@@ -290,6 +290,16 @@ arena_end()  // frees everything at once
 | `ptr(s)` | `(String\|Map\|Array) -> Int` | get raw i64 pointer of string, map, or array |
 | `char_at(s, i)` | `(String, Int) -> Int` | read byte at index i (shorthand for `load8(ptr(s) + i)`) |
 
+#### Map Operations
+
+Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64`) and method dispatch cannot determine the correct type.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `mget(map, key)` | `(Int, String) -> Int` | get value from Map by key (0 if not found) |
+| `mset(map, key, val)` | `(Int, String, Int) -> Int` | set key-value pair in Map |
+| `mhas(map, key)` | `(Int, String) -> Int` | check if Map contains key (1=yes, 0=no) |
+
 #### File I/O
 
 | Function | Signature | Description |
