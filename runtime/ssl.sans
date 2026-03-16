@@ -198,8 +198,7 @@ sans_https_respond_build(req:I fd:I status:I body:I ct:I) I {
   pos = sans_ssl_bw(buf, pos, ct, ct_len)
   if custom_len > 0 {
     pos = sans_ssl_bw(buf, pos, custom_hdrs, custom_len)
-    0
-  } else { 0 }
+  }
   pos = sans_ssl_bw(buf, pos, conn_hdr, conn_len)
   store8(buf + pos, 0)
   total = pos + body_len
@@ -214,8 +213,7 @@ sans_https_respond_build(req:I fd:I status:I body:I ct:I) I {
     sclose(fd)
     store64(req, -1)
     store64(req + 48, 0)
-    0
-  } else { 0 }
+  }
   1
 }
 
@@ -399,9 +397,8 @@ sans_ssl_parse_header_kv(hdrs:I buf:I n:I pos:I colon:I) I {
   if vstart < n {
     if load8(buf + vstart) == 32 {
       vstart = vstart + 1
-      0
-    } else { 0 }
-  } else { 0 }
+    }
+  }
   eol = sans_ssl_find_crlf(buf, n, vstart)
   vend = if eol < 0 { n } else { eol }
   value = sans_ssl_copy_str(buf + vstart, vend - vstart)
@@ -775,9 +772,8 @@ sans_serve_tls_loop(srv:I handler:I) I {
         store64(targ + 8, req)
         store64(targ + 16, srv)
         spawn sans_ssl_serve_worker(targ)
-        0
-      } else { 0 }
-    } else { 0 }
+      }
+    }
     0
   }
   p("Shutting down...")
@@ -822,8 +818,7 @@ sans_ssl_serve_worker_loop(handler:I req:I) I {
   if ssl != 0 {
     ssl_shutdown(ssl)
     ssl_free(ssl)
-    0
-  } else { 0 }
+  }
   if cfd >= 0 { sclose(cfd) } else { 0 }
   store64(cur, -1)
   0

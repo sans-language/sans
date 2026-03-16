@@ -409,9 +409,7 @@ is_arith_op(op:I) I {
 // Handle non-short-circuit binary operators after both sides evaluated.
 lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I {
   // String + String → StringConcat (if either side is string)
-  eff_type = if left_type == IRTY_STR || right_type == IRTY_STR { IRTY_STR }
-             else if left_type == IRTY_FLOAT || right_type == IRTY_FLOAT { IRTY_FLOAT }
-             else { left_type }
+  eff_type = if left_type == IRTY_STR || right_type == IRTY_STR { IRTY_STR } else { if left_type == IRTY_FLOAT || right_type == IRTY_FLOAT { IRTY_FLOAT } else { left_type } }
   if op == OP_ADD {
     if eff_type == IRTY_STR {
       dest = ctx_fresh_reg(ctx)

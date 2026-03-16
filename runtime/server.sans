@@ -440,8 +440,7 @@ sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
     body_ptr = load64(gz)
     body_len = load64(gz + 8)
     sans_http_request_set_header(req, "Content-Encoding", "gzip")
-    0
-  } else { 0 }
+  }
 
   status_str = sans_int_to_buf(status)
   status_str_len = slen(status_str)
@@ -473,8 +472,7 @@ sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
   pos = sans_buf_write(buf, pos, ct, ct_len)
   if custom_len > 0 {
     pos = sans_buf_write(buf, pos, custom_hdrs, custom_len)
-    0
-  } else { 0 }
+  }
   pos = sans_buf_write(buf, pos, conn_hdr, conn_len)
   store8(buf + pos, 0)
   total = pos + body_len
@@ -1011,8 +1009,8 @@ sans_multipart_find(body:I blen:I delim:I dlen:I name:I nlen:I pos:I) I {
 sans_multipart_parse_part(body:I blen:I delim:I dlen:I name:I nlen:I start:I) I {
   // Skip \r\n after delimiter
   s := start
-  if s < blen && load8(body + s) == 13 { s = s + 1 0 } else { 0 }
-  if s < blen && load8(body + s) == 10 { s = s + 1 0 } else { 0 }
+  if s < blen && load8(body + s) == 13 { s = s + 1 }
+  if s < blen && load8(body + s) == 10 { s = s + 1 }
   // Check for "--" (end marker)
   if s + 1 < blen && load8(body + s) == 45 && load8(body + s + 1) == 45 { return sans_empty_str() }
   // Find Content-Disposition header and extract name
@@ -1046,8 +1044,7 @@ sans_multipart_extract_value(body:I blen:I delim:I dlen:I blank:I) I {
   // Trim trailing \r\n
   if vend > vstart && vend >= 2 && load8(body + vend - 1) == 10 && load8(body + vend - 2) == 13 {
     vend = vend - 2
-    0
-  } else { 0 }
+  }
   sans_copy_str(body + vstart, vend - vstart)
 }
 
@@ -1269,8 +1266,7 @@ sans_path_segment(path:I index:I) I {
   pos := 0
   if pos < plen && load8(path + pos) == 47 {
     pos += 1
-    0
-  } else { 0 }
+  }
   seg := 0
   done := 0
   result := 0
@@ -1371,8 +1367,7 @@ sans_parse_int(s:I) I {
     ch = load8(s + i)
     if ch >= 48 && ch <= 57 {
       result = result * 10 + (ch - 48)
-      0
-    } else { 0 }
+    }
     i += 1
     0
   }
@@ -1475,10 +1470,9 @@ sans_serve_accept_loop(sfd:I handler:I) I {
           store64(targ, handler)
           store64(targ + 8, req)
           spawn sans_serve_worker(targ)
-          0
-        } else { 0 }
-      } else { 0 }
-    } else { 0 }
+        }
+      }
+    }
     0
   }
   p("Shutting down...")
@@ -1635,8 +1629,7 @@ sans_respond_stream(req:I status:I) I {
   pos = sans_buf_write(buf, pos, te, te_len)
   if custom_len > 0 {
     pos = sans_buf_write(buf, pos, custom_hdrs, custom_len)
-    0
-  } else { 0 }
+  }
   pos = sans_buf_write(buf, pos, conn_hdr, conn_len)
   store8(buf + pos, 0)
 
@@ -1765,7 +1758,7 @@ sans_band8(a:I b:I) I {
   while i < 8 {
     ab = av % 2
     bb = bv % 2
-    if ab == 1 && bb == 1 { r += sans_shl(1, i) 0 } else { 0 }
+    if ab == 1 && bb == 1 { r += sans_shl(1, i) }
     av = av / 2
     bv = bv / 2
     i += 1
@@ -1782,7 +1775,7 @@ sans_bor8(a:I b:I) I {
   while i < 8 {
     ab = av % 2
     bb = bv % 2
-    if ab == 1 || bb == 1 { r += sans_shl(1, i) 0 } else { 0 }
+    if ab == 1 || bb == 1 { r += sans_shl(1, i) }
     av = av / 2
     bv = bv / 2
     i += 1
@@ -1799,7 +1792,7 @@ sans_bxor8(a:I b:I) I {
   while i < 8 {
     ab = av % 2
     bb = bv % 2
-    if ab != bb { r += sans_shl(1, i) 0 } else { 0 }
+    if ab != bb { r += sans_shl(1, i) }
     av = av / 2
     bv = bv / 2
     i += 1
@@ -1889,7 +1882,7 @@ sans_sha1(input:I input_len:I) I {
   bit_len = input_len * 8
   // pad to 56 mod 64
   pad_len := 64 - ((input_len + 9) % 64)
-  if pad_len == 64 { pad_len = 0 0 } else { 0 }
+  if pad_len == 64 { pad_len = 0 }
   total = input_len + 1 + pad_len + 8
   msg = alloc(total)
   if input_len > 0 { mcpy(msg, input, input_len) } else { 0 }
@@ -1953,20 +1946,19 @@ sans_sha1(input:I input_len:I) I {
       if ri < 20 {
         f = sans_bor32(sans_band32(b, c), sans_band32(sans_bnot32(b), d))
         k = 1518500249
-        0
-      } else { if ri < 40 {
+      }
+      if ri >= 20 && ri < 40 {
         f = sans_bxor32(sans_bxor32(b, c), d)
         k = 1859775393
-        0
-      } else { if ri < 60 {
+      }
+      if ri >= 40 && ri < 60 {
         f = sans_bor32(sans_bor32(sans_band32(b, c), sans_band32(b, d)), sans_band32(c, d))
         k = 2400959708
-        0
-      } else {
+      }
+      if ri >= 60 {
         f = sans_bxor32(sans_bxor32(b, c), d)
         k = 3395469782
-        0
-      } } }
+      }
       temp = sans_mask32(sans_sha1_rotl(a, 5) + f + e + k + wval)
       e = d
       d = c
@@ -2254,19 +2246,17 @@ sans_ws_recv_parse(ws:I fd:I ssl:I hdr:I) I {
     ext = alloc(2)
     sans_ws_read_exact(fd, ssl, ext, 2)
     plen = sans_mask8(load8(ext)) * 256 + sans_mask8(load8(ext + 1))
-    0
-  } else { if plen == 127 {
+  }
+  if plen == 127 {
     ext = alloc(8)
     sans_ws_read_exact(fd, ssl, ext, 8)
     plen = sans_shl(sans_mask8(load8(ext)), 56) + sans_shl(sans_mask8(load8(ext + 1)), 48) + sans_shl(sans_mask8(load8(ext + 2)), 40) + sans_shl(sans_mask8(load8(ext + 3)), 32) + sans_shl(sans_mask8(load8(ext + 4)), 24) + sans_shl(sans_mask8(load8(ext + 5)), 16) + sans_shl(sans_mask8(load8(ext + 6)), 8) + sans_mask8(load8(ext + 7))
-    0
-  } else { 0 } }
+  }
 
   mask_key = alloc(4)
   if masked == 1 {
     sans_ws_read_exact(fd, ssl, mask_key, 4)
-    0
-  } else { 0 }
+  }
 
   payload = alloc(plen + 1)
   if plen > 0 { sans_ws_read_exact(fd, ssl, payload, plen) } else { 0 }
@@ -2279,8 +2269,7 @@ sans_ws_recv_parse(ws:I fd:I ssl:I hdr:I) I {
       store8(payload + mi, sans_bxor8(ob, mk))
       mi += 1
     }
-    0
-  } else { 0 }
+  }
 
   if opcode == 1 { sans_ws_recv_text(payload, plen) } else { if opcode == 8 { sans_ws_recv_close(ws, fd, ssl, payload, plen) } else { if opcode == 9 { sans_ws_recv_ping(ws, fd, ssl, payload, plen) } else { if opcode == 10 { sans_ws_recv_loop(ws, fd, ssl) } else { sans_ws_recv_loop(ws, fd, ssl) } } } }
 }

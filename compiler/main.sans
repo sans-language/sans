@@ -16,8 +16,7 @@ find_last(s:S ch:I) I {
   while i >= 0 {
     if char_at(s, i) == ch {
       return i
-      0
-    } else { 0 }
+    }
     i = i - 1
     0
   }
@@ -68,15 +67,13 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   // Dedup check
   if mhas(visited, file_path) {
     return 0
-    0
-  } else { 0 }
+  }
 
   // Circular import check
   if mhas(in_progress, file_path) {
     p("error: circular import detected: " + import_path)
     exit(1)
-    0
-  } else { 0 }
+  }
 
   mset(in_progress, file_path, 1)
 
@@ -201,8 +198,7 @@ build(source_path:S output_path:S) I {
       mangled = mod_n + "__" + fname
       if IRTY_INT != irty {
         mset(module_fn_ret_types, mangled, irty)
-        0
-      } else { 0 }
+      }
       ki = ki + 1
       0
     }
@@ -384,22 +380,19 @@ main() I {
   if argc < 2 {
     p("usage: sans2 <build|run> <file.sans>")
     exit(1)
-    0
-  } else { 0 }
+  }
 
   cmd = argv.get(1)
 
   if cmd == "--version" || cmd == "-V" {
     p("sans 0.3.38")
     exit(0)
-    0
-  } else { 0 }
+  }
 
   if argc < 3 {
     p("usage: sans2 <build|run> <file.sans>")
     exit(1)
-    0
-  } else { 0 }
+  }
 
   file = argv.get(2)
 
@@ -409,10 +402,8 @@ main() I {
     flag = argv.get(3)
     if flag == "-o" {
       output = argv.get(4)
-      0
-    } else { 0 }
-    0
-  } else { 0 }
+    }
+  }
 
   if cmd == "build" {
     out = if output == "" { strip_ext(file) } else { output }
