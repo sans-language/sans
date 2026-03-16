@@ -184,6 +184,27 @@ String comparison (`==`, `!=`) is supported.
 | Function | Alias | Signature |
 |----------|-------|-----------|
 | `http_listen(port)` | `listen` | `(Int) -> HttpServer` |
+| `https_listen(port, cert, key)` | `hl_s` | `(Int, String, String) -> HttpServer` |
+
+### CORS
+
+| Function | Alias | Signature |
+|----------|-------|-----------|
+| `cors(req, origin)` | — | `(HttpRequest, String) -> Int` |
+| `cors_all(req)` | — | `(HttpRequest) -> Int` |
+
+`cors(req, origin)` sets `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers` on the response. Call before `respond`.
+
+`cors_all(req)` is shorthand for `cors(req, "*")`.
+
+```sans
+srv = listen(8080)
+while true {
+    req = srv.accept
+    cors_all(req)
+    req.respond(200 "ok")
+}
+```
 
 ### Logging
 
@@ -246,6 +267,18 @@ arena_end()  // frees everything at once
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `wfd(fd, msg)` | `(Int, String) -> Int` | write string to file descriptor |
+
+#### SSL (Advanced)
+
+Low-level TLS/SSL bindings. For most use cases, prefer `https_listen`.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `ssl_ctx(cert, key)` | `(String, String) -> Int` | Create SSL context from cert/key file paths |
+| `ssl_accept(ctx, fd)` | `(Int, Int) -> Int` | Perform TLS handshake on accepted socket fd |
+| `ssl_read(ssl, buf, len)` | `(Int, Int, Int) -> Int` | Read bytes from TLS connection |
+| `ssl_write(ssl, buf, len)` | `(Int, Int, Int) -> Int` | Write bytes to TLS connection |
+| `ssl_close(ssl)` | `(Int) -> Int` | Shut down TLS connection and free SSL object |
 
 #### Sockets
 
@@ -381,11 +414,14 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 
 ### HttpRequest
 
-| Method | Signature |
-|--------|-----------|
-| `path` | `() -> String` |
-| `method` | `() -> String` |
-| `body` | `() -> String` |
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `path` | `() -> String` | |
+| `method` | `() -> String` | |
+| `body` | `() -> String` | |
+| `header(name)` | `(String) -> String` | Get request header value (case-insensitive) |
+| `set_header(name, value)` | `(String, String) -> Int` | Add custom response header (call before respond) |
+| `cookie(name)` | `(String) -> String` | Get cookie value from Cookie header |
 | `respond(status, body)` | `(Int, String) -> Int` | Defaults to `text/html` content-type |
 | `respond(status, body, content_type)` | `(Int, String, String) -> Int` | Explicit content-type |
 

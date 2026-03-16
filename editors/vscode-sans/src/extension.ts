@@ -63,6 +63,20 @@ const HOVER_DATA: Record<string, string> = {
     'listen': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
     'hl': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
     'http_listen': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
+    'hl_s': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nAlias: `hl_s`\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
+    'https_listen': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
+    'cors': '**cors**(req: HttpRequest, origin: String) -> Int\n\nSet CORS response headers: `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers`. Call before `respond`.\n\nUsage: `cors(req "https://example.com")`',
+    'cors_all': '**cors_all**(req: HttpRequest) -> Int\n\nSet CORS response headers with wildcard origin (`*`). Shorthand for `cors(req "*")`.\n\nUsage: `cors_all(req)`',
+    'ssl_ctx': '**ssl_ctx**(cert: String, key: String) -> Int\n\nCreate an SSL context from PEM certificate and private key file paths. Returns opaque context pointer.\n\nAdvanced — prefer `https_listen` for most use cases.\n\nUsage: `ctx = ssl_ctx("cert.pem" "key.pem")`',
+    'ssl_accept': '**ssl_accept**(ctx: Int, fd: Int) -> Int\n\nPerform TLS handshake on an accepted socket fd using the given SSL context. Returns SSL object pointer.\n\nUsage: `ssl = ssl_accept(ctx fd)`',
+    'ssl_read': '**ssl_read**(ssl: Int, buf: Int, len: Int) -> Int\n\nRead up to `len` bytes from a TLS connection into buffer. Returns bytes read.\n\nUsage: `n = ssl_read(ssl buf 4096)`',
+    'ssl_write': '**ssl_write**(ssl: Int, buf: Int, len: Int) -> Int\n\nWrite `len` bytes from buffer to a TLS connection. Returns bytes written.\n\nUsage: `ssl_write(ssl ptr(data) data.len)`',
+    'ssl_close': '**ssl_close**(ssl: Int) -> Int\n\nShut down TLS connection and free the SSL object.\n\nUsage: `ssl_close(ssl)`',
+
+    // HttpRequest methods
+    'header': '**header**(name: String) -> String\n\nGet request header value by name (case-insensitive). Returns "" if not found.\n\nUsage: `ct = req.header("Content-Type")`',
+    'set_header': '**set_header**(name: String, value: String) -> Int\n\nAdd a custom response header. Must be called before `respond`.\n\nUsage: `req.set_header("X-Request-Id" "abc123")`',
+    'cookie': '**cookie**(name: String) -> String\n\nGet cookie value from the `Cookie` request header. Returns "" if not found.\n\nUsage: `token = req.cookie("session")`',
 
     // Logging
     'ld': '**log_debug**(msg: String) -> Int\n\nLog message at DEBUG level to stderr.',

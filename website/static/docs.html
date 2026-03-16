@@ -44,6 +44,7 @@
         <li><a href="#errors">Errors</a></li>
         <li><a href="#arena">Arena GC</a></li>
         <li><a href="#fileio">File I/O</a></li>
+        <li><a href="#https">HTTPS &amp; CORS</a></li>
       </ul>
     </div>
 
@@ -199,8 +200,24 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       <thead><tr><th>Function</th><th>Alias</th><th>Signature</th></tr></thead>
       <tbody>
         <tr><td><code>http_listen(port)</code></td><td><code>listen</code></td><td><code>(Int) -&gt; HttpServer</code></td></tr>
+        <tr><td><code>https_listen(port, cert, key)</code></td><td><code>hl_s</code></td><td><code>(Int, String, String) -&gt; HttpServer</code></td></tr>
       </tbody>
     </table>
+
+    <h3>CORS</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>cors(req, origin)</code></td><td><code>(HttpRequest, String) -&gt; Int</code></td><td>Set CORS headers with given origin. Call before <code>respond</code>.</td></tr>
+        <tr><td><code>cors_all(req)</code></td><td><code>(HttpRequest) -&gt; Int</code></td><td>Set CORS headers with wildcard origin (<code>*</code>).</td></tr>
+      </tbody>
+    </table>
+    <pre><code>srv = <span class="fn">listen</span>(<span class="num">8080</span>)
+<span class="kw">while</span> <span class="kw">true</span> {
+    req = srv.accept
+    <span class="fn">cors_all</span>(req)
+    req.<span class="fn">respond</span>(<span class="num">200</span> <span class="str">"ok"</span>)
+}</code></pre>
 
     <h3>Logging</h3>
     <table>
@@ -259,6 +276,19 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
       <tbody>
         <tr><td><code>wfd(fd, msg)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>write string to file descriptor</td></tr>
+      </tbody>
+    </table>
+
+    <h4>SSL (Advanced)</h4>
+    <p>Low-level TLS/SSL bindings. For most use cases, prefer <code>https_listen</code>.</p>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>ssl_ctx(cert, key)</code></td><td><code>(String, String) -&gt; Int</code></td><td>Create SSL context from cert/key file paths</td></tr>
+        <tr><td><code>ssl_accept(ctx, fd)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>Perform TLS handshake on accepted socket fd</td></tr>
+        <tr><td><code>ssl_read(ssl, buf, len)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>Read bytes from TLS connection</td></tr>
+        <tr><td><code>ssl_write(ssl, buf, len)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>Write bytes to TLS connection</td></tr>
+        <tr><td><code>ssl_close(ssl)</code></td><td><code>(Int) -&gt; Int</code></td><td>Shut down TLS connection and free SSL object</td></tr>
       </tbody>
     </table>
 
@@ -409,14 +439,17 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
 
     <h3>HttpServer / HttpRequest</h3>
     <table>
-      <thead><tr><th>Type</th><th>Method</th><th>Signature</th></tr></thead>
+      <thead><tr><th>Type</th><th>Method</th><th>Signature</th><th>Notes</th></tr></thead>
       <tbody>
-        <tr><td>HttpServer</td><td><code>accept</code></td><td><code>() -&gt; HttpRequest</code></td></tr>
-        <tr><td>HttpRequest</td><td><code>path</code></td><td><code>() -&gt; String</code></td></tr>
-        <tr><td>HttpRequest</td><td><code>method</code></td><td><code>() -&gt; String</code></td></tr>
-        <tr><td>HttpRequest</td><td><code>body</code></td><td><code>() -&gt; String</code></td></tr>
-        <tr><td>HttpRequest</td><td><code>respond(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td></tr>
-        <tr><td>HttpRequest</td><td><code>respond(status, body, content_type)</code></td><td><code>(Int, String, String) -&gt; Int</code></td></tr>
+        <tr><td>HttpServer</td><td><code>accept</code></td><td><code>() -&gt; HttpRequest</code></td><td></td></tr>
+        <tr><td>HttpRequest</td><td><code>path</code></td><td><code>() -&gt; String</code></td><td></td></tr>
+        <tr><td>HttpRequest</td><td><code>method</code></td><td><code>() -&gt; String</code></td><td></td></tr>
+        <tr><td>HttpRequest</td><td><code>body</code></td><td><code>() -&gt; String</code></td><td></td></tr>
+        <tr><td>HttpRequest</td><td><code>header(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get request header value (case-insensitive)</td></tr>
+        <tr><td>HttpRequest</td><td><code>set_header(name, value)</code></td><td><code>(String, String) -&gt; Int</code></td><td>Add custom response header (call before respond)</td></tr>
+        <tr><td>HttpRequest</td><td><code>cookie(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get cookie value from Cookie header</td></tr>
+        <tr><td>HttpRequest</td><td><code>respond(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>Defaults to <code>text/html</code> content-type</td></tr>
+        <tr><td>HttpRequest</td><td><code>respond(status, body, content_type)</code></td><td><code>(Int, String, String) -&gt; Int</code></td><td>Explicit content-type</td></tr>
       </tbody>
     </table>
 
@@ -621,7 +654,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.32 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.33 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

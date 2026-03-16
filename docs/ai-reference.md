@@ -76,6 +76,9 @@ jfy(v)            json_stringify(v)     JsonValue -> S
 hg(url)           http_get(url)         S -> HttpResponse
 hp(url body ct)   http_post(u b c)      S S S -> HttpResponse
 listen(port)      http_listen(port)     I -> HttpServer
+hl_s(port cert key) https_listen(p c k) I S S -> HttpServer (HTTPS/TLS)
+cors(req origin)                        HttpRequest S -> I (set CORS headers)
+cors_all(req)                           HttpRequest -> I (set CORS headers wildcard)
 ld(msg)           log_debug(msg)        S -> I
 li(msg)           log_info(msg)         S -> I
 lw(msg)           log_warn(msg)         S -> I
@@ -109,6 +112,13 @@ wfd(fd msg)                             I S -> I (write to fd)
 arena_begin()                           -> I (push new arena)
 arena_alloc(n)                          I -> I (bump alloc from arena)
 arena_end()                             -> I (free all arena memory)
+
+// SSL (advanced — prefer https_listen for most use cases)
+ssl_ctx(cert key)                       S S -> I (create SSL context)
+ssl_accept(ctx fd)                      I I -> I (TLS handshake)
+ssl_read(ssl buf len)                   I I I -> I (read from TLS)
+ssl_write(ssl buf len)                  I I I -> I (write to TLS)
+ssl_close(ssl)                          I -> I (close TLS connection)
 
 // Sockets
 sock(d t p)                             I I I -> I (socket)
@@ -160,7 +170,7 @@ String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
 HttpServer:   accept
-HttpRequest:  path method body respond(status body) respond(status body ct)
+HttpRequest:  path method body header(name) set_header(name val) cookie(name) respond(status body) respond(status body ct)
 Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
 Sender<T>:    send(v)
 Receiver<T>:  recv
