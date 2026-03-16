@@ -36,36 +36,34 @@ lx_set_line(lx:I v:I) I { store64(lx + 8, v)
 lx_set_col(lx:I v:I) I { store64(lx + 16, v)
   0 }
 
-lx_at_end(lx:I) I = lx_pos(lx) >= lx_len(lx) ? 1 : 0
+lx_at_end(lx:I) I = if lx_pos(lx) >= lx_len(lx) { 1 } else { 0 }
 
 lx_peek(lx:I src:S) I {
-  lx_pos(lx) >= lx_len(lx) ? 0 : char_at(src, lx_pos(lx))
+  if lx_pos(lx) >= lx_len(lx) { 0 } else { char_at(src, lx_pos(lx)) }
 }
 
 lx_peek_at(lx:I src:S offset:I) I {
   p = lx_pos(lx) + offset
-  p >= lx_len(lx) ? 0 : char_at(src, p)
+  if p >= lx_len(lx) { 0 } else { char_at(src, p) }
 }
 
 lx_advance(lx:I src:S) I {
   ch = lx_peek(lx, src)
   lx_set_pos(lx, lx_pos(lx) + 1)
-  ch == 10 ? {
+  if ch == 10 {
     lx_set_line(lx, lx_line(lx) + 1)
     lx_set_col(lx, 1)
-    0
-  } : {
+  } else {
     lx_set_col(lx, lx_col(lx) + 1)
-    0
   }
   ch
 }
 
 // ── Character classification ───────────────────────────────────────
-is_digit(ch:I) I = ch >= 48 && ch <= 57 ? 1 : 0
-is_alpha(ch:I) I = (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == 95 ? 1 : 0
-is_alnum(ch:I) I = is_digit(ch) == 1 || is_alpha(ch) == 1 ? 1 : 0
-is_ws(ch:I) I = ch == 32 || ch == 9 || ch == 13 || ch == 10 ? 1 : 0
+is_digit(ch:I) I = if ch >= 48 && ch <= 57 { 1 } else { 0 }
+is_alpha(ch:I) I = if (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == 95 { 1 } else { 0 }
+is_alnum(ch:I) I = if is_digit(ch) == 1 || is_alpha(ch) == 1 { 1 } else { 0 }
+is_ws(ch:I) I = if ch == 32 || ch == 9 || ch == 13 || ch == 10 { 1 } else { 0 }
 
 // ── Whitespace / comment skipping ──────────────────────────────────
 lx_skip_ws(lx:I src:S) I {
@@ -89,19 +87,16 @@ lx_skip_block_comment(lx:I src:S) I {
   depth := 1
   while lx_at_end(lx) == 0 && depth > 0 {
     ch = lx_peek(lx, src)
-    ch == 47 && lx_peek_at(lx, src, 1) == 42 ? {
+    if ch == 47 && lx_peek_at(lx, src, 1) == 42 {
       lx_advance(lx, src)
       lx_advance(lx, src)
       depth = depth + 1
-      0
-    } : ch == 42 && lx_peek_at(lx, src, 1) == 47 ? {
+    } else if ch == 42 && lx_peek_at(lx, src, 1) == 47 {
       lx_advance(lx, src)
       lx_advance(lx, src)
       depth = depth - 1
-      0
-    } : {
+    } else {
       lx_advance(lx, src)
-      0
     }
   }
   0
@@ -119,22 +114,21 @@ lx_number(lx:I src:S) I {
 
   // Check for float: '.' followed by digit, and char before number is not '.'
   is_float := 0
-  lx_peek(lx, src) == 46 && is_digit(lx_peek_at(lx, src, 1)) == 1 && !(start > 0 && char_at(src, start - 1) == 46) ? {
+  if lx_peek(lx, src) == 46 && is_digit(lx_peek_at(lx, src, 1)) == 1 && !(start > 0 && char_at(src, start - 1) == 46) {
     lx_advance(lx, src)  // consume '.'
     while lx_at_end(lx) == 0 && is_digit(lx_peek(lx, src)) == 1 {
       lx_advance(lx, src)
     }
     is_float = 1
-    0
-  } : 0
+  }
 
   end = lx_pos(lx)
   text = src[start:end]
 
-  is_float == 1 ? {
+  if is_float == 1 {
     // For float, store the string pointer as value
     make_token(TK_FLOAT_LIT, ptr(text), line, col)
-  } : {
+  } else {
     make_token(TK_INT_LIT, stoi(text), line, col)
   }
 }
@@ -181,7 +175,7 @@ lx_ident(lx:I src:S) I {
   if text == "break" { kind = TK_BREAK }
   if text == "continue" { kind = TK_CONTINUE }
 
-  kind == TK_IDENT ? make_token(TK_IDENT, ptr(text), line, col) : make_token(kind, 0, line, col)
+  if kind == TK_IDENT { make_token(TK_IDENT, ptr(text), line, col) } else { make_token(kind, 0, line, col) }
 }
 
 // ── String helpers ─────────────────────────────────────────────────
@@ -192,37 +186,30 @@ lx_build_escaped(src:S start:I end:I) S {
   i := start
   while i < end {
     ch = char_at(src, i)
-    ch == 92 && i + 1 < end ? {
+    if ch == 92 && i + 1 < end {
       nc = char_at(src, i + 1)
-      nc == 110 ? {
+      if nc == 110 {
         result = result + "\n"
         i = i + 2
-        0
-      } : nc == 116 ? {
+      } else if nc == 116 {
         result = result + "\t"
         i = i + 2
-        0
-      } : nc == 92 ? {
+      } else if nc == 92 {
         result = result + "\\"
         i = i + 2
-        0
-      } : nc == 34 ? {
+      } else if nc == 34 {
         result = result + "\""
         i = i + 2
-        0
-      } : nc == 123 ? {
+      } else if nc == 123 {
         result = result + "{"
         i = i + 2
-        0
-      } : {
+      } else {
         result = result + "\\"
         i = i + 1
-        0
       }
-    } : {
+    } else {
       result = result + src[i:i + 1]
       i = i + 1
-      0
     }
   }
   result
@@ -256,16 +243,15 @@ lx_multiline_string(lx:I src:S) I {
 
   // scan until closing """
   while lx_at_end(lx) == 0 {
-    lx_peek(lx, src) == 34 && lx_peek_at(lx, src, 1) == 34 && lx_peek_at(lx, src, 2) == 34 ? {
+    if lx_peek(lx, src) == 34 && lx_peek_at(lx, src, 1) == 34 && lx_peek_at(lx, src, 2) == 34 {
       end = lx_pos(lx)
       text = src[start:end]
       lx_advance(lx, src)
       lx_advance(lx, src)
       lx_advance(lx, src)
       return make_token(TK_STRING_LIT, ptr(text), line, col)
-    } : {
+    } else {
       lx_advance(lx, src)
-      0
     }
   }
   // unterminated — return empty string token
@@ -279,99 +265,85 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
 
   while i < content_end {
     ch = char_at(src, i)
-    ch == 92 ? {
+    if ch == 92 {
       // backslash escape — skip 2 chars
       i = i + 2
-      0
-    } : ch == 123 ? {
+    } else if ch == 123 {
       // '{' — start of interpolation
       // Scan for matching closing brace
       probe := i + 1
       depth := 1
       while probe < content_end && depth > 0 {
         pc = char_at(src, probe)
-        pc == 34 || pc == 92 ? {
+        if pc == 34 || pc == 92 {
           depth = -1
-          0
-        } : pc == 123 ? {
+        } else if pc == 123 {
           depth = depth + 1
-          0
-        } : pc == 125 ? {
+        } else if pc == 125 {
           depth = depth - 1
-          0
-        } : 0
+        }
         if depth > 0 { probe = probe + 1 }
       }
 
-      probe < content_end && depth == 0 ? {
+      if probe < content_end && depth == 0 {
         // Flush accumulated literal text
-        i > cur_start ? {
+        if i > cur_start {
           lit = lx_build_escaped(src, cur_start, i)
-          slen(lit) > 0 ? {
+          if slen(lit) > 0 {
             part = alloc(16)
             store64(part, INTERP_LITERAL)
             store64(part + 8, ptr(lit))
             parts.push(part)
-            0
-          } : 0
-          0
-        } : 0
+          }
+        }
 
         content = src[i + 1:probe]
         content = lx_trim(content)
-        slen(content) > 0 ? {
+        if slen(content) > 0 {
           // Determine if simple ident or expr
           is_id := 1
           j := 0
           while j < slen(content) && is_id == 1 {
             cc = char_at(content, j)
-            j == 0 ? {
+            if j == 0 {
               if is_alpha(cc) == 0 { is_id = 0 }
-            } : {
+            } else {
               if is_alnum(cc) == 0 { is_id = 0 }
             }
             j = j + 1
           }
 
           part = alloc(16)
-          is_id == 1 ? {
+          if is_id == 1 {
             store64(part, INTERP_IDENT)
             store64(part + 8, ptr(content))
-            0
-          } : {
+          } else {
             store64(part, INTERP_EXPR)
             store64(part + 8, ptr(content))
-            0
           }
           parts.push(part)
-          0
-        } : 0
+        }
         i = probe + 1
         cur_start = i
-        0
-      } : {
+      } else {
         // Not a valid interpolation — treat '{' as literal char
         i = i + 1
-        0
       }
-    } : {
+    } else {
       i = i + 1
-      0
     }
   }
 
   // Flush remaining literal text
-  i > cur_start ? {
+  if i > cur_start {
     lit = lx_build_escaped(src, cur_start, i)
-    slen(lit) > 0 ? {
+    if slen(lit) > 0 {
       part = alloc(16)
       store64(part, INTERP_LITERAL)
       store64(part + 8, ptr(lit))
       parts.push(part)
-      0
-    } : 0
-    0
-  } : 0
+    }
+  }
 
   make_token(TK_INTERP_STRING, ptr(parts), line, col)
 }
@@ -388,12 +360,11 @@ lx_string(lx:I src:S) I {
   has_interp := 0
   while lx_at_end(lx) == 0 && lx_peek(lx, src) != 34 {
     ch = lx_peek(lx, src)
-    ch == 92 ? {
+    if ch == 92 {
       // backslash — skip next char too
       lx_advance(lx, src)
-      lx_at_end(lx) == 0 ? lx_advance(lx, src) : 0
-      0
-    } : ch == 123 ? {
+      if lx_at_end(lx) == 0 { lx_advance(lx, src) }
+    } else if ch == 123 {
       // Check if this is a valid interpolation (scan for matching })
       cur_pos = lx_pos(lx)
       probe := cur_pos + 1
@@ -401,38 +372,32 @@ lx_string(lx:I src:S) I {
       src_len = lx_len(lx)
       while probe < src_len && depth > 0 {
         pc = char_at(src, probe)
-        pc == 34 || pc == 92 ? {
+        if pc == 34 || pc == 92 {
           depth = -1
-          0
-        } : pc == 123 ? {
+        } else if pc == 123 {
           depth = depth + 1
-          0
-        } : pc == 125 ? {
+        } else if pc == 125 {
           depth = depth - 1
-          0
-        } : 0
+        }
         if depth > 0 { probe = probe + 1 }
       }
-      probe < src_len && depth == 0 ? {
+      if probe < src_len && depth == 0 {
         has_interp = 1
-        0
-      } : 0
+      }
       lx_advance(lx, src)
-      0
-    } : {
+    } else {
       lx_advance(lx, src)
-      0
     }
   }
 
   content_end = lx_pos(lx)
 
   // skip closing quote
-  lx_at_end(lx) == 0 ? lx_advance(lx, src) : 0
+  if lx_at_end(lx) == 0 { lx_advance(lx, src) }
 
-  has_interp == 1 ? {
+  if has_interp == 1 {
     lx_interp_string(lx, src, content_start, content_end, line, col)
-  } : {
+  } else {
     // Build the string with escape processing
     text = lx_build_escaped(src, content_start, content_end)
     make_token(TK_STRING_LIT, ptr(text), line, col)
@@ -444,89 +409,89 @@ lx_op(lx:I src:S ch:I line:I col:I) I {
   lx_advance(lx, src)
   nx = lx_peek(lx, src)
 
-  ch == 43 ? {
+  if ch == 43 {
     // '+'
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_PLUS_EQ, 0, line, col) }
-    : make_token(TK_PLUS, 0, line, col)
-  } : ch == 45 ? {
+    else { make_token(TK_PLUS, 0, line, col) }
+  } else if ch == 45 {
     // '-'
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_MINUS_EQ, 0, line, col) }
-    : make_token(TK_MINUS, 0, line, col)
-  } : ch == 42 ? {
+    else { make_token(TK_MINUS, 0, line, col) }
+  } else if ch == 42 {
     // '*'
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_STAR_EQ, 0, line, col) }
-    : make_token(TK_STAR, 0, line, col)
-  } : ch == 47 ? {
+    else { make_token(TK_STAR, 0, line, col) }
+  } else if ch == 47 {
     // '/' (not comment — those handled before)
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_SLASH_EQ, 0, line, col) }
-    : make_token(TK_SLASH, 0, line, col)
-  } : ch == 37 ? {
+    else { make_token(TK_SLASH, 0, line, col) }
+  } else if ch == 37 {
     // '%'
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_PERCENT_EQ, 0, line, col) }
-    : make_token(TK_PERCENT, 0, line, col)
-  } : ch == 61 ? {
+    else { make_token(TK_PERCENT, 0, line, col) }
+  } else if ch == 61 {
     // '='
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_EQ_EQ, 0, line, col) }
-    : nx == 62 ? { lx_advance(lx, src)
+    else if nx == 62 { lx_advance(lx, src)
       make_token(TK_FAT_ARROW, 0, line, col) }
-    : make_token(TK_EQ, 0, line, col)
-  } : ch == 33 ? {
+    else { make_token(TK_EQ, 0, line, col) }
+  } else if ch == 33 {
     // '!'
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_NOT_EQ, 0, line, col) }
-    : make_token(TK_BANG, 0, line, col)
-  } : ch == 60 ? {
+    else { make_token(TK_BANG, 0, line, col) }
+  } else if ch == 60 {
     // '<'
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_LT_EQ, 0, line, col) }
-    : make_token(TK_LT, 0, line, col)
-  } : ch == 62 ? {
+    else { make_token(TK_LT, 0, line, col) }
+  } else if ch == 62 {
     // '>'
-    nx == 61 ? { lx_advance(lx, src)
+    if nx == 61 { lx_advance(lx, src)
       make_token(TK_GT_EQ, 0, line, col) }
-    : make_token(TK_GT, 0, line, col)
-  } : ch == 38 ? {
+    else { make_token(TK_GT, 0, line, col) }
+  } else if ch == 38 {
     // '&' — must be &&
-    nx == 38 ? { lx_advance(lx, src)
+    if nx == 38 { lx_advance(lx, src)
       make_token(TK_AND, 0, line, col) }
-    : 0
-  } : ch == 124 ? {
+    else { 0 }
+  } else if ch == 124 {
     // '|'
-    nx == 124 ? { lx_advance(lx, src)
+    if nx == 124 { lx_advance(lx, src)
       make_token(TK_OR, 0, line, col) }
-    : make_token(TK_PIPE, 0, line, col)
-  } : ch == 58 ? {
+    else { make_token(TK_PIPE, 0, line, col) }
+  } else if ch == 58 {
     // ':'
-    nx == 58 ? { lx_advance(lx, src)
+    if nx == 58 { lx_advance(lx, src)
       make_token(TK_COLON_COLON, 0, line, col) }
-    : nx == 61 ? { lx_advance(lx, src)
+    else if nx == 61 { lx_advance(lx, src)
       make_token(TK_COLON_EQ, 0, line, col) }
-    : make_token(TK_COLON, 0, line, col)
-  } : ch == 40 ? {
+    else { make_token(TK_COLON, 0, line, col) }
+  } else if ch == 40 {
     make_token(TK_LPAREN, 0, line, col)
-  } : ch == 41 ? {
+  } else if ch == 41 {
     make_token(TK_RPAREN, 0, line, col)
-  } : ch == 123 ? {
+  } else if ch == 123 {
     make_token(TK_LBRACE, 0, line, col)
-  } : ch == 125 ? {
+  } else if ch == 125 {
     make_token(TK_RBRACE, 0, line, col)
-  } : ch == 91 ? {
+  } else if ch == 91 {
     make_token(TK_LBRACKET, 0, line, col)
-  } : ch == 93 ? {
+  } else if ch == 93 {
     make_token(TK_RBRACKET, 0, line, col)
-  } : ch == 44 ? {
+  } else if ch == 44 {
     make_token(TK_COMMA, 0, line, col)
-  } : ch == 46 ? {
+  } else if ch == 46 {
     make_token(TK_DOT, 0, line, col)
-  } : ch == 63 ? {
+  } else if ch == 63 {
     make_token(TK_QUESTION, 0, line, col)
-  } : {
+  } else {
     // Unknown character — skip
     0
   }
@@ -539,51 +504,44 @@ lex(src:S) [I] {
 
   while lx_at_end(lx) == 0 {
     lx_skip_ws(lx, src)
-    lx_at_end(lx) == 1 ? 0 : {
+    if lx_at_end(lx) == 1 { 0 } else {
       ch = lx_peek(lx, src)
       line = lx_line(lx)
       col = lx_col(lx)
 
       // Line comment: //
-      ch == 47 && lx_peek_at(lx, src, 1) == 47 ? {
+      if ch == 47 && lx_peek_at(lx, src, 1) == 47 {
         lx_skip_line_comment(lx, src)
-        0
       }
       // Block comment: /*
-      : ch == 47 && lx_peek_at(lx, src, 1) == 42 ? {
+      else if ch == 47 && lx_peek_at(lx, src, 1) == 42 {
         lx_skip_block_comment(lx, src)
-        0
       }
       // Number
-      : is_digit(ch) == 1 ? {
+      else if is_digit(ch) == 1 {
         tok = lx_number(lx, src)
         tokens.push(tok)
-        0
       }
       // Identifier or keyword
-      : is_alpha(ch) == 1 ? {
+      else if is_alpha(ch) == 1 {
         tok = lx_ident(lx, src)
         tokens.push(tok)
-        0
       }
       // String
-      : ch == 34 ? {
+      else if ch == 34 {
         // Check for triple-quote multiline string
-        lx_peek_at(lx, src, 1) == 34 && lx_peek_at(lx, src, 2) == 34 ? {
+        if lx_peek_at(lx, src, 1) == 34 && lx_peek_at(lx, src, 2) == 34 {
           tok = lx_multiline_string(lx, src)
           tokens.push(tok)
-          0
-        } : {
+        } else {
           tok = lx_string(lx, src)
           tokens.push(tok)
-          0
         }
       }
       // Operator or delimiter
-      : {
+      else {
         tok = lx_op(lx, src, ch, line, col)
-        tok != 0 ? tokens.push(tok) : 0
-        0
+        if tok != 0 { tokens.push(tok) }
       }
     }
   }
