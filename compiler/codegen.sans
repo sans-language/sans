@@ -290,6 +290,10 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare i64 @send(i64, ptr, i64, i64)")
   emit(cg, "declare i64 @close(i64)")
   emit(cg, "declare i64 @setsockopt(i64, i64, i64, ptr, i64)")
+
+  // ── LLVM intrinsics ──
+  emit(cg, "declare i16 @llvm.bswap.i16(i16)")
+
   0
 }
 
@@ -823,16 +827,14 @@ compile_inst(cg:I inst:I) I {
     // Propagate parent: the jump target inherits this label's parent chain
     // This handles: L_3 (child of L_0) jumps to L_5 → L_5 becomes child of L_0
     lp = cg_label_parent(cg)
-    wfd(2, ir_lbl)
-    wfd(2, " blk=")
-    wfd(2, cur_blk)
-    wfd(2, " to=")
-    wfd(2, target)
-    wfd(2, "\n")
     if mhas(lp, ir_lbl) {
-      // Make jump target a child of the IMMEDIATE parent only
-      imm_parent = mget(lp, ir_lbl)
-      mset(lp, target, imm_parent)
+      // Set target's parent to the jumping label itself (not the parent's parent).
+      // Only set if target doesn't already have a parent — avoids loop back-edge
+      // overwriting (which would create cycles in the parent chain).
+      if mhas(lp, target) == 0 {
+        mset(lp, target, ir_lbl)
+        0
+      } else { 0 }
       // Walk up the parent chain, updating label_end for ALL ancestors
       ancestor := ir_lbl
       depth := 0
@@ -854,17 +856,6 @@ compile_inst(cg:I inst:I) I {
     a_label_ir = ir_field(inst, 24)
     b_val = cg_get_val(cg, ir_field(inst, 32))
     b_label_ir = ir_field(inst, 40)
-    // DEBUG
-    wfd(2, a_label_ir)
-    wfd(2, " b_ir=")
-    wfd(2, b_label_ir)
-    a_end_dbg = cg_get_label_end(cg, a_label_ir)
-    b_end_dbg = cg_get_label_end(cg, b_label_ir)
-    wfd(2, " a_end=")
-    wfd(2, a_end_dbg)
-    wfd(2, " b_end=")
-    wfd(2, b_end_dbg)
-    wfd(2, "\n")
     // Use the actual end labels (handles nested if/else creating extra blocks)
     a_label = cg_get_label_end(cg, a_label_ir)
     b_label = cg_get_label_end(cg, b_label_ir)
