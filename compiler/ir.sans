@@ -355,75 +355,76 @@ ctx_reset(ctx:I) I {
 
 // ── TY -> IRTY mapping ─────────────────────────────────────────
 ty_to_irty(ty:I) I {
-  ty == TY_INT ? IRTY_INT :
-  ty == TY_FLOAT ? IRTY_FLOAT :
-  ty == TY_BOOL ? IRTY_BOOL :
-  ty == TY_STRING ? IRTY_STR :
-  ty == TY_STRUCT ? IRTY_STRUCT :
-  ty == TY_ENUM ? IRTY_ENUM :
-  ty == TY_SENDER ? IRTY_SENDER :
-  ty == TY_RECEIVER ? IRTY_RECEIVER :
-  ty == TY_JOIN_HANDLE ? IRTY_JOIN_HANDLE :
-  ty == TY_MUTEX ? IRTY_MUTEX :
-  ty == TY_ARRAY ? IRTY_ARRAY :
-  ty == TY_JSON ? IRTY_JSON :
-  ty == TY_HTTP_RESP ? IRTY_HTTP_RESP :
-  ty == TY_RESULT ? IRTY_RESULT :
-  ty == TY_RESULT_ERR ? IRTY_RESULT :
-  ty == TY_HTTP_SERVER ? IRTY_HTTP_SERVER :
-  ty == TY_HTTP_REQ ? IRTY_HTTP_REQ :
-  ty == TY_TUPLE ? IRTY_TUPLE :
-  ty == TY_MAP ? IRTY_MAP :
-  IRTY_INT
+  if ty == TY_INT { IRTY_INT }
+  else if ty == TY_FLOAT { IRTY_FLOAT }
+  else if ty == TY_BOOL { IRTY_BOOL }
+  else if ty == TY_STRING { IRTY_STR }
+  else if ty == TY_STRUCT { IRTY_STRUCT }
+  else if ty == TY_ENUM { IRTY_ENUM }
+  else if ty == TY_SENDER { IRTY_SENDER }
+  else if ty == TY_RECEIVER { IRTY_RECEIVER }
+  else if ty == TY_JOIN_HANDLE { IRTY_JOIN_HANDLE }
+  else if ty == TY_MUTEX { IRTY_MUTEX }
+  else if ty == TY_ARRAY { IRTY_ARRAY }
+  else if ty == TY_JSON { IRTY_JSON }
+  else if ty == TY_HTTP_RESP { IRTY_HTTP_RESP }
+  else if ty == TY_RESULT { IRTY_RESULT }
+  else if ty == TY_RESULT_ERR { IRTY_RESULT }
+  else if ty == TY_HTTP_SERVER { IRTY_HTTP_SERVER }
+  else if ty == TY_HTTP_REQ { IRTY_HTTP_REQ }
+  else if ty == TY_TUPLE { IRTY_TUPLE }
+  else if ty == TY_MAP { IRTY_MAP }
+  else { IRTY_INT }
 }
 
 // ── BinOp -> IR op mapping ─────────────────────────────────────
 binop_to_irbinop(op:I) I {
-  op == OP_ADD ? IROP_ADD :
-  op == OP_SUB ? IROP_SUB :
-  op == OP_MUL ? IROP_MUL :
-  op == OP_DIV ? IROP_DIV :
-  op == OP_MOD ? IROP_MOD :
-  0 - 1  // not a binop
+  if op == OP_ADD { IROP_ADD }
+  else if op == OP_SUB { IROP_SUB }
+  else if op == OP_MUL { IROP_MUL }
+  else if op == OP_DIV { IROP_DIV }
+  else if op == OP_MOD { IROP_MOD }
+  else { 0 - 1 }  // not a binop
 }
 
 binop_to_ircmpop(op:I) I {
-  op == OP_EQ ? IRCMP_EQ :
-  op == OP_NEQ ? IRCMP_NEQ :
-  op == OP_LT ? IRCMP_LT :
-  op == OP_GT ? IRCMP_GT :
-  op == OP_LTEQ ? IRCMP_LTEQ :
-  op == OP_GTEQ ? IRCMP_GTEQ :
-  0 - 1  // not a cmpop
+  if op == OP_EQ { IRCMP_EQ }
+  else if op == OP_NEQ { IRCMP_NEQ }
+  else if op == OP_LT { IRCMP_LT }
+  else if op == OP_GT { IRCMP_GT }
+  else if op == OP_LTEQ { IRCMP_LTEQ }
+  else if op == OP_GTEQ { IRCMP_GTEQ }
+  else { 0 - 1 }  // not a cmpop
 }
 
 is_cmp_op(op:I) I {
-  op >= OP_EQ ? op <= OP_GTEQ ? 1 : 0 : 0
+  if op >= OP_EQ { if op <= OP_GTEQ { 1 } else { 0 } } else { 0 }
 }
 
 is_arith_op(op:I) I {
-  op >= OP_ADD ? op <= OP_MOD ? 1 : 0 : 0
+  if op >= OP_ADD { if op <= OP_MOD { 1 } else { 0 } } else { 0 }
 }
 
 // ── lower_binop_normal ──────────────────────────────────────────
 // Handle non-short-circuit binary operators after both sides evaluated.
 lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I {
   // String + String → StringConcat (if either side is string)
-  eff_type = left_type == IRTY_STR || right_type == IRTY_STR ? IRTY_STR :
-             left_type == IRTY_FLOAT || right_type == IRTY_FLOAT ? IRTY_FLOAT : left_type
-  op == OP_ADD ? eff_type == IRTY_STR ? {
-    dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_string_concat(dest, left_reg, right_reg))
-    ctx_set_reg_type(ctx, dest, IRTY_STR)
-    dest
-  } : lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type)
-  :
+  eff_type = if left_type == IRTY_STR || right_type == IRTY_STR { IRTY_STR }
+             else if left_type == IRTY_FLOAT || right_type == IRTY_FLOAT { IRTY_FLOAT }
+             else { left_type }
+  if op == OP_ADD {
+    if eff_type == IRTY_STR {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_string_concat(dest, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
+  }
   // Arithmetic operators (SUB, MUL, DIV, MOD — ADD handled above)
-  is_arith_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type)
-  :
+  else if is_arith_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
   // Comparison operators
-  is_cmp_op(op) == 1 ? lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type)
-  : {
+  else if is_cmp_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
+  else {
     // Fallback — should not reach for valid programs
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_const(dest, 0))
@@ -434,30 +435,30 @@ lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I
 
 // Dispatch arithmetic or comparison based on op value
 lower_binop_arith_or_cmp(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
-  is_arith_op(op) == 1 ? {
+  if is_arith_op(op) == 1 {
     dest = ctx_fresh_reg(ctx)
     irop = binop_to_irbinop(op)
-    left_type == IRTY_FLOAT ? {
+    if left_type == IRTY_FLOAT {
       ctx_emit(ctx, ir_float_binop(dest, irop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
       dest
-    } : {
+    } else {
       ctx_emit(ctx, ir_binop(dest, irop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
     }
-  } : {
+  } else {
     dest = ctx_fresh_reg(ctx)
     cmpop = binop_to_ircmpop(op)
-    left_type == IRTY_FLOAT ? {
+    if left_type == IRTY_FLOAT {
       ctx_emit(ctx, ir_float_cmpop(dest, cmpop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
-    } : left_type == IRTY_STR ? {
+    } else if left_type == IRTY_STR {
       ctx_emit(ctx, ir_string_cmpop(dest, cmpop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
-    } : {
+    } else {
       ctx_emit(ctx, ir_cmpop(dest, cmpop, left_reg, right_reg))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
@@ -476,196 +477,196 @@ ctx_get_fn_ret_type(ctx:I name:I) I {
 // specific IR instructions, falls through to user-defined IR_CALL.
 lower_call(ctx:I name:I args:I) I {
   // ── print / p ──
-  name == "print" ? lower_call_print(ctx, args) :
-  name == "p" ? lower_call_print(ctx, args) :
+  if name == "print" { lower_call_print(ctx, args) }
+  else if name == "p" { lower_call_print(ctx, args) }
 
   // ── I/O ──
-  name == "file_read" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
-  name == "read_file" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
-  name == "fread" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
-  name == "fr" ? lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) :
-  name == "file_write" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
-  name == "write_file" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
-  name == "fwrite" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
-  name == "fw" ? lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) :
-  name == "file_append" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
-  name == "append_file" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
-  name == "fappend" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
-  name == "fa" ? lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) :
-  name == "file_exists" ? lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) :
-  name == "fexists" ? lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) :
-  name == "fe" ? lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) :
+  else if name == "file_read" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "read_file" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "fread" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "fr" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "file_write" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "write_file" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "fwrite" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "fw" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "file_append" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "append_file" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "fappend" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "fa" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "file_exists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
+  else if name == "fexists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
+  else if name == "fe" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
 
   // ── Conversion ──
-  name == "str" ? lower_call_str(ctx, args) :
-  name == "int_to_string" ? lower_call_str(ctx, args) :
-  name == "itos" ? lower_call_str(ctx, args) :
-  name == "stoi" ? lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) :
-  name == "string_to_int" ? lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) :
-  name == "itof" ? lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) :
-  name == "int_to_float" ? lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) :
-  name == "ftoi" ? lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) :
-  name == "float_to_int" ? lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) :
-  name == "ftos" ? lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) :
-  name == "float_to_string" ? lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) :
+  else if name == "str" { lower_call_str(ctx, args) }
+  else if name == "int_to_string" { lower_call_str(ctx, args) }
+  else if name == "itos" { lower_call_str(ctx, args) }
+  else if name == "stoi" { lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) }
+  else if name == "string_to_int" { lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) }
+  else if name == "itof" { lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) }
+  else if name == "int_to_float" { lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) }
+  else if name == "ftoi" { lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) }
+  else if name == "float_to_int" { lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) }
+  else if name == "ftos" { lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) }
+  else if name == "float_to_string" { lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) }
 
   // ── JSON ──
-  name == "json_parse" ? lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) :
-  name == "jparse" ? lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) :
-  name == "jp" ? lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) :
-  name == "json_object" ? lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) :
-  name == "jobj" ? lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) :
-  name == "jo" ? lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) :
-  name == "json_array" ? lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) :
-  name == "jarr" ? lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) :
-  name == "ja" ? lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) :
-  name == "json_string" ? lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) :
-  name == "jstr" ? lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) :
-  name == "js" ? lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) :
-  name == "json_int" ? lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) :
-  name == "ji" ? lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) :
-  name == "json_bool" ? lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) :
-  name == "jb" ? lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) :
-  name == "json_null" ? lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) :
-  name == "jn" ? lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) :
-  name == "json_stringify" ? lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) :
-  name == "jstringify" ? lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) :
-  name == "jfy" ? lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) :
+  else if name == "json_parse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
+  else if name == "jparse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
+  else if name == "jp" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
+  else if name == "json_object" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
+  else if name == "jobj" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
+  else if name == "jo" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
+  else if name == "json_array" { lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) }
+  else if name == "jarr" { lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) }
+  else if name == "ja" { lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) }
+  else if name == "json_string" { lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) }
+  else if name == "jstr" { lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) }
+  else if name == "js" { lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) }
+  else if name == "json_int" { lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) }
+  else if name == "ji" { lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) }
+  else if name == "json_bool" { lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) }
+  else if name == "jb" { lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) }
+  else if name == "json_null" { lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) }
+  else if name == "jn" { lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) }
+  else if name == "json_stringify" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
+  else if name == "jstringify" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
+  else if name == "jfy" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
 
   // ── HTTP ──
-  name == "http_get" ? lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) :
-  name == "hget" ? lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) :
-  name == "hg" ? lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) :
-  name == "http_post" ? lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) :
-  name == "hpost" ? lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) :
-  name == "hp" ? lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) :
-  name == "http_listen" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
-  name == "listen" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
-  name == "hl" ? lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) :
-  name == "https_listen" ? lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) :
-  name == "hl_s" ? lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) :
-  name == "mget" ? lower_call_2(ctx, args, IR_MAP_GET, IRTY_INT) :
-  name == "mset" ? lower_call_3(ctx, args, IR_MAP_SET, IRTY_INT) :
-  name == "mhas" ? lower_call_2(ctx, args, IR_MAP_HAS, IRTY_INT) :
-  name == "cors" ? lower_call_2(ctx, args, IR_CORS, IRTY_INT) :
-  name == "cors_all" ? lower_call_1(ctx, args, IR_CORS_ALL, IRTY_INT) :
-  name == "url_decode" ? lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) :
-  name == "path_segment" ? lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) :
-  name == "serve_file" ? lower_call_2(ctx, args, IR_SERVE_FILE, IRTY_INT) :
-  name == "ws_send" ? lower_call_2(ctx, args, IR_WS_SEND, IRTY_INT) :
-  name == "ws_recv" ? lower_call_1(ctx, args, IR_WS_RECV, IRTY_STR) :
-  name == "ws_close" ? lower_call_1(ctx, args, IR_WS_CLOSE, IRTY_INT) :
-  name == "serve" ? lower_call_2(ctx, args, IR_SERVE, IRTY_INT) :
-  name == "serve_tls" ? lower_call_4(ctx, args, IR_SERVE_TLS, IRTY_INT) :
-  name == "stream_write" ? lower_call_2(ctx, args, IR_STREAM_WRITE, IRTY_INT) :
-  name == "stream_end" ? lower_call_1(ctx, args, IR_STREAM_END, IRTY_INT) :
+  else if name == "http_get" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
+  else if name == "hget" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
+  else if name == "hg" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
+  else if name == "http_post" { lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) }
+  else if name == "hpost" { lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) }
+  else if name == "hp" { lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) }
+  else if name == "http_listen" { lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "listen" { lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "hl" { lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "https_listen" { lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "hl_s" { lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "mget" { lower_call_2(ctx, args, IR_MAP_GET, IRTY_INT) }
+  else if name == "mset" { lower_call_3(ctx, args, IR_MAP_SET, IRTY_INT) }
+  else if name == "mhas" { lower_call_2(ctx, args, IR_MAP_HAS, IRTY_INT) }
+  else if name == "cors" { lower_call_2(ctx, args, IR_CORS, IRTY_INT) }
+  else if name == "cors_all" { lower_call_1(ctx, args, IR_CORS_ALL, IRTY_INT) }
+  else if name == "url_decode" { lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) }
+  else if name == "path_segment" { lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) }
+  else if name == "serve_file" { lower_call_2(ctx, args, IR_SERVE_FILE, IRTY_INT) }
+  else if name == "ws_send" { lower_call_2(ctx, args, IR_WS_SEND, IRTY_INT) }
+  else if name == "ws_recv" { lower_call_1(ctx, args, IR_WS_RECV, IRTY_STR) }
+  else if name == "ws_close" { lower_call_1(ctx, args, IR_WS_CLOSE, IRTY_INT) }
+  else if name == "serve" { lower_call_2(ctx, args, IR_SERVE, IRTY_INT) }
+  else if name == "serve_tls" { lower_call_4(ctx, args, IR_SERVE_TLS, IRTY_INT) }
+  else if name == "stream_write" { lower_call_2(ctx, args, IR_STREAM_WRITE, IRTY_INT) }
+  else if name == "stream_end" { lower_call_1(ctx, args, IR_STREAM_END, IRTY_INT) }
 
   // ── SSL low-level ──
-  name == "ssl_method" ? lower_call_0(ctx, IR_SSL_METHOD, IRTY_INT) :
-  name == "ssl_ctx_new" ? lower_call_1(ctx, args, IR_SSL_CTX_NEW, IRTY_INT) :
-  name == "ssl_ctx_cert" ? lower_call_3(ctx, args, IR_SSL_CTX_CERT, IRTY_INT) :
-  name == "ssl_ctx_key" ? lower_call_3(ctx, args, IR_SSL_CTX_KEY, IRTY_INT) :
-  name == "ssl_new" ? lower_call_1(ctx, args, IR_SSL_NEW, IRTY_INT) :
-  name == "ssl_set_fd" ? lower_call_2(ctx, args, IR_SSL_SET_FD, IRTY_INT) :
-  name == "ssl_do_accept" ? lower_call_1(ctx, args, IR_SSL_DO_ACCEPT, IRTY_INT) :
-  name == "ssl_read" ? lower_call_3(ctx, args, IR_SSL_READ, IRTY_INT) :
-  name == "ssl_write" ? lower_call_3(ctx, args, IR_SSL_WRITE, IRTY_INT) :
-  name == "ssl_shutdown" ? lower_call_1(ctx, args, IR_SSL_SHUTDOWN, IRTY_INT) :
-  name == "ssl_free" ? lower_call_1(ctx, args, IR_SSL_FREE, IRTY_INT) :
+  else if name == "ssl_method" { lower_call_0(ctx, IR_SSL_METHOD, IRTY_INT) }
+  else if name == "ssl_ctx_new" { lower_call_1(ctx, args, IR_SSL_CTX_NEW, IRTY_INT) }
+  else if name == "ssl_ctx_cert" { lower_call_3(ctx, args, IR_SSL_CTX_CERT, IRTY_INT) }
+  else if name == "ssl_ctx_key" { lower_call_3(ctx, args, IR_SSL_CTX_KEY, IRTY_INT) }
+  else if name == "ssl_new" { lower_call_1(ctx, args, IR_SSL_NEW, IRTY_INT) }
+  else if name == "ssl_set_fd" { lower_call_2(ctx, args, IR_SSL_SET_FD, IRTY_INT) }
+  else if name == "ssl_do_accept" { lower_call_1(ctx, args, IR_SSL_DO_ACCEPT, IRTY_INT) }
+  else if name == "ssl_read" { lower_call_3(ctx, args, IR_SSL_READ, IRTY_INT) }
+  else if name == "ssl_write" { lower_call_3(ctx, args, IR_SSL_WRITE, IRTY_INT) }
+  else if name == "ssl_shutdown" { lower_call_1(ctx, args, IR_SSL_SHUTDOWN, IRTY_INT) }
+  else if name == "ssl_free" { lower_call_1(ctx, args, IR_SSL_FREE, IRTY_INT) }
 
   // ── Logging ──
-  name == "log_debug" ? lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) :
-  name == "ld" ? lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) :
-  name == "log_info" ? lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) :
-  name == "li" ? lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) :
-  name == "log_warn" ? lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) :
-  name == "lw" ? lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) :
-  name == "log_error" ? lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) :
-  name == "le" ? lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) :
-  name == "log_set_level" ? lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) :
-  name == "ll" ? lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) :
-  name == "get_log_level" ? lower_call_0(ctx, IR_GET_LOG_LEVEL, IRTY_INT) :
-  name == "set_log_level" ? lower_call_1(ctx, args, IR_SET_LOG_LEVEL, IRTY_INT) :
-  name == "print_err" ? lower_call_1(ctx, args, IR_PRINT_ERR, IRTY_INT) :
+  else if name == "log_debug" { lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) }
+  else if name == "ld" { lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) }
+  else if name == "log_info" { lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) }
+  else if name == "li" { lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) }
+  else if name == "log_warn" { lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) }
+  else if name == "lw" { lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) }
+  else if name == "log_error" { lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) }
+  else if name == "le" { lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) }
+  else if name == "log_set_level" { lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) }
+  else if name == "ll" { lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) }
+  else if name == "get_log_level" { lower_call_0(ctx, IR_GET_LOG_LEVEL, IRTY_INT) }
+  else if name == "set_log_level" { lower_call_1(ctx, args, IR_SET_LOG_LEVEL, IRTY_INT) }
+  else if name == "print_err" { lower_call_1(ctx, args, IR_PRINT_ERR, IRTY_INT) }
 
   // ── Memory ──
-  name == "alloc" ? lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) :
-  name == "dealloc" ? lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) :
-  name == "ralloc" ? lower_call_2(ctx, args, IR_RALLOC, IRTY_INT) :
-  name == "mcpy" ? lower_call_3(ctx, args, IR_MCPY, IRTY_INT) :
-  name == "mzero" ? lower_call_2(ctx, args, IR_MZERO, IRTY_INT) :
-  name == "mcmp" ? lower_call_3(ctx, args, IR_MCMP, IRTY_INT) :
-  name == "slen" ? lower_call_1(ctx, args, IR_SLEN, IRTY_INT) :
+  else if name == "alloc" { lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) }
+  else if name == "dealloc" { lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) }
+  else if name == "ralloc" { lower_call_2(ctx, args, IR_RALLOC, IRTY_INT) }
+  else if name == "mcpy" { lower_call_3(ctx, args, IR_MCPY, IRTY_INT) }
+  else if name == "mzero" { lower_call_2(ctx, args, IR_MZERO, IRTY_INT) }
+  else if name == "mcmp" { lower_call_3(ctx, args, IR_MCMP, IRTY_INT) }
+  else if name == "slen" { lower_call_1(ctx, args, IR_SLEN, IRTY_INT) }
 
   // ── Load/Store ──
-  name == "load8" ? lower_call_1(ctx, args, IR_LOAD8, IRTY_INT) :
-  name == "store8" ? lower_call_2(ctx, args, IR_STORE8, IRTY_INT) :
-  name == "load16" ? lower_call_1(ctx, args, IR_LOAD16, IRTY_INT) :
-  name == "store16" ? lower_call_2(ctx, args, IR_STORE16, IRTY_INT) :
-  name == "load32" ? lower_call_1(ctx, args, IR_LOAD32, IRTY_INT) :
-  name == "store32" ? lower_call_2(ctx, args, IR_STORE32, IRTY_INT) :
-  name == "load64" ? lower_call_1(ctx, args, IR_LOAD64, IRTY_INT) :
-  name == "store64" ? lower_call_2(ctx, args, IR_STORE64, IRTY_INT) :
-  name == "bswap16" ? lower_call_1(ctx, args, IR_BSWAP16, IRTY_INT) :
-  name == "char_at" ? lower_call_char_at(ctx, args) :
+  else if name == "load8" { lower_call_1(ctx, args, IR_LOAD8, IRTY_INT) }
+  else if name == "store8" { lower_call_2(ctx, args, IR_STORE8, IRTY_INT) }
+  else if name == "load16" { lower_call_1(ctx, args, IR_LOAD16, IRTY_INT) }
+  else if name == "store16" { lower_call_2(ctx, args, IR_STORE16, IRTY_INT) }
+  else if name == "load32" { lower_call_1(ctx, args, IR_LOAD32, IRTY_INT) }
+  else if name == "store32" { lower_call_2(ctx, args, IR_STORE32, IRTY_INT) }
+  else if name == "load64" { lower_call_1(ctx, args, IR_LOAD64, IRTY_INT) }
+  else if name == "store64" { lower_call_2(ctx, args, IR_STORE64, IRTY_INT) }
+  else if name == "bswap16" { lower_call_1(ctx, args, IR_BSWAP16, IRTY_INT) }
+  else if name == "char_at" { lower_call_char_at(ctx, args) }
 
   // ── Arena ──
-  name == "arena_begin" ? lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) :
-  name == "arena_alloc" ? lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) :
-  name == "arena_end" ? lower_call_0(ctx, IR_ARENA_END, IRTY_INT) :
+  else if name == "arena_begin" { lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) }
+  else if name == "arena_alloc" { lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) }
+  else if name == "arena_end" { lower_call_0(ctx, IR_ARENA_END, IRTY_INT) }
 
   // ── Function pointers ──
-  name == "fptr" ? lower_call_fptr(ctx, args) :
-  name == "fcall" ? lower_call_2(ctx, args, IR_FCALL, IRTY_INT) :
-  name == "fcall2" ? lower_call_3(ctx, args, IR_FCALL2, IRTY_INT) :
-  name == "fcall3" ? lower_call_4(ctx, args, IR_FCALL3, IRTY_INT) :
-  name == "ptr" ? lower_call_ptr(ctx, args) :
-  name == "wfd" ? lower_call_2(ctx, args, IR_WRITE_FD, IRTY_INT) :
+  else if name == "fptr" { lower_call_fptr(ctx, args) }
+  else if name == "fcall" { lower_call_2(ctx, args, IR_FCALL, IRTY_INT) }
+  else if name == "fcall2" { lower_call_3(ctx, args, IR_FCALL2, IRTY_INT) }
+  else if name == "fcall3" { lower_call_4(ctx, args, IR_FCALL3, IRTY_INT) }
+  else if name == "ptr" { lower_call_ptr(ctx, args) }
+  else if name == "wfd" { lower_call_2(ctx, args, IR_WRITE_FD, IRTY_INT) }
 
   // ── Sockets ──
-  name == "sock" ? lower_call_3(ctx, args, IR_SOCK, IRTY_INT) :
-  name == "sbind" ? lower_call_2(ctx, args, IR_SBIND, IRTY_INT) :
-  name == "slisten" ? lower_call_2(ctx, args, IR_SLISTEN, IRTY_INT) :
-  name == "saccept" ? lower_call_1(ctx, args, IR_SACCEPT, IRTY_INT) :
-  name == "srecv" ? lower_call_3(ctx, args, IR_SRECV, IRTY_INT) :
-  name == "ssend" ? lower_call_3(ctx, args, IR_SSEND, IRTY_INT) :
-  name == "sclose" ? lower_call_1(ctx, args, IR_SCLOSE, IRTY_INT) :
-  name == "rbind" ? lower_call_3(ctx, args, IR_RBIND, IRTY_INT) :
-  name == "rsetsockopt" ? lower_call_5(ctx, args, IR_RSETSOCKOPT, IRTY_INT) :
-  name == "strstr" ? lower_call_2(ctx, args, IR_STRSTR, IRTY_INT) :
-  name == "gzip_compress" ? lower_call_2(ctx, args, IR_GZIP_COMPRESS, IRTY_INT) :
+  else if name == "sock" { lower_call_3(ctx, args, IR_SOCK, IRTY_INT) }
+  else if name == "sbind" { lower_call_2(ctx, args, IR_SBIND, IRTY_INT) }
+  else if name == "slisten" { lower_call_2(ctx, args, IR_SLISTEN, IRTY_INT) }
+  else if name == "saccept" { lower_call_1(ctx, args, IR_SACCEPT, IRTY_INT) }
+  else if name == "srecv" { lower_call_3(ctx, args, IR_SRECV, IRTY_INT) }
+  else if name == "ssend" { lower_call_3(ctx, args, IR_SSEND, IRTY_INT) }
+  else if name == "sclose" { lower_call_1(ctx, args, IR_SCLOSE, IRTY_INT) }
+  else if name == "rbind" { lower_call_3(ctx, args, IR_RBIND, IRTY_INT) }
+  else if name == "rsetsockopt" { lower_call_5(ctx, args, IR_RSETSOCKOPT, IRTY_INT) }
+  else if name == "strstr" { lower_call_2(ctx, args, IR_STRSTR, IRTY_INT) }
+  else if name == "gzip_compress" { lower_call_2(ctx, args, IR_GZIP_COMPRESS, IRTY_INT) }
 
   // ── Curl ──
-  name == "cinit" ? lower_call_0(ctx, IR_CINIT, IRTY_INT) :
-  name == "csets" ? lower_call_3(ctx, args, IR_CSETS, IRTY_INT) :
-  name == "cseti" ? lower_call_3(ctx, args, IR_CSETI, IRTY_INT) :
-  name == "cperf" ? lower_call_1(ctx, args, IR_CPERF, IRTY_INT) :
-  name == "cclean" ? lower_call_1(ctx, args, IR_CCLEAN, IRTY_INT) :
-  name == "cinfo" ? lower_call_3(ctx, args, IR_CINFO, IRTY_INT) :
-  name == "curl_slist_append" ? lower_call_2(ctx, args, IR_CURL_SLIST_APPEND, IRTY_INT) :
-  name == "curl_slist_free" ? lower_call_1(ctx, args, IR_CURL_SLIST_FREE, IRTY_INT) :
+  else if name == "cinit" { lower_call_0(ctx, IR_CINIT, IRTY_INT) }
+  else if name == "csets" { lower_call_3(ctx, args, IR_CSETS, IRTY_INT) }
+  else if name == "cseti" { lower_call_3(ctx, args, IR_CSETI, IRTY_INT) }
+  else if name == "cperf" { lower_call_1(ctx, args, IR_CPERF, IRTY_INT) }
+  else if name == "cclean" { lower_call_1(ctx, args, IR_CCLEAN, IRTY_INT) }
+  else if name == "cinfo" { lower_call_3(ctx, args, IR_CINFO, IRTY_INT) }
+  else if name == "curl_slist_append" { lower_call_2(ctx, args, IR_CURL_SLIST_APPEND, IRTY_INT) }
+  else if name == "curl_slist_free" { lower_call_1(ctx, args, IR_CURL_SLIST_FREE, IRTY_INT) }
 
   // ── Result ──
-  name == "ok" ? lower_call_1(ctx, args, IR_RESULT_OK, IRTY_RESULT) :
-  name == "err" ? lower_call_1(ctx, args, IR_RESULT_ERR, IRTY_RESULT) :
+  else if name == "ok" { lower_call_1(ctx, args, IR_RESULT_OK, IRTY_RESULT) }
+  else if name == "err" { lower_call_1(ctx, args, IR_RESULT_ERR, IRTY_RESULT) }
 
   // ── Map ──
-  name == "M" ? lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) :
-  name == "map" ? lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) :
+  else if name == "M" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
+  else if name == "map" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
 
   // ── Signal / Poll ──
-  name == "signal_handler" ? lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) :
-  name == "signal_check" ? lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) :
-  name == "spoll" ? lower_call_2(ctx, args, IR_SPOLL, IRTY_INT) :
+  else if name == "signal_handler" { lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) }
+  else if name == "signal_check" { lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) }
+  else if name == "spoll" { lower_call_2(ctx, args, IR_SPOLL, IRTY_INT) }
 
   // ── Misc ──
-  name == "args" ? lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) :
-  name == "exit" ? lower_call_1(ctx, args, IR_EXIT, IRTY_INT) :
-  name == "system" ? lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) :
-  name == "sys" ? lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) :
+  else if name == "args" { lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) }
+  else if name == "exit" { lower_call_1(ctx, args, IR_EXIT, IRTY_INT) }
+  else if name == "system" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
+  else if name == "sys" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
 
   // ── User-defined function call (fallthrough) ──
-  lower_call_user(ctx, name, args)
+  else { lower_call_user(ctx, name, args) }
 }
 
 // ── lower_call helpers by arity ─────────────────────────────────
@@ -736,10 +737,10 @@ lower_call_5(ctx:I args:I opcode:I irtype:I) I {
 lower_call_print(ctx:I args:I) I {
   arg_reg = lower_expr(ctx, args.get(0))
   ty = ctx_get_reg_type(ctx, arg_reg)
-  ty == IRTY_STR ? ctx_emit(ctx, ir_print_string(arg_reg)) :
-  ty == IRTY_BOOL ? ctx_emit(ctx, ir_print_bool(arg_reg)) :
-  ty == IRTY_FLOAT ? ctx_emit(ctx, ir_print_float(arg_reg)) :
-  ctx_emit(ctx, ir_print_int(arg_reg))
+  if ty == IRTY_STR { ctx_emit(ctx, ir_print_string(arg_reg)) }
+  else if ty == IRTY_BOOL { ctx_emit(ctx, ir_print_bool(arg_reg)) }
+  else if ty == IRTY_FLOAT { ctx_emit(ctx, ir_print_float(arg_reg)) }
+  else { ctx_emit(ctx, ir_print_int(arg_reg)) }
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_const(dest, 0))
   ctx_set_reg_type(ctx, dest, IRTY_INT)
@@ -749,7 +750,8 @@ lower_call_print(ctx:I args:I) I {
 // ── str/itos: if arg is already a string, pass through ──────────
 lower_call_str(ctx:I args:I) I {
   a0 = lower_expr(ctx, args.get(0))
-  ctx_get_reg_type(ctx, a0) == IRTY_STR ? a0 : {
+  if ctx_get_reg_type(ctx, a0) == IRTY_STR { a0 }
+  else {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_INT_TO_STRING, dest, a0))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
@@ -797,10 +799,10 @@ lower_call_ptr(ctx:I args:I) I {
 lower_call_user(ctx:I name:I args:I) I {
   // Check if the name is a local variable holding a lambda/fn ref
   local_reg = ctx_get_local(ctx, name)
-  local_reg != 0 ? {
+  if local_reg != 0 {
     ci_map = ctx_closure_info(ctx)
     cinfo = mget(ci_map, local_reg)
-    cinfo != 0 ? {
+    if cinfo != 0 {
       // This is a lambda call — emit direct Call to lifted function with captures prepended
       lambda_fn_name = cinfo.get(0)
       all_args = array<I>()
@@ -824,7 +826,7 @@ lower_call_user(ctx:I name:I args:I) I {
       ctx_emit(ctx, ir_call(dest, lambda_fn_name, all_args))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
-    } : {
+    } else {
       // Local variable holding a non-lambda fn ref — use fcall
       // Lower the explicit args
       arg_regs = array<I>()
@@ -834,22 +836,22 @@ lower_call_user(ctx:I name:I args:I) I {
         fai = fai + 1
         0
       }
-      args.len() == 1 ? {
+      if args.len() == 1 {
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_inst2(IR_FCALL, dest, local_reg, arg_regs.get(0)))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
-      } : args.len() == 2 ? {
+      } else if args.len() == 2 {
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_inst3(IR_FCALL2, dest, local_reg, arg_regs.get(0), arg_regs.get(1)))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
-      } : args.len() == 3 ? {
+      } else if args.len() == 3 {
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_inst4(IR_FCALL3, dest, local_reg, arg_regs.get(0), arg_regs.get(1), arg_regs.get(2)))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
-      } : {
+      } else {
         // 0 args — just call it as fcall with dummy
         dest = ctx_fresh_reg(ctx)
         zero_reg = ctx_fresh_reg(ctx)
@@ -859,7 +861,7 @@ lower_call_user(ctx:I name:I args:I) I {
         dest
       }
     }
-  } : {
+  } else {
     // Regular user-defined function call
     arg_regs = array<I>()
     i := 0
@@ -871,13 +873,13 @@ lower_call_user(ctx:I name:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_call(dest, name, arg_regs))
     rt = ctx_get_fn_ret_type(ctx, name)
-    ctx_set_reg_type(ctx, dest, rt != 0 ? rt : IRTY_INT)
+    ctx_set_reg_type(ctx, dest, if rt != 0 { rt } else { IRTY_INT })
     // If return type is struct, propagate struct name for field access
-    rt == IRTY_STRUCT ? {
+    if rt == IRTY_STRUCT {
       sn_map = ctx_fn_ret_struct_names(ctx)
       sn = mget(sn_map, name)
-      sn != 0 ? ctx_set_struct_name(ctx, dest, sn) : 0
-    } : 0
+      if sn != 0 { ctx_set_struct_name(ctx, dest, sn) }
+    }
     dest
   }
 }
@@ -891,75 +893,75 @@ lower_expr(ctx:I expr:I) I {
   tag = load64(expr)
 
   // ── EX_INT_LIT ──
-  tag == EX_INT_LIT ? {
+  if tag == EX_INT_LIT {
     value = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
     inst = ir_const(dest, value)
     ctx_emit(ctx, inst)
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
+  }
 
   // ── EX_FLOAT_LIT ──
-  tag == EX_FLOAT_LIT ? {
+  else if tag == EX_FLOAT_LIT {
     value = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_float_const(dest, value))
     ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
     dest
-  } :
+  }
 
   // ── EX_BOOL_LIT ──
-  tag == EX_BOOL_LIT ? {
+  else if tag == EX_BOOL_LIT {
     value = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_bool_const(dest, value))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
+  }
 
   // ── EX_STRING_LIT ──
-  tag == EX_STRING_LIT ? {
+  else if tag == EX_STRING_LIT {
     str_ptr = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_string_const(dest, str_ptr))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
+  }
 
   // ── EX_IDENT ──
-  tag == EX_IDENT ? {
+  else if tag == EX_IDENT {
     name = load64(expr + 8)
     local = ctx_get_local(ctx, name)
-    local != 0 ? {
+    if local != 0 {
       // Check for mutable variable marker "!" prefix
-      char_at(local, 0) == 33 ? {
+      if char_at(local, 0) == 33 {
         // Mutable — stored reg is "!rN", strip prefix to get alloca ptr
         ptr_reg = local.substring(1, slen(local))
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_load(dest, ptr_reg))
         // Copy type from the alloca pointer's tracked type
         pty = ctx_get_reg_type(ctx, ptr_reg)
-        pty != 0 ? ctx_set_reg_type(ctx, dest, pty) : 0
+        if pty != 0 { ctx_set_reg_type(ctx, dest, pty) }
         // Copy struct name for struct field access
         psn = ctx_get_struct_name(ctx, ptr_reg)
-        psn != 0 ? ctx_set_struct_name(ctx, dest, psn) : 0
+        if psn != 0 { ctx_set_struct_name(ctx, dest, psn) }
         dest
-      } : {
+      } else {
         // Immutable — register used directly
         local
       }
-    } : {
+    } else {
       // Not a local — check globals
       gmap = ctx_global_names(ctx)
-      mhas(gmap, name) == 1 ? {
+      if mhas(gmap, name) == 1 {
         // Global variable — emit GlobalLoad
         gtype = mget(gmap, name)
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_global_load(dest, name))
         ctx_set_reg_type(ctx, dest, gtype)
         dest
-      } : {
+      } else {
         // Function reference
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_fn_ref(dest, name))
@@ -967,16 +969,16 @@ lower_expr(ctx:I expr:I) I {
         dest
       }
     }
-  } :
+  }
 
   // ── EX_BINOP ──
-  tag == EX_BINOP ? {
+  else if tag == EX_BINOP {
     op = load64(expr + 8)
     left = load64(expr + 16)
     right = load64(expr + 24)
 
     // Short-circuit: AND
-    op == OP_AND ? {
+    if op == OP_AND {
       left_reg = lower_expr(ctx, left)
       rhs_label = ctx_fresh_label(ctx)
       false_label = ctx_fresh_label(ctx)
@@ -1002,10 +1004,10 @@ lower_expr(ctx:I expr:I) I {
       ctx_emit(ctx, ir_phi(dest, right_reg, rhs_label, false_reg, false_label))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
-    } :
+    }
 
     // Short-circuit: OR
-    op == OP_OR ? {
+    else if op == OP_OR {
       left_reg = lower_expr(ctx, left)
       true_label = ctx_fresh_label(ctx)
       rhs_label = ctx_fresh_label(ctx)
@@ -1031,7 +1033,7 @@ lower_expr(ctx:I expr:I) I {
       ctx_emit(ctx, ir_phi(dest, true_reg, true_label, right_reg, rhs_label))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
-    } : {
+    } else {
       // Non-short-circuit: evaluate both sides
       left_reg = lower_expr(ctx, left)
       right_reg = lower_expr(ctx, right)
@@ -1039,115 +1041,115 @@ lower_expr(ctx:I expr:I) I {
       right_type = ctx_get_reg_type(ctx, right_reg)
       lower_binop_normal(ctx, op, left_reg, right_reg, left_type, right_type)
     }
-  } :
+  }
 
   // ── EX_UNARYOP ──
-  tag == EX_UNARYOP ? {
+  else if tag == EX_UNARYOP {
     op = load64(expr + 8)
     operand = load64(expr + 16)
     src_reg = lower_expr(ctx, operand)
     src_type = ctx_get_reg_type(ctx, src_reg)
     dest = ctx_fresh_reg(ctx)
-    op == UOP_NOT ? {
+    if op == UOP_NOT {
       ctx_emit(ctx, ir_not(dest, src_reg))
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
-    } : {
+    } else {
       // UOP_NEG — for floats, emit 0.0 - x
-      src_type == IRTY_FLOAT ? {
+      if src_type == IRTY_FLOAT {
         zero_reg = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_float_const(zero_reg, 0))
         ctx_set_reg_type(ctx, zero_reg, IRTY_FLOAT)
         ctx_emit(ctx, ir_float_binop(dest, IROP_SUB, zero_reg, src_reg))
         ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
         dest
-      } : {
+      } else {
         ctx_emit(ctx, ir_neg(dest, src_reg))
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
       }
     }
-  } :
+  }
 
   // ── EX_CALL ──
-  tag == EX_CALL ? {
+  else if tag == EX_CALL {
     name = load64(expr + 8)
     args := load64(expr + 16)
     lower_call(ctx, name, args)
-  } :
+  }
 
   // ── EX_METHOD_CALL ──
-  tag == EX_METHOD_CALL ? {
+  else if tag == EX_METHOD_CALL {
     lower_method_call(ctx, expr)
-  } :
+  }
 
   // ── EX_FIELD_ACCESS ──
-  tag == EX_FIELD_ACCESS ? {
+  else if tag == EX_FIELD_ACCESS {
     lower_field_access(ctx, expr)
-  } :
+  }
 
   // ── EX_IF ──
-  tag == EX_IF ? {
+  else if tag == EX_IF {
     lower_if_expr(ctx, expr)
-  } :
+  }
 
   // ── EX_LAMBDA ──
-  tag == EX_LAMBDA ? {
+  else if tag == EX_LAMBDA {
     lower_lambda(ctx, expr)
-  } :
+  }
 
   // ── EX_ARRAY_LIT ──
-  tag == EX_ARRAY_LIT ? {
+  else if tag == EX_ARRAY_LIT {
     lower_array_lit(ctx, expr)
-  } :
+  }
 
   // ── EX_STRUCT_LIT ──
-  tag == EX_STRUCT_LIT ? {
+  else if tag == EX_STRUCT_LIT {
     lower_struct_lit(ctx, expr)
-  } :
+  }
 
   // ── EX_TUPLE_LIT ──
-  tag == EX_TUPLE_LIT ? {
+  else if tag == EX_TUPLE_LIT {
     lower_tuple_lit(ctx, expr)
-  } :
+  }
 
   // ── EX_MATCH ──
-  tag == EX_MATCH ? {
+  else if tag == EX_MATCH {
     lower_match(ctx, expr)
-  } :
+  }
 
   // ── EX_SPAWN ──
-  tag == EX_SPAWN ? {
+  else if tag == EX_SPAWN {
     lower_spawn(ctx, expr)
-  } :
+  }
 
   // ── EX_CHANNEL ──
-  tag == EX_CHANNEL ? {
+  else if tag == EX_CHANNEL {
     // Channel should only appear inside LetDestructure (handled in lower_stmt)
     // If it appears standalone, emit zeros for tx
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_const(dest, 0))
     ctx_set_reg_type(ctx, dest, IRTY_SENDER)
     dest
-  } :
+  }
 
   // ── EX_MUTEX ──
-  tag == EX_MUTEX ? {
+  else if tag == EX_MUTEX {
     lower_mutex(ctx, expr)
-  } :
+  }
 
   // ── EX_ENUM_VARIANT ──
-  tag == EX_ENUM_VARIANT ? {
+  else if tag == EX_ENUM_VARIANT {
     lower_enum_variant(ctx, expr)
-  } :
+  }
 
   // ── EX_ARRAY_CREATE ──
-  tag == EX_ARRAY_CREATE ? {
+  else if tag == EX_ARRAY_CREATE {
     lower_array_create(ctx, expr)
-  } :
+  }
 
   // Unknown tag — fallback
-  {
+  else {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_const(dest, 0))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
@@ -1175,77 +1177,77 @@ lower_stmt(ctx:I stmt:I) I {
   tag = load64(stmt)
 
   // ST_EXPR — lower the expression, discard result
-  tag == ST_EXPR ? {
+  if tag == ST_EXPR {
     expr = load64(stmt + 8)
     lower_expr(ctx, expr)
     0
-  } :
+  }
 
   // ST_LET — lower value, bind to local
-  tag == ST_LET ? {
+  else if tag == ST_LET {
     name = load64(stmt + 8)
     is_mut = load64(stmt + 16)
     value_expr = load64(stmt + 32)
     val_reg = lower_expr(ctx, value_expr)
-    is_mut == 1 ? {
+    if is_mut == 1 {
       // Mutable: alloca + store, prefix reg with "!"
       ptr_reg = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_alloca(ptr_reg))
       ctx_emit(ctx, ir_store(ptr_reg, val_reg))
       vt = ctx_get_reg_type(ctx, val_reg)
-      vt != 0 ? ctx_set_reg_type(ctx, ptr_reg, vt) : 0
+      if vt != 0 { ctx_set_reg_type(ctx, ptr_reg, vt) }
       // Propagate struct name for mutable struct variables
       vsn = ctx_get_struct_name(ctx, val_reg)
-      vsn != 0 ? ctx_set_struct_name(ctx, ptr_reg, vsn) : 0
+      if vsn != 0 { ctx_set_struct_name(ctx, ptr_reg, vsn) }
       ctx_set_local(ctx, name, "!" + ptr_reg)
-    } : {
+    } else {
       ctx_set_local(ctx, name, val_reg)
     }
     0
-  } :
+  }
 
   // ST_ASSIGN — store to mutable local or global
-  tag == ST_ASSIGN ? {
+  else if tag == ST_ASSIGN {
     name = load64(stmt + 8)
     value_expr = load64(stmt + 16)
     val_reg = lower_expr(ctx, value_expr)
     local = ctx_get_local(ctx, name)
-    local != 0 ? {
-      char_at(local, 0) == 33 ? {
+    if local != 0 {
+      if char_at(local, 0) == 33 {
         // Mutable: strip "!" prefix, store
         ptr_reg = local.substring(1, slen(local))
         ctx_emit(ctx, ir_store(ptr_reg, val_reg))
         // Update struct name on ptr_reg when reassigning struct value
         asn = ctx_get_struct_name(ctx, val_reg)
-        asn != 0 ? ctx_set_struct_name(ctx, ptr_reg, asn) : 0
-      } : {
+        if asn != 0 { ctx_set_struct_name(ctx, ptr_reg, asn) }
+      } else {
         // Immutable reassignment — treat as new binding
         ctx_set_local(ctx, name, val_reg)
       }
-    } : {
+    } else {
       // Check if it's a global variable
       gmap = ctx_global_names(ctx)
-      mhas(gmap, name) == 1 ? {
+      if mhas(gmap, name) == 1 {
         // Global variable — emit GlobalStore
         ctx_emit(ctx, ir_global_store(name, val_reg))
-      } : {
+      } else {
         // New local binding (bare assignment: x = 10)
         ctx_set_local(ctx, name, val_reg)
       }
     }
     0
-  } :
+  }
 
   // ST_RETURN
-  tag == ST_RETURN ? {
+  else if tag == ST_RETURN {
     value_expr = load64(stmt + 8)
     val_reg = lower_expr(ctx, value_expr)
     ctx_emit(ctx, ir_ret(val_reg))
     0
-  } :
+  }
 
   // ST_WHILE
-  tag == ST_WHILE ? {
+  else if tag == ST_WHILE {
     cond_expr = load64(stmt + 8)
     body_stmts = load64(stmt + 16)
     cond_label = ctx_fresh_label(ctx)
@@ -1271,10 +1273,10 @@ lower_stmt(ctx:I stmt:I) I {
     ctx_set_break_label(ctx, old_break)
     ctx_set_continue_label(ctx, old_continue)
     0
-  } :
+  }
 
   // ST_IF (statement if — no value)
-  tag == ST_IF ? {
+  else if tag == ST_IF {
     cond_expr = load64(stmt + 8)
     then_stmts = load64(stmt + 16)
     else_stmts = load64(stmt + 24)
@@ -1287,38 +1289,38 @@ lower_stmt(ctx:I stmt:I) I {
     lower_stmts(ctx, then_stmts)
     ctx_emit(ctx, ir_jump(end_l))
     ctx_emit(ctx, ir_label(else_l))
-    else_stmts != 0 ? lower_stmts(ctx, else_stmts) : 0
+    if else_stmts != 0 { lower_stmts(ctx, else_stmts) }
     ctx_emit(ctx, ir_jump(end_l))
     ctx_emit(ctx, ir_label(end_l))
     0
-  } :
+  }
 
   // ST_BREAK
-  tag == ST_BREAK ? {
+  else if tag == ST_BREAK {
     bl = ctx_break_label(ctx)
-    bl != 0 ? ctx_emit(ctx, ir_jump(bl)) : 0
+    if bl != 0 { ctx_emit(ctx, ir_jump(bl)) }
     0
-  } :
+  }
 
   // ST_CONTINUE — jump back to loop condition
-  tag == ST_CONTINUE ? {
+  else if tag == ST_CONTINUE {
     cl = ctx_continue_label(ctx)
-    cl != 0 ? ctx_emit(ctx, ir_jump(cl)) : 0
+    if cl != 0 { ctx_emit(ctx, ir_jump(cl)) }
     0
-  } :
+  }
 
   // ST_LET_DESTR — destructuring let (e.g., for channels)
-  tag == ST_LET_DESTR ? {
+  else if tag == ST_LET_DESTR {
     lower_let_destructure(ctx, stmt)
-  } :
+  }
 
   // ST_FOR_IN — desugar to while loop
-  tag == ST_FOR_IN ? {
+  else if tag == ST_FOR_IN {
     lower_for_in(ctx, stmt)
-  } :
+  }
 
   // Unknown statement — skip
-  { 0 }
+  else { 0 }
 }
 
 // ── lower_let_destructure ───────────────────────────────────────
@@ -1329,24 +1331,24 @@ lower_let_destructure(ctx:I stmt:I) I {
 
   // Check if value is a channel create
   vtag = load64(value_expr)
-  vtag == EX_CHANNEL ? {
+  if vtag == EX_CHANNEL {
     elem_type = load64(value_expr + 8)
     cap_expr = load64(value_expr + 16)
     tx_dest = ctx_fresh_reg(ctx)
     rx_dest = ctx_fresh_reg(ctx)
-    cap_expr != 0 ? {
+    if cap_expr != 0 {
       cap_reg = lower_expr(ctx, cap_expr)
       ctx_emit(ctx, ir_channel_create_bounded(tx_dest, rx_dest, cap_reg))
-    } : {
+    } else {
       ctx_emit(ctx, ir_channel_create(tx_dest, rx_dest))
     }
     ctx_set_reg_type(ctx, tx_dest, IRTY_SENDER)
     ctx_set_reg_type(ctx, rx_dest, IRTY_RECEIVER)
     // Bind first name to tx, second to rx
-    names.len() >= 1 ? ctx_set_local(ctx, names.get(0), tx_dest) : 0
-    names.len() >= 2 ? ctx_set_local(ctx, names.get(1), rx_dest) : 0
+    if names.len() >= 1 { ctx_set_local(ctx, names.get(0), tx_dest) }
+    if names.len() >= 2 { ctx_set_local(ctx, names.get(1), rx_dest) }
     0
-  } : {
+  } else {
     // Non-channel destructure: lower value and treat as tuple field loads
     val_reg = lower_expr(ctx, value_expr)
     i := 0
@@ -1449,110 +1451,110 @@ lower_method_call(ctx:I expr:I) I {
   obj_type = ctx_get_reg_type(ctx, obj_reg)
 
   // ── Sender methods ──
-  obj_type == IRTY_SENDER ? {
-    method == "send" ? {
+  if obj_type == IRTY_SENDER {
+    if method == "send" {
       val_reg = lower_expr(ctx, args.get(0))
       ctx_emit(ctx, ir_channel_send(obj_reg, val_reg))
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_const(dest, 0))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
-    } : { lower_method_fallback(ctx, obj_reg, method, args) }
-  } :
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
 
   // ── Receiver methods ──
-  obj_type == IRTY_RECEIVER ? {
-    method == "recv" ? {
+  else if obj_type == IRTY_RECEIVER {
+    if method == "recv" {
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_channel_recv(dest, obj_reg))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
-    } : { lower_method_fallback(ctx, obj_reg, method, args) }
-  } :
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
 
   // ── JoinHandle methods ──
-  obj_type == IRTY_JOIN_HANDLE ? {
-    method == "join" ? {
+  else if obj_type == IRTY_JOIN_HANDLE {
+    if method == "join" {
       ctx_emit(ctx, ir_thread_join(obj_reg))
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_const(dest, 0))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
-    } : { lower_method_fallback(ctx, obj_reg, method, args) }
-  } :
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
 
   // ── Mutex methods ──
-  obj_type == IRTY_MUTEX ? {
-    method == "lock" ? {
+  else if obj_type == IRTY_MUTEX {
+    if method == "lock" {
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_mutex_lock(dest, obj_reg))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
-    } :
-    method == "unlock" ? {
+    }
+    else if method == "unlock" {
       val_reg = lower_expr(ctx, args.get(0))
       ctx_emit(ctx, ir_mutex_unlock(obj_reg, val_reg))
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_const(dest, 0))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
-    } : { lower_method_fallback(ctx, obj_reg, method, args) }
-  } :
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
 
   // ── Array methods ──
-  obj_type == IRTY_ARRAY ? {
+  else if obj_type == IRTY_ARRAY {
     lower_array_method(ctx, obj_reg, method, args)
-  } :
+  }
 
   // ── String methods ──
-  obj_type == IRTY_STR ? {
+  else if obj_type == IRTY_STR {
     lower_string_method(ctx, obj_reg, method, args)
-  } :
+  }
 
   // ── Map methods ──
-  obj_type == IRTY_MAP ? {
+  else if obj_type == IRTY_MAP {
     lower_map_method(ctx, obj_reg, method, args)
-  } :
+  }
 
   // ── JSON methods ──
-  obj_type == IRTY_JSON ? {
+  else if obj_type == IRTY_JSON {
     lower_json_method(ctx, obj_reg, method, args)
-  } :
+  }
 
   // ── HTTP Response methods ──
-  obj_type == IRTY_HTTP_RESP ? {
+  else if obj_type == IRTY_HTTP_RESP {
     lower_http_resp_method(ctx, obj_reg, method, args)
-  } :
+  }
 
   // ── HTTP Server methods ──
-  obj_type == IRTY_HTTP_SERVER ? {
-    method == "accept" ? {
+  else if obj_type == IRTY_HTTP_SERVER {
+    if method == "accept" {
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_inst1(IR_HTTP_ACCEPT, dest, obj_reg))
       ctx_set_reg_type(ctx, dest, IRTY_HTTP_REQ)
       dest
-    } : { lower_method_fallback(ctx, obj_reg, method, args) }
-  } :
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
 
   // ── HTTP Request methods ──
-  obj_type == IRTY_HTTP_REQ ? {
+  else if obj_type == IRTY_HTTP_REQ {
     lower_http_req_method(ctx, obj_reg, method, args)
-  } :
+  }
 
   // ── Result methods ──
-  obj_type == IRTY_RESULT ? {
+  else if obj_type == IRTY_RESULT {
     lower_result_method(ctx, obj_reg, method, args)
-  } :
+  }
 
   // ── Struct/Enum user-defined methods (fallback) ──
-  { lower_method_fallback(ctx, obj_reg, method, args) }
+  else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
 
 // ── lower_method_fallback (user-defined struct/enum methods) ────
 lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
   // Mangle name as "Type_method"
   type_name = ctx_get_struct_name(ctx, obj_reg)
-  mangled = type_name != 0 ? type_name + "_" + method : method
+  mangled = if type_name != 0 { type_name + "_" + method } else { method }
   arg_regs = array<I>()
   arg_regs.push(obj_reg)
   i := 0
@@ -1569,28 +1571,28 @@ lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
 
 // ── lower_array_method ──────────────────────────────────────────
 lower_array_method(ctx:I obj_reg:I method:I args:I) I {
-  method == "len" ? {
+  if method == "len" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "push" ? {
+  }
+  else if method == "push" {
     val_reg = lower_expr(ctx, args.get(0))
     ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, obj_reg, val_reg))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_const(dest, 0))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "get" ? {
+  }
+  else if method == "get" {
     idx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, dest, obj_reg, idx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "set" ? {
+  }
+  else if method == "set" {
     idx_reg = lower_expr(ctx, args.get(0))
     val_reg = lower_expr(ctx, args.get(1))
     n = alloc(40)
@@ -1604,448 +1606,448 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_emit(ctx, ir_const(dest, 0))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "map" ? {
+  }
+  else if method == "map" {
     fn_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_MAP, dest, obj_reg, fn_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
-  } :
-  method == "filter" ? {
+  }
+  else if method == "filter" {
     fn_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_FILTER, dest, obj_reg, fn_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
-  } :
-  method == "any" ? {
+  }
+  else if method == "any" {
     fn_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_ANY, dest, obj_reg, fn_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "find" ? {
+  }
+  else if method == "find" {
     fn_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_FIND, dest, obj_reg, fn_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "enumerate" ? {
+  }
+  else if method == "enumerate" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_ARRAY_ENUMERATE, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
-  } :
-  method == "zip" ? {
+  }
+  else if method == "zip" {
     other_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_ZIP, dest, obj_reg, other_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
-  } :
-  method == "pop" ? {
+  }
+  else if method == "pop" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_ARRAY_POP, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "contains" ? {
+  }
+  else if method == "contains" {
     val_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_CONTAINS, dest, obj_reg, val_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "remove" ? {
+  }
+  else if method == "remove" {
     idx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_REMOVE, dest, obj_reg, idx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } : {
+  } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
 
 // ── lower_string_method ─────────────────────────────────────────
 lower_string_method(ctx:I obj_reg:I method:I args:I) I {
-  method == "len" ? {
+  if method == "len" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_STRING_LEN, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "trim" ? {
+  }
+  else if method == "trim" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_STRING_TRIM, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "split" ? {
+  }
+  else if method == "split" {
     delim_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_SPLIT, dest, obj_reg, delim_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
-  } :
-  method == "replace" ? {
+  }
+  else if method == "replace" {
     old_reg = lower_expr(ctx, args.get(0))
     new_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_STRING_REPLACE, dest, obj_reg, old_reg, new_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "starts_with" ? {
+  }
+  else if method == "starts_with" {
     pfx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, pfx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "sw" ? {
+  }
+  else if method == "sw" {
     pfx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, pfx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "ends_with" ? {
+  }
+  else if method == "ends_with" {
     sfx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, sfx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "ew" ? {
+  }
+  else if method == "ew" {
     sfx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, sfx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "contains" ? {
+  }
+  else if method == "contains" {
     needle_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_CONTAINS, dest, obj_reg, needle_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "substring" ? {
+  }
+  else if method == "substring" {
     start_reg = lower_expr(ctx, args.get(0))
     end_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_STRING_SUBSTRING, dest, obj_reg, start_reg, end_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "add" ? {
+  }
+  else if method == "add" {
     other_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_string_concat(dest, obj_reg, other_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } : {
+  } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
 
 // ── lower_map_method ────────────────────────────────────────────
 lower_map_method(ctx:I obj_reg:I method:I args:I) I {
-  method == "get" ? {
+  if method == "get" {
     key_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_MAP_GET, dest, obj_reg, key_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "set" ? {
+  }
+  else if method == "set" {
     key_reg = lower_expr(ctx, args.get(0))
     val_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_MAP_SET, dest, obj_reg, key_reg, val_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "has" ? {
+  }
+  else if method == "has" {
     key_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_MAP_HAS, dest, obj_reg, key_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "len" ? {
+  }
+  else if method == "len" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_MAP_LEN, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "keys" ? {
+  }
+  else if method == "keys" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_MAP_KEYS, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
-  } :
-  method == "vals" ? {
+  }
+  else if method == "vals" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_MAP_VALS, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
-  } : {
+  } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
 
 // ── lower_json_method ───────────────────────────────────────────
 lower_json_method(ctx:I obj_reg:I method:I args:I) I {
-  method == "get" ? {
+  if method == "get" {
     key_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_JSON_GET, dest, obj_reg, key_reg))
     ctx_set_reg_type(ctx, dest, IRTY_JSON)
     dest
-  } :
-  method == "get_index" ? {
+  }
+  else if method == "get_index" {
     idx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_JSON_GET_INDEX, dest, obj_reg, idx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_JSON)
     dest
-  } :
-  method == "get_string" ? {
+  }
+  else if method == "get_string" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_GET_STRING, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "get_int" ? {
+  }
+  else if method == "get_int" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_GET_INT, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "get_bool" ? {
+  }
+  else if method == "get_bool" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_GET_BOOL, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "set" ? {
+  }
+  else if method == "set" {
     key_reg = lower_expr(ctx, args.get(0))
     val_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_JSON_SET, dest, obj_reg, key_reg, val_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "push" ? {
+  }
+  else if method == "push" {
     val_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_JSON_PUSH, dest, obj_reg, val_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "len" ? {
+  }
+  else if method == "len" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_LEN, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "type_of" ? {
+  }
+  else if method == "type_of" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_TYPE_OF, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "stringify" ? {
+  }
+  else if method == "stringify" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_STRINGIFY, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } : {
+  } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
 
 // ── lower_http_resp_method ──────────────────────────────────────
 lower_http_resp_method(ctx:I obj_reg:I method:I args:I) I {
-  method == "status" ? {
+  if method == "status" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_STATUS, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "body" ? {
+  }
+  else if method == "body" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_BODY, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "header" ? {
+  }
+  else if method == "header" {
     name_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_HTTP_HEADER, dest, obj_reg, name_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "ok" ? {
+  }
+  else if method == "ok" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_OK, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } : {
+  } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
 
 // ── lower_http_req_method ───────────────────────────────────────
 lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
-  method == "path" ? {
+  if method == "path" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_PATH, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "method" ? {
+  }
+  else if method == "method" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_METHOD, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "body" ? {
+  }
+  else if method == "body" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_BODY, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "respond" ? {
+  }
+  else if method == "respond" {
     status_reg = lower_expr(ctx, args.get(0))
     body_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
-    args.len() == 3 ? {
+    if args.len() == 3 {
       ct_reg = lower_expr(ctx, args.get(2))
       ctx_emit(ctx, ir_inst4(IR_HTTP_RESPOND_CT, dest, obj_reg, status_reg, body_reg, ct_reg))
-    } : {
+    } else {
       ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND, dest, obj_reg, status_reg, body_reg))
     }
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "header" ? {
+  }
+  else if method == "header" {
     name_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_HEADER, dest, obj_reg, name_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "set_header" ? {
+  }
+  else if method == "set_header" {
     name_reg = lower_expr(ctx, args.get(0))
     val_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_HTTP_REQUEST_SET_HEADER, dest, obj_reg, name_reg, val_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "cookie" ? {
+  }
+  else if method == "cookie" {
     name_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_COOKIE, dest, obj_reg, name_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "query" ? {
+  }
+  else if method == "query" {
     name_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_QUERY, dest, obj_reg, name_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "path_only" ? {
+  }
+  else if method == "path_only" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_PATH_ONLY, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "content_length" ? {
+  }
+  else if method == "content_length" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_CONTENT_LENGTH, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "respond_stream" ? {
+  }
+  else if method == "respond_stream" {
     status_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_RESPOND_STREAM, dest, obj_reg, status_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "respond_json" ? {
+  }
+  else if method == "respond_json" {
     status_reg = lower_expr(ctx, args.get(0))
     body_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND_JSON, dest, obj_reg, status_reg, body_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "form" ? {
+  }
+  else if method == "form" {
     name_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_FORM, dest, obj_reg, name_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } :
-  method == "is_ws_upgrade" ? {
+  }
+  else if method == "is_ws_upgrade" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_WS_IS_UPGRADE, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "upgrade_ws" ? {
+  }
+  else if method == "upgrade_ws" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_WS_UPGRADE, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } : {
+  } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
 
 // ── lower_result_method ─────────────────────────────────────────
 lower_result_method(ctx:I obj_reg:I method:I args:I) I {
-  method == "is_ok" ? {
+  if method == "is_ok" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_RESULT_IS_OK, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "is_err" ? {
+  }
+  else if method == "is_err" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_RESULT_IS_ERR, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
-  } :
-  method == "unwrap" ? {
+  }
+  else if method == "unwrap" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_RESULT_UNWRAP, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "unwrap_or" ? {
+  }
+  else if method == "unwrap_or" {
     default_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_RESULT_UNWRAP_OR, dest, obj_reg, default_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
-  method == "error" ? {
+  }
+  else if method == "error" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_RESULT_ERROR, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
-  } : {
+  } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
@@ -2059,16 +2061,16 @@ lower_field_access(ctx:I expr:I) I {
   obj_type = ctx_get_reg_type(ctx, obj_reg)
 
   // Struct field access
-  obj_type == IRTY_STRUCT ? {
+  if obj_type == IRTY_STRUCT {
     // Look up field index from struct_defs using tracked struct name
     sd = ctx_struct_defs(ctx)
     struct_name = ctx_get_struct_name(ctx, obj_reg)
-    struct_fields = struct_name != 0 ? mget(sd, struct_name) : 0
-    num_fields = struct_fields != 0 ? struct_fields.len() : 1
+    struct_fields = if struct_name != 0 { mget(sd, struct_name) } else { 0 }
+    num_fields = if struct_fields != 0 { struct_fields.len() } else { 1 }
 
     // Find field index using map with proper string comparison
     field_idx := 0
-    struct_fields != 0 ? {
+    if struct_fields != 0 {
       fi_map = M()
       k := 0
       while k < struct_fields.len() {
@@ -2077,38 +2079,38 @@ lower_field_access(ctx:I expr:I) I {
         0
       }
       looked = mget(fi_map, field)
-      looked != 0 ? { field_idx = looked - 1
-        0 } : 0
+      if looked != 0 { field_idx = looked - 1
+        0 }
       0
-    } : 0
+    }
 
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, num_fields))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
+  }
 
   // Tuple field access (field is a numeric string like "0", "1")
-  obj_type == IRTY_TUPLE ? {
+  else if obj_type == IRTY_TUPLE {
     field_idx = stoi(field)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, 2))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
+  }
 
   // If type is INT but field is numeric (e.g. "0", "1"), treat as tuple field access
   // This handles cases where tuple type info was lost (e.g. from array.get())
-  char_at(field, 0) >= 48 && char_at(field, 0) <= 57 ? {
+  else if char_at(field, 0) >= 48 && char_at(field, 0) <= 57 {
     field_idx = stoi(field)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, 2))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
-  } :
+  }
 
   // Non-struct/tuple: treat as no-arg method call
-  {
+  else {
     // Synthesize method call with 0 args
     empty_args = array<I>()
     lower_method_call_direct(ctx, obj_reg, field, empty_args)
@@ -2120,22 +2122,22 @@ lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
   obj_type = ctx_get_reg_type(ctx, obj_reg)
 
   // Dispatch based on type
-  obj_type == IRTY_ARRAY ? lower_array_method(ctx, obj_reg, method, args) :
-  obj_type == IRTY_STR ? lower_string_method(ctx, obj_reg, method, args) :
-  obj_type == IRTY_MAP ? lower_map_method(ctx, obj_reg, method, args) :
-  obj_type == IRTY_JSON ? lower_json_method(ctx, obj_reg, method, args) :
-  obj_type == IRTY_HTTP_RESP ? lower_http_resp_method(ctx, obj_reg, method, args) :
-  obj_type == IRTY_HTTP_SERVER ? {
-    method == "accept" ? {
+  if obj_type == IRTY_ARRAY { lower_array_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_STR { lower_string_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_MAP { lower_map_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_JSON { lower_json_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_HTTP_RESP { lower_http_resp_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_HTTP_SERVER {
+    if method == "accept" {
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_inst1(IR_HTTP_ACCEPT, dest, obj_reg))
       ctx_set_reg_type(ctx, dest, IRTY_HTTP_REQ)
       dest
-    } : { lower_method_fallback(ctx, obj_reg, method, args) }
-  } :
-  obj_type == IRTY_HTTP_REQ ? lower_http_req_method(ctx, obj_reg, method, args) :
-  obj_type == IRTY_RESULT ? lower_result_method(ctx, obj_reg, method, args) :
-  lower_method_fallback(ctx, obj_reg, method, args)
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+  else if obj_type == IRTY_HTTP_REQ { lower_http_req_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_RESULT { lower_result_method(ctx, obj_reg, method, args) }
+  else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
 
 // ── lower_if_expr ───────────────────────────────────────────────
@@ -2171,7 +2173,7 @@ lower_if_expr(ctx:I expr:I) I {
   ctx_emit(ctx, ir_phi(dest, then_reg, then_label, else_reg, else_label))
   // Take type from then branch
   tty = ctx_get_reg_type(ctx, then_reg)
-  ctx_set_reg_type(ctx, dest, tty != 0 ? tty : IRTY_INT)
+  ctx_set_reg_type(ctx, dest, if tty != 0 { tty } else { IRTY_INT })
   dest
 }
 
@@ -2210,7 +2212,7 @@ lower_match(ctx:I expr:I) I {
 
     arm_label = ctx_fresh_label(ctx)
 
-    i < num_arms - 1 ? {
+    if i < num_arms - 1 {
       next_label = ctx_fresh_label(ctx)
       // Compare tag
       tag_const = ctx_fresh_reg(ctx)
@@ -2233,7 +2235,7 @@ lower_match(ctx:I expr:I) I {
 
       ctx_emit(ctx, ir_label(next_label))
       0
-    } : {
+    } else {
       // Last arm — always taken
       ctx_emit(ctx, ir_jump(arm_label))
       ctx_emit(ctx, ir_label(arm_label))
@@ -2290,14 +2292,14 @@ lower_match_lookup_tag(ctx:I scrutinee_reg:I variant_name:I) I {
 
   // Use the enum_variant_tag_map that we'll build in the lowering init
   tmap = load64(ctx + 96)  // variant_tag_map: "variant_name" -> tag_index
-  tmap != 0 && mhas(tmap, variant_name) ? mget(tmap, variant_name) : 0
+  if tmap != 0 && mhas(tmap, variant_name) { mget(tmap, variant_name) } else { 0 }
 }
 
 // ── lower_match_bindings ────────────────────────────────────────
 lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
   // Look up field types from variant_fields_map
   vfmap = load64(ctx + 104)
-  field_types = vfmap != 0 && mhas(vfmap, variant_name) ? mget(vfmap, variant_name) : 0
+  field_types = if vfmap != 0 && mhas(vfmap, variant_name) { mget(vfmap, variant_name) } else { 0 }
   i := 0
   while i < bindings.len() {
     binding_name = bindings.get(i)
@@ -2305,10 +2307,10 @@ lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
     ctx_emit(ctx, ir_enum_data(data_reg, scrutinee_reg, i))
     // Determine the IR type from the field type name
     irty := IRTY_INT
-    field_types != 0 && i < field_types.len() ? {
+    if field_types != 0 && i < field_types.len() {
       ft_name = field_types.get(i)
       irty = ir_type_for_return(ft_name, ctx_struct_defs(ctx), ctx_enum_defs(ctx))
-    } : 0
+    }
     ctx_set_reg_type(ctx, data_reg, irty)
     ctx_set_local(ctx, binding_name, data_reg)
     i = i + 1
@@ -2359,13 +2361,13 @@ lower_lambda(ctx:I expr:I) I {
     ctx_set_local(lctx, cap_name, arg_reg)
     // Copy type from enclosing scope
     enc_reg = ctx_get_local(ctx, cap_name)
-    enc_reg != 0 ? {
+    if enc_reg != 0 {
       ety = ctx_get_reg_type(ctx, enc_reg)
       ctx_set_reg_type(lctx, arg_reg, ety)
       // Copy struct name if applicable
       esn = ctx_get_struct_name(ctx, enc_reg)
-      esn != 0 ? ctx_set_struct_name(lctx, arg_reg, esn) : 0
-    } : 0
+      if esn != 0 { ctx_set_struct_name(lctx, arg_reg, esn) }
+    }
     lifted_param_names.push(arg_reg)
     lifted_param_sizes.push(0)
     ci = ci + 1
@@ -2381,15 +2383,15 @@ lower_lambda(ctx:I expr:I) I {
     arg_reg = "arg" + itos(captures.len() + li)
     ctx_set_local(lctx, pname, arg_reg)
     // Set type
-    ptype == "I" ? ctx_set_reg_type(lctx, arg_reg, IRTY_INT) :
-    ptype == "Int" ? ctx_set_reg_type(lctx, arg_reg, IRTY_INT) :
-    ptype == "F" ? ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) :
-    ptype == "Float" ? ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) :
-    ptype == "B" ? ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) :
-    ptype == "Bool" ? ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) :
-    ptype == "S" ? ctx_set_reg_type(lctx, arg_reg, IRTY_STR) :
-    ptype == "String" ? ctx_set_reg_type(lctx, arg_reg, IRTY_STR) :
-    ctx_set_reg_type(lctx, arg_reg, IRTY_INT)
+    if ptype == "I" { ctx_set_reg_type(lctx, arg_reg, IRTY_INT) }
+    else if ptype == "Int" { ctx_set_reg_type(lctx, arg_reg, IRTY_INT) }
+    else if ptype == "F" { ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "Float" { ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "B" { ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "Bool" { ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "S" { ctx_set_reg_type(lctx, arg_reg, IRTY_STR) }
+    else if ptype == "String" { ctx_set_reg_type(lctx, arg_reg, IRTY_STR) }
+    else { ctx_set_reg_type(lctx, arg_reg, IRTY_INT) }
     lifted_param_names.push(arg_reg)
     lifted_param_sizes.push(0)
     li = li + 1
@@ -2401,20 +2403,20 @@ lower_lambda(ctx:I expr:I) I {
   while bj < body_stmts.len() {
     is_last = bj == body_stmts.len() - 1
     stmt = body_stmts.get(bj)
-    is_last == 1 ? {
+    if is_last == 1 {
       stag = load64(stmt)
-      stag == ST_EXPR ? {
+      if stag == ST_EXPR {
         bexpr = load64(stmt + 8)
         reg = lower_expr(lctx, bexpr)
         ctx_emit(lctx, ir_ret(reg))
-      } : stag == ST_RETURN ? {
+      } else if stag == ST_RETURN {
         val_expr = load64(stmt + 8)
         reg = lower_expr(lctx, val_expr)
         ctx_emit(lctx, ir_ret(reg))
-      } : {
+      } else {
         lower_stmt(lctx, stmt)
       }
-    } : {
+    } else {
       lower_stmt(lctx, stmt)
     }
     bj = bj + 1
@@ -2483,49 +2485,48 @@ _find_captures_stmts(stmts:I param_set:I ctx:I result:I seen:I local_set:I) I {
 
 _find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
   stag = load64(stmt)
-  stag == ST_EXPR ? _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) :
-  stag == ST_LET ? {
+  if stag == ST_EXPR { _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  else if stag == ST_LET {
     val = load64(stmt + 16)
     _find_captures_expr(val, param_set, ctx, result, seen, local_set)
     // Add the let-bound name to local_set so it's not treated as a capture
     mset(local_set, load64(stmt + 8), 1)
-  } :
-  stag == ST_ASSIGN ? {
+  }
+  else if stag == ST_ASSIGN {
     _find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
     // The assigned name might itself be a capture
     aname = load64(stmt + 8)
-    mget(param_set, aname) == 0 && mget(local_set, aname) == 0 && mget(seen, aname) == 0 && ctx_get_local(ctx, aname) != 0 ? {
+    if mget(param_set, aname) == 0 && mget(local_set, aname) == 0 && mget(seen, aname) == 0 && ctx_get_local(ctx, aname) != 0 {
       mset(seen, aname, 1)
       result.push(aname)
-    } : 0
-  } :
-  stag == ST_RETURN ? _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) :
-  stag == ST_IF ? {
+    }
+  }
+  else if stag == ST_RETURN { _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  else if stag == ST_IF {
     _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
     _find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
     else_stmts = load64(stmt + 24)
-    else_stmts != 0 ? _find_captures_stmts(else_stmts, param_set, ctx, result, seen, local_set) : 0
-  } :
-  stag == ST_WHILE ? {
+    if else_stmts != 0 { _find_captures_stmts(else_stmts, param_set, ctx, result, seen, local_set) }
+  }
+  else if stag == ST_WHILE {
     _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
     _find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
-  } :
-  0
+  }
   0
 }
 
 _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
   if expr == 0 { return 0 }
   etag = load64(expr)
-  etag == EX_IDENT ? {
+  if etag == EX_IDENT {
     name = load64(expr + 8)
     // It's a capture if: not a param, not locally defined, not already seen, and exists in enclosing ctx
-    mget(param_set, name) == 0 && mget(local_set, name) == 0 && mget(seen, name) == 0 && ctx_get_local(ctx, name) != 0 ? {
+    if mget(param_set, name) == 0 && mget(local_set, name) == 0 && mget(seen, name) == 0 && ctx_get_local(ctx, name) != 0 {
       mset(seen, name, 1)
       result.push(name)
-    } : 0
-  } :
-  etag == EX_CALL ? {
+    }
+  }
+  else if etag == EX_CALL {
     _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
     args = load64(expr + 16)
     ai := 0
@@ -2534,15 +2535,15 @@ _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
       ai = ai + 1
       0
     }
-  } :
-  etag == EX_BINOP ? {
+  }
+  else if etag == EX_BINOP {
     _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
     _find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
-  } :
-  etag == EX_UNARYOP ? {
+  }
+  else if etag == EX_UNARYOP {
     _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
-  } :
-  etag == EX_METHOD_CALL ? {
+  }
+  else if etag == EX_METHOD_CALL {
     _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
     args = load64(expr + 24)
     ai := 0
@@ -2551,16 +2552,16 @@ _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
       ai = ai + 1
       0
     }
-  } :
-  etag == EX_FIELD_ACCESS ? {
+  }
+  else if etag == EX_FIELD_ACCESS {
     _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
-  } :
-  etag == EX_IF ? {
+  }
+  else if etag == EX_IF {
     _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
     _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
     _find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
-  } :
-  etag == EX_ARRAY_LIT ? {
+  }
+  else if etag == EX_ARRAY_LIT {
     elems = load64(expr + 8)
     ai := 0
     while ai < elems.len() {
@@ -2568,8 +2569,8 @@ _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
       ai = ai + 1
       0
     }
-  } :
-  etag == EX_TUPLE_LIT ? {
+  }
+  else if etag == EX_TUPLE_LIT {
     elems = load64(expr + 8)
     ai := 0
     while ai < elems.len() {
@@ -2577,8 +2578,7 @@ _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
       ai = ai + 1
       0
     }
-  } :
-  0
+  }
   0
 }
 
@@ -2593,7 +2593,7 @@ lower_array_lit(ctx:I expr:I) I {
   while i < elements.len() {
     val_reg = lower_expr(ctx, elements.get(i))
     // Track element type from first element
-    i == 0 ? ctx_set_reg_type(ctx, dest, IRTY_ARRAY) : 0
+    if i == 0 { ctx_set_reg_type(ctx, dest, IRTY_ARRAY) }
     ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, dest, val_reg))
     i = i + 1
     0
@@ -2611,7 +2611,7 @@ lower_struct_lit(ctx:I expr:I) I {
   // Look up struct definition to get field order
   sd = ctx_struct_defs(ctx)
   struct_fields = mget(sd, name)
-  num_fields = struct_fields != 0 ? struct_fields.len() : field_names.len()
+  num_fields = if struct_fields != 0 { struct_fields.len() } else { field_names.len() }
 
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_struct_alloc(dest, num_fields))
@@ -2621,7 +2621,7 @@ lower_struct_lit(ctx:I expr:I) I {
   // Build map from field name -> (index + 1) for O(1) lookup with proper string comparison
   // Store index+1 so that index 0 is distinguishable from "not found" (mget returns 0)
   field_index_map = M()
-  struct_fields != 0 ? {
+  if struct_fields != 0 {
     j := 0
     while j < struct_fields.len() {
       mset(field_index_map, struct_fields.get(j), j + 1)
@@ -2629,7 +2629,7 @@ lower_struct_lit(ctx:I expr:I) I {
       0
     }
     0
-  } : 0
+  }
 
   i := 0
   while i < field_names.len() {
@@ -2638,12 +2638,12 @@ lower_struct_lit(ctx:I expr:I) I {
 
     // Find field index in struct definition
     field_idx := i
-    struct_fields != 0 ? {
+    if struct_fields != 0 {
       looked_up = mget(field_index_map, fname)
-      looked_up != 0 ? { field_idx = looked_up - 1
-        0 } : 0
+      if looked_up != 0 { field_idx = looked_up - 1
+        0 }
       0
-    } : 0
+    }
 
     ctx_emit(ctx, ir_field_store(dest, field_idx, val_reg))
     i = i + 1
@@ -2679,25 +2679,25 @@ lower_enum_variant(ctx:I expr:I) I {
 
   // Look up tag from variant_tag_map
   tmap = load64(ctx + 96)
-  tag_idx = tmap != 0 && mhas(tmap, variant_name) ? mget(tmap, variant_name) : 0
+  tag_idx = if tmap != 0 && mhas(tmap, variant_name) { mget(tmap, variant_name) } else { 0 }
 
   // Compute max_data from all variants in this enum
   ed = ctx_enum_defs(ctx)
   variants = mget(ed, enum_name)
   max_data := 0
-  variants != 0 ? {
+  if variants != 0 {
     i := 0
     while i < variants.len() {
       v = variants.get(i)
       // entry array: [tag_index, num_data, ...]; access element at index 1
       vnum = v.get(1)
-      vnum > max_data ? { max_data = vnum
-        0 } : 0
+      if vnum > max_data { max_data = vnum
+        0 }
       i = i + 1
       0
     }
     0
-  } : 0
+  }
 
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_enum_alloc(dest, tag_idx, max_data))
@@ -2755,44 +2755,44 @@ lower_array_create(ctx:I expr:I) I {
 // ── ir_type_for_return ──────────────────────────────────────────
 // Convert a type name string to an IrType tag for return type tracking.
 ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
-  type_name == 0 ? IRTY_INT :
-  type_name == "I" ? IRTY_INT :
-  type_name == "Int" ? IRTY_INT :
-  type_name == "F" ? IRTY_FLOAT :
-  type_name == "Float" ? IRTY_FLOAT :
-  type_name == "B" ? IRTY_BOOL :
-  type_name == "Bool" ? IRTY_BOOL :
-  type_name == "S" ? IRTY_STR :
-  type_name == "String" ? IRTY_STR :
-  type_name == "M" ? IRTY_MAP :
-  type_name == "Map" ? IRTY_MAP :
-  type_name == "JsonValue" ? IRTY_JSON :
-  type_name == "HttpResponse" ? IRTY_HTTP_RESP :
-  type_name == "HttpRequest" ? IRTY_HTTP_REQ :
-  type_name == "HR" ? IRTY_HTTP_REQ :
-  type_name == "HttpServer" ? IRTY_HTTP_SERVER :
-  type_name == "HS" ? IRTY_HTTP_SERVER :
-  type_name == "JoinHandle" ? IRTY_JOIN_HANDLE :
+  if type_name == 0 { IRTY_INT }
+  else if type_name == "I" { IRTY_INT }
+  else if type_name == "Int" { IRTY_INT }
+  else if type_name == "F" { IRTY_FLOAT }
+  else if type_name == "Float" { IRTY_FLOAT }
+  else if type_name == "B" { IRTY_BOOL }
+  else if type_name == "Bool" { IRTY_BOOL }
+  else if type_name == "S" { IRTY_STR }
+  else if type_name == "String" { IRTY_STR }
+  else if type_name == "M" { IRTY_MAP }
+  else if type_name == "Map" { IRTY_MAP }
+  else if type_name == "JsonValue" { IRTY_JSON }
+  else if type_name == "HttpResponse" { IRTY_HTTP_RESP }
+  else if type_name == "HttpRequest" { IRTY_HTTP_REQ }
+  else if type_name == "HR" { IRTY_HTTP_REQ }
+  else if type_name == "HttpServer" { IRTY_HTTP_SERVER }
+  else if type_name == "HS" { IRTY_HTTP_SERVER }
+  else if type_name == "JoinHandle" { IRTY_JOIN_HANDLE }
   // Starts with checks for generic types
-  type_name.sw("Array<") ? IRTY_ARRAY :
-  type_name.sw("[") ? IRTY_ARRAY :
-  type_name.sw("Sender") ? IRTY_SENDER :
-  type_name.sw("Receiver") ? IRTY_RECEIVER :
-  type_name.sw("Mutex") ? IRTY_MUTEX :
-  type_name.sw("Result<") ? IRTY_RESULT :
-  type_name.sw("R<") ? IRTY_RESULT :
-  type_name.sw("(") ? IRTY_TUPLE :
+  else if type_name.sw("Array<") { IRTY_ARRAY }
+  else if type_name.sw("[") { IRTY_ARRAY }
+  else if type_name.sw("Sender") { IRTY_SENDER }
+  else if type_name.sw("Receiver") { IRTY_RECEIVER }
+  else if type_name.sw("Mutex") { IRTY_MUTEX }
+  else if type_name.sw("Result<") { IRTY_RESULT }
+  else if type_name.sw("R<") { IRTY_RESULT }
+  else if type_name.sw("(") { IRTY_TUPLE }
   // Check struct/enum defs
-  mhas(struct_defs, type_name) == 1 ? IRTY_STRUCT :
-  mhas(enum_defs, type_name) == 1 ? IRTY_ENUM :
-  IRTY_INT
+  else if mhas(struct_defs, type_name) == 1 { IRTY_STRUCT }
+  else if mhas(enum_defs, type_name) == 1 { IRTY_ENUM }
+  else { IRTY_INT }
 }
 
 // ── map_has helper ──────────────────────────────────────────────
 // Check if a Map contains a key (returns 1 or 0)
 map_has(m:I key:I) I {
   v = mget(m, key)
-  v != 0 ? 1 : 0
+  if v != 0 { 1 } else { 0 }
 }
 
 // ── struct_size_for_param ───────────────────────────────────────
@@ -2800,12 +2800,12 @@ map_has(m:I key:I) I {
 // element count if tuple, 0 for scalars.
 struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
   // Check struct
-  map_has(struct_defs, type_name) == 1 ? {
+  if map_has(struct_defs, type_name) == 1 {
     fields = mget(struct_defs, type_name)
     fields.len()
-  } :
+  }
   // Check enum — return 1 + max data fields across variants
-  map_has(enum_defs, type_name) == 1 ? {
+  else if map_has(enum_defs, type_name) == 1 {
     variants = mget(enum_defs, type_name)
     max_data := 0
     i := 0
@@ -2818,12 +2818,13 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
       0
     }
     1 + max_data
-  } :
+  }
   // Check tuple — count elements from "(I I I)"
-  type_name.sw("(") ? {
+  else if type_name.sw("(") {
     // Count spaces + 1 for number of tuple elements
     inner_len = slen(type_name) - 2
-    inner_len <= 0 ? 0 : {
+    if inner_len <= 0 { 0 }
+    else {
       count := 1
       i := 1
       end = slen(type_name) - 1
@@ -2834,8 +2835,8 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
       }
       count
     }
-  } :
-  0
+  }
+  else { 0 }
 }
 
 // ── lower_function_body ─────────────────────────────────────────
@@ -2865,34 +2866,34 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
     ctx_set_local(ctx, pname, arg_reg)
 
     // Set param type in reg_types
-    ptype == "I" ? ctx_set_reg_type(ctx, arg_reg, IRTY_INT) :
-    ptype == "Int" ? ctx_set_reg_type(ctx, arg_reg, IRTY_INT) :
-    ptype == "F" ? ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) :
-    ptype == "Float" ? ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) :
-    ptype == "B" ? ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) :
-    ptype == "Bool" ? ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) :
-    ptype == "S" ? ctx_set_reg_type(ctx, arg_reg, IRTY_STR) :
-    ptype == "String" ? ctx_set_reg_type(ctx, arg_reg, IRTY_STR) :
-    ptype == "M" ? ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) :
-    ptype == "Map" ? ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) :
-    ptype == "JsonValue" ? ctx_set_reg_type(ctx, arg_reg, IRTY_JSON) :
-    ptype == "HttpResponse" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_RESP) :
-    ptype == "HttpRequest" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) :
-    ptype == "HR" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) :
-    ptype == "HttpServer" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) :
-    ptype == "HS" ? ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) :
-    mhas(struct_defs, ptype) == 1 ? { ctx_set_reg_type(ctx, arg_reg, IRTY_STRUCT)
-      ctx_set_struct_name(ctx, arg_reg, ptype) } :
-    mhas(enum_defs, ptype) == 1 ? ctx_set_reg_type(ctx, arg_reg, IRTY_ENUM) :
-    ptype.sw("Array") ? ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) :
-    ptype.sw("[") ? ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) :
-    ptype.sw("Result") ? ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) :
-    ptype.sw("R<") ? ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) :
-    ptype.sw("(") ? ctx_set_reg_type(ctx, arg_reg, IRTY_TUPLE) :
-    ptype.sw("Sender") ? ctx_set_reg_type(ctx, arg_reg, IRTY_SENDER) :
-    ptype.sw("Receiver") ? ctx_set_reg_type(ctx, arg_reg, IRTY_RECEIVER) :
-    ptype.sw("Mutex") ? ctx_set_reg_type(ctx, arg_reg, IRTY_MUTEX) :
-    ctx_set_reg_type(ctx, arg_reg, IRTY_INT)
+    if ptype == "I" { ctx_set_reg_type(ctx, arg_reg, IRTY_INT) }
+    else if ptype == "Int" { ctx_set_reg_type(ctx, arg_reg, IRTY_INT) }
+    else if ptype == "F" { ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "Float" { ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "B" { ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "Bool" { ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "S" { ctx_set_reg_type(ctx, arg_reg, IRTY_STR) }
+    else if ptype == "String" { ctx_set_reg_type(ctx, arg_reg, IRTY_STR) }
+    else if ptype == "M" { ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) }
+    else if ptype == "Map" { ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) }
+    else if ptype == "JsonValue" { ctx_set_reg_type(ctx, arg_reg, IRTY_JSON) }
+    else if ptype == "HttpResponse" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_RESP) }
+    else if ptype == "HttpRequest" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) }
+    else if ptype == "HR" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) }
+    else if ptype == "HttpServer" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) }
+    else if ptype == "HS" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) }
+    else if mhas(struct_defs, ptype) == 1 { ctx_set_reg_type(ctx, arg_reg, IRTY_STRUCT)
+      ctx_set_struct_name(ctx, arg_reg, ptype) }
+    else if mhas(enum_defs, ptype) == 1 { ctx_set_reg_type(ctx, arg_reg, IRTY_ENUM) }
+    else if ptype.sw("Array") { ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) }
+    else if ptype.sw("[") { ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) }
+    else if ptype.sw("Result") { ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) }
+    else if ptype.sw("R<") { ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) }
+    else if ptype.sw("(") { ctx_set_reg_type(ctx, arg_reg, IRTY_TUPLE) }
+    else if ptype.sw("Sender") { ctx_set_reg_type(ctx, arg_reg, IRTY_SENDER) }
+    else if ptype.sw("Receiver") { ctx_set_reg_type(ctx, arg_reg, IRTY_RECEIVER) }
+    else if ptype.sw("Mutex") { ctx_set_reg_type(ctx, arg_reg, IRTY_MUTEX) }
+    else { ctx_set_reg_type(ctx, arg_reg, IRTY_INT) }
 
     param_names.push(arg_reg)
     param_sizes.push(struct_size_for_param(ptype, struct_defs, enum_defs))
@@ -2907,21 +2908,21 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
   while j < body.len() {
     is_last = j == body.len() - 1
     stmt = body.get(j)
-    is_last == 1 ? {
+    if is_last == 1 {
       stag = load64(stmt)
       // If last stmt is an expression or return, emit Ret
-      stag == ST_EXPR ? {
+      if stag == ST_EXPR {
         expr = load64(stmt + 8)
         reg = lower_expr(ctx, expr)
         ctx_emit(ctx, ir_ret(reg))
-      } : stag == ST_RETURN ? {
+      } else if stag == ST_RETURN {
         val_expr = load64(stmt + 8)
         reg = lower_expr(ctx, val_expr)
         ctx_emit(ctx, ir_ret(reg))
-      } : {
+      } else {
         lower_stmt(ctx, stmt)
       }
-    } : {
+    } else {
       lower_stmt(ctx, stmt)
     }
     j = j + 1
@@ -2930,7 +2931,7 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
 
   // Determine return type
   ret_type_name = load64(func + 16)
-  ret_type = ret_type_name != 0 ? ir_type_for_return(ret_type_name, struct_defs, enum_defs) : IRTY_INT
+  ret_type = if ret_type_name != 0 { ir_type_for_return(ret_type_name, struct_defs, enum_defs) } else { IRTY_INT }
 
   ir_fn = make_ir_function(func_name, param_names, ctx_instrs(ctx), ret_type, param_sizes)
 
@@ -2962,7 +2963,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
   // 1. Collect struct definitions: name -> field names array
   struct_defs = M()
   // Merge extra_struct_defs first
-  extra_struct_defs != 0 ? {
+  if extra_struct_defs != 0 {
     keys = extra_struct_defs.keys()
     ki := 0
     while ki < keys.len() {
@@ -2972,7 +2973,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       0
     }
     0
-  } : 0
+  }
 
   // Collect from program's structs
   prog_structs = load64(program + 24)  // Array of StructDef pointers
@@ -3010,7 +3011,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       variant = evariants.get(vi)
       vname = load64(variant)
       vfields = load64(variant + 8)
-      num_data = vfields != 0 ? vfields.len() : 0
+      num_data = if vfields != 0 { vfields.len() } else { 0 }
       // Store as [tag_index, num_data_fields, field_type_name1, field_type_name2, ...] array
       entry = array<I>()
       entry.push(vi)
@@ -3024,7 +3025,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       vinfo_arr.push(entry)
       // Store variant name -> tag index and field types
       mset(variant_tag_map, vname, vi)
-      num_data > 0 ? mset(variant_fields_map, vname, vfields) : 0
+      if num_data > 0 { mset(variant_fields_map, vname, vfields) }
       vi = vi + 1
       0
     }
@@ -3043,16 +3044,16 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     func = prog_fns.get(fri)
     fname = load64(func)
     ret_type_name = load64(func + 16)
-    ret_type_name != 0 ? {
+    if ret_type_name != 0 {
       rt = ir_type_for_return(ret_type_name, struct_defs, enum_defs)
       if IRTY_INT != rt { mset(fn_ret_types, fname, rt) }
       if rt == IRTY_STRUCT { mset(fn_ret_struct_names, fname, ret_type_name) }
-    } : 0
+    }
     fri = fri + 1
     0
   }
   // Merge module_fn_ret_types
-  module_fn_ret_types != 0 ? {
+  if module_fn_ret_types != 0 {
     mkeys = module_fn_ret_types.keys()
     mki := 0
     while mki < mkeys.len() {
@@ -3062,7 +3063,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       0
     }
     0
-  } : 0
+  }
 
   // 4. Collect global variable names and types
   globals_arr = array<I>()
@@ -3094,7 +3095,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     func = prog_fns.get(fi2)
     fname = load64(func)
     // Handle module name mangling
-    func_name = module_name != 0 ? module_name + "__" + fname : fname
+    func_name = if module_name != 0 { module_name + "__" + fname } else { fname }
     fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names)
     // fn_result is [ir_fn, lifted0, lifted1, ...]
     ir_functions.push(fn_result.get(0))
@@ -3120,7 +3121,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       method = methods.get(mi)
       mname = load64(method)
       // Mangle: module__Type__method or Type_method
-      mangled = module_name != 0 ? module_name + "__" + target_type + "__" + mname : target_type + "_" + mname
+      mangled = if module_name != 0 { module_name + "__" + target_type + "__" + mname } else { target_type + "_" + mname }
       mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names)
       ir_functions.push(mfn_result.get(0))
       mfri := 1
