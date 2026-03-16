@@ -313,6 +313,7 @@ build(source_path:S output_path:S) I {
   runtime_modules.push("curl")
   runtime_modules.push("map")
   runtime_modules.push("arena")
+  runtime_modules.push("ssl")
 
   runtime_o_paths = array<I>()
   ri := 0
@@ -346,7 +347,7 @@ build(source_path:S output_path:S) I {
     li = li + 1
     0
   }
-  link_cmd = link_cmd + " -lcurl -o " + output_path
+  link_cmd = link_cmd + " -lcurl $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -o " + output_path
   sys(link_cmd)
 
   // 14. Cleanup

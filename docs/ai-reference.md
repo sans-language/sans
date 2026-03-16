@@ -77,6 +77,10 @@ hg(url)           http_get(url)         S -> HttpResponse
 hp(url body ct)   http_post(u b c)      S S S -> HttpResponse
 listen(port)      http_listen(port)     I -> HttpServer
 hl_s(port cert key) https_listen(p c k) I S S -> HttpServer (HTTPS/TLS)
+serve(port handler)                     I Fn -> I (production server, auto-threading + keep-alive)
+serve_tls(port cert key handler)        I S S Fn -> I (production HTTPS server)
+stream_write(w data)                    I S -> I (send chunked data)
+stream_end(w)                           I -> I (end chunked stream)
 cors(req origin)                        HttpRequest S -> I (set CORS headers)
 cors_all(req)                           HttpRequest -> I (set CORS headers wildcard)
 ld(msg)           log_debug(msg)        S -> I
@@ -170,7 +174,7 @@ String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s)
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
 HttpServer:   accept
-HttpRequest:  path method body header(name) set_header(name val) cookie(name) respond(status body) respond(status body ct)
+HttpRequest:  path method body header(name) set_header(name val) cookie(name) respond(status body) respond(status body ct) respond_stream(status) respond_json(status body)
 Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
 Sender<T>:    send(v)
 Receiver<T>:  recv

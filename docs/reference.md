@@ -185,6 +185,27 @@ String comparison (`==`, `!=`) is supported.
 |----------|-------|-----------|
 | `http_listen(port)` | `listen` | `(Int) -> HttpServer` |
 | `https_listen(port, cert, key)` | `hl_s` | `(Int, String, String) -> HttpServer` |
+| `serve(port, handler)` | — | `(Int, Fn) -> Int` |
+| `serve_tls(port, cert, key, handler)` | — | `(Int, String, String, Fn) -> Int` |
+| `stream_write(writer, data)` | — | `(Int, String) -> Int` |
+| `stream_end(writer)` | — | `(Int) -> Int` |
+
+`serve(port, handler)` starts a production HTTP server with auto-threading and HTTP/1.1 keep-alive. Each connection is handled in a new thread. The handler receives an `HttpRequest` and should call `respond` or `respond_stream`.
+
+`serve_tls(port, cert, key, handler)` is the HTTPS variant.
+
+`req.respond_stream(status)` sends HTTP headers with `Transfer-Encoding: chunked` and returns a writer handle. Use `stream_write(w, data)` to send chunks and `stream_end(w)` to finalize.
+
+```sans
+handle(req:HR) I {
+  path = req.path()
+  path == "/" ? req.respond(200 "Hello!") : req.respond(404 "Not Found")
+}
+
+main() I {
+  serve(8080 fptr("handle"))
+}
+```
 
 ### CORS
 

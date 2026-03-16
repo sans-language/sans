@@ -1,0 +1,12 @@
+handle(req:HR) I {
+  w = req.respond_stream(200)
+  stream_write(w "line 1\n")
+  stream_write(w "line 2\n")
+  stream_write(w "line 3\n")
+  stream_end(w)
+}
+
+main() I {
+  p("Streaming on http://localhost:8080")
+  serve(8080 fptr("handle"))
+}

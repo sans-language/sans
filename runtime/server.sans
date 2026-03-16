@@ -1,5 +1,5 @@
 // ── HTTP Server Runtime ─────────────────────────────────────────
-// Request struct layout (56 bytes):
+// Request struct layout (64 bytes):
 //   offset  0: client fd (I)
 //   offset  8: method (S)
 //   offset 16: path (S)
@@ -7,9 +7,10 @@
 //   offset 32: headers map (I) — 0 if not parsed
 //   offset 40: response headers array (I) — 0 if none
 //   offset 48: ssl ptr (I) — 0 for plain HTTP
+//   offset 56: keep_alive (I) — 1 if connection should stay open
 
 sans_make_empty_request() I {
-  req = alloc(56)
+  req = alloc(64)
   store64(req, -1)
   empty = alloc(1)
   store8(empty, 0)
@@ -23,6 +24,7 @@ sans_make_empty_request() I {
   store64(req + 32, 0)
   store64(req + 40, 0)
   store64(req + 48, 0)
+  store64(req + 56, 0)
   req
 }
 
@@ -62,7 +64,7 @@ sans_http_accept_parse(cfd:I buf:I n:I) I {
   store8(path + plen, 0)
   bstart = sans_find_body(buf, n)
   body = sans_extract_body(buf, n, bstart)
-  req = alloc(56)
+  req = alloc(64)
   store64(req, cfd)
   store64(req + 8, method)
   store64(req + 16, path)
@@ -70,6 +72,7 @@ sans_http_accept_parse(cfd:I buf:I n:I) I {
   store64(req + 32, 0)
   store64(req + 40, 0)
   store64(req + 48, 0)
+  store64(req + 56, 0)
   sans_parse_headers(req, buf, n)
   req
 }
@@ -392,7 +395,12 @@ sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
   custom_hdrs = sans_build_resp_headers(req)
   custom_len = slen(custom_hdrs)
 
-  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + custom_len + 23
+  // Choose connection header based on keep_alive flag
+  ka = load64(req + 56)
+  conn_hdr = ka == 1 ? sans_lit_conn_keepalive() : sans_lit_conn_close()
+  conn_len = slen(conn_hdr)
+
+  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + custom_len + conn_len
   buf = alloc(header_len + 1)
   pos := 0
   pos = sans_buf_write(buf, pos, sans_lit_http11(), 9)
@@ -407,7 +415,7 @@ sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
     pos = sans_buf_write(buf, pos, custom_hdrs, custom_len)
     0
   } else { 0 }
-  pos = sans_buf_write(buf, pos, sans_lit_conn_close(), 23)
+  pos = sans_buf_write(buf, pos, conn_hdr, conn_len)
   store8(buf + pos, 0)
   total = pos + body_len
   resp = alloc(total)
@@ -418,9 +426,11 @@ sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
 }
 
 sans_http_respond_plain(req:I fd:I resp:I total:I) I {
+  ka = load64(req + 56)
   sans_send_all(fd, resp, total)
-  sclose(fd)
-  store64(req, -1)
+  // Only close if not keep-alive
+  ka == 1 ? 0 : sclose(fd)
+  ka == 1 ? 0 : store64(req, -1)
   1
 }
 
@@ -1067,4 +1077,340 @@ sans_parse_int(s:I) I {
 
 sans_http_respond_json(req:I status:I body:I) I {
   sans_http_respond(req, status, body, "application/json")
+}
+
+// ── Keep-alive literal ─────────────────────────────────────────
+
+sans_lit_conn_keepalive() I {
+  // "\r\nConnection: keep-alive\r\n\r\n" = 28 bytes
+  buf = alloc(29)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)   // C
+  store8(buf + 3, 111)  // o
+  store8(buf + 4, 110)  // n
+  store8(buf + 5, 110)  // n
+  store8(buf + 6, 101)  // e
+  store8(buf + 7, 99)   // c
+  store8(buf + 8, 116)  // t
+  store8(buf + 9, 105)  // i
+  store8(buf + 10, 111) // o
+  store8(buf + 11, 110) // n
+  store8(buf + 12, 58)  // :
+  store8(buf + 13, 32)  //
+  store8(buf + 14, 107) // k
+  store8(buf + 15, 101) // e
+  store8(buf + 16, 101) // e
+  store8(buf + 17, 112) // p
+  store8(buf + 18, 45)  // -
+  store8(buf + 19, 97)  // a
+  store8(buf + 20, 108) // l
+  store8(buf + 21, 105) // i
+  store8(buf + 22, 118) // v
+  store8(buf + 23, 101) // e
+  store8(buf + 24, 13)
+  store8(buf + 25, 10)
+  store8(buf + 26, 13)
+  store8(buf + 27, 10)
+  store8(buf + 28, 0)
+  buf
+}
+
+// ── Check if client sent Connection: close ─────────────────────
+
+sans_check_close(req:I) I {
+  hdr = sans_http_request_header(req, "connection")
+  slen(hdr) == 0 ? 0 : sans_str_eq_close(hdr)
+}
+
+sans_str_eq_close(s:I) I {
+  ls = sans_lowercase_string(s)
+  len = slen(ls)
+  len != 5 ? 0 :
+  load8(ls) == 99 && load8(ls+1) == 108 && load8(ls+2) == 111 &&
+  load8(ls+3) == 115 && load8(ls+4) == 101 ? 1 : 0
+}
+
+// ── Production Server: serve() with auto-threading + keep-alive ─
+
+sans_serve(port:I handler:I) I {
+  fd = sock(2, 1, 0)
+  fd < 0 ? 0 : sans_serve_bind(fd, port, handler)
+}
+
+sans_serve_bind(fd:I port:I handler:I) I {
+  addr = alloc(16)
+  store8(addr, 16)
+  store8(addr + 1, 2)
+  store16(addr + 2, bswap16(port))
+  store32(addr + 4, 0)
+  store64(addr + 8, 0)
+  opt = alloc(4)
+  store32(opt, 1)
+  rsetsockopt(fd, 65535, 4, opt, 4)
+  r = rbind(fd, addr, 16)
+  r < 0 ? 0 : sans_serve_listen(fd, port, handler)
+}
+
+sans_serve_listen(fd:I port:I handler:I) I {
+  lr = slisten(fd, 128)
+  lr < 0 ? 0 : sans_serve_accept_loop(fd, handler)
+}
+
+sans_serve_accept_loop(sfd:I handler:I) I {
+  while 1 == 1 {
+    cfd = saccept(sfd)
+    if cfd >= 0 {
+      req = sans_http_accept_read(cfd)
+      rfd = load64(req)
+      if rfd >= 0 {
+        targ = alloc(16)
+        store64(targ, handler)
+        store64(targ + 8, req)
+        spawn sans_serve_worker(targ)
+        0
+      } else { 0 }
+    } else { 0 }
+    0
+  }
+  0
+}
+
+sans_serve_worker(targ:I) I {
+  handler = load64(targ)
+  req = load64(targ + 8)
+  // Set keep_alive flag
+  store64(req + 56, 1)
+  sans_serve_worker_loop(handler, req)
+}
+
+sans_serve_worker_loop(handler:I req:I) I {
+  done := 0
+  cur := req
+  while done == 0 {
+    // Reset response headers for this request
+    store64(cur + 40, 0)
+    fcall(handler, cur)
+    // Check if we should close
+    if sans_check_close(cur) == 1 {
+      done = 1
+      0
+    } else {
+      // Try to read next request on same connection (plain HTTP only)
+      fd = load64(cur)
+      ssl = load64(cur + 48)
+      // SSL connections: no keep-alive re-read (ssl_read not available here)
+      if ssl != 0 {
+        done = 1
+        0
+      } else {
+        nxt = sans_read_next_request_plain(fd)
+        nfd = load64(nxt)
+        if nfd < 0 {
+          done = 1
+          0
+        } else {
+          cur = nxt
+          store64(cur + 56, 1)
+          0
+        }
+      }
+    }
+    0
+  }
+  // Close connection
+  cfd = load64(cur)
+  cfd >= 0 ? sclose(cfd) : 0
+  store64(cur, -1)
+  0
+}
+
+sans_read_next_request_plain(fd:I) I {
+  buf = alloc(65536)
+  n = srecv(fd, buf, 65535)
+  n <= 0 ? sans_make_empty_request() : sans_parse_next_request(fd, 0, buf, n)
+}
+
+sans_parse_next_request(fd:I ssl:I buf:I n:I) I {
+  store8(buf + n, 0)
+  mend = sans_find_space(buf, n, 0)
+  mlen = mend
+  pstart = mend < n ? mend + 1 : mend
+  pend = sans_find_space(buf, n, pstart)
+  plen = pend - pstart
+  method = alloc(mlen + 1)
+  mlen > 0 ? mcpy(method, buf, mlen) : 0
+  store8(method + mlen, 0)
+  path = alloc(plen + 1)
+  plen > 0 ? mcpy(path, buf + pstart, plen) : 0
+  store8(path + plen, 0)
+  bstart = sans_find_body(buf, n)
+  body = sans_extract_body(buf, n, bstart)
+  req = alloc(64)
+  store64(req, fd)
+  store64(req + 8, method)
+  store64(req + 16, path)
+  store64(req + 24, body)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, ssl)
+  store64(req + 56, 0)
+  sans_parse_headers(req, buf, n)
+  req
+}
+
+// ── Chunked Streaming ──────────────────────────────────────────
+
+sans_int_to_hex(n:I) I {
+  n == 0 ? sans_hex_zero() : sans_int_to_hex_pos(n)
+}
+
+sans_hex_zero() I {
+  buf = alloc(2)
+  store8(buf, 48)
+  store8(buf + 1, 0)
+  buf
+}
+
+sans_int_to_hex_pos(n:I) I {
+  // Count hex digits
+  digits := 0
+  tmp := n
+  while tmp > 0 {
+    digits += 1
+    tmp = tmp / 16
+  }
+  buf = alloc(digits + 1)
+  store8(buf + digits, 0)
+  i := digits - 1
+  tmp = n
+  while tmp > 0 {
+    rem = tmp % 16
+    ch = rem < 10 ? 48 + rem : 97 + rem - 10
+    store8(buf + i, ch)
+    tmp = tmp / 16
+    i -= 1
+  }
+  buf
+}
+
+// respond_stream(req, status) — send chunked headers, return writer struct
+// Writer struct (24 bytes): [fd, ssl, req]
+sans_respond_stream(req:I status:I) I {
+  fd = load64(req)
+  ssl = load64(req + 48)
+  ka = load64(req + 56)
+
+  status_str = sans_int_to_buf(status)
+  status_str_len = slen(status_str)
+  st = sans_status_text(status)
+  st_len = slen(st)
+
+  custom_hdrs = sans_build_resp_headers(req)
+  custom_len = slen(custom_hdrs)
+
+  // "Transfer-Encoding: chunked" header
+  te = sans_lit_te_chunked()
+  te_len = slen(te)
+  conn_hdr = ka == 1 ? sans_lit_conn_keepalive() : sans_lit_conn_close()
+  conn_len = slen(conn_hdr)
+
+  header_len = 9 + status_str_len + 1 + st_len + te_len + custom_len + conn_len
+  buf = alloc(header_len + 1)
+  pos := 0
+  pos = sans_buf_write(buf, pos, sans_lit_http11(), 9)
+  pos = sans_buf_write(buf, pos, status_str, status_str_len)
+  pos = sans_buf_write(buf, pos, sans_lit_space(), 1)
+  pos = sans_buf_write(buf, pos, st, st_len)
+  pos = sans_buf_write(buf, pos, te, te_len)
+  if custom_len > 0 {
+    pos = sans_buf_write(buf, pos, custom_hdrs, custom_len)
+    0
+  } else { 0 }
+  pos = sans_buf_write(buf, pos, conn_hdr, conn_len)
+  store8(buf + pos, 0)
+
+  // Send headers (plain HTTP path — SSL uses respond path)
+  sans_send_all(fd, buf, pos)
+
+  // Build writer struct
+  w = alloc(24)
+  store64(w, fd)
+  store64(w + 8, ssl)
+  store64(w + 16, req)
+  w
+}
+
+// "\r\nTransfer-Encoding: chunked" = 28 bytes
+sans_lit_te_chunked() I {
+  buf = alloc(29)
+  store8(buf, 13)       // \r
+  store8(buf + 1, 10)   // \n
+  store8(buf + 2, 84)   // T
+  store8(buf + 3, 114)  // r
+  store8(buf + 4, 97)   // a
+  store8(buf + 5, 110)  // n
+  store8(buf + 6, 115)  // s
+  store8(buf + 7, 102)  // f
+  store8(buf + 8, 101)  // e
+  store8(buf + 9, 114)  // r
+  store8(buf + 10, 45)  // -
+  store8(buf + 11, 69)  // E
+  store8(buf + 12, 110) // n
+  store8(buf + 13, 99)  // c
+  store8(buf + 14, 111) // o
+  store8(buf + 15, 100) // d
+  store8(buf + 16, 105) // i
+  store8(buf + 17, 110) // n
+  store8(buf + 18, 103) // g
+  store8(buf + 19, 58)  // :
+  store8(buf + 20, 32)  //
+  store8(buf + 21, 99)  // c
+  store8(buf + 22, 104) // h
+  store8(buf + 23, 117) // u
+  store8(buf + 24, 110) // n
+  store8(buf + 25, 107) // k
+  store8(buf + 26, 101) // e
+  store8(buf + 27, 100) // d
+  store8(buf + 28, 0)
+  buf
+}
+
+// stream_write(w, data) — send one chunk: "{hex_len}\r\n{data}\r\n"
+sans_stream_write(w:I data:I) I {
+  fd = load64(w)
+  ssl = load64(w + 8)
+  dlen = slen(data)
+  dlen == 0 ? 0 : sans_stream_write_inner(fd, ssl, data, dlen)
+}
+
+sans_stream_write_inner(fd:I ssl:I data:I dlen:I) I {
+  hex = sans_int_to_hex(dlen)
+  hlen = slen(hex)
+  // Build chunk: hex + \r\n + data + \r\n
+  total = hlen + 2 + dlen + 2
+  buf = alloc(total)
+  pos := 0
+  hlen > 0 ? mcpy(buf, hex, hlen) : 0
+  pos = hlen
+  store8(buf + pos, 13)
+  store8(buf + pos + 1, 10)
+  pos = pos + 2
+  dlen > 0 ? mcpy(buf + pos, data, dlen) : 0
+  pos = pos + dlen
+  store8(buf + pos, 13)
+  store8(buf + pos + 1, 10)
+  sans_send_all(fd, buf, total)
+}
+
+// stream_end(w) — send final chunk "0\r\n\r\n"
+sans_stream_end(w:I) I {
+  fd = load64(w)
+  buf = alloc(5)
+  store8(buf, 48)    // 0
+  store8(buf + 1, 13) // \r
+  store8(buf + 2, 10) // \n
+  store8(buf + 3, 13) // \r
+  store8(buf + 4, 10) // \n
+  sans_send_all(fd, buf, 5)
 }

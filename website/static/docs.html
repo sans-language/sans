@@ -201,8 +201,14 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
       <tbody>
         <tr><td><code>http_listen(port)</code></td><td><code>listen</code></td><td><code>(Int) -&gt; HttpServer</code></td></tr>
         <tr><td><code>https_listen(port, cert, key)</code></td><td><code>hl_s</code></td><td><code>(Int, String, String) -&gt; HttpServer</code></td></tr>
+        <tr><td><code>serve(port, handler)</code></td><td>&mdash;</td><td><code>(Int, Fn) -&gt; Int</code></td></tr>
+        <tr><td><code>serve_tls(port, cert, key, handler)</code></td><td>&mdash;</td><td><code>(Int, String, String, Fn) -&gt; Int</code></td></tr>
+        <tr><td><code>stream_write(writer, data)</code></td><td>&mdash;</td><td><code>(Int, String) -&gt; Int</code></td></tr>
+        <tr><td><code>stream_end(writer)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td></tr>
       </tbody>
     </table>
+    <p><code>serve(port, handler)</code> starts a production server with auto-threading and HTTP/1.1 keep-alive. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>.</p>
+    <p><code>req.respond_stream(status)</code> sends chunked HTTP headers and returns a writer. Use <code>stream_write(w, data)</code> to send chunks and <code>stream_end(w)</code> to finalize.</p>
 
     <h3>CORS</h3>
     <table>
@@ -654,7 +660,7 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.34 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.35 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

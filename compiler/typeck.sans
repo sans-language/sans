@@ -907,6 +907,43 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       return make_type(TY_INT)
     } : 0
 
+    // ── Production Server ────────────────────────────────────────
+    name == "serve" ? {
+      nargs != 2 ? tc_error("serve() takes exactly 2 arguments (port, handler)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("serve() port must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_type(TY_INT)
+    } : 0
+
+    name == "serve_tls" ? {
+      nargs != 4 ? tc_error("serve_tls() takes exactly 4 arguments (port, cert, key, handler)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("serve_tls() port must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_STRING ? tc_error("serve_tls() cert must be String, got " + type_to_string(at1)) : 0
+      at2 = check_expr(args[2], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at2) != TY_STRING ? tc_error("serve_tls() key must be String, got " + type_to_string(at2)) : 0
+      at3 = check_expr(args[3], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_type(TY_INT)
+    } : 0
+
+    name == "stream_write" ? {
+      nargs != 2 ? tc_error("stream_write() takes exactly 2 arguments (writer, data)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("stream_write() writer must be Int, got " + type_to_string(at0)) : 0
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at1) != TY_STRING ? tc_error("stream_write() data must be String, got " + type_to_string(at1)) : 0
+      return make_type(TY_INT)
+    } : 0
+
+    name == "stream_end" ? {
+      nargs != 1 ? tc_error("stream_end() takes exactly 1 argument (writer)") : 0
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      type_tag(at0) != TY_INT ? tc_error("stream_end() writer must be Int, got " + type_to_string(at0)) : 0
+      return make_type(TY_INT)
+    } : 0
+
     // ── Logging ──────────────────────────────────────────────────
     name == "log_debug" || name == "ld" || name == "log_info" || name == "li" ||
     name == "log_warn" || name == "lw" || name == "log_error" || name == "le" ? {
@@ -2080,6 +2117,13 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         type_tag(at0) != TY_INT ? tc_error("respond_json() status must be Int, got " + type_to_string(at0)) : 0
         at1 = check_expr(mc_args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
         type_tag(at1) != TY_STRING ? tc_error("respond_json() body must be String, got " + type_to_string(at1)) : 0
+        return make_type(TY_INT)
+      } : 0
+
+      mc_method == "respond_stream" ? {
+        mc_nargs != 1 ? tc_error("respond_stream() takes exactly 1 argument (status)") : 0
+        at0 = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        type_tag(at0) != TY_INT ? tc_error("respond_stream() status must be Int, got " + type_to_string(at0)) : 0
         return make_type(TY_INT)
       } : 0
 

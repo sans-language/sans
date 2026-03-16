@@ -35,15 +35,17 @@ sans_http_listen_try(fd:I port:I) I {
 }
 
 sans_make_server(fd:I port:I) I {
-  s = alloc(16)
+  s = alloc(24)
   store64(s, fd)
   store64(s + 8, port)
+  store64(s + 16, 0)
   s
 }
 
 sans_make_error_server(port:I) I {
-  s = alloc(16)
+  s = alloc(24)
   store64(s, -1)
   store64(s + 8, port)
+  store64(s + 16, 0)
   s
 }

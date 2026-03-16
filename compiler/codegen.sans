@@ -473,6 +473,11 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_url_decode(i64)")
   emit(cg, "declare i64 @sans_path_segment(i64, i64)")
   emit(cg, "declare i64 @sans_serve_file(i64, i64)")
+  emit(cg, "declare i64 @sans_serve(i64, i64)")
+  emit(cg, "declare i64 @sans_serve_tls(i64, i64, i64, i64)")
+  emit(cg, "declare i64 @sans_respond_stream(i64, i64)")
+  emit(cg, "declare i64 @sans_stream_write(i64, i64)")
+  emit(cg, "declare i64 @sans_stream_end(i64)")
 
   // ── OpenSSL ──
   emit(cg, "declare ptr @TLS_server_method()")
@@ -1856,6 +1861,11 @@ compile_inst(cg:I inst:I) I {
   if op == IR_URL_DECODE { return compile_rt1(cg, inst, "sans_url_decode") }
   if op == IR_PATH_SEGMENT { return compile_rt2(cg, inst, "sans_path_segment") }
   if op == IR_SERVE_FILE { return compile_rt2(cg, inst, "sans_serve_file") }
+  if op == IR_SERVE { return compile_rt2(cg, inst, "sans_serve") }
+  if op == IR_SERVE_TLS { return compile_rt4(cg, inst, "sans_serve_tls") }
+  if op == IR_RESPOND_STREAM { return compile_rt2(cg, inst, "sans_respond_stream") }
+  if op == IR_STREAM_WRITE { return compile_rt2(cg, inst, "sans_stream_write") }
+  if op == IR_STREAM_END { return compile_rt1(cg, inst, "sans_stream_end") }
 
   // ── SSL low-level ──
   if op == IR_SSL_METHOD {
