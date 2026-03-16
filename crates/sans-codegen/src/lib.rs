@@ -58,6 +58,11 @@ pub fn compile_to_object(module: &Module, output_path: &str) -> Result<(), Codeg
     let context = Context::create();
     let llvm_module = generate_llvm(&context, module)?;
 
+    // Dump LLVM IR for debugging
+    if std::env::var("SANS_DUMP_LL").is_ok() {
+        eprintln!("{}", llvm_module.print_to_string().to_string_lossy());
+    }
+
     // Verify LLVM IR before emitting object code to catch invalid IR early
     // (instead of segfaulting during code emission).
     if let Err(msg) = llvm_module.verify() {

@@ -837,6 +837,15 @@ fn check_expr(
                     return Err(TypeError::new("map() takes 0 arguments"));
                 }
                 return Ok(Type::Map);
+            } else if function == "mget" {
+                for arg in args { check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?; }
+                return Ok(Type::Int);
+            } else if function == "mset" {
+                for arg in args { check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?; }
+                return Ok(Type::Int);
+            } else if function == "mhas" {
+                for arg in args { check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?; }
+                return Ok(Type::Int);
             } else if function == "json_object" || function == "jobj" || function == "jo" {
                 if !args.is_empty() {
                     return Err(TypeError::new("json_object() takes 0 arguments"));

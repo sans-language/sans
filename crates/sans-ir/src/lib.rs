@@ -747,8 +747,8 @@ impl IrBuilder {
                 let left_reg = self.lower_expr(left);
                 let right_reg = self.lower_expr(right);
 
-                // Check for String + String → StringConcat
-                if matches!(op, BinOp::Add) && self.reg_types.get(&left_reg) == Some(&IrType::Str) {
+                // Check for String + String → StringConcat (either side being Str triggers concat)
+                if matches!(op, BinOp::Add) && (self.reg_types.get(&left_reg) == Some(&IrType::Str) || self.reg_types.get(&right_reg) == Some(&IrType::Str)) {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::StringConcat {
                         dest: dest.clone(),
@@ -761,7 +761,8 @@ impl IrBuilder {
 
                 // Check operand types for dispatch
                 let is_float = self.reg_types.get(&left_reg) == Some(&IrType::Float);
-                let is_string = self.reg_types.get(&left_reg) == Some(&IrType::Str);
+                let is_string = self.reg_types.get(&left_reg) == Some(&IrType::Str)
+                    || self.reg_types.get(&right_reg) == Some(&IrType::Str);
 
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
@@ -1035,6 +1036,28 @@ impl IrBuilder {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::MapCreate { dest: dest.clone() });
                     self.reg_types.insert(dest.clone(), IrType::Map);
+                    return dest;
+                } else if function == "mget" {
+                    let map_reg = self.lower_expr(&args[0]);
+                    let key_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::MapGet { dest: dest.clone(), map: map_reg, key: key_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "mset" {
+                    let map_reg = self.lower_expr(&args[0]);
+                    let key_reg = self.lower_expr(&args[1]);
+                    let val_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::MapSet { dest: dest.clone(), map: map_reg, key: key_reg, value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "mhas" {
+                    let map_reg = self.lower_expr(&args[0]);
+                    let key_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::MapHas { dest: dest.clone(), map: map_reg, key: key_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "json_object" || function == "jobj" || function == "jo" {
                     let dest = self.fresh_reg();
@@ -2146,13 +2169,8 @@ impl IrBuilder {
                     (Some(IrType::Int), _) if method == "get" => {
                         let key_reg = self.lower_expr(&args[0]);
                         let dest = self.fresh_reg();
-                        // Disambiguate: if arg is String → MapGet, else → ArrayGet
-                        let arg_type = self.reg_types.get(&key_reg).cloned().unwrap_or(IrType::Int);
-                        if arg_type == IrType::Str {
-                            self.instructions.push(Instruction::MapGet { dest: dest.clone(), map: obj_reg, key: key_reg });
-                        } else {
-                            self.instructions.push(Instruction::ArrayGet { dest: dest.clone(), array: obj_reg, index: key_reg });
-                        }
+                        // Default to ArrayGet — most .get() calls on Int are array access
+                        self.instructions.push(Instruction::ArrayGet { dest: dest.clone(), array: obj_reg, index: key_reg });
                         self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
@@ -2160,14 +2178,9 @@ impl IrBuilder {
                         let key_reg = self.lower_expr(&args[0]);
                         let val_reg = self.lower_expr(&args[1]);
                         let dest = self.fresh_reg();
-                        // Disambiguate: if first arg is String → MapSet, else → ArraySet
-                        let arg_type = self.reg_types.get(&key_reg).cloned().unwrap_or(IrType::Int);
-                        if arg_type == IrType::Str {
-                            self.instructions.push(Instruction::MapSet { dest: dest.clone(), map: obj_reg, key: key_reg, value: val_reg });
-                        } else {
-                            self.instructions.push(Instruction::ArraySet { array: obj_reg, index: key_reg, value: val_reg });
-                            self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
-                        }
+                        // Default to ArraySet — most .set() calls on Int are array access
+                        self.instructions.push(Instruction::ArraySet { array: obj_reg, index: key_reg, value: val_reg });
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
                         self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
