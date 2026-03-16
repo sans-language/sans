@@ -13,7 +13,7 @@ import "ir"
 // offset 72: label_counter — separate counter for unique label suffixes
 
 make_codegen() I {
-  cg = alloc(104)
+  cg = alloc(112)
   store64(cg, array<I>())       // lines
   store64(cg + 8, 0)            // reg_counter
   store64(cg + 16, M())         // string_pool
@@ -27,6 +27,7 @@ make_codegen() I {
   store64(cg + 80, 0)           // current_ir_label (the IR-level label)
   store64(cg + 88, M())         // label_end_map: IR label → actual LLVM block
   store64(cg + 96, 0)           // current_block (the actual LLVM basic block name)
+  store64(cg + 104, M())        // label_parent: child_label → parent_label
   cg
 }
 
@@ -53,6 +54,7 @@ cg_set_current_label(cg:I v:I) I { store64(cg + 80, v) 0 }
 cg_label_end_map(cg:I) I = load64(cg + 88)
 cg_current_block(cg:I) I = load64(cg + 96)  // actual LLVM block (may differ after inline ops)
 cg_set_current_block(cg:I v:I) I { store64(cg + 96, v) 0 }
+cg_label_parent(cg:I) I = load64(cg + 104)  // child → parent label map
 
 cg_set_reg_counter(cg:I v:I) I { store64(cg + 8, v) 0 }
 cg_set_has_main(cg:I v:I) I { store64(cg + 56, v) 0 }
@@ -800,10 +802,11 @@ compile_inst(cg:I inst:I) I {
     cond_val = cg_get_val(cg, dest)
     then_label = ir_field(inst, 16)
     else_label = ir_field(inst, 24)
-    // Record that the current IR label ends at the actual LLVM block
+    // Record parent relationships: then_label and else_label are children of current label
     ir_lbl = cg_current_label(cg)
-    cur_blk = cg_current_block(cg)
-    cg_record_label_end(cg, ir_lbl, cur_blk)
+    lp = cg_label_parent(cg)
+    mset(lp, then_label, ir_lbl)
+    mset(lp, else_label, ir_lbl)
     tmp = cg_fresh_reg(cg)
     emit(cg, "  " + tmp + " = trunc i64 " + cond_val + " to i1")
     emit(cg, "  br i1 " + tmp + ", label %" + then_label + ", label %" + else_label)
@@ -813,11 +816,34 @@ compile_inst(cg:I inst:I) I {
   // ── IR_JUMP (16): [op, target_label] ──
   if op == IR_JUMP {
     target = dest
-    // Record that the current IR label ends at the actual LLVM block we're in
-    // (This is the key fix for nested if/else PHI predecessors)
+    // Record that the current IR label ends at the actual LLVM block
     ir_lbl = cg_current_label(cg)
     cur_blk = cg_current_block(cg)
     cg_record_label_end(cg, ir_lbl, cur_blk)
+    // Propagate parent: the jump target inherits this label's parent chain
+    // This handles: L_3 (child of L_0) jumps to L_5 → L_5 becomes child of L_0
+    lp = cg_label_parent(cg)
+    wfd(2, ir_lbl)
+    wfd(2, " blk=")
+    wfd(2, cur_blk)
+    wfd(2, " to=")
+    wfd(2, target)
+    wfd(2, "\n")
+    if mhas(lp, ir_lbl) {
+      // Make jump target a child of the IMMEDIATE parent only
+      imm_parent = mget(lp, ir_lbl)
+      mset(lp, target, imm_parent)
+      // Walk up the parent chain, updating label_end for ALL ancestors
+      ancestor := ir_lbl
+      depth := 0
+      while mhas(lp, ancestor) && depth < 20 {
+        parent = mget(lp, ancestor)
+        cg_record_label_end(cg, parent, cur_blk)
+        ancestor = parent
+        depth = depth + 1
+        0
+      }
+    }
     emit(cg, "  br label %" + target)
     return 0
   }
@@ -828,6 +854,17 @@ compile_inst(cg:I inst:I) I {
     a_label_ir = ir_field(inst, 24)
     b_val = cg_get_val(cg, ir_field(inst, 32))
     b_label_ir = ir_field(inst, 40)
+    // DEBUG
+    wfd(2, a_label_ir)
+    wfd(2, " b_ir=")
+    wfd(2, b_label_ir)
+    a_end_dbg = cg_get_label_end(cg, a_label_ir)
+    b_end_dbg = cg_get_label_end(cg, b_label_ir)
+    wfd(2, " a_end=")
+    wfd(2, a_end_dbg)
+    wfd(2, " b_end=")
+    wfd(2, b_end_dbg)
+    wfd(2, "\n")
     // Use the actual end labels (handles nested if/else creating extra blocks)
     a_label = cg_get_label_end(cg, a_label_ir)
     b_label = cg_get_label_end(cg, b_label_ir)
@@ -2395,6 +2432,7 @@ emit_function_body(cg:I func:I) I {
   cg_set_current_label(cg, "entry")
   cg_set_current_block(cg, "entry")
   store64(cg + 88, M())   // label_end_map
+  store64(cg + 104, M())  // label_parent
 
   // Map parameters: store each param name → %pN in reg_map
   i = 0
