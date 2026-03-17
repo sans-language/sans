@@ -419,12 +419,34 @@ main() I {
 
   if cmd == "build" {
     out = if output == "" { strip_ext(file) } else { output }
-    build_and_link(file, out)
+    g_file = file
+    g_out = out
+    g_src = file
+    // All steps in a single-iteration loop (workaround for post-call unreachable code)
+    step := 0
+    while step < 4 {
+      if step == 0 { build(g_file, g_out) }
+      if step == 1 { g_ll = g_out + ".ll"
+        compile_to_ll(g_merged, g_ll) }
+      if step == 2 { do_link(g_ll, g_out, g_src) }
+      step = step + 1
+      wfd(2, "+")
+    }
   } else { if cmd == "run" {
-    tmp_out = "/tmp/sans_run_out"
-    build_and_link(file, tmp_out)
-    sys(tmp_out)
-    sys("rm -f " + tmp_out)
+    g_file = file
+    g_out = "/tmp/sans_run_out"
+    g_src = file
+    step := 0
+    while step < 5 {
+      if step == 0 { build(g_file, g_out) }
+      if step == 1 { g_ll = g_out + ".ll"
+        compile_to_ll(g_merged, g_ll) }
+      if step == 2 { do_link(g_ll, g_out, g_src) }
+      if step == 3 { sys(g_out) }
+      if step == 4 { sys("rm -f " + g_out) }
+      step = step + 1
+      wfd(2, "+")
+    }
     0
   } else {
     p("unknown command: " + cmd)
@@ -434,6 +456,10 @@ main() I {
 }
 
 g g_merged = 0
+g g_file = 0
+g g_out = 0
+g g_src = 0
+g g_ll = 0
 
 build_and_link(file:S out:S) I {
   build(file, out)

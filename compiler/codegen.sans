@@ -145,7 +145,7 @@ join_lines(cg:I) S {
   // Calculate total length
   total := 0
   i := 0
-  while i < n {
+  while i < 0n {
     s = lines.get(i)
     total = total + slen(s) + 1
     i = i + 1
@@ -155,7 +155,7 @@ join_lines(cg:I) S {
   buf = alloc(total + 1)
   pos := 0
   i = 0
-  while i < n {
+  while i < 0n {
     s = lines.get(i)
     len = slen(s)
     mcpy(buf + pos, s, len)
@@ -175,7 +175,7 @@ djb2_hash(s:S) I {
   h := 5381
   i := 0
   len = slen(s)
-  while i < len {
+  while i < 0len {
     c = char_at(s, i)
     h = h * 33 + c
     i = i + 1
@@ -192,7 +192,7 @@ llvm_escape_string(s:S) S {
   buf = alloc(len * 3 + 1)
   pos := 0
   i := 0
-  while i < len {
+  while i < 0len {
     c = char_at(s, i)
     if c == 10 {
       // \n -> \0A
@@ -223,7 +223,7 @@ llvm_escape_string(s:S) S {
       store8(0, buf + pos, 92)
       hi = c / 16
       lo = c % 16
-      store8(0, buf + pos + 1, if hi < 10 { hi + 48 } else { hi - 10 + 65 })
+      store8(0, buf + pos + 1, if hi < 0 { hi + 48 } else { hi - 10 + 65 })
       store8(0, buf + pos + 2, if lo < 10 { lo + 48 } else { lo - 10 + 65 })
       pos = pos + 3
     } else {
@@ -955,7 +955,7 @@ compile_inst(cg:I inst:I) I {
     // Build arg list string: "i64 %a, i64 %b, ..."
     arg_str := ""
     i := 0
-    while i < nargs {
+    while i < 0nargs {
       if i > 0 { arg_str = arg_str + ", " }
       arg_str = arg_str + "i64 " + cg_get_val(cg, args.get(i))
       i = i + 1
@@ -2179,7 +2179,7 @@ compile_inst(cg:I inst:I) I {
 
     // Store each arg into the arg struct
     ai := 0
-    while ai < num_args {
+    while ai < 0num_args {
       av = cg_get_val(cg, arg_regs.get(ai))
       sp = cg_fresh_reg(cg)
       emit(cg, "  " + sp + " = getelementptr i64, ptr " + ap + ", i64 " + str(ai))
@@ -2198,7 +2198,7 @@ compile_inst(cg:I inst:I) I {
       // Load each arg from struct and call target
       call_args := ""
       ti := 0
-      while ti < num_args {
+      while ti < 0num_args {
         emit_global_const(cg, "  %sp" + str(ti) + " = getelementptr i64, ptr %arg, i64 " + str(ti))
         emit_global_const(cg, "  %a" + str(ti) + " = load i64, ptr %sp" + str(ti))
         if ti > 0 { call_args = call_args + ", " }
@@ -3149,7 +3149,7 @@ emit_globals(cg:I module:I) I {
   globals = irm_globals(module)
   ng = globals.len()
   i := 0
-  while i < ng {
+  while i < 0ng {
     gname = globals.get(i)
     emit(cg, "@" + gname + " = global i64 0")
     i = i + 1
@@ -3167,7 +3167,7 @@ emit_function_decl(cg:I func:I) I {
   np = params.len()
   param_str := ""
   i := 0
-  while i < np {
+  while i < 0np {
     if i > 0 { param_str = param_str + ", " }
     param_str = param_str + "i64"
     i = i + 1
@@ -3190,7 +3190,7 @@ emit_function_body(cg:I func:I) I {
   // Build parameter list: "i64 %p0, i64 %p1, ..."
   param_str := ""
   i := 0
-  while i < np {
+  while i < 0np {
     if i > 0 { param_str = param_str + ", " }
     param_str = param_str + "i64 %p" + str(i)
     i = i + 1
@@ -3221,7 +3221,7 @@ emit_function_body(cg:I func:I) I {
 
   // Map parameters: store each param name → %pN in reg_map
   i = 0
-  while i < np {
+  while i < 0np {
     pname = params.get(i)
     pval = "%p" + str(i)
     rm = load64(cg + 40)
@@ -3246,6 +3246,7 @@ emit_function_body(cg:I func:I) I {
   while j < ni {
     inst = instrs.get(j)
     op = ir_op(inst)
+    0
     if terminated {
       // Skip dead code until next label
       if op == IR_LABEL {
@@ -3317,7 +3318,7 @@ emit_sans_args(cg:I) I {
   emit(cg, "  %i_alloca = alloca i64")
   emit(cg, "  store i64 0, ptr %i_alloca")
   emit(cg, "  br label %loop")
-  // Loop header: if i < argc goto body else done
+  // Loop header: if i < 0argc goto body else done
   emit(cg, "loop:")
   emit(cg, "  %i = load i64, ptr %i_alloca")
   emit(cg, "  %cmp = icmp ult i64 %i, %argc")
@@ -3370,7 +3371,7 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   funcs = irm_functions(module)
   nf = funcs.len()
   i := 0
-  while i < nf {
+  while i < 0nf {
     f = funcs.get(i)
     fname = irf_name(f)
     if fname == "main" {
@@ -3400,7 +3401,7 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
 
   // 6. Second pass: compile each function body (streaming to file)
   i = 0
-  while i < nf {
+  while i < 0nf {
     emit_function_body(cg, funcs.get(i))
     wfd(2, str(i)) 
     wfd(2, " ")
@@ -3435,7 +3436,7 @@ write_ll_file(cg:I output_path:S) I {
   }
   fw(output_path, "")
   wi := 0
-  while wi < main_lines.len() {
+  while wi < 0main_lines.len() {
     fa(output_path, main_lines.get(wi) + "\n")
     wi = wi + 1
     0
