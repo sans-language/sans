@@ -2068,7 +2068,13 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if obj_tag == TY_MAP && field_s == "vals" {
       return make_array_type(make_type(TY_INT))
     }
-    return tc_error("field access on non-struct/tuple type " + type_to_string(obj_ty))
+    // Generic fallback: treat as no-arg method call (e.g. server.accept → server.accept())
+    synth_mc = alloc(40)
+    store64(synth_mc, EX_METHOD_CALL)
+    store64(synth_mc + 8, object)
+    store64(synth_mc + 16, field)
+    store64(synth_mc + 24, array<I>())
+    return check_expr(synth_mc, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
   }
 
   // ------ Struct literal ------------------------------------------------------------------------------------------------------------------------------------

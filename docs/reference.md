@@ -833,4 +833,4 @@ User-defined functions take precedence over builtins of the same name. However, 
 
 - No automatic garbage collector — all heap memory leaked until process exit. Use `arena_begin`/`arena_end` for phase-based bulk deallocation.
 - Type checker is relaxed for bootstrap compatibility — some type mismatches (e.g. if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time and may produce incorrect behavior at runtime
-- Capturing lambdas passed across module boundaries are not yet supported
+- Capturing lambdas (closures with captured variables) passed across module boundaries return incorrect results — the capture context is not preserved. Non-capturing lambdas work correctly across modules.

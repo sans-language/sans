@@ -721,14 +721,14 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
     <ul>
       <li>No automatic garbage collector &mdash; all heap memory leaked until process exit. Use <code>arena_begin</code>/<code>arena_end</code> for phase-based bulk deallocation.</li>
       <li>Type checker is relaxed for bootstrap compatibility &mdash; some type mismatches (if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time</li>
-      <li>Capturing lambdas passed across module boundaries are not yet supported</li>
+      <li>Capturing lambdas (closures with captured variables) passed across module boundaries return incorrect results &mdash; the capture context is not preserved. Non-capturing lambdas work correctly across modules.</li>
     </ul>
   </div>
   </div>
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.41 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.42 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

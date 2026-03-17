@@ -1891,7 +1891,7 @@ fn check_expr(
                     }
                     for (i, (arg, expected)) in args.iter().zip(sig.params.iter()).enumerate() {
                         let actual = check_expr(arg, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
-                        if actual != *expected {
+                        if !types_compatible(&actual, expected) {
                             return Err(TypeError::new(format!(
                                 "argument {} to '{}.{}': expected {} but got {}",
                                 i + 1, name, method, expected, actual
