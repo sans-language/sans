@@ -59,7 +59,8 @@ if [[ $(has_lang sans) -eq 1 ]]; then
     for f in sans/*.sans; do
         name=$(basename "$f" .sans)
         echo "  sans: $name"
-        sans build "$f" 2>/dev/null && mv "sans/$name" "$BUILD_DIR/sans_$name" || {
+        # Run from parent dir so self-hosted compiler can find runtime/
+        (cd "$SCRIPT_DIR/.." && sans build "benchmarks/$f" 2>/dev/null) && mv "sans/$name" "$BUILD_DIR/sans_$name" || {
             echo "    WARN: sans build failed for $name"
         }
     done
@@ -94,7 +95,7 @@ fi
 echo ""
 
 # ── Benchmark definitions ──────────────────────────────────────────
-BENCHMARKS="fib loop_sum array_ops string_concat json_roundtrip"
+BENCHMARKS="fib loop_sum array_ops string_concat json_roundtrip concurrent file_io mixed"
 LANG_ORDER="sans python go node rust"
 
 bench_cmd() {

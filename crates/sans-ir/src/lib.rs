@@ -342,6 +342,13 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
                                 .collect();
                             builder.reg_types.insert(reg.clone(), IrType::Tuple(types));
                         }
+                        // Sender<T> / Receiver<T>
+                        else if n.starts_with("Sender<") && n.ends_with('>') {
+                            builder.reg_types.insert(reg.clone(), IrType::Sender);
+                        }
+                        else if n.starts_with("Receiver<") && n.ends_with('>') {
+                            builder.reg_types.insert(reg.clone(), IrType::Receiver);
+                        }
                         // Result<T> or R<T>
                         else if (n.starts_with("Result<") || n.starts_with("R<")) && n.ends_with('>') {
                             let prefix_len = if n.starts_with("Result<") { 7 } else { 2 };

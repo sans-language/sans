@@ -97,6 +97,16 @@ fn resolve_type(
             let inner = resolve_type(inner_str, structs, enums, module_exports)?;
             Ok(Type::Array { inner: Box::new(inner) })
         }
+        _ if name.starts_with("Sender<") && name.ends_with('>') => {
+            let inner_str = &name[7..name.len()-1];
+            let inner = resolve_type(inner_str, structs, enums, module_exports)?;
+            Ok(Type::Sender { inner: Box::new(inner) })
+        }
+        _ if name.starts_with("Receiver<") && name.ends_with('>') => {
+            let inner_str = &name[9..name.len()-1];
+            let inner = resolve_type(inner_str, structs, enums, module_exports)?;
+            Ok(Type::Receiver { inner: Box::new(inner) })
+        }
         _ if name.starts_with("R<") && name.ends_with('>') => {
             let inner_str = &name[2..name.len()-1];
             let inner = resolve_type(inner_str, structs, enums, module_exports)?;

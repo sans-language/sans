@@ -2228,7 +2228,7 @@ compile_inst(cg:I inst:I) I {
     // Emit trampoline function (global scope, via emit_global_const)
     tramp_name = "__trampoline_" + func_name
     pool = cg_string_pool(cg)
-    if !mhas(pool, tramp_name) {
+    if mhas(pool, tramp_name) == 0 {
       mset(pool, tramp_name, 1)
       emit_global_const(cg, "define ptr @" + tramp_name + "(ptr %arg) {")
       emit_global_const(cg, "entry:")

@@ -87,7 +87,7 @@ All version numbers must stay in sync and follow semver (`x.y.z`).
 
 The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
 
-**Current version: `0.3.43`**
+**Current version: `0.3.44`**
 
 **Checklist before committing:**
 1. Does this commit change code? → Bump version
