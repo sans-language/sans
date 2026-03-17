@@ -3200,8 +3200,17 @@ emit_function_body(cg:I func:I) I {
   emit(cg, "define i64 @" + llvm_name + "(" + param_str + ") {")
   emit(cg, "entry:")
 
-  // Reset per-function state (named params don't consume numbered slots)
+  // Reset per-function state
   cg_set_reg_counter(cg, 0)
+  // Free old maps before creating new ones
+  old_rm = load64(cg + 40)
+  if old_rm != 0 { dealloc(old_rm) }
+  old_ps = load64(cg + 48)
+  if old_ps != 0 { dealloc(old_ps) }
+  old_lem = load64(cg + 88)
+  if old_lem != 0 { dealloc(old_lem) }
+  old_lp = load64(cg + 104)
+  if old_lp != 0 { dealloc(old_lp) }
   store64(cg + 40, M())   // reg_map
   store64(cg + 48, M())   // ptr_set
   store64(cg + 72, 0)     // label_counter
@@ -3393,7 +3402,9 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   i = 0
   while i < nf {
     emit_function_body(cg, funcs.get(i))
-    wfd(2, ".")
+    wfd(2, str(i)) 
+    wfd(2, " ")
+    
     // On last function: flush buffer + write string constants
     if i == nf - 1 {
       cg_flush(cg)

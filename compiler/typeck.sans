@@ -202,22 +202,32 @@ types_compatible(actual:I expected:I) I {
 find_char(s:S ch:I start:I) I {
   len = slen(s)
   i := start
+  result := 0 - 1
+  found := 0
   while i < len {
-    if char_at(s, i) == ch { return i }
+    if found == 0 {
+      if char_at(s, i) == ch {
+        result = i
+        found = 1
+      }
+    }
     i += 1
   }
-  0 - 1
+  result
 }
 
 // ── Helper: find last char position in string ───────────────────────
 find_last_char(s:S ch:I) I {
   len = slen(s)
   i := len - 1
+  result := 0 - 1
   while i >= 0 {
-    if char_at(s, i) == ch { return i }
+    if result == 0 - 1 {
+      if char_at(s, i) == ch { result = i }
+    }
     i -= 1
   }
-  0 - 1
+  result
 }
 
 // ── resolve_type: parse type name string → Type ptr ─────────────────
