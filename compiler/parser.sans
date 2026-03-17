@@ -1247,9 +1247,7 @@ parse_atom(p:I) I {
   }
 
   // Unknown token
-  print("parse error: unexpected token in expression, kind=")
-  print(kind)
-  print("\n")
+  p("parse error: unexpected token in expression, kind=" + str(kind) + " at pos=" + str(p_pos(p)))
   exit(1)
   0
 }
