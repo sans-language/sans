@@ -182,6 +182,7 @@ pub enum Instruction {
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
     // HTTP Server
+    Serve { dest: Reg, port: Reg, handler: Reg },
     HttpListen { dest: Reg, port: Reg },
     HttpAccept { dest: Reg, server: Reg },
     HttpRequestPath { dest: Reg, request: Reg },

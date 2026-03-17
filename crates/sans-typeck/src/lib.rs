@@ -1488,6 +1488,13 @@ fn check_expr(
                     return Err(TypeError::new(format!("http_listen() requires Int port, got {}", arg_ty)));
                 }
                 return Ok(Type::HttpServer);
+            } else if function == "serve" {
+                if args.len() != 2 {
+                    return Err(TypeError::new("serve() takes exactly 2 arguments (port, handler)"));
+                }
+                check_expr(&args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                check_expr(&args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, module_exports)?;
+                return Ok(Type::Int);
             } else if function == "ok" {
                 if args.len() != 1 {
                     return Err(TypeError::new("ok() takes exactly 1 argument"));

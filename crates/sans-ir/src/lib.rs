@@ -1141,6 +1141,13 @@ impl IrBuilder {
                     self.instructions.push(Instruction::HttpListen { dest: dest.clone(), port: port_reg });
                     self.reg_types.insert(dest.clone(), IrType::HttpServer);
                     return dest;
+                } else if function == "serve" {
+                    let port_reg = self.lower_expr(&args[0]);
+                    let handler_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Serve { dest: dest.clone(), port: port_reg, handler: handler_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "int_to_float" || function == "itof" {
                     let val_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
@@ -2739,6 +2746,10 @@ impl IrBuilder {
                         "Float" | "F" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Float); }
                         "Bool" | "B" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Bool); }
                         "String" | "S" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Str); }
+                        "HttpRequest" => { lifted_builder.reg_types.insert(reg.clone(), IrType::HttpRequest); }
+                        "HttpResponse" => { lifted_builder.reg_types.insert(reg.clone(), IrType::HttpResponse); }
+                        "HttpServer" | "HS" => { lifted_builder.reg_types.insert(reg.clone(), IrType::HttpServer); }
+                        "JsonValue" => { lifted_builder.reg_types.insert(reg.clone(), IrType::JsonValue); }
                         _ => { lifted_builder.reg_types.insert(reg.clone(), IrType::Int); }
                     }
                     lifted_builder.locals.insert(param.name.clone(), LocalVar::Value(reg));

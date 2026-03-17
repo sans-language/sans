@@ -84,6 +84,11 @@ if [[ $(has_lang rust) -eq 1 ]]; then
         (cd rust/json_roundtrip && cargo build --release -q 2>/dev/null)
         cp rust/json_roundtrip/target/release/json_roundtrip "$BUILD_DIR/rust_json_roundtrip" 2>/dev/null || true
     fi
+    if [[ -d rust/http_throughput ]]; then
+        echo "  rust: http_throughput (cargo)"
+        (cd rust/http_throughput && cargo build --release -q 2>/dev/null)
+        cp rust/http_throughput/target/release/http_throughput "$BUILD_DIR/rust_http_throughput" 2>/dev/null || true
+    fi
 fi
 
 echo ""
@@ -185,3 +190,118 @@ for bench in $BENCHMARKS; do
 done
 echo ""
 echo "Full results: $CSV"
+
+# ── HTTP throughput benchmark ───────────────────────────────────────
+if ! command -v wrk &>/dev/null; then
+    echo "wrk not found — skipping HTTP throughput benchmark (brew install wrk)"
+    exit 0
+fi
+
+HTTP_PORT=8765
+HTTP_DURATION=10
+HTTP_THREADS=8
+HTTP_CONNS=100
+HTTP_CSV="http_results.csv"
+
+http_server_cmd() {
+    local lang=$1
+    case $lang in
+        sans)   echo "$BUILD_DIR/sans_http_throughput" ;;
+        python) echo "python3 python/http_throughput.py" ;;
+        go)     echo "$BUILD_DIR/go_http_throughput" ;;
+        node)   echo "node node/http_throughput.js" ;;
+        rust)   echo "$BUILD_DIR/rust_http_throughput" ;;
+    esac
+}
+
+http_server_exists() {
+    local lang=$1
+    case $lang in
+        sans)   [[ -f "$BUILD_DIR/sans_http_throughput" ]] ;;
+        python) [[ -f "python/http_throughput.py" ]] ;;
+        go)     [[ -f "$BUILD_DIR/go_http_throughput" ]] ;;
+        node)   [[ -f "node/http_throughput.js" ]] ;;
+        rust)   [[ -f "$BUILD_DIR/rust_http_throughput" ]] ;;
+    esac
+}
+
+wait_for_server() {
+    local port=$1
+    for i in $(seq 1 30); do
+        if curl -sf "http://localhost:$port/" > /dev/null 2>&1; then
+            return 0
+        fi
+        sleep 0.2
+    done
+    return 1
+}
+
+echo ""
+echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}HTTP Throughput (req/sec, ${HTTP_DURATION}s, ${HTTP_THREADS}t/${HTTP_CONNS}c, higher is better)${NC}"
+echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
+
+echo "benchmark,language,req_per_sec,latency_avg_ms,latency_p99_ms" > "$HTTP_CSV"
+
+for lang in $LANG_ORDER; do
+    [[ $(has_lang "$lang") -eq 0 ]] && continue
+    http_server_exists "$lang" || continue
+
+    cmd=$(http_server_cmd "$lang")
+
+    # Start server
+    eval "$cmd" > /dev/null 2>&1 &
+    SERVER_PID=$!
+
+    if ! wait_for_server "$HTTP_PORT"; then
+        echo "  $lang: server failed to start"
+        kill "$SERVER_PID" 2>/dev/null
+        continue
+    fi
+
+    # Warmup
+    wrk -t2 -c10 -d2s "http://localhost:$HTTP_PORT/" > /dev/null 2>&1
+
+    # Benchmark
+    wrk_out=$(wrk -t"$HTTP_THREADS" -c"$HTTP_CONNS" -d"${HTTP_DURATION}s" \
+        --latency "http://localhost:$HTTP_PORT/" 2>&1)
+
+    kill -9 "$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+
+    # Parse req/sec and latency from wrk output
+    req_sec=$(echo "$wrk_out" | grep "Requests/sec:" | awk '{print $2}' | sed 's/k//')
+    # wrk reports req/sec like "123456.78" or "12.34k" — normalize to integer
+    req_sec_num=$(python3 -c "
+s = '$req_sec'
+if s.endswith('k') or s.endswith('K'):
+    print(int(float(s[:-1]) * 1000))
+else:
+    print(int(float(s))) if s else print(0)
+" 2>/dev/null)
+
+    lat_avg=$(echo "$wrk_out" | grep "Latency" | head -1 | awk '{print $2}')
+    lat_p99=$(echo "$wrk_out" | grep "99%" | awk '{print $2}')
+
+    # Convert latency to ms
+    to_ms() {
+        python3 -c "
+s = '$1'
+if s.endswith('ms'): print(f'{float(s[:-2]):.2f}')
+elif s.endswith('us'): print(f'{float(s[:-2])/1000:.3f}')
+elif s.endswith('s') and not s.endswith('ms'): print(f'{float(s[:-1])*1000:.1f}')
+else: print(s)
+" 2>/dev/null
+    }
+    lat_avg_ms=$(to_ms "$lat_avg")
+    lat_p99_ms=$(to_ms "$lat_p99")
+
+    echo "http_throughput,$lang,$req_sec_num,$lat_avg_ms,$lat_p99_ms" >> "$HTTP_CSV"
+    printf "  %-8s %8s req/sec  (avg: %s ms  p99: %s ms)\n" \
+        "$lang" "$req_sec_num" "$lat_avg_ms" "$lat_p99_ms"
+
+    sleep 0.5  # let port free up
+done
+
+echo ""
+echo "HTTP results: $HTTP_CSV"

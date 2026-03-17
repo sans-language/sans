@@ -268,6 +268,9 @@ fn generate_llvm<'ctx>(
     llvm_module.add_function("strcmp", strcmp_type, Some(Linkage::External));
 
     // Declare HTTP server runtime functions (all i64 — Sans ABI)
+    let serve_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+    llvm_module.add_function("sans_serve", serve_type, Some(Linkage::External));
+
     let http_listen_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("sans_http_listen", http_listen_type, Some(Linkage::External));
 
@@ -729,6 +732,17 @@ fn generate_llvm<'ctx>(
                 Instruction::Const { dest, value } => {
                     let val = i64_type.const_int(*value as u64, true);
                     regs.insert(dest.clone(), val);
+                }
+                Instruction::Serve { dest, port, handler } => {
+                    let port_val = regs[port];
+                    let handler_val = regs[handler];
+                    let fn_ref = llvm_module.get_function("sans_serve").unwrap();
+                    let call = builder.build_call(fn_ref, &[port_val.into(), handler_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let as_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_serve: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), as_int);
                 }
                 Instruction::HttpListen { dest, port } => {
                     let port_val = regs[port];

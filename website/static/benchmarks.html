@@ -20,7 +20,7 @@
 
   <div class="container docs">
     <h1>Benchmark Results</h1>
-    <p>Comparing Sans against Python, Go, Node.js, and Rust across 5 workloads. All times in milliseconds (lower is better).</p>
+    <p>Comparing Sans against Python, Go, Node.js, and Rust across 6 workloads. Compute times in milliseconds (lower is better). HTTP in req/sec (higher is better).</p>
 
     <h2>Results</h2>
     <table>
@@ -70,7 +70,8 @@
       <li><strong>Sans matches Rust</strong> on compute-heavy benchmarks (fib, loop_sum, array_ops) &mdash; both compile to optimized native code via LLVM</li>
       <li><strong>32x faster than Python</strong> on recursive function calls</li>
       <li><strong>Beats Go by 40-70%</strong> on tight loops and array operations</li>
-      <li><strong>Beats Python and Go on JSON</strong> &mdash; 1.8x faster than Python, nearly matching Rust at 42ms</li>
+      <li><strong>Beats Python and Go on JSON</strong> &mdash; 1.7x faster than Python, nearly matching Rust</li>
+      <li><strong>45k req/sec HTTP throughput</strong> &mdash; matches Rust and Go; all languages are I/O-bound at this concurrency level</li>
     </ul>
 
     <h2>Detailed Results</h2>
@@ -123,6 +124,19 @@
       </tbody>
     </table>
 
+    <h3>http_throughput &mdash; GET / → JSON response (8 threads, 100 connections, 10s)</h3>
+    <table>
+      <thead><tr><th>Language</th><th>Req/sec</th><th>Avg latency</th><th>p99 latency</th></tr></thead>
+      <tbody>
+        <tr><td>Sans</td><td class="highlight">45,423</td><td>2.11ms</td><td>4.08ms</td></tr>
+        <tr><td>Python</td><td>44,699</td><td>2.15ms</td><td>4.18ms</td></tr>
+        <tr><td>Go</td><td>44,407</td><td>2.15ms</td><td>4.18ms</td></tr>
+        <tr><td>Node.js</td><td>45,049</td><td>2.13ms</td><td>4.13ms</td></tr>
+        <tr><td>Rust</td><td>45,102</td><td>2.13ms</td><td>4.12ms</td></tr>
+      </tbody>
+    </table>
+    <p>All languages are I/O-bound at 100 concurrent connections on this machine. Sans's <code>serve()</code> uses native threads with keep-alive.</p>
+
     <h3>json_roundtrip &mdash; JSON build/stringify/parse (100 iterations x 1k keys)</h3>
     <table>
       <thead><tr><th>Language</th><th>Mean (ms)</th><th>Std Dev</th><th>Min</th><th>Max</th></tr></thead>
@@ -153,13 +167,14 @@
         <tr><td>array_ops</td><td>Build 100k array, map (*2), filter (even), sum</td></tr>
         <tr><td>string_concat</td><td>Concatenate 5 strings per iteration, 100k iterations</td></tr>
         <tr><td>json_roundtrip</td><td>Build/stringify/parse JSON with 1k keys, 100 iterations</td></tr>
+        <tr><td>http_throughput</td><td>GET / &rarr; JSON response, <code>wrk -t8 -c100 -d10s</code></td></tr>
       </tbody>
     </table>
   </div>
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.42 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.43 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>
