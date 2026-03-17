@@ -381,9 +381,6 @@ do_link(ll_path:S output_path:S source_path:S) I {
   obj_path = output_path + ".o"
   sys(llc + " -filetype=obj -O2 -o " + obj_path + " " + ll_path)
 
-  // Save main .ll for debugging
-  sys("cp " + ll_path + " /tmp/sans_main_debug.ll")
-
   // 12. Compile runtime
   runtime_dir_cwd = "runtime"
   runtime_dir_src = dir_of(source_path) + "/../runtime"
