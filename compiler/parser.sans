@@ -56,29 +56,10 @@ p_at(p:I kind:I) I = if p_peek_kind(p) == kind { 1 } else { 0 }
 // Consume token of expected kind or error
 p_expect(p:I kind:I) I {
   if p_at(p, kind) == 1 { p_advance(p) } else {
-    wfd(2, "EXPECT FAIL: want=")
-    wfd(2, itos(kind))
-    wfd(2, " got=")
-    wfd(2, itos(p_peek_kind(p)))
-    wfd(2, " at pos=")
-    wfd(2, itos(p_pos(p)))
-    // Print surrounding tokens for context
-    wfd(2, " context: ")
-    ctx_i := p_pos(p) - 3
-    while ctx_i < p_pos(p) + 3 {
-      if ctx_i >= 0 {
-        tk = p_peek_at(p, ctx_i - p_pos(p))
-        wfd(2, "[")
-        wfd(2, itos(tok_kind(tk)))
-        v = tok_val(tk)
-        if v != 0 { wfd(2, ":")
-          wfd(2, v) }
-        wfd(2, "]")
-      }
-      ctx_i = ctx_i + 1
-      0
-    }
-    wfd(2, "\n")
+    p("parse error: expected token kind ")
+    p(kind)
+    p(" got ")
+    p(p_peek_kind(p))
     exit(1)
     0
   }
@@ -90,11 +71,8 @@ p_expect_ident(p:I) I {
     t = p_advance(p)
     tok_val(t)
   } else {
-    wfd(2, "IDENT FAIL: got=")
-    wfd(2, itos(p_peek_kind(p)))
-    wfd(2, " at pos=")
-    wfd(2, itos(p_pos(p)))
-    wfd(2, "\n")
+    p("parse error: expected identifier, got kind ")
+    p(p_peek_kind(p))
     exit(1)
     0
   }
