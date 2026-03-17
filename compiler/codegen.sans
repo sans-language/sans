@@ -13,8 +13,8 @@ import "ir"
 // offset 72: label_counter — separate counter for unique label suffixes
 
 make_codegen() I {
-  cg = alloc(112)
-  store64(cg, array<I>())       // lines
+  cg = alloc(128)
+  store64(cg, array<I>())       // lines (unused in streaming mode)
   store64(cg + 8, 0)            // reg_counter
   store64(cg + 16, M())         // string_pool
   store64(cg + 24, M())         // struct_defs
@@ -24,10 +24,12 @@ make_codegen() I {
   store64(cg + 56, 0)           // has_main
   store64(cg + 64, array<I>())  // string_const_lines
   store64(cg + 72, 0)           // label_counter
-  store64(cg + 80, 0)           // current_ir_label (the IR-level label)
-  store64(cg + 88, M())         // label_end_map: IR label → actual LLVM block
-  store64(cg + 96, 0)           // current_block (the actual LLVM basic block name)
-  store64(cg + 104, M())        // label_parent: child_label → parent_label
+  store64(cg + 80, 0)           // current_ir_label
+  store64(cg + 88, M())         // label_end_map
+  store64(cg + 96, 0)           // current_block
+  store64(cg + 104, M())        // label_parent
+  store64(cg + 112, 0)          // output_path (0 = buffer mode, non-0 = streaming)
+  store64(cg + 120, 0)          // line_buffer (accumulated string for batch flush)
   cg
 }
 
@@ -74,10 +76,31 @@ cg_get_label_end(cg:I ir_label:I) I {
 
 // ── Core helpers ────────────────────────────────────────────────
 
-// Emit a line of LLVM IR
+// Emit a line of LLVM IR — streams to file when output_path set
 emit(cg:I line:S) I {
-  lines = cg_lines(cg)
-  lines.push(ptr(line))
+  opath = load64(cg + 112)
+  if opath != 0 {
+    // Streaming mode: write line to file
+    fa(opath, line)
+    fa(opath, "\n")
+  } else {
+    // Buffer mode (for small compilations)
+    lines = cg_lines(cg)
+    lines.push(ptr(line))
+  }
+  0
+}
+
+// Flush any remaining buffered lines to file
+cg_flush(cg:I) I {
+  opath = load64(cg + 112)
+  if opath != 0 {
+    buf = load64(cg + 120)
+    if buf != 0 {
+      if slen(buf) > 0 { fa(opath, buf) }
+      store64(cg + 120, 0)
+    }
+  }
   0
 }
 
@@ -3330,6 +3353,10 @@ compile_to_ll_runtime(module:I output_path:S) I {
 compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   cg = make_codegen()
 
+  // Enable streaming mode: write to file as we go
+  fw(output_path, "")  // create/truncate file
+  store64(cg + 112, output_path)  // set output_path for streaming emit
+
   // Check if module has a "main" function
   funcs = irm_functions(module)
   nf = funcs.len()
@@ -3362,29 +3389,25 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
     emit_sans_args(cg)
   }
 
-  // 6. Second pass: compile each function body
+  // 6. Second pass: compile each function body (streaming to file)
   i = 0
   while i < nf {
     emit_function_body(cg, funcs.get(i))
     wfd(2, ".")
+    // On last function: flush buffer + write string constants
+    if i == nf - 1 {
+      cg_flush(cg)
+      // Write string constants
+      sc_lines = cg_string_const_lines(cg)
+      sci := 0
+      while sci < sc_lines.len() {
+        fa(output_path, sc_lines.get(sci) + "\n")
+        sci = sci + 1
+        0
+      }
+      wfd(2, "\n")
+    }
     i = i + 1
-    0
-  }
-  wfd(2, "\n")
-  // Append string constants and write file before returning
-  main_lines = cg_lines(cg)
-  sc_lines = cg_string_const_lines(cg)
-  si := 0
-  while si < sc_lines.len() {
-    main_lines.push(sc_lines.get(si))
-    si = si + 1
-    0
-  }
-  fw(output_path, "")
-  wi := 0
-  while wi < main_lines.len() {
-    fa(output_path, main_lines.get(wi) + "\n")
-    wi = wi + 1
     0
   }
   0

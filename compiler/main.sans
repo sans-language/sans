@@ -298,9 +298,17 @@ build_step8(program:I module_fn_ret_types:I extra_struct_defs:I all_functions:I 
 }
 
 
+g g_link_ll = 0
+g g_link_out = 0
+g g_link_src = 0
+
 do_codegen_and_link(merged:I ll_path:S output_path:S source_path:S) I {
-  // compile_to_ll now writes the file internally (inside the loop)
+  // Store link params in globals since post-compile_to_ll code may not execute
+  g_link_ll = ll_path
+  g_link_out = output_path
+  g_link_src = source_path
   compile_to_ll(merged, ll_path)
+  // This may be unreachable — do_link is also called from compile_to_ll_impl's last iteration
   do_link(ll_path, output_path, source_path)
 }
 
