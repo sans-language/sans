@@ -87,7 +87,7 @@ All version numbers must stay in sync and follow semver (`x.y.z`).
 
 The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
 
-**Current version: `0.3.39`**
+**Current version: `0.3.41`**
 
 **Checklist before committing:**
 1. Does this commit change code? → Bump version
@@ -109,6 +109,7 @@ The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_
 
 ## Known Limitations
 - IR type tracking is per-function: opaque types lose type info when passed cross-function as i64
-- Multiple opaque method calls in complex expressions can crash codegen
-- No GC - all heap allocations leaked
+- No GC - all heap allocations leaked (arena allocator available for phase-based deallocation)
 - Float stored as i64 via bitcast in register map
+- Typeck is relaxed for bootstrap: 12 unit tests fail for type error detection (if/else branch mismatch, wrong arg types not caught)
+- User-defined functions now take precedence over builtins of the same name (fixed v0.3.41, compiler/ir.sans)

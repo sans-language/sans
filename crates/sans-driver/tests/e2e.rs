@@ -621,3 +621,8 @@ fn e2e_arena_nested() {
 fn e2e_system_basic() {
     assert_eq!(compile_and_run("system_basic.sans"), 0);
 }
+
+#[test]
+fn e2e_builtin_override() {
+    assert_eq!(compile_and_run("builtin_override.sans"), 42);
+}

@@ -1,6 +1,6 @@
 [package]
 name = "sans-codegen"
-version = "0.3.39"
+version = "0.3.41"
 edition = "2021"
 
 [dependencies]

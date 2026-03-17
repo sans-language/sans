@@ -230,3 +230,9 @@ a.zip(b)                         // [(I I)] — paired tuples
 `&& || !` boolean
 `= := += -= *= /= %=` assignment
 `?` try (on R<T>: unwrap or early-return err)
+
+## Builtin Names (user-defined functions take precedence)
+User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check` and all others listed above.
+
+## Self-Hosting
+The Sans compiler and runtime are both written in Sans. The runtime (`runtime/*.sans`) uses low-level primitives with zero C. The compiler (`compiler/*.sans`, ~11,600 LOC) bootstraps via stage 0→1→2→3 (fixed point).

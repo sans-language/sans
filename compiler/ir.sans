@@ -487,9 +487,17 @@ ctx_get_fn_ret_type(ctx:I name:I) I {
 // ------ lower_call ------------------------------------------------------------------------------------------------------------------------------------------------------
 // Lower a function call expression. Dispatches built-in functions to
 // specific IR instructions, falls through to user-defined IR_CALL.
+// User-defined functions take precedence over builtins of the same name.
 lower_call(ctx:I name:I args:I) I {
+  // User-defined functions take precedence over builtins
+  lfn_set = ctx_local_fn_set(ctx)
+  imp_fns = ctx_imported_fn_names(ctx)
+  is_user_fn = mhas(lfn_set, name) == 1
+  is_imported = if imp_fns != 0 { mhas(imp_fns, name) == 1 } else { 0 }
+  if is_user_fn == 1 || is_imported == 1 { lower_call_user(ctx, name, args) }
+
   // ------ print / p ------
-  if name == "print" { lower_call_print(ctx, args) }
+  else if name == "print" { lower_call_print(ctx, args) }
   else if name == "p" { lower_call_print(ctx, args) }
 
   // ------ I/O ------
@@ -3308,17 +3316,18 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     0
   }
 
-  // 3c. Build local_fn_set: map of function names defined in this module
+  // 3c. Build local_fn_set: map of ALL user-defined function names in this compilation unit
+  // Always populated (not just for modules) so user functions take precedence over builtins
   local_fn_set = M()
+  lfsi := 0
+  while lfsi < nfns {
+    lfsf = prog_fns.get(lfsi)
+    lfs_name = load64(lfsf)
+    mset(local_fn_set, lfs_name, 1)
+    lfsi = lfsi + 1
+    0
+  }
   if module_name != 0 {
-    lfsi := 0
-    while lfsi < nfns {
-      lfsf = prog_fns.get(lfsi)
-      lfs_name = load64(lfsf)
-      mset(local_fn_set, lfs_name, 1)
-      lfsi = lfsi + 1
-      0
-    }
     // Also add impl method names as Type__method
     prog_impls_lfs = load64(program + 48)
     lfs_ii := 0

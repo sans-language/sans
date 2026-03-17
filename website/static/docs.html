@@ -45,6 +45,7 @@
         <li><a href="#arena">Arena GC</a></li>
         <li><a href="#fileio">File I/O</a></li>
         <li><a href="#https">HTTPS &amp; CORS</a></li>
+        <li><a href="#self-hosting">Self-Hosting</a></li>
       </ul>
     </div>
 
@@ -702,20 +703,33 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
 }</code></pre>
     <p><code>x?</code> desugars to: <code>if x.is_err() { return x }</code> followed by <code>x!</code> (unwrap).</p>
 
+    <h2 id="self-hosting">Self-Hosting</h2>
+    <p>Sans is self-hosted: the compiler and runtime are both written in Sans.</p>
+
+    <h3>Runtime (100% Sans, zero C)</h3>
+    <p>All built-in capabilities are implemented in Sans using low-level primitives (<code>alloc</code>, <code>load8</code>/<code>store8</code>, <code>mcpy</code>, sockets, etc.). The <code>runtime/</code> directory contains: <code>server.sans</code>, <code>json.sans</code>, <code>string_ext.sans</code>, <code>array_ext.sans</code>, <code>map.sans</code>, <code>ssl.sans</code>, <code>http.sans</code>, <code>curl.sans</code>, <code>arena.sans</code>, <code>result.sans</code>, <code>functional.sans</code>.</p>
+
+    <h3>Compiler (written in Sans)</h3>
+    <p><code>compiler/</code> contains a full Sans compiler (~11,600 LOC across 7 modules): lexer, parser, typeck, IR, codegen, main. It compiles to LLVM IR via <code>llc</code>, then links with <code>clang</code>.</p>
+    <p>Bootstrap stages: <strong>stage 0</strong> (Rust-compiled) &rarr; <strong>stage 1</strong> (self-compiled once) &rarr; <strong>stage 2</strong> (self-compiled twice) &rarr; <strong>stage 3</strong> (fixed point).</p>
+
+    <h3>Builtin Names</h3>
+    <p>The compiler has builtin mappings for a large set of names. <strong>User-defined functions take precedence over builtins of the same name.</strong> Builtin names include:</p>
+    <p><code>p</code>, <code>print</code>, <code>str</code>, <code>stoi</code>, <code>itof</code>, <code>ftoi</code>, <code>ftos</code>, <code>fr</code>, <code>fw</code>, <code>fa</code>, <code>fe</code>, <code>file_read</code>, <code>file_write</code>, <code>file_exists</code>, <code>listen</code>, <code>serve</code>, <code>serve_file</code>, <code>serve_tls</code>, <code>alloc</code>, <code>dealloc</code>, <code>load8/16/32/64</code>, <code>store8/16/32/64</code>, <code>mcpy</code>, <code>slen</code>, <code>wfd</code>, <code>exit</code>, <code>system</code>, <code>ok</code>, <code>err</code>, <code>map</code>, <code>M</code>, <code>jp</code>, <code>jfy</code>, <code>jo</code>, <code>ja</code>, <code>sock</code>, <code>saccept</code>, <code>args</code>, <code>signal_handler</code>, <code>signal_check</code>, and all others listed in the reference.</p>
+
     <h2>Known Limitations</h2>
     <ul>
-      <li>No garbage collector &mdash; all heap memory leaked until process exit</li>
-      <li>No array bounds checking &mdash; out-of-bounds is undefined behavior</li>
-      <li>Multiple opaque type method calls in complex expressions may crash</li>
-      <li><del>String interpolation only supports identifiers, not expressions</del> &mdash; Expression interpolation now supported (v0.3.9)</li>
-      <li>Lambdas with captures work for direct calls and .map()/.filter(); passing capturing closures across modules is not yet supported</li>
+      <li>No automatic garbage collector &mdash; all heap memory leaked until process exit. Use <code>arena_begin</code>/<code>arena_end</code> for phase-based bulk deallocation.</li>
+      <li>No array bounds checking &mdash; out-of-bounds access is undefined behavior</li>
+      <li>Type checker is relaxed for bootstrap compatibility &mdash; some type mismatches (if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time</li>
+      <li>Capturing lambdas passed across module boundaries are not yet supported</li>
     </ul>
   </div>
   </div>
 
   <footer>
     <div class="container">
-      <p>Sans v0.3.39 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
+      <p>Sans v0.3.41 &mdash; MIT License &mdash; <a href="https://github.com/sans-language/sans">View on GitHub</a></p>
     </div>
   </footer>
 </body>

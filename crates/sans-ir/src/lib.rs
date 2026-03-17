@@ -929,6 +929,43 @@ impl IrBuilder {
                 dest
             }
             Expr::Call { function, args, .. } => {
+                // User-defined functions take precedence over builtins of the same name
+                let is_user_fn = self.local_fn_names.contains(function) || self.imported_fn_names.contains_key(function.as_str());
+                if is_user_fn {
+                    let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
+                    let dest = self.fresh_reg();
+                    let call_name = if let Some(ref mod_name) = self.current_module {
+                        if self.local_fn_names.contains(function) {
+                            format!("{}__{}", mod_name, function)
+                        } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                            mangled.clone()
+                        } else {
+                            function.clone()
+                        }
+                    } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                        mangled.clone()
+                    } else {
+                        function.clone()
+                    };
+                    self.instructions.push(Instruction::Call {
+                        dest: dest.clone(),
+                        function: call_name,
+                        args: arg_regs,
+                    });
+                    let ret_type = self.local_fn_ret_types.get(function).cloned()
+                        .or_else(|| {
+                            for ((_, f), t) in self.module_fn_ret_types.iter() {
+                                if f == function {
+                                    return Some(t.clone());
+                                }
+                            }
+                            None
+                        })
+                        .unwrap_or(IrType::Int);
+                    self.reg_types.insert(dest.clone(), ret_type);
+                    return dest;
+                }
+
                 if function == "print" || function == "p" {
                     let arg_reg = self.lower_expr(&args[0]);
                     let ty = self.reg_types.get(&arg_reg).cloned().unwrap_or(IrType::Int);
@@ -1631,7 +1668,7 @@ impl IrBuilder {
                 let ret_type = self.local_fn_ret_types.get(function).cloned()
                     .or_else(|| {
                         // Check module_fn_ret_types for cross-module calls
-                        for ((m, f), t) in self.module_fn_ret_types.iter() {
+                        for ((_m, f), t) in self.module_fn_ret_types.iter() {
                             if f == function {
                                 return Some(t.clone());
                             }

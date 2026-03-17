@@ -797,10 +797,42 @@ compute(x:I) R<I> {
 
 ---
 
+## Self-Hosting
+
+Sans is self-hosted: the compiler and runtime are both written in Sans.
+
+### Runtime (100% Sans, zero C)
+
+All built-in capabilities are implemented in Sans using its own low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, etc.):
+
+- `runtime/server.sans` — HTTP server, keep-alive, WebSocket, streaming
+- `runtime/json.sans` — JSON parser and serializer
+- `runtime/string_ext.sans` — String methods
+- `runtime/array_ext.sans` — Array methods
+- `runtime/map.sans` — Hash map
+- `runtime/ssl.sans` — TLS/SSL
+- `runtime/http.sans` — HTTP client
+- `runtime/curl.sans` — Curl bindings
+- `runtime/arena.sans` — Arena allocator
+- `runtime/result.sans` — Result type
+- `runtime/functional.sans` — Higher-order functions
+
+### Compiler (written in Sans)
+
+`compiler/` contains a full Sans compiler (~11,600 LOC across 7 modules): lexer, parser, typeck, IR, codegen, main. It compiles to LLVM IR via `llc`, then links with `clang`.
+
+Bootstrap stages: **stage 0** (Rust-compiled) → **stage 1** (self-compiled once) → **stage 2** (self-compiled twice) → **stage 3** (fixed point, output identical to stage 2).
+
+### Reserved Builtin Names
+
+User-defined functions take precedence over builtins of the same name. However, to avoid confusion, avoid redefining builtins unless intentional. The following names have builtin implementations: `p`, `print`, `str`, `stoi`, `itos`, `itof`, `ftoi`, `ftos`, `fr`, `fw`, `fa`, `fe`, `file_read`, `file_write`, `file_append`, `file_exists`, `listen`, `serve`, `serve_file`, `serve_tls`, `alloc`, `dealloc`, `load8`, `load16`, `load32`, `load64`, `store8`, `store16`, `store32`, `store64`, `mcpy`, `mcmp`, `slen`, `wfd`, `exit`, `system`, `sys`, `ok`, `err`, `map`, `M`, `jp`, `jparse`, `jfy`, `jo`, `ja`, `js`, `ji`, `jb`, `jn`, `hg`, `hp`, `sock`, `saccept`, `srecv`, `ssend`, `sclose`, `args`, `spawn`, `signal_handler`, `signal_check`, and all other documented built-in names.
+
+---
+
 ## Known Limitations
 
-- No garbage collector — all heap memory leaked until process exit
-- No array bounds checking — out-of-bounds is undefined behavior
-- Multiple opaque type method calls in complex expressions may crash
-- ~~String interpolation only supports identifiers, not expressions~~ — Expression interpolation now supported (v0.3.6)
-- ~~No lambda syntax with capture~~ — Lambdas with implicit capture now supported (v0.3.4)
+- No automatic garbage collector — all heap memory leaked until process exit. Use `arena_begin`/`arena_end` for phase-based bulk deallocation.
+- No array bounds checking — out-of-bounds access is undefined behavior
+- Type checker is relaxed for bootstrap compatibility — some type mismatches (e.g. if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time and may produce incorrect behavior at runtime
+- Capturing lambdas passed across module boundaries are not yet supported
+- User-defined functions with the same name as a builtin now take precedence (fixed in v0.3.41)
