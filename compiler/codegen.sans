@@ -3364,9 +3364,12 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   i = 0
   while i < nf {
     emit_function_body(cg, funcs.get(i))
+    // Flush write to prevent stack buildup
+    wfd(2, ".")
     i = i + 1
     0
   }
+  wfd(2, "\n")
 
   // 7. Join: prepend string constants before main lines
   // String constants must be at module level, so prepend them
@@ -3384,7 +3387,10 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   }
 
   // 8. Join all lines into a single string and write to file
+  wfd(2, "J")
   ll_string = join_lines(cg)
+  wfd(2, "W")
   fw(output_path, ll_string)
+  wfd(2, "D\n")
   0
 }
