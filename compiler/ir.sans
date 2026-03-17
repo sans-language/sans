@@ -1567,6 +1567,175 @@ lower_method_call(ctx:I expr:I) I {
     lower_result_method(ctx, obj_reg, method, args)
   }
 
+  // ── Int methods (opaque pointers — arrays, maps, strings stored as i64) ──
+  else if obj_type == IRTY_INT {
+    // Dispatch common methods for Int-typed values
+    if method == "len" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "get" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "push" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_PUSH, 0, obj_reg, arg_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "pop" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_POP, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "set" {
+      arg0 = lower_expr(ctx, args.get(0))
+      arg1 = lower_expr(ctx, args.get(1))
+      ctx_emit(ctx, ir_inst3(IR_ARRAY_SET, 0, obj_reg, arg0, arg1))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "remove" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_REMOVE, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "keys" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_MAP_KEYS, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "vals" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_MAP_VALS, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "has" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_MAP_HAS, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "substring" {
+      a0 = lower_expr(ctx, args.get(0))
+      a1 = lower_expr(ctx, args.get(1))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst3(IR_STRING_SUBSTRING, dest, obj_reg, a0, a1))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "sw" || method == "starts_with" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "ew" || method == "ends_with" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "contains" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_CONTAINS, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "trim" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_STRING_TRIM, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "split" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_SPLIT, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "replace" {
+      a0 = lower_expr(ctx, args.get(0))
+      a1 = lower_expr(ctx, args.get(1))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst3(IR_STRING_REPLACE, dest, obj_reg, a0, a1))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "add" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_CONCAT, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "map" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_MAP, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "filter" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_FILTER, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "any" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_ANY, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "find" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_FIND, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "enumerate" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_ENUMERATE, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "zip" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_ZIP, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "unwrap" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_UNWRAP, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "is_ok" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_IS_OK, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "is_err" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_IS_ERR, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "error" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_ERROR, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "unwrap_or" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_RESULT_UNWRAP_OR, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+
   // ── Struct/Enum user-defined methods (fallback) ──
   else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
