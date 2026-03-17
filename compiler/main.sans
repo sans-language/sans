@@ -103,8 +103,6 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
 
   name = mod_name_of(import_path)
   resolved.push(make_resolved_module(name, file_path, program))
-  0
-}
 
 resolve_imports(entry_path:S) I {
   base_dir = dir_of(entry_path)
@@ -292,22 +290,22 @@ build(source_path:S output_path:S) I {
   // 9. Create merged IrModule
   merged = make_ir_module(all_functions, all_globals, main_struct_defs)
 
-  // 10. Codegen — emit LLVM IR
-  ll_path = output_path + ".ll"
-  compile_to_ll(merged, ll_path)
+  // 10. Codegen + link (tail call to separate function)
+  build_finish(merged, output_path + ".ll", output_path, source_path, modules)
+}
+
+build_finish(merged:I ll_path:S output_path:S source_path:S modules:I) I {
+  // 10b. Write .ll file
+  cg_result = compile_to_ll(merged, ll_path)
+  write_ll_file(cg_result, ll_path)
 
   // 11. Invoke llc to produce object file
   obj_path = output_path + ".o"
   sys("llc -filetype=obj -O2 -o " + obj_path + " " + ll_path)
 
-  // 12. Compile runtime .sans modules
-  // Use the Rust compiler (sans) to compile each runtime module to .o
-  // The self-hosted compiler needs pre-compiled runtime, or we use sans
-  // Use runtime/ relative to CWD (compiler is run from repo root),
-  // or fall back to source-relative path for in-compiler-dir builds
+  // 12. Compile runtime
   runtime_dir_cwd = "runtime"
   runtime_dir_src = dir_of(source_path) + "/../runtime"
-  // Check if runtime/log.sans exists in CWD-relative path
   runtime_dir = if fexists(runtime_dir_cwd + "/log.sans") == 1 { runtime_dir_cwd } else { runtime_dir_src }
   runtime_modules = array<I>()
   runtime_modules.push("log")
@@ -330,8 +328,6 @@ build(source_path:S output_path:S) I {
     rname = runtime_modules.get(ri)
     sans_path = runtime_dir + "/" + rname + ".sans"
     o_path = "/tmp/sans_" + rname + "_runtime.o"
-
-    // Read, parse, typecheck as module, lower (no module prefix), codegen
     rsrc = fr(sans_path)
     rprog = parse(rsrc)
     empty_exports = M()
@@ -339,16 +335,16 @@ build(source_path:S output_path:S) I {
     empty_fn_ret = M()
     rir = lower(rprog, 0, empty_fn_ret)
     r_ll = "/tmp/sans_" + rname + "_runtime.ll"
-    compile_to_ll_runtime(rir, r_ll)
+    r_cg = compile_to_ll_runtime(rir, r_ll)
+    write_ll_file(r_cg, r_ll)
     sys("llc -filetype=obj -O2 -o " + o_path + " " + r_ll)
     sys("rm -f " + r_ll)
-
     runtime_o_paths.push(o_path)
     ri = ri + 1
     0
   }
 
-  // 13. Link everything together
+  // 13. Link
   link_cmd := "cc " + obj_path
   li := 0
   while li < runtime_o_paths.len() {
@@ -367,10 +363,7 @@ build(source_path:S output_path:S) I {
     ri = ri + 1
     0
   }
-
   p("Built: " + output_path)
-  0
-}
 
 // ── Run Command ─────────────────────────────────────────────────
 
@@ -379,8 +372,6 @@ run(source_path:S) I {
   build(source_path, tmp_out)
   sys(tmp_out)
   sys("rm -f " + tmp_out)
-  0
-}
 
 // ── Main Entry Point ────────────────────────────────────────────
 

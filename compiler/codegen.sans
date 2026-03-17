@@ -3318,11 +3318,13 @@ emit_sans_args(cg:I) I {
 // ── Top-level entry point ─────────────────────────────────────
 
 compile_to_ll(module:I output_path:S) I {
-  compile_to_ll_impl(module, output_path, 0)
+  cg = compile_to_ll_impl(module, output_path, 0)
+  cg
 }
 
 compile_to_ll_runtime(module:I output_path:S) I {
-  compile_to_ll_impl(module, output_path, 1)
+  cg = compile_to_ll_impl(module, output_path, 1)
+  cg
 }
 
 compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
@@ -3370,27 +3372,25 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
     0
   }
   wfd(2, "\n")
+  // Return cg — caller handles file writing
+  cg
+}
 
-  // 7. Join: prepend string constants before main lines
-  // String constants must be at module level, so prepend them
+write_ll_file(cg:I output_path:S) I {
   main_lines = cg_lines(cg)
   sc_lines = cg_string_const_lines(cg)
-  // Build final lines: header+externals+globals (already in main_lines) + string consts + functions
-  // Since string consts were NOT in main_lines, we need to insert them.
-  // Simplest: create new lines array with sc_lines prepended before function definitions.
-  // Actually, since LLVM allows globals anywhere at top-level, just append them to main_lines.
   si := 0
   while si < sc_lines.len() {
     main_lines.push(sc_lines.get(si))
     si = si + 1
     0
   }
-
-  // 8. Join all lines into a single string and write to file
-  wfd(2, "J")
-  ll_string = join_lines(cg)
-  wfd(2, "W")
-  fw(output_path, ll_string)
-  wfd(2, "D\n")
+  fw(output_path, "")
+  wi := 0
+  while wi < main_lines.len() {
+    fa(output_path, main_lines.get(wi) + "\n")
+    wi = wi + 1
+    0
+  }
   0
 }
