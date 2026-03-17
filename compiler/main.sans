@@ -277,23 +277,23 @@ build(source_path:S output_path:S) I {
     wfd(2, ".")
   }
 
-  // Merge main functions
+  // Merge main functions + finalize
   main_funcs = irm_functions(main_ir)
+  main_struct_defs = irm_struct_defs(main_ir)
+  nfuncs = main_funcs.len()
   fi2 := 0
-  while fi2 < main_funcs.len() {
-    all_functions.push(main_funcs.get(fi2))
+  while fi2 <= nfuncs {
+    if fi2 < nfuncs {
+      all_functions.push(main_funcs.get(fi2))
+    }
+    if fi2 == nfuncs {
+      // Last iteration: finalize and store in global
+      merged = make_ir_module(all_functions, all_globals, main_struct_defs)
+      g_merged = merged
+    }
     fi2 = fi2 + 1
     wfd(2, ".")
   }
-
-  // Get struct defs from main IR
-  main_struct_defs = irm_struct_defs(main_ir)
-
-  // 9. Create merged IrModule
-  merged = make_ir_module(all_functions, all_globals, main_struct_defs)
-
-  // 10. Store merged module in global — caller handles codegen+link
-  g_merged = merged
   0
 }
 
