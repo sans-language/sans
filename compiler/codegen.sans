@@ -1,19 +1,19 @@
 import "constants"
 import "ir"
 
-// ── Codegen state layout (80 bytes) ─────────────────────────────
-// offset 0:  lines        — Array<I> of string pointers (LLVM IR lines)
-// offset 8:  reg_counter  — next LLVM SSA register number
-// offset 16: string_pool  — Map: hash_key → global name ptr
-// offset 24: struct_defs  — Map: struct name → field count
-// offset 32: label_map    — Map: IR label name → LLVM label name
-// offset 40: reg_map      — Map: IR register → LLVM value string ptr
-// offset 48: ptr_set      — Map: IR register → 1 (tracks pointer regs)
-// offset 56: has_main     — 1 if module has main function
-// offset 72: label_counter — separate counter for unique label suffixes
+// ------ Codegen state layout (80 bytes) ---------------------------------------------------------------------------------------
+// offset 0:  lines        --- Array<I> of string pointers (LLVM IR lines)
+// offset 8:  reg_counter  --- next LLVM SSA register number
+// offset 16: string_pool  --- Map: hash_key --- global name ptr
+// offset 24: struct_defs  --- Map: struct name --- field count
+// offset 32: label_map    --- Map: IR label name --- LLVM label name
+// offset 40: reg_map      --- Map: IR register --- LLVM value string ptr
+// offset 48: ptr_set      --- Map: IR register --- 1 (tracks pointer regs)
+// offset 56: has_main     --- 1 if module has main function
+// offset 72: label_counter --- separate counter for unique label suffixes
 
 make_codegen() I {
-  cg = alloc(128)
+  cg = alloc(136)
   store64(cg, array<I>())       // lines (unused in streaming mode)
   store64(cg + 8, 0)            // reg_counter
   store64(cg + 16, M())         // string_pool
@@ -30,10 +30,11 @@ make_codegen() I {
   store64(cg + 104, M())        // label_parent
   store64(cg + 112, 0)          // output_path (0 = buffer mode, non-0 = streaming)
   store64(cg + 120, 0)          // line_buffer (accumulated string for batch flush)
+  store64(cg + 128, M())        // ret_labels: set of labels terminated by ret
   cg
 }
 
-// ── Codegen accessors ───────────────────────────────────────────
+// ------ Codegen accessors ---------------------------------------------------------------------------------------------------------------------------------
 cg_lines(cg:I) I = load64(cg)
 cg_reg_counter(cg:I) I = load64(cg + 8)
 cg_string_pool(cg:I) I = load64(cg + 16)
@@ -56,7 +57,7 @@ cg_set_current_label(cg:I v:I) I { store64(cg + 80, v) 0 }
 cg_label_end_map(cg:I) I = load64(cg + 88)
 cg_current_block(cg:I) I = load64(cg + 96)  // actual LLVM block (may differ after inline ops)
 cg_set_current_block(cg:I v:I) I { store64(cg + 96, v) 0 }
-cg_label_parent(cg:I) I = load64(cg + 104)  // child → parent label map
+cg_label_parent(cg:I) I = load64(cg + 104)  // child --- parent label map
 
 cg_set_reg_counter(cg:I v:I) I { store64(cg + 8, v) 0 }
 cg_set_has_main(cg:I v:I) I { store64(cg + 56, v) 0 }
@@ -74,9 +75,9 @@ cg_get_label_end(cg:I ir_label:I) I {
   if mhas(lem, ir_label) { mget(lem, ir_label) } else { ir_label }
 }
 
-// ── Core helpers ────────────────────────────────────────────────
+// ------ Core helpers ------------------------------------------------------------------------------------------------------------------------------------------------
 
-// Emit a line of LLVM IR — streams to file when output_path set
+// Emit a line of LLVM IR --- streams to file when output_path set
 emit(cg:I line:S) I {
   opath = load64(cg + 112)
   if opath != 0 {
@@ -137,7 +138,7 @@ cg_is_ptr(cg:I ir_reg:I) I {
   mhas(ps, ir_reg)
 }
 
-// ── String building: join_lines ─────────────────────────────────
+// ------ String building: join_lines ---------------------------------------------------------------------------------------------------
 
 join_lines(cg:I) S {
   lines = cg_lines(cg)
@@ -145,7 +146,7 @@ join_lines(cg:I) S {
   // Calculate total length
   total := 0
   i := 0
-  while i < 0n {
+  while i < n {
     s = lines.get(i)
     total = total + slen(s) + 1
     i = i + 1
@@ -155,7 +156,7 @@ join_lines(cg:I) S {
   buf = alloc(total + 1)
   pos := 0
   i = 0
-  while i < 0n {
+  while i < n {
     s = lines.get(i)
     len = slen(s)
     mcpy(buf + pos, s, len)
@@ -169,75 +170,70 @@ join_lines(cg:I) S {
   buf
 }
 
-// ── Hash helper (djb2) ──────────────────────────────────────────
+// ------ Hash helper (djb2) ------------------------------------------------------------------------------------------------------------------------------
 
 djb2_hash(s:S) I {
-  h := 5381
-  i := 0
-  len = slen(s)
-  while i < 0len {
-    c = char_at(s, i)
-    h = h * 33 + c
-    i = i + 1
-    0
-  }
+  // Use pointer value as hash (unique per string allocation)
+  h = s * 31 + slen(s) * 7919
   if h < 0 { 0 - h } else { h }
 }
 
-// ── LLVM string escaping ────────────────────────────────────────
+// ------ LLVM string escaping ------------------------------------------------------------------------------------------------------------------------
 
-llvm_escape_string(s:S) S {
-  len = slen(s)
-  // Worst case: every char becomes \XX (3 chars)
-  buf = alloc(len * 3 + 1)
-  pos := 0
-  i := 0
-  while i < 0len {
+llvm_escape_string(s:S) S { s }
+
+llvm_escape_char(buf:I pos:I c:I) I {
+  if c == 10 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 48)
+    store8(0, buf + pos + 2, 65)
+    pos + 3
+  } else { if c == 9 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 48)
+    store8(0, buf + pos + 2, 57)
+    pos + 3
+  } else { if c == 92 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 53)
+    store8(0, buf + pos + 2, 67)
+    pos + 3
+  } else { if c == 34 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 50)
+    store8(0, buf + pos + 2, 50)
+    pos + 3
+  } else { if c < 32 {
+    store8(0, buf + pos, 92)
+    hi = c / 16
+    lo = c % 16
+    store8(0, buf + pos + 1, if hi < 10 { hi + 48 } else { hi - 10 + 65 })
+    store8(0, buf + pos + 2, if lo < 10 { lo + 48 } else { lo - 10 + 65 })
+    pos + 3
+  } else {
+    store8(0, buf + pos, c)
+    pos + 1
+  } } } } }
+}
+
+llvm_escape_step(s:S buf:I pos:I i:I len:I) I {
+  if i >= len { pos }
+  else {
     c = char_at(s, i)
-    if c == 10 {
-      // \n -> \0A
-      store8(0, buf + pos, 92)
-      store8(0, buf + pos + 1, 48)
-      store8(0, buf + pos + 2, 65)
-      pos = pos + 3
-    } else { if c == 9 {
-      // \t -> \09
-      store8(0, buf + pos, 92)
-      store8(0, buf + pos + 1, 48)
-      store8(0, buf + pos + 2, 57)
-      pos = pos + 3
-    } else { if c == 92 {
-      // \ -> \5C
-      store8(0, buf + pos, 92)
-      store8(0, buf + pos + 1, 53)
-      store8(0, buf + pos + 2, 67)
-      pos = pos + 3
-    } else { if c == 34 {
-      // " -> \22
-      store8(0, buf + pos, 92)
-      store8(0, buf + pos + 1, 50)
-      store8(0, buf + pos + 2, 50)
-      pos = pos + 3
-    } else { if c < 32 {
-      // Other control chars -> \HH
-      store8(0, buf + pos, 92)
-      hi = c / 16
-      lo = c % 16
-      store8(0, buf + pos + 1, if hi < 0 { hi + 48 } else { hi - 10 + 65 })
-      store8(0, buf + pos + 2, if lo < 10 { lo + 48 } else { lo - 10 + 65 })
-      pos = pos + 3
-    } else {
-      store8(0, buf + pos, c)
-      pos = pos + 1
-    } } } } }
-    i = i + 1
-    0
+    new_pos = llvm_escape_char(buf, pos, c)
+    llvm_escape_step(s, buf, new_pos, i + 1, len)
   }
-  store8(0, buf + pos, 0)
+}
+
+llvm_escape_string_UNUSED(s:S) S {
+  len = slen(s)
+  buf = alloc(len * 3 + 1)
+  final_pos = llvm_escape_step(s, buf, 0, 0, len)
+  store8(0, buf + final_pos, 0)
   buf
 }
 
-// ── String constant emission ────────────────────────────────────
+// ------ String constant emission ------------------------------------------------------------------------------------------------------------
 
 emit_string_const(cg:I value:S) S {
   pool = cg_string_pool(cg)
@@ -256,7 +252,7 @@ emit_string_const(cg:I value:S) S {
   name
 }
 
-// ── LLVM IR header ──────────────────────────────────────────────
+// ------ LLVM IR header ------------------------------------------------------------------------------------------------------------------------------------------
 
 emit_header(cg:I) I {
   emit(cg, "target triple = \"arm64-apple-macosx14.0.0\"")
@@ -264,9 +260,9 @@ emit_header(cg:I) I {
   0
 }
 
-// ── External function declarations ──────────────────────────────
+// ------ External function declarations ------------------------------------------------------------------------------------------
 
-// Core externals only (C stdlib, file I/O, threading, curl, sockets) — no sans_* runtime
+// Core externals only (C stdlib, file I/O, threading, curl, sockets) --- no sans_* runtime
 emit_externals_core(cg:I) I {
   emit(cg, "declare i64 @printf(ptr, ...)")
   emit(cg, "declare ptr @malloc(i64)")
@@ -314,13 +310,13 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare i64 @close(i64)")
   emit(cg, "declare i64 @setsockopt(i64, i64, i64, ptr, i64)")
 
-  // ── Signal / Poll ──
+  // ------ Signal / Poll ------
   emit(cg, "declare i64 @signal(i32, ptr)")
   emit(cg, "declare i32 @poll(ptr, i32, i32)")
   emit(cg, "@__sans_signal_flag = external global i64")
   emit(cg, "declare void @__sans_signal_handler(i32)")
 
-  // ── OpenSSL ──
+  // ------ OpenSSL ------
   emit(cg, "declare ptr @TLS_server_method()")
   emit(cg, "declare ptr @SSL_CTX_new(ptr)")
   emit(cg, "declare i32 @SSL_CTX_use_certificate_file(ptr, ptr, i32)")
@@ -334,20 +330,20 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare void @SSL_free(ptr)")
 
 
-  // ── zlib ──
+  // ------ zlib ------
   emit(cg, "declare i32 @deflateInit2_(ptr, i32, i32, i32, i32, i32, ptr, i32)")
   emit(cg, "declare i32 @deflate(ptr, i32)")
   emit(cg, "declare i32 @deflateEnd(ptr)")
   emit(cg, "declare i64 @deflateBound(ptr, i64)")
 
-  // ── LLVM intrinsics ──
+  // ------ LLVM intrinsics ------
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
 
   0
 }
 
 emit_externals(cg:I) I {
-  // ── C standard library ──
+  // ------ C standard library ------
   emit(cg, "declare i64 @printf(ptr, ...)")
   emit(cg, "declare ptr @malloc(i64)")
   emit(cg, "declare void @free(ptr)")
@@ -365,7 +361,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i32 @access(ptr, i32)")
   emit(cg, "declare ptr @strstr(ptr, ptr)")
 
-  // ── File I/O ──
+  // ------ File I/O ------
   emit(cg, "declare ptr @fopen(ptr, ptr)")
   emit(cg, "declare i32 @fclose(ptr)")
   emit(cg, "declare i64 @fread(ptr, i64, i64, ptr)")
@@ -373,7 +369,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i32 @fseek(ptr, i64, i32)")
   emit(cg, "declare i64 @ftell(ptr)")
 
-  // ── Threading ──
+  // ------ Threading ------
   emit(cg, "declare i32 @pthread_create(ptr, ptr, ptr, ptr)")
   emit(cg, "declare i32 @pthread_join(i64, ptr)")
   emit(cg, "declare i32 @pthread_mutex_init(ptr, ptr)")
@@ -383,7 +379,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i32 @pthread_cond_wait(ptr, ptr)")
   emit(cg, "declare i32 @pthread_cond_signal(ptr)")
 
-  // ── Curl ──
+  // ------ Curl ------
   emit(cg, "declare i64 @curl_easy_init()")
   emit(cg, "declare i64 @curl_easy_setopt(i64, i64, ...)")
   emit(cg, "declare i64 @curl_easy_perform(i64)")
@@ -392,7 +388,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @curl_slist_append(i64, i64)")
   emit(cg, "declare void @curl_slist_free_all(i64)")
 
-  // ── Sockets ──
+  // ------ Sockets ------
   emit(cg, "declare i64 @socket(i64, i64, i64)")
   emit(cg, "declare i64 @bind(i64, ptr, i64)")
   emit(cg, "declare i64 @listen(i64, i64)")
@@ -402,7 +398,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @close(i64)")
   emit(cg, "declare i64 @setsockopt(i64, i64, i64, ptr, i64)")
 
-  // ── Sans runtime: JSON ──
+  // ------ Sans runtime: JSON ------
   emit(cg, "declare i64 @sans_json_parse(i64)")
   emit(cg, "declare i64 @sans_json_object()")
   emit(cg, "declare i64 @sans_json_array()")
@@ -421,7 +417,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_json_push(i64, i64)")
   emit(cg, "declare i64 @sans_json_stringify(i64)")
 
-  // ── Sans runtime: HTTP ──
+  // ------ Sans runtime: HTTP ------
   emit(cg, "declare i64 @sans_http_listen(i64)")
   emit(cg, "declare i64 @sans_http_accept(i64)")
   emit(cg, "declare i64 @sans_http_respond(i64, i64, i64, i64)")
@@ -435,7 +431,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_http_request_method(i64)")
   emit(cg, "declare i64 @sans_http_request_body(i64)")
 
-  // ── Sans runtime: Arrays ──
+  // ------ Sans runtime: Arrays ------
   emit(cg, "declare i64 @sans_array_map(i64, i64)")
   emit(cg, "declare i64 @sans_array_filter(i64, i64)")
   emit(cg, "declare i64 @sans_array_any(i64, i64)")
@@ -446,7 +442,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_array_pop(i64)")
   emit(cg, "declare i64 @sans_array_remove(i64, i64)")
 
-  // ── Sans runtime: Strings ──
+  // ------ Sans runtime: Strings ------
   emit(cg, "declare i64 @sans_string_trim(i64)")
   emit(cg, "declare i64 @sans_string_starts_with(i64, i64)")
   emit(cg, "declare i64 @sans_string_ends_with(i64, i64)")
@@ -454,7 +450,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_string_split(i64, i64)")
   emit(cg, "declare i64 @sans_string_replace(i64, i64, i64)")
 
-  // ── Sans runtime: Result ──
+  // ------ Sans runtime: Result ------
   emit(cg, "declare i64 @sans_result_ok(i64)")
   emit(cg, "declare i64 @sans_result_err(i64)")
   emit(cg, "declare i64 @sans_result_is_ok(i64)")
@@ -463,19 +459,19 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_result_error(i64)")
   emit(cg, "declare i64 @sans_result_unwrap_or(i64, i64)")
 
-  // ── Sans runtime: Logging ──
+  // ------ Sans runtime: Logging ------
   emit(cg, "declare i64 @sans_log_debug(i64)")
   emit(cg, "declare i64 @sans_log_info(i64)")
   emit(cg, "declare i64 @sans_log_warn(i64)")
   emit(cg, "declare i64 @sans_log_error(i64)")
   emit(cg, "declare i64 @sans_log_set_level(i64)")
 
-  // ── Sans runtime: Kernel ──
+  // ------ Sans runtime: Kernel ------
   emit(cg, "declare i64 @sans_print_err(i64)")
   emit(cg, "declare i64 @sans_get_log_level()")
   emit(cg, "declare i64 @sans_set_log_level(i64)")
 
-  // ── Sans runtime: Map ──
+  // ------ Sans runtime: Map ------
   emit(cg, "declare i64 @sans_map_create()")
   emit(cg, "declare i64 @sans_map_get(i64, i64)")
   emit(cg, "declare i64 @sans_map_set(i64, i64, i64)")
@@ -484,15 +480,15 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_map_keys(i64)")
   emit(cg, "declare i64 @sans_map_vals(i64)")
 
-  // ── Sans runtime: Arena ──
+  // ------ Sans runtime: Arena ------
   emit(cg, "declare i64 @sans_arena_begin()")
   emit(cg, "declare i64 @sans_arena_alloc(i64)")
   emit(cg, "declare i64 @sans_arena_end()")
 
-  // ── Sans runtime: Socket helper ──
+  // ------ Sans runtime: Socket helper ------
   emit(cg, "declare i64 @sans_bind_port(i64, i64)")
 
-  // ── Sans runtime: HTTPS / SSL ──
+  // ------ Sans runtime: HTTPS / SSL ------
   emit(cg, "declare i64 @sans_https_listen(i64, i64, i64)")
   emit(cg, "declare i64 @sans_https_accept(i64)")
   emit(cg, "declare i64 @sans_https_respond(i64, i64, i64, i64)")
@@ -515,25 +511,25 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_stream_end(i64)")
   emit(cg, "declare i64 @sans_http_request_form(i64, i64)")
 
-  // ── WebSocket ──
+  // ------ WebSocket ------
   emit(cg, "declare i64 @sans_ws_is_upgrade(i64)")
   emit(cg, "declare i64 @sans_ws_upgrade(i64)")
   emit(cg, "declare i64 @sans_ws_send(i64, i64)")
   emit(cg, "declare i64 @sans_ws_recv(i64)")
   emit(cg, "declare i64 @sans_ws_close(i64)")
 
-  // ── Signal / Poll ──
+  // ------ Signal / Poll ------
   emit(cg, "declare i64 @signal(i32, ptr)")
   emit(cg, "declare i32 @poll(ptr, i32, i32)")
 
-  // ── Signal handler global + function ──
+  // ------ Signal handler global + function ------
   emit(cg, "@__sans_signal_flag = global i64 0")
   emit(cg, "define void @__sans_signal_handler(i32 %sig) {")
   emit(cg, "  store i64 1, ptr @__sans_signal_flag")
   emit(cg, "  ret void")
   emit(cg, "}")
 
-  // ── OpenSSL ──
+  // ------ OpenSSL ------
   emit(cg, "declare ptr @TLS_server_method()")
   emit(cg, "declare ptr @SSL_CTX_new(ptr)")
   emit(cg, "declare i32 @SSL_CTX_use_certificate_file(ptr, ptr, i32)")
@@ -548,22 +544,22 @@ emit_externals(cg:I) I {
 
   // __sans_args is defined inline (not declared as external)
 
-  // ── zlib ──
+  // ------ zlib ------
   emit(cg, "declare i32 @deflateInit2_(ptr, i32, i32, i32, i32, i32, ptr, i32)")
   emit(cg, "declare i32 @deflate(ptr, i32)")
   emit(cg, "declare i32 @deflateEnd(ptr)")
   emit(cg, "declare i64 @deflateBound(ptr, i64)")
 
-  // ── LLVM intrinsics ──
+  // ------ LLVM intrinsics ------
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
 
   emit(cg, "")
   0
 }
 
-// ── SSL-aware dispatch helpers ────────────────────────────────────
+// ------ SSL-aware dispatch helpers ------------------------------------------------------------------------------------------------------------
 
-// server.accept() — check if server has SSL context at offset 16
+// server.accept() --- check if server has SSL context at offset 16
 // If non-zero: call sans_https_accept, else call sans_http_accept
 compile_http_accept(cg:I inst:I) I {
   dest = ir_dest(inst)
@@ -601,7 +597,7 @@ compile_http_accept(cg:I inst:I) I {
   0
 }
 
-// req.respond() — check if request has SSL at offset 48
+// req.respond() --- check if request has SSL at offset 48
 // If non-zero: call sans_https_respond, else call sans_http_respond
 compile_http_respond(cg:I req_v:S status_v:S body_v:S ct_v:S) I {
   uid = cg_label_id(cg)
@@ -636,7 +632,7 @@ compile_http_respond(cg:I req_v:S status_v:S body_v:S ct_v:S) I {
   r
 }
 
-// ── Format string globals (emitted once, lazily) ────────────────
+// ------ Format string globals (emitted once, lazily) ------------------------------------------------
 
 cg_fmt_int(cg:I) S {
   pool = cg_string_pool(cg)
@@ -739,7 +735,7 @@ cg_label_id(cg:I) S {
   "L" + str(n)
 }
 
-// ── Generic runtime call helpers ─────────────────────────────────
+// ------ Generic runtime call helpers ---------------------------------------------------------------------------------------------------
 
 // 0-arg: dest = call i64 @fname()
 compile_rt0(cg:I inst:I fname:S) I {
@@ -791,13 +787,13 @@ compile_rt4(cg:I inst:I fname:S) I {
   0
 }
 
-// ── Compile a single IR instruction to LLVM IR text ─────────────
+// ------ Compile a single IR instruction to LLVM IR text ---------------------------------------
 
 compile_inst(cg:I inst:I) I {
   op = ir_op(inst)
   dest = ir_dest(inst)
 
-  // ── IR_CONST (0): [op, dest, value] ──
+  // ------ IR_CONST (0): [op, dest, value] ------
   if op == IR_CONST {
     val = ir_field(inst, 16)
     r = cg_fresh_reg(cg)
@@ -806,7 +802,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FLOAT_CONST (1): [op, dest, float_str_ptr] ──
+  // ------ IR_FLOAT_CONST (1): [op, dest, float_str_ptr] ------
   if op == IR_FLOAT_CONST {
     float_str = ir_field(inst, 16)
     // float_str is a string pointer containing the float text (e.g. "3.14")
@@ -817,7 +813,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_BOOL_CONST (2): [op, dest, value] ──
+  // ------ IR_BOOL_CONST (2): [op, dest, value] ------
   if op == IR_BOOL_CONST {
     val = ir_field(inst, 16)
     r = cg_fresh_reg(cg)
@@ -826,9 +822,10 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_CONST (3): [op, dest, string_ptr] ──
+  // ------ IR_STRING_CONST (3): [op, dest, string_ptr] ------
   if op == IR_STRING_CONST {
-    str_val = ir_field(inst, 16)
+    str_raw = ir_field(inst, 16)
+    str_val = if str_raw == 0 { ptr("") } else { str_raw }
     global_name = emit_string_const(cg, str_val)
     len = slen(str_val) + 1
     r = cg_fresh_reg(cg)
@@ -838,7 +835,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_BINOP (4): [op, dest, binop, left, right] ──
+  // ------ IR_BINOP (4): [op, dest, binop, left, right] ------
   if op == IR_BINOP {
     binop = ir_field(inst, 16)
     left = cg_get_val(cg, ir_field(inst, 24))
@@ -850,7 +847,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FLOAT_BINOP (5): [op, dest, binop, left, right] ──
+  // ------ IR_FLOAT_BINOP (5): [op, dest, binop, left, right] ------
   if op == IR_FLOAT_BINOP {
     binop = ir_field(inst, 16)
     left = cg_get_val(cg, ir_field(inst, 24))
@@ -868,7 +865,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_CMPOP (6): [op, dest, cmpop, left, right] ──
+  // ------ IR_CMPOP (6): [op, dest, cmpop, left, right] ------
   if op == IR_CMPOP {
     cmpop = ir_field(inst, 16)
     left = cg_get_val(cg, ir_field(inst, 24))
@@ -882,7 +879,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FLOAT_CMPOP (7): [op, dest, cmpop, left, right] ──
+  // ------ IR_FLOAT_CMPOP (7): [op, dest, cmpop, left, right] ------
   if op == IR_FLOAT_CMPOP {
     cmpop = ir_field(inst, 16)
     left = cg_get_val(cg, ir_field(inst, 24))
@@ -900,7 +897,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_CMPOP (8): [op, dest, cmpop, left, right] ──
+  // ------ IR_STRING_CMPOP (8): [op, dest, cmpop, left, right] ------
   if op == IR_STRING_CMPOP {
     cmpop = ir_field(inst, 16)
     left = cg_get_val(cg, ir_field(inst, 24))
@@ -920,7 +917,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_NOT (9): [op, dest, src] ──
+  // ------ IR_NOT (9): [op, dest, src] ------
   if op == IR_NOT {
     src = cg_get_val(cg, ir_field(inst, 16))
     r = cg_fresh_reg(cg)
@@ -929,7 +926,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_NEG (10): [op, dest, src] ──
+  // ------ IR_NEG (10): [op, dest, src] ------
   if op == IR_NEG {
     src = cg_get_val(cg, ir_field(inst, 16))
     r = cg_fresh_reg(cg)
@@ -938,7 +935,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_COPY (11): [op, dest, src] ──
+  // ------ IR_COPY (11): [op, dest, src] ------
   if op == IR_COPY {
     src_reg = ir_field(inst, 16)
     cg_set_val(cg, dest, cg_get_val(cg, src_reg))
@@ -946,7 +943,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_CALL (12): [op, dest, fname, args_array] ──
+  // ------ IR_CALL (12): [op, dest, fname, args_array] ------
   if op == IR_CALL {
     fname_ptr = ir_field(inst, 16)
     fname = fname_ptr
@@ -955,7 +952,7 @@ compile_inst(cg:I inst:I) I {
     // Build arg list string: "i64 %a, i64 %b, ..."
     arg_str := ""
     i := 0
-    while i < 0nargs {
+    while i < nargs {
       if i > 0 { arg_str = arg_str + ", " }
       arg_str = arg_str + "i64 " + cg_get_val(cg, args.get(i))
       i = i + 1
@@ -969,14 +966,18 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_RET (13): [op, value_reg] ──
+  // ------ IR_RET (13): [op, value_reg] ------
   if op == IR_RET {
     val = cg_get_val(cg, dest)
     emit(cg, "  ret i64 " + val)
+    // Record that the current label's block ends with ret (for PHI filtering)
+    cur_lbl = cg_current_label(cg)
+    rl = load64(cg + 128)
+    mset(rl, cur_lbl, 1)
     return 0
   }
 
-  // ── IR_LABEL (14): [op, label_name] ──
+  // ------ IR_LABEL (14): [op, label_name] ------
   if op == IR_LABEL {
     label_name = dest
     cg_set_current_label(cg, label_name)
@@ -985,7 +986,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_BRANCH (15): [op, cond, then_label, else_label] ──
+  // ------ IR_BRANCH (15): [op, cond, then_label, else_label] ------
   if op == IR_BRANCH {
     cond_val = cg_get_val(cg, dest)
     then_label = ir_field(inst, 16)
@@ -1001,7 +1002,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_JUMP (16): [op, target_label] ──
+  // ------ IR_JUMP (16): [op, target_label] ------
   if op == IR_JUMP {
     target = dest
     // Record that the current IR label ends at the actual LLVM block
@@ -1009,11 +1010,11 @@ compile_inst(cg:I inst:I) I {
     cur_blk = cg_current_block(cg)
     cg_record_label_end(cg, ir_lbl, cur_blk)
     // Propagate parent: the jump target inherits this label's parent chain
-    // This handles: L_3 (child of L_0) jumps to L_5 → L_5 becomes child of L_0
+    // This handles: L_3 (child of L_0) jumps to L_5 --- L_5 becomes child of L_0
     lp = cg_label_parent(cg)
     if mhas(lp, ir_lbl) {
       // Set target's parent to the jumping label itself (not the parent's parent).
-      // Only set if target doesn't already have a parent — avoids loop back-edge
+      // Only set if target doesn't already have a parent --- avoids loop back-edge
       // overwriting (which would create cycles in the parent chain).
       if mhas(lp, target) == 0 {
         mset(lp, target, ir_lbl)
@@ -1034,7 +1035,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_PHI (17): [op, dest, a_val, a_label, b_val, b_label] ──
+  // ------ IR_PHI (17): [op, dest, a_val, a_label, b_val, b_label] ------
   if op == IR_PHI {
     a_val = cg_get_val(cg, ir_field(inst, 16))
     a_label_ir = ir_field(inst, 24)
@@ -1043,13 +1044,29 @@ compile_inst(cg:I inst:I) I {
     // Use the actual end labels (handles nested if/else creating extra blocks)
     a_label = cg_get_label_end(cg, a_label_ir)
     b_label = cg_get_label_end(cg, b_label_ir)
+    // Check if either predecessor was terminated by ret (dead branch)
+    rl = load64(cg + 128)
+    a_dead = mhas(rl, a_label)
+    b_dead = mhas(rl, b_label)
     r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = phi i64 [" + a_val + ", %" + a_label + "], [" + b_val + ", %" + b_label + "]")
+    if a_dead && b_dead {
+      // Both branches return - this merge is dead code, emit constant
+      emit(cg, "  " + r + " = add i64 0, 0")
+    } else { if a_dead {
+      // Only else branch reaches merge
+      emit(cg, "  " + r + " = add i64 " + b_val + ", 0")
+    } else { if b_dead {
+      // Only then branch reaches merge
+      emit(cg, "  " + r + " = add i64 " + a_val + ", 0")
+    } else {
+      // Both branches reach merge - normal PHI
+      emit(cg, "  " + r + " = phi i64 [" + a_val + ", %" + a_label + "], [" + b_val + ", %" + b_label + "]")
+    } } }
     cg_set_val(cg, dest, r)
     return 0
   }
 
-  // ── IR_PRINT_INT (18): [op, value_reg] ──
+  // ------ IR_PRINT_INT (18): [op, value_reg] ------
   if op == IR_PRINT_INT {
     val = cg_get_val(cg, dest)
     fmt = cg_fmt_int(cg)
@@ -1058,7 +1075,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_PRINT_FLOAT (19): [op, value_reg] ──
+  // ------ IR_PRINT_FLOAT (19): [op, value_reg] ------
   if op == IR_PRINT_FLOAT {
     val = cg_get_val(cg, dest)
     fl = cg_fresh_reg(cg)
@@ -1069,7 +1086,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_PRINT_STRING (20): [op, value_reg] ──
+  // ------ IR_PRINT_STRING (20): [op, value_reg] ------
   if op == IR_PRINT_STRING {
     val = cg_get_val(cg, dest)
     p = cg_fresh_reg(cg)
@@ -1080,7 +1097,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_PRINT_BOOL (21): [op, value_reg] ──
+  // ------ IR_PRINT_BOOL (21): [op, value_reg] ------
   if op == IR_PRINT_BOOL {
     val = cg_get_val(cg, dest)
     tname = cg_bool_true(cg)
@@ -1094,18 +1111,13 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ALLOCA (22): [op, dest] ──
+  // ------ IR_ALLOCA (22): [op, dest] ------
+  // Already hoisted to entry block in pre-scan pass
   if op == IR_ALLOCA {
-    p = cg_fresh_reg(cg)
-    emit(cg, "  " + p + " = alloca i64")
-    r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
-    cg_set_val(cg, dest, r)
-    cg_set_ptr(cg, dest)
     return 0
   }
 
-  // ── IR_STORE (23): [op, ptr_reg, value_reg] ──
+  // ------ IR_STORE (23): [op, ptr_reg, value_reg] ------
   if op == IR_STORE {
     ptr_val = cg_get_val(cg, dest)
     val = cg_get_val(cg, ir_field(inst, 16))
@@ -1115,7 +1127,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_LOAD (24): [op, dest, ptr_reg] ──
+  // ------ IR_LOAD (24): [op, dest, ptr_reg] ------
   if op == IR_LOAD {
     ptr_val = cg_get_val(cg, ir_field(inst, 16))
     p = cg_fresh_reg(cg)
@@ -1126,7 +1138,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRUCT_ALLOC (25): [op, dest, num_fields] ──
+  // ------ IR_STRUCT_ALLOC (25): [op, dest, num_fields] ------
   if op == IR_STRUCT_ALLOC {
     nf = ir_field(inst, 16)
     sz = cg_fresh_reg(cg)
@@ -1140,7 +1152,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FIELD_STORE (26): [op, ptr_reg, field_idx, value_reg] ──
+  // ------ IR_FIELD_STORE (26): [op, ptr_reg, field_idx, value_reg] ------
   if op == IR_FIELD_STORE {
     ptr_val = cg_get_val(cg, dest)
     fidx = ir_field(inst, 16)
@@ -1153,7 +1165,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FIELD_LOAD (27): [op, dest, ptr_reg, field_idx, num_fields] ──
+  // ------ IR_FIELD_LOAD (27): [op, dest, ptr_reg, field_idx, num_fields] ------
   if op == IR_FIELD_LOAD {
     ptr_val = cg_get_val(cg, ir_field(inst, 16))
     fidx = ir_field(inst, 24)
@@ -1168,7 +1180,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ENUM_ALLOC (28): [op, dest, tag, num_data_fields] ──
+  // ------ IR_ENUM_ALLOC (28): [op, dest, tag, num_data_fields] ------
   if op == IR_ENUM_ALLOC {
     tag = ir_field(inst, 16)
     ndata = ir_field(inst, 24)
@@ -1186,7 +1198,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ENUM_TAG (29): [op, dest, ptr_reg] ──
+  // ------ IR_ENUM_TAG (29): [op, dest, ptr_reg] ------
   if op == IR_ENUM_TAG {
     ptr_val = cg_get_val(cg, ir_field(inst, 16))
     base = cg_fresh_reg(cg)
@@ -1197,7 +1209,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ENUM_DATA (30): [op, dest, ptr_reg, field_idx] ──
+  // ------ IR_ENUM_DATA (30): [op, dest, ptr_reg, field_idx] ------
   if op == IR_ENUM_DATA {
     ptr_val = cg_get_val(cg, ir_field(inst, 16))
     fidx = ir_field(inst, 24) + 1
@@ -1211,7 +1223,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_GLOBAL_LOAD (31): [op, dest, name] ──
+  // ------ IR_GLOBAL_LOAD (31): [op, dest, name] ------
   if op == IR_GLOBAL_LOAD {
     gname = ir_field(inst, 16)
     r = cg_fresh_reg(cg)
@@ -1220,7 +1232,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_GLOBAL_STORE (32): [op, name, value_reg] ──
+  // ------ IR_GLOBAL_STORE (32): [op, name, value_reg] ------
   if op == IR_GLOBAL_STORE {
     gname = dest
     val = cg_get_val(cg, ir_field(inst, 16))
@@ -1228,7 +1240,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ALLOC (33): [op, dest, size_reg] ──
+  // ------ IR_ALLOC (33): [op, dest, size_reg] ------
   if op == IR_ALLOC {
     size_val = cg_get_val(cg, ir_field(inst, 16))
     p = cg_fresh_reg(cg)
@@ -1240,7 +1252,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_DEALLOC (34): [op, dest, ptr_reg] ──
+  // ------ IR_DEALLOC (34): [op, dest, ptr_reg] ------
   if op == IR_DEALLOC {
     ptr_val = cg_get_val(cg, ir_field(inst, 16))
     p = cg_fresh_reg(cg)
@@ -1250,7 +1262,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_RALLOC (35): [op, dest, ptr_reg, size_reg] ──
+  // ------ IR_RALLOC (35): [op, dest, ptr_reg, size_reg] ------
   if op == IR_RALLOC {
     ptr_val = cg_get_val(cg, ir_field(inst, 16))
     size_val = cg_get_val(cg, ir_field(inst, 24))
@@ -1265,7 +1277,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_CREATE (36): [op, dest] ──
+  // ------ IR_ARRAY_CREATE (36): [op, dest] ------
   if op == IR_ARRAY_CREATE {
     // malloc(24) for struct [data_ptr, len, capacity]
     sp = cg_fresh_reg(cg)
@@ -1293,7 +1305,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_PUSH (37): [op, array_reg, value_reg] ──
+  // ------ IR_ARRAY_PUSH (37): [op, array_reg, value_reg] ------
   if op == IR_ARRAY_PUSH {
     arr_val = cg_get_val(cg, dest)
     val = cg_get_val(cg, ir_field(inst, 16))
@@ -1365,7 +1377,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_GET (38): [op, dest, array_reg, index_reg] ──
+  // ------ IR_ARRAY_GET (38): [op, dest, array_reg, index_reg] ------
   if op == IR_ARRAY_GET {
     arr_val = cg_get_val(cg, ir_field(inst, 16))
     idx_val = cg_get_val(cg, ir_field(inst, 24))
@@ -1408,13 +1420,13 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = phi i64 [" + lv + ", %" + then_lbl + "], [0, %" + else_lbl + "]")
     cg_set_val(cg, dest, r)
-    // Update current_label — we're now in merge_lbl
+    // Update current_label --- we're now in merge_lbl
     
     cg_set_current_block(cg, merge_lbl)
     return 0
   }
 
-  // ── IR_ARRAY_SET (39): [op, array_reg, index_reg, value_reg] ──
+  // ------ IR_ARRAY_SET (39): [op, array_reg, index_reg, value_reg] ------
   if op == IR_ARRAY_SET {
     arr_val = cg_get_val(cg, dest)
     idx_val = cg_get_val(cg, ir_field(inst, 16))
@@ -1431,7 +1443,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_LEN (40): [op, dest, array_reg] ──
+  // ------ IR_ARRAY_LEN (40): [op, dest, array_reg] ------
   if op == IR_ARRAY_LEN {
     arr_val = cg_get_val(cg, ir_field(inst, 16))
     ap = cg_fresh_reg(cg)
@@ -1444,7 +1456,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_MAP (41): call i64 @sans_array_map(i64, i64) ──
+  // ------ IR_ARRAY_MAP (41): call i64 @sans_array_map(i64, i64) ------
   if op == IR_ARRAY_MAP {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1455,7 +1467,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_FILTER (42): call i64 @sans_array_filter(i64, i64) ──
+  // ------ IR_ARRAY_FILTER (42): call i64 @sans_array_filter(i64, i64) ------
   if op == IR_ARRAY_FILTER {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1466,7 +1478,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_ANY (43): call i64 @sans_array_any(i64, i64) ──
+  // ------ IR_ARRAY_ANY (43): call i64 @sans_array_any(i64, i64) ------
   if op == IR_ARRAY_ANY {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1476,7 +1488,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_FIND (44): call i64 @sans_array_find(i64, i64) ──
+  // ------ IR_ARRAY_FIND (44): call i64 @sans_array_find(i64, i64) ------
   if op == IR_ARRAY_FIND {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1486,7 +1498,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_ENUMERATE (45): call i64 @sans_array_enumerate(i64) ──
+  // ------ IR_ARRAY_ENUMERATE (45): call i64 @sans_array_enumerate(i64) ------
   if op == IR_ARRAY_ENUMERATE {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     r = cg_fresh_reg(cg)
@@ -1496,7 +1508,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_ZIP (46): call i64 @sans_array_zip(i64, i64) ──
+  // ------ IR_ARRAY_ZIP (46): call i64 @sans_array_zip(i64, i64) ------
   if op == IR_ARRAY_ZIP {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1507,7 +1519,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_POP (47): call i64 @sans_array_pop(i64) ──
+  // ------ IR_ARRAY_POP (47): call i64 @sans_array_pop(i64) ------
   if op == IR_ARRAY_POP {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     r = cg_fresh_reg(cg)
@@ -1516,7 +1528,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_CONTAINS (48): call i64 @sans_array_contains(i64, i64) ──
+  // ------ IR_ARRAY_CONTAINS (48): call i64 @sans_array_contains(i64, i64) ------
   if op == IR_ARRAY_CONTAINS {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1526,7 +1538,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_ARRAY_REMOVE (49): call i64 @sans_array_remove(i64, i64) ──
+  // ------ IR_ARRAY_REMOVE (49): call i64 @sans_array_remove(i64, i64) ------
   if op == IR_ARRAY_REMOVE {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1536,7 +1548,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_LEN (50): [op, dest, string_reg] ──
+  // ------ IR_STRING_LEN (50): [op, dest, string_reg] ------
   if op == IR_STRING_LEN {
     sv = cg_get_val(cg, ir_field(inst, 16))
     sp = cg_fresh_reg(cg)
@@ -1547,7 +1559,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_CONCAT (51): [op, dest, left_reg, right_reg] ──
+  // ------ IR_STRING_CONCAT (51): [op, dest, left_reg, right_reg] ------
   if op == IR_STRING_CONCAT {
     lv = cg_get_val(cg, ir_field(inst, 16))
     rv = cg_get_val(cg, ir_field(inst, 24))
@@ -1585,7 +1597,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_SUBSTRING (52): [op, dest, string_reg, start_reg, end_reg] ──
+  // ------ IR_STRING_SUBSTRING (52): [op, dest, string_reg, start_reg, end_reg] ------
   if op == IR_STRING_SUBSTRING {
     sv = cg_get_val(cg, ir_field(inst, 16))
     st = cg_get_val(cg, ir_field(inst, 24))
@@ -1612,7 +1624,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_INT_TO_STRING (53): [op, dest, value_reg] ──
+  // ------ IR_INT_TO_STRING (53): [op, dest, value_reg] ------
   if op == IR_INT_TO_STRING {
     val = cg_get_val(cg, ir_field(inst, 16))
     buf = cg_fresh_reg(cg)
@@ -1627,7 +1639,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_TO_INT (54): [op, dest, string_reg] ──
+  // ------ IR_STRING_TO_INT (54): [op, dest, string_reg] ------
   if op == IR_STRING_TO_INT {
     sv = cg_get_val(cg, ir_field(inst, 16))
     sp = cg_fresh_reg(cg)
@@ -1638,7 +1650,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FLOAT_TO_STRING (55): [op, dest, value_reg] ──
+  // ------ IR_FLOAT_TO_STRING (55): [op, dest, value_reg] ------
   if op == IR_FLOAT_TO_STRING {
     val = cg_get_val(cg, ir_field(inst, 16))
     fv = cg_fresh_reg(cg)
@@ -1655,7 +1667,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_TRIM (56): call i64 @sans_string_trim(i64) ──
+  // ------ IR_STRING_TRIM (56): call i64 @sans_string_trim(i64) ------
   if op == IR_STRING_TRIM {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     r = cg_fresh_reg(cg)
@@ -1665,7 +1677,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_STARTS_WITH (57): call i64 @sans_string_starts_with(i64, i64) ──
+  // ------ IR_STRING_STARTS_WITH (57): call i64 @sans_string_starts_with(i64, i64) ------
   if op == IR_STRING_STARTS_WITH {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1675,7 +1687,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_ENDS_WITH (58): call i64 @sans_string_ends_with(i64, i64) ──
+  // ------ IR_STRING_ENDS_WITH (58): call i64 @sans_string_ends_with(i64, i64) ------
   if op == IR_STRING_ENDS_WITH {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1685,7 +1697,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_CONTAINS (59): call i64 @sans_string_contains(i64, i64) ──
+  // ------ IR_STRING_CONTAINS (59): call i64 @sans_string_contains(i64, i64) ------
   if op == IR_STRING_CONTAINS {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1695,7 +1707,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_SPLIT (60): call i64 @sans_string_split(i64, i64) ──
+  // ------ IR_STRING_SPLIT (60): call i64 @sans_string_split(i64, i64) ------
   if op == IR_STRING_SPLIT {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1706,7 +1718,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_STRING_REPLACE (61): call i64 @sans_string_replace(i64, i64, i64) ──
+  // ------ IR_STRING_REPLACE (61): call i64 @sans_string_replace(i64, i64, i64) ------
   if op == IR_STRING_REPLACE {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
@@ -1718,7 +1730,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FILE_READ (62): [op, dest, path_reg] ──
+  // ------ IR_FILE_READ (62): [op, dest, path_reg] ------
   if op == IR_FILE_READ {
     pv = cg_get_val(cg, ir_field(inst, 16))
     uid = cg_label_id(cg)
@@ -1774,13 +1786,13 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + r + " = phi i64 [" + ei + ", %" + err_lbl + "], [" + bi + ", %" + ok_lbl + "]")
     cg_set_val(cg, dest, r)
     cg_set_ptr(cg, dest)
-    // Update current_label — we're now in merge_lbl
+    // Update current_label --- we're now in merge_lbl
     
     cg_set_current_block(cg, merge_lbl)
     return 0
   }
 
-  // ── IR_FILE_WRITE (63): [op, dest, path_reg, content_reg] ──
+  // ------ IR_FILE_WRITE (63): [op, dest, path_reg, content_reg] ------
   if op == IR_FILE_WRITE {
     pv = cg_get_val(cg, ir_field(inst, 16))
     cv = cg_get_val(cg, ir_field(inst, 24))
@@ -1824,7 +1836,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FILE_APPEND (64): [op, dest, path_reg, content_reg] ──
+  // ------ IR_FILE_APPEND (64): [op, dest, path_reg, content_reg] ------
   if op == IR_FILE_APPEND {
     pv = cg_get_val(cg, ir_field(inst, 16))
     cv = cg_get_val(cg, ir_field(inst, 24))
@@ -1868,7 +1880,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── IR_FILE_EXISTS (65): [op, dest, path_reg] ──
+  // ------ IR_FILE_EXISTS (65): [op, dest, path_reg] ------
   if op == IR_FILE_EXISTS {
     pv = cg_get_val(cg, ir_field(inst, 16))
     pp = cg_fresh_reg(cg)
@@ -1883,7 +1895,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── JSON (66-82) — runtime calls ──
+  // ------ JSON (66-82) --- runtime calls ------
   if op == IR_JSON_PARSE { return compile_rt1(cg, inst, "sans_json_parse") }
   if op == IR_JSON_OBJECT { return compile_rt0(cg, inst, "sans_json_object") }
   if op == IR_JSON_ARRAY { return compile_rt0(cg, inst, "sans_json_array") }
@@ -1902,7 +1914,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_JSON_PUSH { return compile_rt2(cg, inst, "sans_json_push") }
   if op == IR_JSON_STRINGIFY { return compile_rt1(cg, inst, "sans_json_stringify") }
 
-  // ── HTTP Server (83-89) ──
+  // ------ HTTP Server (83-89) ------
   if op == IR_HTTP_LISTEN { return compile_rt1(cg, inst, "sans_http_listen") }
   if op == IR_HTTP_ACCEPT { return compile_http_accept(cg, inst) }
   if op == IR_HTTP_REQUEST_PATH { return compile_rt1(cg, inst, "sans_http_request_path") }
@@ -1928,14 +1940,14 @@ compile_inst(cg:I inst:I) I {
   if op == IR_STREAM_END { return compile_rt1(cg, inst, "sans_stream_end") }
   if op == IR_HTTP_REQUEST_FORM { return compile_rt2(cg, inst, "sans_http_request_form") }
 
-  // ── WebSocket ──
+  // ------ WebSocket ------
   if op == IR_WS_IS_UPGRADE { return compile_rt1(cg, inst, "sans_ws_is_upgrade") }
   if op == IR_WS_UPGRADE { return compile_rt1(cg, inst, "sans_ws_upgrade") }
   if op == IR_WS_SEND { return compile_rt2(cg, inst, "sans_ws_send") }
   if op == IR_WS_RECV { return compile_rt1(cg, inst, "sans_ws_recv") }
   if op == IR_WS_CLOSE { return compile_rt1(cg, inst, "sans_ws_close") }
 
-  // ── Signal handler: call signal(signum_i32, @__sans_signal_handler) ──
+  // ------ Signal handler: call signal(signum_i32, @__sans_signal_handler) ------
   if op == IR_SIGNAL_HANDLER {
     a = cg_get_val(cg, ir_field(inst, 16))
     t = cg_fresh_reg(cg)
@@ -1946,7 +1958,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── Signal check: load @__sans_signal_flag ──
+  // ------ Signal check: load @__sans_signal_flag ------
   if op == IR_SIGNAL_CHECK {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = load i64, ptr @__sans_signal_flag")
@@ -1954,7 +1966,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── spoll(fd, timeout_ms): alloca pollfd, call poll, return >0?1:0 ──
+  // ------ spoll(fd, timeout_ms): alloca pollfd, call poll, return >0?1:0 ------
   if op == IR_SPOLL {
     fd_val = cg_get_val(cg, ir_field(inst, 16))
     to_val = cg_get_val(cg, ir_field(inst, 24))
@@ -1983,7 +1995,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── SSL low-level ──
+  // ------ SSL low-level ------
   if op == IR_SSL_METHOD {
     rp = cg_fresh_reg(cg)
     emit(cg, "  " + rp + " = call ptr @TLS_server_method()")
@@ -2151,7 +2163,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── HTTP Client (90-95) ──
+  // ------ HTTP Client (90-95) ------
   if op == IR_HTTP_GET { return compile_rt1(cg, inst, "sans_http_get") }
   if op == IR_HTTP_POST { return compile_rt3(cg, inst, "sans_http_post") }
   if op == IR_HTTP_STATUS { return compile_rt1(cg, inst, "sans_http_status") }
@@ -2159,7 +2171,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_HTTP_HEADER { return compile_rt2(cg, inst, "sans_http_header") }
   if op == IR_HTTP_OK { return compile_rt1(cg, inst, "sans_http_ok") }
 
-  // ── Concurrency (96-104) ──
+  // ------ Concurrency (96-104) ------
   if op == IR_THREAD_SPAWN {
     // Layout: [op@0, dest@8, func_name@16, args_array@24]
     func_name = ir_field(inst, 16)
@@ -2179,7 +2191,7 @@ compile_inst(cg:I inst:I) I {
 
     // Store each arg into the arg struct
     ai := 0
-    while ai < 0num_args {
+    while ai < num_args {
       av = cg_get_val(cg, arg_regs.get(ai))
       sp = cg_fresh_reg(cg)
       emit(cg, "  " + sp + " = getelementptr i64, ptr " + ap + ", i64 " + str(ai))
@@ -2198,7 +2210,7 @@ compile_inst(cg:I inst:I) I {
       // Load each arg from struct and call target
       call_args := ""
       ti := 0
-      while ti < 0num_args {
+      while ti < num_args {
         emit_global_const(cg, "  %sp" + str(ti) + " = getelementptr i64, ptr %arg, i64 " + str(ti))
         emit_global_const(cg, "  %a" + str(ti) + " = load i64, ptr %sp" + str(ti))
         if ti > 0 { call_args = call_args + ", " }
@@ -2517,7 +2529,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── Function Refs (105-109) ──
+  // ------ Function Refs (105-109) ------
   if op == IR_FN_REF {
     // [op, dest, name_ptr]: ptrtoint of function pointer
     // In text IR, we emit the function name directly
@@ -2576,7 +2588,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── Float Conversion (110-111) ──
+  // ------ Float Conversion (110-111) ------
   if op == IR_INT_TO_FLOAT {
     // sitofp i64 to double, bitcast double to i64
     val = cg_get_val(cg, ir_field(inst, 16))
@@ -2598,7 +2610,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── Result (112-118) — runtime calls ──
+  // ------ Result (112-118) --- runtime calls ------
   if op == IR_RESULT_OK { return compile_rt1(cg, inst, "sans_result_ok") }
   if op == IR_RESULT_ERR { return compile_rt1(cg, inst, "sans_result_err") }
   if op == IR_RESULT_IS_OK { return compile_rt1(cg, inst, "sans_result_is_ok") }
@@ -2607,7 +2619,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_RESULT_UNWRAP_OR { return compile_rt2(cg, inst, "sans_result_unwrap_or") }
   if op == IR_RESULT_ERROR { return compile_rt1(cg, inst, "sans_result_error") }
 
-  // ── Logging (119-125) — runtime calls ──
+  // ------ Logging (119-125) --- runtime calls ------
   if op == IR_LOG_DEBUG { return compile_rt1(cg, inst, "sans_log_debug") }
   if op == IR_LOG_INFO { return compile_rt1(cg, inst, "sans_log_info") }
   if op == IR_LOG_WARN { return compile_rt1(cg, inst, "sans_log_warn") }
@@ -2616,7 +2628,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_GET_LOG_LEVEL { return compile_rt0(cg, inst, "sans_get_log_level") }
   if op == IR_SET_LOG_LEVEL { return compile_rt1(cg, inst, "sans_set_log_level") }
 
-  // ── Low-Level Memory (126-135) ──
+  // ------ Low-Level Memory (126-135) ------
   if op == IR_LOAD8 {
     pv = cg_get_val(cg, ir_field(inst, 16))
     p = cg_fresh_reg(cg)
@@ -2722,9 +2734,9 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── Sockets (136-145) ──
+  // ------ Sockets (136-145) ------
   if op == IR_SOCK {
-    // socket(domain, type, proto) — all i64 in our ABI
+    // socket(domain, type, proto) --- all i64 in our ABI
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
     a3 = cg_get_val(cg, ir_field(inst, 32))
@@ -2815,7 +2827,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
   if op == IR_STRSTR {
-    // strstr(haystack, needle) — both are string ptrs
+    // strstr(haystack, needle) --- both are string ptrs
     hv = cg_get_val(cg, ir_field(inst, 16))
     nv = cg_get_val(cg, ir_field(inst, 24))
     hp = cg_fresh_reg(cg)
@@ -2830,7 +2842,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── Curl (146-153) ──
+  // ------ Curl (146-153) ------
   if op == IR_CINIT {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = call i64 @curl_easy_init()")
@@ -2838,7 +2850,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
   if op == IR_CSETS {
-    // curl_easy_setopt(handle, opt, val) — all i64
+    // curl_easy_setopt(handle, opt, val) --- all i64
     h = cg_get_val(cg, ir_field(inst, 16))
     o = cg_get_val(cg, ir_field(inst, 24))
     v = cg_get_val(cg, ir_field(inst, 32))
@@ -2870,7 +2882,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
   if op == IR_CINFO {
-    // curl_easy_getinfo(handle, info, buf) — variadic
+    // curl_easy_getinfo(handle, info, buf) --- variadic
     h = cg_get_val(cg, ir_field(inst, 16))
     info = cg_get_val(cg, ir_field(inst, 24))
     buf = cg_get_val(cg, ir_field(inst, 32))
@@ -2894,7 +2906,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── Map (154-160) — runtime calls ──
+  // ------ Map (154-160) --- runtime calls ------
   if op == IR_MAP_CREATE { return compile_rt0(cg, inst, "sans_map_create") }
   if op == IR_MAP_GET { return compile_rt2(cg, inst, "sans_map_get") }
   if op == IR_MAP_SET { return compile_rt3(cg, inst, "sans_map_set") }
@@ -2903,12 +2915,12 @@ compile_inst(cg:I inst:I) I {
   if op == IR_MAP_KEYS { return compile_rt1(cg, inst, "sans_map_keys") }
   if op == IR_MAP_VALS { return compile_rt1(cg, inst, "sans_map_vals") }
 
-  // ── Arena (161-163) — runtime calls ──
+  // ------ Arena (161-163) --- runtime calls ------
   if op == IR_ARENA_BEGIN { return compile_rt0(cg, inst, "sans_arena_begin") }
   if op == IR_ARENA_ALLOC { return compile_rt1(cg, inst, "sans_arena_alloc") }
   if op == IR_ARENA_END { return compile_rt0(cg, inst, "sans_arena_end") }
 
-  // ── Misc (164-172) ──
+  // ------ Misc (164-172) ------
   if op == IR_ARGS {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = call i64 @__sans_args()")
@@ -3005,7 +3017,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ── gzip_compress (211) ──
+  // ------ gzip_compress (211) ------
   if op == IR_GZIP_COMPRESS {
     // gzip_compress(data_ptr, len) -> ptr to [compressed_ptr, compressed_len]
     dv = cg_get_val(cg, ir_field(inst, 16))
@@ -3128,30 +3140,36 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // Unknown opcode — emit comment
+  // Unknown opcode --- emit comment
   emit(cg, "  ; unknown opcode " + str(op))
   0
 }
 
-// ── Top-level code generation ─────────────────────────────────
+// ------ Top-level code generation ---------------------------------------------------------------------------------------------------
 
 // Emit global variable declarations
 emit_globals(cg:I module:I) I {
   funcs = irm_functions(module)
   nf = funcs.len()
-  // Check if module has main → emit argc/argv globals
+  // Check if module has main --- emit argc/argv globals
   has_main = cg_has_main(cg)
   if has_main {
     emit(cg, "@__sans_argc = global i64 0")
     emit(cg, "@__sans_argv = global ptr null")
   }
-  // Emit user globals
+  // Emit user globals (with init values from IR module)
   globals = irm_globals(module)
+  ginits = irm_global_inits(module)
   ng = globals.len()
   i := 0
-  while i < 0ng {
+  while i < ng {
     gname = globals.get(i)
-    emit(cg, "@" + gname + " = global i64 0")
+    if mhas(ginits, gname) {
+      gval = mget(ginits, gname)
+      emit(cg, "@" + gname + " = global i64 " + str(gval))
+    } else {
+      emit(cg, "@" + gname + " = global i64 0")
+    }
     i = i + 1
     0
   }
@@ -3167,7 +3185,7 @@ emit_function_decl(cg:I func:I) I {
   np = params.len()
   param_str := ""
   i := 0
-  while i < 0np {
+  while i < np {
     if i > 0 { param_str = param_str + ", " }
     param_str = param_str + "i64"
     i = i + 1
@@ -3190,7 +3208,7 @@ emit_function_body(cg:I func:I) I {
   // Build parameter list: "i64 %p0, i64 %p1, ..."
   param_str := ""
   i := 0
-  while i < 0np {
+  while i < np {
     if i > 0 { param_str = param_str + ", " }
     param_str = param_str + "i64 %p" + str(i)
     i = i + 1
@@ -3202,15 +3220,7 @@ emit_function_body(cg:I func:I) I {
 
   // Reset per-function state
   cg_set_reg_counter(cg, 0)
-  // Free old maps before creating new ones
-  old_rm = load64(cg + 40)
-  if old_rm != 0 { dealloc(old_rm) }
-  old_ps = load64(cg + 48)
-  if old_ps != 0 { dealloc(old_ps) }
-  old_lem = load64(cg + 88)
-  if old_lem != 0 { dealloc(old_lem) }
-  old_lp = load64(cg + 104)
-  if old_lp != 0 { dealloc(old_lp) }
+  // Skip dealloc - may cause heap corruption with map internals
   store64(cg + 40, M())   // reg_map
   store64(cg + 48, M())   // ptr_set
   store64(cg + 72, 0)     // label_counter
@@ -3218,10 +3228,11 @@ emit_function_body(cg:I func:I) I {
   cg_set_current_block(cg, "entry")
   store64(cg + 88, M())   // label_end_map
   store64(cg + 104, M())  // label_parent
+  store64(cg + 128, M())  // ret_labels
 
-  // Map parameters: store each param name → %pN in reg_map
+  // Map parameters: store each param name --- %pN in reg_map
   i = 0
-  while i < 0np {
+  while i < np {
     pname = params.get(i)
     pval = "%p" + str(i)
     rm = load64(cg + 40)
@@ -3237,8 +3248,24 @@ emit_function_body(cg:I func:I) I {
     0
   }
 
-  // Pre-scan instructions for IR_LABEL to know all label names
-  // (not strictly needed for textual IR, but keeps things consistent)
+  // Pre-scan: hoist all ALLOCA instructions to the entry block
+  // LLVM requires allocas to be in the entry block for correct domination
+  aj := 0
+  while aj < ni {
+    ainst = instrs.get(aj)
+    aop = ir_op(ainst)
+    if aop == IR_ALLOCA {
+      // Emit alloca + ptrtoint in entry block
+      p = cg_fresh_reg(cg)
+      emit(cg, "  " + p + " = alloca i64")
+      r = cg_fresh_reg(cg)
+      emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
+      cg_set_val(cg, ir_dest(ainst), r)
+      cg_set_ptr(cg, ir_dest(ainst))
+    }
+    aj = aj + 1
+    0
+  }
 
   // Compile instructions with dead-code elimination after terminators
   terminated := 0
@@ -3246,7 +3273,6 @@ emit_function_body(cg:I func:I) I {
   while j < ni {
     inst = instrs.get(j)
     op = ir_op(inst)
-    0
     if terminated {
       // Skip dead code until next label
       if op == IR_LABEL {
@@ -3290,7 +3316,7 @@ emit_main_wrapper(cg:I) I {
   0
 }
 
-// Emit __sans_args() — builds a Sans array from argc/argv
+// Emit __sans_args() --- builds a Sans array from argc/argv
 emit_sans_args(cg:I) I {
   emit(cg, "define i64 @__sans_args() {")
   emit(cg, "entry:")
@@ -3348,7 +3374,7 @@ emit_sans_args(cg:I) I {
   0
 }
 
-// ── Top-level entry point ─────────────────────────────────────
+// ------ Top-level entry point ---------------------------------------------------------------------------------------------------------------
 
 compile_to_ll(module:I output_path:S) I {
   cg = compile_to_ll_impl(module, output_path, 0)
@@ -3371,7 +3397,7 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   funcs = irm_functions(module)
   nf = funcs.len()
   i := 0
-  while i < 0nf {
+  while i < nf {
     f = funcs.get(i)
     fname = irf_name(f)
     if fname == "main" {
@@ -3390,7 +3416,7 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   // 3. Emit global variable declarations
   emit_globals(cg, module)
 
-  // 4. Skip function declarations — LLVM IR doesn't require forward decls
+  // 4. Skip function declarations --- LLVM IR doesn't require forward decls
   emit(cg, "")
 
   // 5. If has_main: emit main wrapper and __sans_args
@@ -3401,11 +3427,10 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
 
   // 6. Second pass: compile each function body (streaming to file)
   i = 0
-  while i < 0nf {
-    emit_function_body(cg, funcs.get(i))
-    wfd(2, str(i)) 
-    wfd(2, " ")
-    
+  while i < nf {
+    f_cur = funcs.get(i)
+    emit_function_body(cg, f_cur)
+
     // On last function: flush buffer + write string constants
     if i == nf - 1 {
       cg_flush(cg)
@@ -3417,7 +3442,6 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
         sci = sci + 1
         0
       }
-      wfd(2, "\n")
     }
     i = i + 1
     0
@@ -3436,7 +3460,7 @@ write_ll_file(cg:I output_path:S) I {
   }
   fw(output_path, "")
   wi := 0
-  while wi < 0main_lines.len() {
+  while wi < main_lines.len() {
     fa(output_path, main_lines.get(wi) + "\n")
     wi = wi + 1
     0

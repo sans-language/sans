@@ -1,13 +1,13 @@
-// ── HTTP Server Runtime ─────────────────────────────────────────
+// ------ HTTP Server Runtime ---------------------------------------------------------------------------------------------------------------------------
 // Request struct layout (64 bytes):
 //   offset  0: client fd (I)
 //   offset  8: method (S)
 //   offset 16: path (S)
 //   offset 24: body (S)
-//   offset 32: headers map (I) — 0 if not parsed
-//   offset 40: response headers array (I) — 0 if none
-//   offset 48: ssl ptr (I) — 0 for plain HTTP
-//   offset 56: keep_alive (I) — 1 if connection should stay open
+//   offset 32: headers map (I) --- 0 if not parsed
+//   offset 40: response headers array (I) --- 0 if none
+//   offset 48: ssl ptr (I) --- 0 for plain HTTP
+//   offset 56: keep_alive (I) --- 1 if connection should stay open
 
 sans_make_empty_request() I {
   req = alloc(64)
@@ -155,7 +155,7 @@ sans_http_request_path(req:I) I = load64(req + 16)
 sans_http_request_method(req:I) I = load64(req + 8)
 sans_http_request_body(req:I) I = load64(req + 24)
 
-// ── Header Parsing ──────────────────────────────────────────────
+// ------ Header Parsing ------------------------------------------------------------------------------------------------------------------------------------------
 
 // Header storage: simple array at offset 32 of req
 // Layout: offset 0 = count, offset 8 = capacity, offset 16+ = entries (16 bytes each: name, value)
@@ -164,7 +164,7 @@ sans_parse_headers(req:I buf:I n:I) I {
   store64(hdrs, 0)
   store64(hdrs + 8, 32)
   store64(req + 32, hdrs)
-  // Skip first line (request line) — find \r\n
+  // Skip first line (request line) --- find \r\n
   i := sans_find_crlf(buf, n, 0)
   if i < 0 { 0 } else { sans_parse_headers_loop(hdrs, buf, n, i + 2) }
 }
@@ -293,7 +293,7 @@ sans_lowercase_slice(buf:I start:I end:I) I {
   s
 }
 
-// ── Header Access ───────────────────────────────────────────────
+// ------ Header Access ---------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_http_request_header(req:I name:I) I {
   hdrs = load64(req + 32)
@@ -338,7 +338,7 @@ sans_hdrs_find_check(hdrs:I name:I nlen:I count:I i:I) I {
   if hlen == nlen && mcmp(hname, name, nlen) == 0 { load64(hdrs + off + 8) } else { sans_hdrs_find_at(hdrs, name, nlen, count, i + 1) }
 }
 
-// ── Response Headers (set_header) ───────────────────────────────
+// ------ Response Headers (set_header) ---------------------------------------------------------------------------------------------
 
 sans_http_request_set_header(req:I name:I value:I) I {
   arr = load64(req + 40)
@@ -374,7 +374,7 @@ sans_resp_headers_add_inner(arr:I count:I name:I value:I) I {
   0
 }
 
-// ── Gzip Auto-Compression ────────────────────────────────────────
+// ------ Gzip Auto-Compression ------------------------------------------------------------------------------------------------------------------------
 
 sans_is_compressible_ct(ct:I) I {
   // text/* -> compressible
@@ -423,7 +423,7 @@ sans_get_resp_header_check(arr:I name:I nlen:I count:I i:I) I {
   if hlen == nlen && mcmp(hname, name, nlen) == 0 && hval == "1" { 1 } else { sans_get_resp_header_at(arr, name, nlen, count, i + 1) }
 }
 
-// ── HTTP Respond (SSL-aware) ────────────────────────────────────
+// ------ HTTP Respond (SSL-aware) ------------------------------------------------------------------------------------------------------------
 
 sans_http_respond(req:I status:I body:I ct:I) I {
   fd = load64(req)
@@ -541,7 +541,7 @@ sans_build_resp_headers_loop(arr:I count:I) I {
   buf
 }
 
-// ── CORS helpers ────────────────────────────────────────────────
+// ------ CORS helpers ------------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_cors(req:I origin:I) I {
   sans_http_request_set_header(req, "Access-Control-Allow-Origin", origin)
@@ -552,7 +552,7 @@ sans_cors(req:I origin:I) I {
 
 sans_cors_all(req:I) I = sans_cors(req, "*")
 
-// ── Cookie parsing ──────────────────────────────────────────────
+// ------ Cookie parsing ------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_http_request_cookie(req:I name:I) I {
   hdr = sans_http_request_header(req, "cookie")
@@ -615,7 +615,7 @@ sans_find_cookie_end(hdr:I hlen:I start:I) I {
   i
 }
 
-// ── Helper functions ────────────────────────────────────────────
+// ------ Helper functions ------------------------------------------------------------------------------------------------------------------------------------
 
 sans_buf_write(buf:I pos:I src:I len:I) I {
   if len > 0 { mcpy(buf + pos, src, len) } else { 0 }
@@ -872,7 +872,7 @@ sans_send_all(fd:I data:I total:I) I {
   ok
 }
 
-// ── Extended Status Texts ──────────────────────────────────────
+// ------ Extended Status Texts ------------------------------------------------------------------------------------------------------------------
 
 sans_st_created() I = sans_copy_str("Created", 7)
 sans_st_moved() I = sans_copy_str("Moved Permanently", 17)
@@ -886,7 +886,7 @@ sans_st_too_many() I = sans_copy_str("Too Many Requests", 17)
 sans_st_bad_gateway() I = sans_copy_str("Bad Gateway", 11)
 sans_st_unavailable() I = sans_copy_str("Service Unavailable", 19)
 
-// ── Form Data Parsing ─────────────────────────────────────────
+// ------ Form Data Parsing ---------------------------------------------------------------------------------------------------------------------------
 
 sans_http_request_form(req:I name:I) I {
   ct = sans_http_request_header(req, "content-type")
@@ -1135,7 +1135,7 @@ sans_has_filename(body:I start:I end:I) I {
   found
 }
 
-// ── Query Parameter Parsing ────────────────────────────────────
+// ------ Query Parameter Parsing ------------------------------------------------------------------------------------------------------------
 
 sans_http_request_path_only(req:I) I {
   path = load64(req + 16)
@@ -1205,7 +1205,7 @@ sans_query_extract_val(qs:I qlen:I vstart:I) I {
   sans_copy_str(qs + vstart, vend - vstart)
 }
 
-// ── URL Decoding ───────────────────────────────────────────────
+// ------ URL Decoding ---------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_url_decode(s:I) I {
   len = slen(s)
@@ -1255,7 +1255,7 @@ sans_hex_val(ch:I) I {
   -1
 }
 
-// ── Path Segment Extraction ────────────────────────────────────
+// ------ Path Segment Extraction ------------------------------------------------------------------------------------------------------------
 
 sans_path_segment(path:I index:I) I {
   len = slen(path)
@@ -1293,7 +1293,7 @@ sans_path_segment(path:I index:I) I {
   if result == 0 { sans_empty_str() } else { result }
 }
 
-// ── Static File Serving ────────────────────────────────────────
+// ------ Static File Serving ------------------------------------------------------------------------------------------------------------------------
 
 sans_serve_file(req:I base_dir:I) I {
   path = sans_http_request_path_only(req)
@@ -1352,7 +1352,7 @@ sans_ext_to_ct(ext:I len:I) I {
   "application/octet-stream"
 }
 
-// ── Content-Length ──────────────────────────────────────────────
+// ------ Content-Length ------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_http_request_content_length(req:I) I {
   val = sans_http_request_header(req, "content-length")
@@ -1374,13 +1374,13 @@ sans_parse_int(s:I) I {
   result
 }
 
-// ── JSON Response Helper ───────────────────────────────────────
+// ------ JSON Response Helper ---------------------------------------------------------------------------------------------------------------------
 
 sans_http_respond_json(req:I status:I body:I) I {
   sans_http_respond(req, status, body, "application/json")
 }
 
-// ── Keep-alive literal ─────────────────────────────────────────
+// ------ Keep-alive literal ---------------------------------------------------------------------------------------------------------------------------
 
 sans_lit_conn_keepalive() I {
   // "\r\nConnection: keep-alive\r\n\r\n" = 28 bytes
@@ -1416,7 +1416,7 @@ sans_lit_conn_keepalive() I {
   buf
 }
 
-// ── Check if client sent Connection: close ─────────────────────
+// ------ Check if client sent Connection: close ---------------------------------------------------------------
 
 sans_check_close(req:I) I {
   hdr = sans_http_request_header(req, "connection")
@@ -1429,7 +1429,7 @@ sans_str_eq_close(s:I) I {
   if len != 5 { 0 } else { if load8(ls) == 99 && load8(ls+1) == 108 && load8(ls+2) == 111 && load8(ls+3) == 115 && load8(ls+4) == 101 { 1 } else { 0 } }
 }
 
-// ── Production Server: serve() with auto-threading + keep-alive ─
+// ------ Production Server: serve() with auto-threading + keep-alive ---
 
 sans_serve(port:I handler:I) I {
   signal_handler(2)
@@ -1563,7 +1563,7 @@ sans_parse_next_request(fd:I ssl:I buf:I n:I) I {
   req
 }
 
-// ── Chunked Streaming ──────────────────────────────────────────
+// ------ Chunked Streaming ------------------------------------------------------------------------------------------------------------------------------
 
 sans_int_to_hex(n:I) I {
   if n == 0 { sans_hex_zero() } else { sans_int_to_hex_pos(n) }
@@ -1598,7 +1598,7 @@ sans_int_to_hex_pos(n:I) I {
   buf
 }
 
-// respond_stream(req, status) — send chunked headers, return writer struct
+// respond_stream(req, status) --- send chunked headers, return writer struct
 // Writer struct (24 bytes): [fd, ssl, req]
 sans_respond_stream(req:I status:I) I {
   fd = load64(req)
@@ -1633,7 +1633,7 @@ sans_respond_stream(req:I status:I) I {
   pos = sans_buf_write(buf, pos, conn_hdr, conn_len)
   store8(buf + pos, 0)
 
-  // Send headers (plain HTTP path — SSL uses respond path)
+  // Send headers (plain HTTP path --- SSL uses respond path)
   sans_send_all(fd, buf, pos)
 
   // Build writer struct
@@ -1678,7 +1678,7 @@ sans_lit_te_chunked() I {
   buf
 }
 
-// stream_write(w, data) — send one chunk: "{hex_len}\r\n{data}\r\n"
+// stream_write(w, data) --- send one chunk: "{hex_len}\r\n{data}\r\n"
 sans_stream_write(w:I data:I) I {
   fd = load64(w)
   ssl = load64(w + 8)
@@ -1705,7 +1705,7 @@ sans_stream_write_inner(fd:I ssl:I data:I dlen:I) I {
   sans_send_all(fd, buf, total)
 }
 
-// stream_end(w) — send final chunk "0\r\n\r\n"
+// stream_end(w) --- send final chunk "0\r\n\r\n"
 sans_stream_end(w:I) I {
   fd = load64(w)
   buf = alloc(5)
@@ -1717,14 +1717,14 @@ sans_stream_end(w:I) I {
   sans_send_all(fd, buf, 5)
 }
 
-// ── WebSocket Support ───────────────────────────────────────────
+// ------ WebSocket Support ---------------------------------------------------------------------------------------------------------------------------------
 // WebSocket struct layout (32 bytes):
 //   offset  0: fd (I)
-//   offset  8: ssl (I) — 0 for plain WS
-//   offset 16: open (I) — 1 if open
-//   offset 24: req (I) — back-pointer to HttpRequest
+//   offset  8: ssl (I) --- 0 for plain WS
+//   offset 16: open (I) --- 1 if open
+//   offset 24: req (I) --- back-pointer to HttpRequest
 
-// ── Bitwise arithmetic helpers (Sans has no &|^<< operators) ────
+// ------ Bitwise arithmetic helpers (Sans has no &|^<< operators) ------------
 // All values assumed non-negative for these helpers.
 
 // x % 256 = mask to 8 bits (equivalent to x & 0xFF)
@@ -1847,7 +1847,7 @@ sans_bnot32(a:I) I {
   sans_mask32(4294967295 - sans_mask32(a))
 }
 
-// ── Helper: send/recv bytes ──────────────────────────────────────
+// ------ Helper: send/recv bytes ------------------------------------------------------------------------------------------------------------------
 // Note: SSL WS (wss://) would need codegen-level branching like HTTP respond.
 // For now, WS uses plain socket ops (works for ws://).
 sans_ws_send_bytes(fd:I ssl:I data:I len:I) I {
@@ -1858,7 +1858,7 @@ sans_ws_recv_bytes(fd:I ssl:I buf:I len:I) I {
   srecv(fd, buf, len)
 }
 
-// ── Read exact n bytes ──────────────────────────────────────────
+// ------ Read exact n bytes ------------------------------------------------------------------------------------------------------------------------------
 sans_ws_read_exact(fd:I ssl:I buf:I n:I) I {
   total := 0
   while total < n {
@@ -1872,7 +1872,7 @@ sans_ws_read_exact(fd:I ssl:I buf:I n:I) I {
   total
 }
 
-// ── SHA-1 (pure Sans, RFC 3174) ─────────────────────────────────
+// ------ SHA-1 (pure Sans, RFC 3174) ---------------------------------------------------------------------------------------------------
 sans_sha1_rotl(x:I n:I) I {
   sans_mask32(sans_bor32(sans_shl(sans_mask32(x), n), sans_shr(sans_mask32(x), 32 - n)))
 }
@@ -1993,7 +1993,7 @@ sans_sha1_write32(buf:I off:I val:I) I {
   store8(buf + off + 3, sans_mask8(val))
 }
 
-// ── Base64 Encode ───────────────────────────────────────────────
+// ------ Base64 Encode ---------------------------------------------------------------------------------------------------------------------------------------------
 sans_base64_encode(data:I len:I) I {
   tbl = alloc(64)
   i := 0
@@ -2023,7 +2023,7 @@ sans_base64_encode(data:I len:I) I {
   out
 }
 
-// ── WebSocket: is_ws_upgrade ────────────────────────────────────
+// ------ WebSocket: is_ws_upgrade ------------------------------------------------------------------------------------------------------------
 sans_ws_is_upgrade(req:I) I {
   upgrade_hdr = sans_http_request_header(req, sans_ws_lit_upgrade())
   ulen = slen(upgrade_hdr)
@@ -2082,7 +2082,7 @@ sans_ws_magic_guid() I {
   s
 }
 
-// ── WebSocket: upgrade ──────────────────────────────────────────
+// ------ WebSocket: upgrade ------------------------------------------------------------------------------------------------------------------------------
 sans_ws_upgrade(req:I) I {
   fd = load64(req)
   ssl = load64(req + 48)
@@ -2155,7 +2155,7 @@ sans_ws_101_prefix() I {
   s
 }
 
-// ── WebSocket: send text frame ──────────────────────────────────
+// ------ WebSocket: send text frame ------------------------------------------------------------------------------------------------------
 sans_ws_send(ws:I msg:I) I {
   fd = load64(ws)
   ssl = load64(ws + 8)
@@ -2188,7 +2188,7 @@ sans_ws_send(ws:I msg:I) I {
   sans_ws_send_bytes(fd, ssl, frame, frame_len)
 }
 
-// ── WebSocket: send raw frame (for pong/close) ─────────────────
+// ------ WebSocket: send raw frame (for pong/close) ---------------------------------------------------
 sans_ws_send_frame(fd:I ssl:I opcode:I payload:I plen:I) I {
   hdr_len = if plen <= 125 { 2 } else { if plen <= 65535 { 4 } else { 10 } }
   frame_len = hdr_len + plen
@@ -2216,7 +2216,7 @@ sans_ws_send_frame(fd:I ssl:I opcode:I payload:I plen:I) I {
   sans_ws_send_bytes(fd, ssl, frame, frame_len)
 }
 
-// ── WebSocket: recv frame ───────────────────────────────────────
+// ------ WebSocket: recv frame ---------------------------------------------------------------------------------------------------------------------
 sans_ws_recv(ws:I) I {
   fd = load64(ws)
   ssl = load64(ws + 8)
@@ -2290,7 +2290,7 @@ sans_ws_recv_ping(ws:I fd:I ssl:I payload:I plen:I) I {
   sans_ws_recv_loop(ws, fd, ssl)
 }
 
-// ── WebSocket: close ────────────────────────────────────────────
+// ------ WebSocket: close ------------------------------------------------------------------------------------------------------------------------------------
 sans_ws_close(ws:I) I {
   open = load64(ws + 16)
   if open == 0 { 0 } else { sans_ws_close_inner(ws) }

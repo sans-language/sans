@@ -1,16 +1,16 @@
-// ── SSL / HTTPS runtime ─────────────────────────────────────────
+// ------ SSL / HTTPS runtime ---------------------------------------------------------------------------------------------------------------------------
 // Wraps OpenSSL functions for HTTPS server support.
 // Request struct layout (64 bytes):
 //   offset  0: client fd (I)
 //   offset  8: method (S)
 //   offset 16: path (S)
 //   offset 24: body (S)
-//   offset 32: headers map (I) — 0 if not parsed
-//   offset 40: response headers array (I) — 0 if none
-//   offset 48: ssl ptr (I) — 0 for plain HTTP
-//   offset 56: keep_alive (I) — 1 if connection should stay open
+//   offset 32: headers map (I) --- 0 if not parsed
+//   offset 40: response headers array (I) --- 0 if none
+//   offset 48: ssl ptr (I) --- 0 for plain HTTP
+//   offset 56: keep_alive (I) --- 1 if connection should stay open
 
-// ── SSL Context Setup ───────────────────────────────────────────
+// ------ SSL Context Setup ---------------------------------------------------------------------------------------------------------------------------------
 
 sans_ssl_ctx(cert:I key:I) I {
   method = ssl_method()
@@ -32,7 +32,7 @@ sans_ssl_ctx_load_key(ctx:I key:I) I {
   if r2 <= 0 { 0 } else { ctx }
 }
 
-// ── HTTPS Listen ────────────────────────────────────────────────
+// ------ HTTPS Listen ------------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_https_listen(port:I cert:I key:I) I {
   ctx = sans_ssl_ctx(cert, key)
@@ -85,7 +85,7 @@ sans_https_listen_try(fd:I port:I ctx:I) I {
   }
 }
 
-// ── HTTPS Accept ────────────────────────────────────────────────
+// ------ HTTPS Accept ------------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_https_accept(server:I) I {
   sfd = load64(server)
@@ -157,7 +157,7 @@ sans_https_parse(ssl:I cfd:I buf:I n:I) I {
   req
 }
 
-// ── HTTPS Respond ───────────────────────────────────────────────
+// ------ HTTPS Respond ---------------------------------------------------------------------------------------------------------------------------------------------
 // Called when req has SSL ptr at offset 48
 
 sans_https_respond(req:I status:I body:I ct:I) I {
@@ -234,7 +234,7 @@ sans_ssl_send_all(ssl:I data:I total:I) I {
   ok
 }
 
-// ── Duplicated helpers (self-contained for independent compilation) ─
+// ------ Duplicated helpers (self-contained for independent compilation) ---
 
 sans_ssl_make_empty_req() I {
   req = alloc(64)
@@ -329,7 +329,7 @@ sans_ssl_extract_body(buf:I n:I bstart:I) I {
   if blen < 0 { sans_ssl_empty_str() } else { sans_ssl_copy_str(buf + bstart, blen) }
 }
 
-// ── Header parsing (duplicated for ssl module) ──────────────────
+// ------ Header parsing (duplicated for ssl module) ------------------------------------------------------
 
 sans_ssl_parse_headers(req:I buf:I n:I) I {
   hdrs = alloc(16 + 32 * 16)
@@ -461,7 +461,7 @@ sans_ssl_lowercase_slice(buf:I start:I end:I) I {
   s
 }
 
-// ── Response header building (duplicated) ───────────────────────
+// ------ Response header building (duplicated) ---------------------------------------------------------------------
 
 sans_ssl_build_resp_headers(req:I) I {
   arr = load64(req + 40)
@@ -510,7 +510,7 @@ sans_ssl_build_resp_hdrs_loop(arr:I count:I) I {
   buf
 }
 
-// ── HTTP literal helpers (duplicated, prefixed) ─────────────────
+// ------ HTTP literal helpers (duplicated, prefixed) ---------------------------------------------------
 
 sans_ssl_bw(buf:I pos:I src:I len:I) I {
   if len > 0 { mcpy(buf + pos, src, len) } else { 0 }
@@ -749,7 +749,7 @@ sans_ssl_lit_cka() I {
   buf
 }
 
-// ── serve_tls() — HTTPS production server ──────────────────────
+// ------ serve_tls() --- HTTPS production server ------------------------------------------------------------------
 
 sans_serve_tls(port:I cert:I key:I handler:I) I {
   signal_handler(2)

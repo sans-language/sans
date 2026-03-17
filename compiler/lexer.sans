@@ -1,6 +1,6 @@
 import "constants"
 
-// ── Token constructor ──────────────────────────────────────────────
+// ------ Token constructor ------------------------------------------------------------------------------------------------------------------------------------------
 // Token: [kind:I, value:I, line:I, col:I] = 32 bytes
 make_token(kind:I val:I line:I col:I) I {
   t = alloc(32)
@@ -11,7 +11,7 @@ make_token(kind:I val:I line:I col:I) I {
   t
 }
 
-// ── Lexer state ────────────────────────────────────────────────────
+// ------ Lexer state ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // LexerState: [pos:I, line:I, col:I, len:I] = 32 bytes
 // src is passed separately as S to all functions
 make_lexer(src:S) I {
@@ -23,7 +23,7 @@ make_lexer(src:S) I {
   lx
 }
 
-// ── Lexer helpers ──────────────────────────────────────────────────
+// ------ Lexer helpers ------------------------------------------------------------------------------------------------------------------------------------------------------
 lx_pos(lx:I) I = load64(lx)
 lx_line(lx:I) I = load64(lx + 8)
 lx_col(lx:I) I = load64(lx + 16)
@@ -59,13 +59,13 @@ lx_advance(lx:I src:S) I {
   ch
 }
 
-// ── Character classification ───────────────────────────────────────
+// ------ Character classification ---------------------------------------------------------------------------------------------------------------------
 is_digit(ch:I) I = if ch >= 48 && ch <= 57 { 1 } else { 0 }
 is_alpha(ch:I) I = if (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch == 95 { 1 } else { 0 }
 is_alnum(ch:I) I = if is_digit(ch) == 1 || is_alpha(ch) == 1 { 1 } else { 0 }
 is_ws(ch:I) I = if ch == 32 || ch == 9 || ch == 13 || ch == 10 { 1 } else { 0 }
 
-// ── Whitespace / comment skipping ──────────────────────────────────
+// ------ Whitespace / comment skipping ------------------------------------------------------------------------------------------------------
 lx_skip_ws(lx:I src:S) I {
   while lx_at_end(lx) == 0 && is_ws(lx_peek(lx, src)) == 1 {
     lx_advance(lx, src)
@@ -102,7 +102,7 @@ lx_skip_block_comment(lx:I src:S) I {
   0
 }
 
-// ── Number lexing ──────────────────────────────────────────────────
+// ------ Number lexing ------------------------------------------------------------------------------------------------------------------------------------------------------
 lx_number(lx:I src:S) I {
   start = lx_pos(lx)
   line = lx_line(lx)
@@ -133,7 +133,7 @@ lx_number(lx:I src:S) I {
   }
 }
 
-// ── Identifier / keyword lexing ────────────────────────────────────
+// ------ Identifier / keyword lexing ------------------------------------------------------------------------------------------------------------
 lx_ident(lx:I src:S) I {
   start = lx_pos(lx)
   line = lx_line(lx)
@@ -178,7 +178,7 @@ lx_ident(lx:I src:S) I {
   if kind == TK_IDENT { make_token(TK_IDENT, ptr(text), line, col) } else { make_token(kind, 0, line, col) }
 }
 
-// ── String helpers ─────────────────────────────────────────────────
+// ------ String helpers ---------------------------------------------------------------------------------------------------------------------------------------------------
 
 // Build a string from src[start:end] processing escape sequences
 lx_build_escaped(src:S start:I end:I) S {
@@ -229,7 +229,7 @@ lx_trim(s:S) S {
   s[start:end]
 }
 
-// ── String lexing ──────────────────────────────────────────────────
+// ------ String lexing ------------------------------------------------------------------------------------------------------------------------------------------------------
 lx_multiline_string(lx:I src:S) I {
   line = lx_line(lx)
   col = lx_col(lx)
@@ -254,7 +254,7 @@ lx_multiline_string(lx:I src:S) I {
       lx_advance(lx, src)
     }
   }
-  // unterminated — return empty string token
+  // unterminated --- return empty string token
   make_token(TK_STRING_LIT, 0, line, col)
 }
 
@@ -266,10 +266,10 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
   while i < content_end {
     ch = char_at(src, i)
     if ch == 92 {
-      // backslash escape — skip 2 chars
+      // backslash escape --- skip 2 chars
       i = i + 2
     } else { if ch == 123 {
-      // '{' — start of interpolation
+      // '{' --- start of interpolation
       // Scan for matching closing brace
       probe := i + 1
       depth := 1
@@ -326,7 +326,7 @@ lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
         i = probe + 1
         cur_start = i
       } else {
-        // Not a valid interpolation — treat '{' as literal char
+        // Not a valid interpolation --- treat '{' as literal char
         i = i + 1
       }
     } else {
@@ -361,7 +361,7 @@ lx_string(lx:I src:S) I {
   while lx_at_end(lx) == 0 && lx_peek(lx, src) != 34 {
     ch = lx_peek(lx, src)
     if ch == 92 {
-      // backslash — skip next char too
+      // backslash --- skip next char too
       lx_advance(lx, src)
       if lx_at_end(lx) == 0 { lx_advance(lx, src) }
     } else { if ch == 123 {
@@ -404,7 +404,7 @@ lx_string(lx:I src:S) I {
   }
 }
 
-// ── Operator / delimiter lexing ────────────────────────────────────
+// ------ Operator / delimiter lexing ------------------------------------------------------------------------------------------------------------
 lx_op(lx:I src:S ch:I line:I col:I) I {
   lx_advance(lx, src)
   nx = lx_peek(lx, src)
@@ -425,7 +425,7 @@ lx_op(lx:I src:S ch:I line:I col:I) I {
       make_token(TK_STAR_EQ, 0, line, col) }
     else { make_token(TK_STAR, 0, line, col) }
   } else { if ch == 47 {
-    // '/' (not comment — those handled before)
+    // '/' (not comment --- those handled before)
     if nx == 61 { lx_advance(lx, src)
       make_token(TK_SLASH_EQ, 0, line, col) }
     else { make_token(TK_SLASH, 0, line, col) }
@@ -457,7 +457,7 @@ lx_op(lx:I src:S ch:I line:I col:I) I {
       make_token(TK_GT_EQ, 0, line, col) }
     else { make_token(TK_GT, 0, line, col) }
   } else { if ch == 38 {
-    // '&' — must be &&
+    // '&' --- must be &&
     if nx == 38 { lx_advance(lx, src)
       make_token(TK_AND, 0, line, col) }
     else { 0 }
@@ -492,12 +492,12 @@ lx_op(lx:I src:S ch:I line:I col:I) I {
   } else { if ch == 63 {
     make_token(TK_QUESTION, 0, line, col)
   } else {
-    // Unknown character — skip
+    // Unknown character --- skip
     0
   } } } } } } } } } } } } } } } } } } } } }
 }
 
-// ── Main entry point ───────────────────────────────────────────────
+// ------ Main entry point ---------------------------------------------------------------------------------------------------------------------------------------------
 lex(src:S) [I] {
   lx = make_lexer(src)
   tokens = array<I>()

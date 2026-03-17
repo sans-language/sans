@@ -1,7 +1,7 @@
 import "constants"
 import "parser"
 
-// ── IrType constants ────────────────────────────────────────────
+// ------ IrType constants ------------------------------------------------------------------------------------------------------------------------------------
 g IRTY_INT = 0
 g IRTY_FLOAT = 1
 g IRTY_BOOL = 2
@@ -21,14 +21,14 @@ g IRTY_HTTP_REQ = 15
 g IRTY_TUPLE = 16
 g IRTY_MAP = 17
 
-// ── IrBinOp constants ──────────────────────────────────────────
+// ------ IrBinOp constants ------------------------------------------------------------------------------------------------------------------------------
 g IROP_ADD = 0
 g IROP_SUB = 1
 g IROP_MUL = 2
 g IROP_DIV = 3
 g IROP_MOD = 4
 
-// ── IrCmpOp constants ──────────────────────────────────────────
+// ------ IrCmpOp constants ------------------------------------------------------------------------------------------------------------------------------
 g IRCMP_EQ = 0
 g IRCMP_NEQ = 1
 g IRCMP_LT = 2
@@ -36,12 +36,12 @@ g IRCMP_GT = 3
 g IRCMP_LTEQ = 4
 g IRCMP_GTEQ = 5
 
-// ── Instruction accessors ──────────────────────────────────────
+// ------ Instruction accessors ------------------------------------------------------------------------------------------------------------------
 ir_op(inst:I) I = load64(inst)
 ir_dest(inst:I) I = load64(inst + 8)
 ir_field(inst:I offset:I) I = load64(inst + offset)
 
-// ── Generic instruction constructors ───────────────────────────
+// ------ Generic instruction constructors ---------------------------------------------------------------------------------
 // These allocate heap memory: [opcode, dest, ...operands]
 
 ir_inst0(opcode:I dest:I) I {
@@ -101,7 +101,7 @@ ir_inst5(opcode:I dest:I a:I b:I c:I d:I e:I) I {
   n
 }
 
-// ── Named instruction constructors ─────────────────────────────
+// ------ Named instruction constructors ---------------------------------------------------------------------------------------
 // Constants: [op, dest, value] 24 bytes
 ir_const(dest:I value:I) I = ir_inst1(IR_CONST, dest, value)
 ir_float_const(dest:I value:I) I = ir_inst1(IR_FLOAT_CONST, dest, value)
@@ -177,12 +177,12 @@ ir_mutex_create(dest:I value:I) I = ir_inst1(IR_MUTEX_CREATE, dest, value)
 ir_mutex_lock(dest:I mtx:I) I = ir_inst1(IR_MUTEX_LOCK, dest, mtx)
 ir_mutex_unlock(mtx:I value:I) I = ir_inst1(IR_MUTEX_UNLOCK, mtx, value)
 
-// ── IrFunction (40 bytes) ──────────────────────────────────────
-// offset 0:  name (I) — function name string
-// offset 8:  params (I) — Array of param name strings
-// offset 16: instructions (I) — Array of instruction pointers
-// offset 24: return_type (I) — IrType tag
-// offset 32: param_struct_sizes (I) — Array of Ints (0=scalar, >0=struct fields)
+// ------ IrFunction (40 bytes) ------------------------------------------------------------------------------------------------------------------
+// offset 0:  name (I) --- function name string
+// offset 8:  params (I) --- Array of param name strings
+// offset 16: instructions (I) --- Array of instruction pointers
+// offset 24: return_type (I) --- IrType tag
+// offset 32: param_struct_sizes (I) --- Array of Ints (0=scalar, >0=struct fields)
 
 make_ir_function(name:I params:I instrs:I ret_type:I param_sizes:I) I {
   f = alloc(40)
@@ -200,42 +200,44 @@ irf_instrs(f:I) I = load64(f + 16)
 irf_ret_type(f:I) I = load64(f + 24)
 irf_param_sizes(f:I) I = load64(f + 32)
 
-// ── IrModule (24 bytes) ────────────────────────────────────────
-// offset 0:  functions (I) — Array of IrFunction pointers
-// offset 8:  globals (I) — Array of global name strings
-// offset 16: struct_defs (I) — Map: name -> field names array
+// ------ IrModule (24 bytes) ------------------------------------------------------------------------------------------------------------------------
+// offset 0:  functions (I) --- Array of IrFunction pointers
+// offset 8:  globals (I) --- Array of global name strings
+// offset 16: struct_defs (I) --- Map: name -> field names array
 
 make_ir_module(funcs:I globals:I struct_defs:I) I {
-  m = alloc(24)
+  m = alloc(32)
   store64(m, funcs)
   store64(m + 8, globals)
   store64(m + 16, struct_defs)
+  store64(m + 24, M())  // global_init_values map (name -> i64)
   m
 }
 
 irm_functions(m:I) I = load64(m)
 irm_globals(m:I) I = load64(m + 8)
 irm_struct_defs(m:I) I = load64(m + 16)
+irm_global_inits(m:I) I = load64(m + 24)
 
-// ── Lowering Context (112 bytes) ───────────────────────────────
-// offset 0:  instructions (I) — Array of instruction pointers
-// offset 8:  reg_counter (I) — next register number
-// offset 16: label_counter (I) — next label number
-// offset 24: locals (I) — Map: var name -> register (positive=value, negative=alloca ptr)
-// offset 32: reg_types (I) — Map: register name -> IrType tag
-// offset 40: struct_defs (I) — Map: struct name -> field names array
-// offset 48: enum_defs (I) — Map: enum name -> variants info
-// offset 56: fn_ret_types (I) — Map: func name -> IrType tag
-// offset 64: break_label (I) — current loop break label (or 0)
-// offset 72: global_names (I) — Map: global name -> IrType tag
-// offset 80: continue_label (I) — current loop continue label (or 0)
-// offset 88: reg_struct_names (I) — Map: register name -> struct name (for struct field access)
-// offset 96: variant_tag_map (I) — Map: variant_name -> tag_index
-// offset 104: variant_fields_map (I) — Map: variant_name -> array of field type name strings
-// offset 136: fn_ret_struct_names (I) — Map: func name -> struct name (for struct-returning fns)
-// offset 144: module_name (I) — current module name string (or 0)
-// offset 152: local_fn_set (I) — Map: local function names defined in current module
-// offset 160: imported_fn_names (I) — Map: bare name -> mangled name for imported functions
+// ------ Lowering Context (112 bytes) ---------------------------------------------------------------------------------------------
+// offset 0:  instructions (I) --- Array of instruction pointers
+// offset 8:  reg_counter (I) --- next register number
+// offset 16: label_counter (I) --- next label number
+// offset 24: locals (I) --- Map: var name -> register (positive=value, negative=alloca ptr)
+// offset 32: reg_types (I) --- Map: register name -> IrType tag
+// offset 40: struct_defs (I) --- Map: struct name -> field names array
+// offset 48: enum_defs (I) --- Map: enum name -> variants info
+// offset 56: fn_ret_types (I) --- Map: func name -> IrType tag
+// offset 64: break_label (I) --- current loop break label (or 0)
+// offset 72: global_names (I) --- Map: global name -> IrType tag
+// offset 80: continue_label (I) --- current loop continue label (or 0)
+// offset 88: reg_struct_names (I) --- Map: register name -> struct name (for struct field access)
+// offset 96: variant_tag_map (I) --- Map: variant_name -> tag_index
+// offset 104: variant_fields_map (I) --- Map: variant_name -> array of field type name strings
+// offset 136: fn_ret_struct_names (I) --- Map: func name -> struct name (for struct-returning fns)
+// offset 144: module_name (I) --- current module name string (or 0)
+// offset 152: local_fn_set (I) --- Map: local function names defined in current module
+// offset 160: imported_fn_names (I) --- Map: bare name -> mangled name for imported functions
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   ctx = alloc(168)
@@ -365,7 +367,7 @@ ctx_reset(ctx:I) I {
   0
 }
 
-// ── TY -> IRTY mapping ─────────────────────────────────────────
+// ------ TY -> IRTY mapping ---------------------------------------------------------------------------------------------------------------------------
 ty_to_irty(ty:I) I {
   if ty == TY_INT { IRTY_INT }
   else if ty == TY_FLOAT { IRTY_FLOAT }
@@ -389,7 +391,7 @@ ty_to_irty(ty:I) I {
   else { IRTY_INT }
 }
 
-// ── BinOp -> IR op mapping ─────────────────────────────────────
+// ------ BinOp -> IR op mapping ---------------------------------------------------------------------------------------------------------------
 binop_to_irbinop(op:I) I {
   if op == OP_ADD { IROP_ADD }
   else if op == OP_SUB { IROP_SUB }
@@ -417,10 +419,10 @@ is_arith_op(op:I) I {
   if op >= OP_ADD { if op <= OP_MOD { 1 } else { 0 } } else { 0 }
 }
 
-// ── lower_binop_normal ──────────────────────────────────────────
+// ------ lower_binop_normal ------------------------------------------------------------------------------------------------------------------------------
 // Handle non-short-circuit binary operators after both sides evaluated.
 lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I {
-  // String + String → StringConcat (if either side is string)
+  // String + String --- StringConcat (if either side is string)
   eff_type = if left_type == IRTY_STR || right_type == IRTY_STR { IRTY_STR } else { if left_type == IRTY_FLOAT || right_type == IRTY_FLOAT { IRTY_FLOAT } else { left_type } }
   if op == OP_ADD {
     if eff_type == IRTY_STR {
@@ -430,12 +432,12 @@ lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I
       dest
     } else { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
   }
-  // Arithmetic operators (SUB, MUL, DIV, MOD — ADD handled above)
+  // Arithmetic operators (SUB, MUL, DIV, MOD --- ADD handled above)
   else if is_arith_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
   // Comparison operators
   else if is_cmp_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
   else {
-    // Fallback — should not reach for valid programs
+    // Fallback --- should not reach for valid programs
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_const(dest, 0))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
@@ -476,21 +478,21 @@ lower_binop_arith_or_cmp(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
   }
 }
 
-// ── Helper: look up function return type ────────────────────────
+// ------ Helper: look up function return type ------------------------------------------------------------------------
 ctx_get_fn_ret_type(ctx:I name:I) I {
   m := load64(ctx + 56)
   mget(m, name)
 }
 
-// ── lower_call ──────────────────────────────────────────────────
+// ------ lower_call ------------------------------------------------------------------------------------------------------------------------------------------------------
 // Lower a function call expression. Dispatches built-in functions to
 // specific IR instructions, falls through to user-defined IR_CALL.
 lower_call(ctx:I name:I args:I) I {
-  // ── print / p ──
+  // ------ print / p ------
   if name == "print" { lower_call_print(ctx, args) }
   else if name == "p" { lower_call_print(ctx, args) }
 
-  // ── I/O ──
+  // ------ I/O ------
   else if name == "file_read" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
   else if name == "read_file" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
   else if name == "fread" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
@@ -507,7 +509,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "fexists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
   else if name == "fe" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
 
-  // ── Conversion ──
+  // ------ Conversion ------
   else if name == "str" { lower_call_str(ctx, args) }
   else if name == "int_to_string" { lower_call_str(ctx, args) }
   else if name == "itos" { lower_call_str(ctx, args) }
@@ -520,7 +522,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "ftos" { lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) }
   else if name == "float_to_string" { lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) }
 
-  // ── JSON ──
+  // ------ JSON ------
   else if name == "json_parse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
   else if name == "jparse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
   else if name == "jp" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
@@ -543,7 +545,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "jstringify" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
   else if name == "jfy" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
 
-  // ── HTTP ──
+  // ------ HTTP ------
   else if name == "http_get" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
   else if name == "hget" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
   else if name == "hg" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
@@ -571,7 +573,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "stream_write" { lower_call_2(ctx, args, IR_STREAM_WRITE, IRTY_INT) }
   else if name == "stream_end" { lower_call_1(ctx, args, IR_STREAM_END, IRTY_INT) }
 
-  // ── SSL low-level ──
+  // ------ SSL low-level ------
   else if name == "ssl_method" { lower_call_0(ctx, IR_SSL_METHOD, IRTY_INT) }
   else if name == "ssl_ctx_new" { lower_call_1(ctx, args, IR_SSL_CTX_NEW, IRTY_INT) }
   else if name == "ssl_ctx_cert" { lower_call_3(ctx, args, IR_SSL_CTX_CERT, IRTY_INT) }
@@ -584,7 +586,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "ssl_shutdown" { lower_call_1(ctx, args, IR_SSL_SHUTDOWN, IRTY_INT) }
   else if name == "ssl_free" { lower_call_1(ctx, args, IR_SSL_FREE, IRTY_INT) }
 
-  // ── Logging ──
+  // ------ Logging ------
   else if name == "log_debug" { lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) }
   else if name == "ld" { lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) }
   else if name == "log_info" { lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) }
@@ -599,7 +601,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "set_log_level" { lower_call_1(ctx, args, IR_SET_LOG_LEVEL, IRTY_INT) }
   else if name == "print_err" { lower_call_1(ctx, args, IR_PRINT_ERR, IRTY_INT) }
 
-  // ── Memory ──
+  // ------ Memory ------
   else if name == "alloc" { lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) }
   else if name == "dealloc" { lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) }
   else if name == "ralloc" { lower_call_2(ctx, args, IR_RALLOC, IRTY_INT) }
@@ -608,7 +610,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "mcmp" { lower_call_3(ctx, args, IR_MCMP, IRTY_INT) }
   else if name == "slen" { lower_call_1(ctx, args, IR_SLEN, IRTY_INT) }
 
-  // ── Load/Store ──
+  // ------ Load/Store ------
   else if name == "load8" { lower_call_1(ctx, args, IR_LOAD8, IRTY_INT) }
   else if name == "store8" { lower_call_2(ctx, args, IR_STORE8, IRTY_INT) }
   else if name == "load16" { lower_call_1(ctx, args, IR_LOAD16, IRTY_INT) }
@@ -620,12 +622,12 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "bswap16" { lower_call_1(ctx, args, IR_BSWAP16, IRTY_INT) }
   else if name == "char_at" { lower_call_char_at(ctx, args) }
 
-  // ── Arena ──
+  // ------ Arena ------
   else if name == "arena_begin" { lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) }
   else if name == "arena_alloc" { lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) }
   else if name == "arena_end" { lower_call_0(ctx, IR_ARENA_END, IRTY_INT) }
 
-  // ── Function pointers ──
+  // ------ Function pointers ------
   else if name == "fptr" { lower_call_fptr(ctx, args) }
   else if name == "fcall" { lower_call_2(ctx, args, IR_FCALL, IRTY_INT) }
   else if name == "fcall2" { lower_call_3(ctx, args, IR_FCALL2, IRTY_INT) }
@@ -633,7 +635,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "ptr" { lower_call_ptr(ctx, args) }
   else if name == "wfd" { lower_call_2(ctx, args, IR_WRITE_FD, IRTY_INT) }
 
-  // ── Sockets ──
+  // ------ Sockets ------
   else if name == "sock" { lower_call_3(ctx, args, IR_SOCK, IRTY_INT) }
   else if name == "sbind" { lower_call_2(ctx, args, IR_SBIND, IRTY_INT) }
   else if name == "slisten" { lower_call_2(ctx, args, IR_SLISTEN, IRTY_INT) }
@@ -646,7 +648,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "strstr" { lower_call_2(ctx, args, IR_STRSTR, IRTY_INT) }
   else if name == "gzip_compress" { lower_call_2(ctx, args, IR_GZIP_COMPRESS, IRTY_INT) }
 
-  // ── Curl ──
+  // ------ Curl ------
   else if name == "cinit" { lower_call_0(ctx, IR_CINIT, IRTY_INT) }
   else if name == "csets" { lower_call_3(ctx, args, IR_CSETS, IRTY_INT) }
   else if name == "cseti" { lower_call_3(ctx, args, IR_CSETI, IRTY_INT) }
@@ -656,30 +658,30 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "curl_slist_append" { lower_call_2(ctx, args, IR_CURL_SLIST_APPEND, IRTY_INT) }
   else if name == "curl_slist_free" { lower_call_1(ctx, args, IR_CURL_SLIST_FREE, IRTY_INT) }
 
-  // ── Result ──
+  // ------ Result ------
   else if name == "ok" { lower_call_1(ctx, args, IR_RESULT_OK, IRTY_RESULT) }
   else if name == "err" { lower_call_1(ctx, args, IR_RESULT_ERR, IRTY_RESULT) }
 
-  // ── Map ──
+  // ------ Map ------
   else if name == "M" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
   else if name == "map" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
 
-  // ── Signal / Poll ──
+  // ------ Signal / Poll ------
   else if name == "signal_handler" { lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) }
   else if name == "signal_check" { lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) }
   else if name == "spoll" { lower_call_2(ctx, args, IR_SPOLL, IRTY_INT) }
 
-  // ── Misc ──
+  // ------ Misc ------
   else if name == "args" { lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) }
   else if name == "exit" { lower_call_1(ctx, args, IR_EXIT, IRTY_INT) }
   else if name == "system" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
   else if name == "sys" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
 
-  // ── User-defined function call (fallthrough) ──
+  // ------ User-defined function call (fallthrough) ------
   else { lower_call_user(ctx, name, args) }
 }
 
-// ── lower_call helpers by arity ─────────────────────────────────
+// ------ lower_call helpers by arity ---------------------------------------------------------------------------------------------------
 // 0-arg built-in: emit ir_inst0
 lower_call_0(ctx:I opcode:I irtype:I) I {
   dest = ctx_fresh_reg(ctx)
@@ -743,7 +745,7 @@ lower_call_5(ctx:I args:I opcode:I irtype:I) I {
   dest
 }
 
-// ── print: dispatch by argument type ────────────────────────────
+// ------ print: dispatch by argument type ------------------------------------------------------------------------------------
 lower_call_print(ctx:I args:I) I {
   arg_reg = lower_expr(ctx, args.get(0))
   ty = ctx_get_reg_type(ctx, arg_reg)
@@ -757,7 +759,7 @@ lower_call_print(ctx:I args:I) I {
   dest
 }
 
-// ── str/itos: if arg is already a string, pass through ──────────
+// ------ str/itos: if arg is already a string, pass through ------------------------------
 lower_call_str(ctx:I args:I) I {
   a0 = lower_expr(ctx, args.get(0))
   if ctx_get_reg_type(ctx, a0) == IRTY_STR { a0 }
@@ -769,7 +771,7 @@ lower_call_str(ctx:I args:I) I {
   }
 }
 
-// ── char_at: desugar to copy + add + load8 ──────────────────────
+// ------ char_at: desugar to copy + add + load8 ------------------------------------------------------------------
 lower_call_char_at(ctx:I args:I) I {
   str_reg = lower_expr(ctx, args.get(0))
   idx_reg = lower_expr(ctx, args.get(1))
@@ -785,7 +787,7 @@ lower_call_char_at(ctx:I args:I) I {
   dest
 }
 
-// ── fptr: arg must be a string literal (function name) ──────────
+// ------ fptr: arg must be a string literal (function name) ------------------------------
 lower_call_fptr(ctx:I args:I) I {
   // The arg is an EX_STRING_LIT node; extract the string pointer
   arg_expr = args.get(0)
@@ -796,7 +798,7 @@ lower_call_fptr(ctx:I args:I) I {
   dest
 }
 
-// ── ptr: return arg register as Int (it's already an i64) ───────
+// ------ ptr: return arg register as Int (it's already an i64) ---------------------
 lower_call_ptr(ctx:I args:I) I {
   a0 = lower_expr(ctx, args.get(0))
   dest = ctx_fresh_reg(ctx)
@@ -805,7 +807,7 @@ lower_call_ptr(ctx:I args:I) I {
   dest
 }
 
-// ── User-defined function call ──────────────────────────────────
+// ------ User-defined function call ------------------------------------------------------------------------------------------------------
 lower_call_user(ctx:I name:I args:I) I {
   // Check if the name is a local variable holding a lambda/fn ref
   local_reg = ctx_get_local(ctx, name)
@@ -813,7 +815,7 @@ lower_call_user(ctx:I name:I args:I) I {
     ci_map = ctx_closure_info(ctx)
     cinfo = mget(ci_map, local_reg)
     if cinfo != 0 {
-      // This is a lambda call — emit direct Call to lifted function with captures prepended
+      // This is a lambda call --- emit direct Call to lifted function with captures prepended
       lambda_fn_name = cinfo.get(0)
       all_args = array<I>()
       // Prepend capture values
@@ -837,7 +839,7 @@ lower_call_user(ctx:I name:I args:I) I {
       ctx_set_reg_type(ctx, dest, IRTY_INT)
       dest
     } else {
-      // Local variable holding a non-lambda fn ref — use fcall
+      // Local variable holding a non-lambda fn ref --- use fcall
       // Lower the explicit args
       arg_regs = array<I>()
       fai := 0
@@ -862,7 +864,7 @@ lower_call_user(ctx:I name:I args:I) I {
         ctx_set_reg_type(ctx, dest, IRTY_INT)
         dest
       } else {
-        // 0 args — just call it as fcall with dummy
+        // 0 args --- just call it as fcall with dummy
         dest = ctx_fresh_reg(ctx)
         zero_reg = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_const(zero_reg, 0))
@@ -892,8 +894,8 @@ lower_call_user(ctx:I name:I args:I) I {
       mget(imp_fns, name)
     } else { name } }
     ctx_emit(ctx, ir_call(dest, call_name, arg_regs))
-    rt = ctx_get_fn_ret_type(ctx, call_name)
-    if rt == 0 { rt = ctx_get_fn_ret_type(ctx, name) }
+    rt_raw = ctx_get_fn_ret_type(ctx, call_name)
+    rt = if rt_raw == 0 { ctx_get_fn_ret_type(ctx, name) } else { rt_raw }
     ctx_set_reg_type(ctx, dest, if rt != 0 { rt } else { IRTY_INT })
     // If return type is struct, propagate struct name for field access
     if rt == IRTY_STRUCT {
@@ -905,7 +907,7 @@ lower_call_user(ctx:I name:I args:I) I {
   }
 }
 
-// ── lower_expr ──────────────────────────────────────────────────
+// ------ lower_expr ------------------------------------------------------------------------------------------------------------------------------------------------------
 // Lower an AST Expr node to IR instructions, return dest register name.
 // Handles: literals, identifiers, binary/unary ops, short-circuit logic.
 // Other expr types are stubbed for tasks 5c/5d.
@@ -913,7 +915,7 @@ lower_call_user(ctx:I name:I args:I) I {
 lower_expr(ctx:I expr:I) I {
   tag = load64(expr)
 
-  // ── EX_INT_LIT ──
+  // ------ EX_INT_LIT ------
   if tag == EX_INT_LIT {
     value = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
@@ -923,7 +925,7 @@ lower_expr(ctx:I expr:I) I {
     dest
   }
 
-  // ── EX_FLOAT_LIT ──
+  // ------ EX_FLOAT_LIT ------
   else if tag == EX_FLOAT_LIT {
     value = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
@@ -932,7 +934,7 @@ lower_expr(ctx:I expr:I) I {
     dest
   }
 
-  // ── EX_BOOL_LIT ──
+  // ------ EX_BOOL_LIT ------
   else if tag == EX_BOOL_LIT {
     value = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
@@ -941,7 +943,7 @@ lower_expr(ctx:I expr:I) I {
     dest
   }
 
-  // ── EX_STRING_LIT ──
+  // ------ EX_STRING_LIT ------
   else if tag == EX_STRING_LIT {
     str_ptr = load64(expr + 8)
     dest = ctx_fresh_reg(ctx)
@@ -950,14 +952,14 @@ lower_expr(ctx:I expr:I) I {
     dest
   }
 
-  // ── EX_IDENT ──
+  // ------ EX_IDENT ------
   else if tag == EX_IDENT {
     name = load64(expr + 8)
     local = ctx_get_local(ctx, name)
     if local != 0 {
       // Check for mutable variable marker "!" prefix
       if char_at(local, 0) == 33 {
-        // Mutable — stored reg is "!rN", strip prefix to get alloca ptr
+        // Mutable --- stored reg is "!rN", strip prefix to get alloca ptr
         ptr_reg = local.substring(1, slen(local))
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_load(dest, ptr_reg))
@@ -969,14 +971,14 @@ lower_expr(ctx:I expr:I) I {
         if psn != 0 { ctx_set_struct_name(ctx, dest, psn) }
         dest
       } else {
-        // Immutable — register used directly
+        // Immutable --- register used directly
         local
       }
     } else {
-      // Not a local — check globals
+      // Not a local --- check globals
       gmap = ctx_global_names(ctx)
       if mhas(gmap, name) == 1 {
-        // Global variable — emit GlobalLoad
+        // Global variable --- emit GlobalLoad
         gtype = mget(gmap, name)
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_global_load(dest, name))
@@ -992,7 +994,7 @@ lower_expr(ctx:I expr:I) I {
     }
   }
 
-  // ── EX_BINOP ──
+  // ------ EX_BINOP ------
   else if tag == EX_BINOP {
     op = load64(expr + 8)
     left = load64(expr + 16)
@@ -1007,19 +1009,19 @@ lower_expr(ctx:I expr:I) I {
 
       ctx_emit(ctx, ir_branch(left_reg, rhs_label, false_label))
 
-      // rhs block — evaluate right side
+      // rhs block --- evaluate right side
       ctx_emit(ctx, ir_label(rhs_label))
       right_reg = lower_expr(ctx, right)
       ctx_emit(ctx, ir_jump(merge_label))
 
-      // false block — produce false constant
+      // false block --- produce false constant
       ctx_emit(ctx, ir_label(false_label))
       false_reg = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_bool_const(false_reg, 0))
       ctx_set_reg_type(ctx, false_reg, IRTY_BOOL)
       ctx_emit(ctx, ir_jump(merge_label))
 
-      // merge block — phi
+      // merge block --- phi
       ctx_emit(ctx, ir_label(merge_label))
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_phi(dest, right_reg, rhs_label, false_reg, false_label))
@@ -1036,19 +1038,19 @@ lower_expr(ctx:I expr:I) I {
 
       ctx_emit(ctx, ir_branch(left_reg, true_label, rhs_label))
 
-      // true block — produce true constant
+      // true block --- produce true constant
       ctx_emit(ctx, ir_label(true_label))
       true_reg = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_bool_const(true_reg, 1))
       ctx_set_reg_type(ctx, true_reg, IRTY_BOOL)
       ctx_emit(ctx, ir_jump(merge_label))
 
-      // rhs block — evaluate right side
+      // rhs block --- evaluate right side
       ctx_emit(ctx, ir_label(rhs_label))
       right_reg = lower_expr(ctx, right)
       ctx_emit(ctx, ir_jump(merge_label))
 
-      // merge block — phi
+      // merge block --- phi
       ctx_emit(ctx, ir_label(merge_label))
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_phi(dest, true_reg, true_label, right_reg, rhs_label))
@@ -1064,7 +1066,7 @@ lower_expr(ctx:I expr:I) I {
     }
   }
 
-  // ── EX_UNARYOP ──
+  // ------ EX_UNARYOP ------
   else if tag == EX_UNARYOP {
     op = load64(expr + 8)
     operand = load64(expr + 16)
@@ -1076,7 +1078,7 @@ lower_expr(ctx:I expr:I) I {
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
     } else {
-      // UOP_NEG — for floats, emit 0.0 - x
+      // UOP_NEG --- for floats, emit 0.0 - x
       if src_type == IRTY_FLOAT {
         zero_reg = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_float_const(zero_reg, 0))
@@ -1092,59 +1094,59 @@ lower_expr(ctx:I expr:I) I {
     }
   }
 
-  // ── EX_CALL ──
+  // ------ EX_CALL ------
   else if tag == EX_CALL {
     name = load64(expr + 8)
     args := load64(expr + 16)
     lower_call(ctx, name, args)
   }
 
-  // ── EX_METHOD_CALL ──
+  // ------ EX_METHOD_CALL ------
   else if tag == EX_METHOD_CALL {
     lower_method_call(ctx, expr)
   }
 
-  // ── EX_FIELD_ACCESS ──
+  // ------ EX_FIELD_ACCESS ------
   else if tag == EX_FIELD_ACCESS {
     lower_field_access(ctx, expr)
   }
 
-  // ── EX_IF ──
+  // ------ EX_IF ------
   else if tag == EX_IF {
     lower_if_expr(ctx, expr)
   }
 
-  // ── EX_LAMBDA ──
+  // ------ EX_LAMBDA ------
   else if tag == EX_LAMBDA {
     lower_lambda(ctx, expr)
   }
 
-  // ── EX_ARRAY_LIT ──
+  // ------ EX_ARRAY_LIT ------
   else if tag == EX_ARRAY_LIT {
     lower_array_lit(ctx, expr)
   }
 
-  // ── EX_STRUCT_LIT ──
+  // ------ EX_STRUCT_LIT ------
   else if tag == EX_STRUCT_LIT {
     lower_struct_lit(ctx, expr)
   }
 
-  // ── EX_TUPLE_LIT ──
+  // ------ EX_TUPLE_LIT ------
   else if tag == EX_TUPLE_LIT {
     lower_tuple_lit(ctx, expr)
   }
 
-  // ── EX_MATCH ──
+  // ------ EX_MATCH ------
   else if tag == EX_MATCH {
     lower_match(ctx, expr)
   }
 
-  // ── EX_SPAWN ──
+  // ------ EX_SPAWN ------
   else if tag == EX_SPAWN {
     lower_spawn(ctx, expr)
   }
 
-  // ── EX_CHANNEL ──
+  // ------ EX_CHANNEL ------
   else if tag == EX_CHANNEL {
     // Channel should only appear inside LetDestructure (handled in lower_stmt)
     // If it appears standalone, emit zeros for tx
@@ -1154,22 +1156,22 @@ lower_expr(ctx:I expr:I) I {
     dest
   }
 
-  // ── EX_MUTEX ──
+  // ------ EX_MUTEX ------
   else if tag == EX_MUTEX {
     lower_mutex(ctx, expr)
   }
 
-  // ── EX_ENUM_VARIANT ──
+  // ------ EX_ENUM_VARIANT ------
   else if tag == EX_ENUM_VARIANT {
     lower_enum_variant(ctx, expr)
   }
 
-  // ── EX_ARRAY_CREATE ──
+  // ------ EX_ARRAY_CREATE ------
   else if tag == EX_ARRAY_CREATE {
     lower_array_create(ctx, expr)
   }
 
-  // Unknown tag — fallback
+  // Unknown tag --- fallback
   else {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_const(dest, 0))
@@ -1178,9 +1180,9 @@ lower_expr(ctx:I expr:I) I {
   }
 }
 
-// ── lower_stmts ─────────────────────────────────────────────────
+// ------ lower_stmts ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Iterate an array of statements and lower each one.
-// Stub for now — will be fully implemented in 5e.
+// Stub for now --- will be fully implemented in 5e.
 lower_stmts(ctx:I stmts:I) I {
   // stmts is an array pointer
   i := 0
@@ -1192,19 +1194,19 @@ lower_stmts(ctx:I stmts:I) I {
   0
 }
 
-// ── lower_stmt (stub for 5e) ────────────────────────────────────
-// Minimal stub — enough for if-expr body lowering.
+// ------ lower_stmt (stub for 5e) ------------------------------------------------------------------------------------------------------------
+// Minimal stub --- enough for if-expr body lowering.
 lower_stmt(ctx:I stmt:I) I {
   tag = load64(stmt)
 
-  // ST_EXPR — lower the expression, discard result
+  // ST_EXPR --- lower the expression, discard result
   if tag == ST_EXPR {
     expr = load64(stmt + 8)
     lower_expr(ctx, expr)
     0
   }
 
-  // ST_LET — lower value, bind to local
+  // ST_LET --- lower value, bind to local
   else if tag == ST_LET {
     name = load64(stmt + 8)
     is_mut = load64(stmt + 16)
@@ -1227,7 +1229,7 @@ lower_stmt(ctx:I stmt:I) I {
     0
   }
 
-  // ST_ASSIGN — store to mutable local or global
+  // ST_ASSIGN --- store to mutable local or global
   else if tag == ST_ASSIGN {
     name = load64(stmt + 8)
     value_expr = load64(stmt + 16)
@@ -1242,14 +1244,14 @@ lower_stmt(ctx:I stmt:I) I {
         asn = ctx_get_struct_name(ctx, val_reg)
         if asn != 0 { ctx_set_struct_name(ctx, ptr_reg, asn) }
       } else {
-        // Immutable reassignment — treat as new binding
+        // Immutable reassignment --- treat as new binding
         ctx_set_local(ctx, name, val_reg)
       }
     } else {
       // Check if it's a global variable
       gmap = ctx_global_names(ctx)
       if mhas(gmap, name) == 1 {
-        // Global variable — emit GlobalStore
+        // Global variable --- emit GlobalStore
         ctx_emit(ctx, ir_global_store(name, val_reg))
       } else {
         // New local binding (bare assignment: x = 10)
@@ -1296,7 +1298,7 @@ lower_stmt(ctx:I stmt:I) I {
     0
   }
 
-  // ST_IF (statement if — no value)
+  // ST_IF (statement if --- no value)
   else if tag == ST_IF {
     cond_expr = load64(stmt + 8)
     then_stmts = load64(stmt + 16)
@@ -1323,28 +1325,28 @@ lower_stmt(ctx:I stmt:I) I {
     0
   }
 
-  // ST_CONTINUE — jump back to loop condition
+  // ST_CONTINUE --- jump back to loop condition
   else if tag == ST_CONTINUE {
     cl = ctx_continue_label(ctx)
     if cl != 0 { ctx_emit(ctx, ir_jump(cl)) }
     0
   }
 
-  // ST_LET_DESTR — destructuring let (e.g., for channels)
+  // ST_LET_DESTR --- destructuring let (e.g., for channels)
   else if tag == ST_LET_DESTR {
     lower_let_destructure(ctx, stmt)
   }
 
-  // ST_FOR_IN — desugar to while loop
+  // ST_FOR_IN --- desugar to while loop
   else if tag == ST_FOR_IN {
     lower_for_in(ctx, stmt)
   }
 
-  // Unknown statement — skip
+  // Unknown statement --- skip
   else { 0 }
 }
 
-// ── lower_let_destructure ───────────────────────────────────────
+// ------ lower_let_destructure ---------------------------------------------------------------------------------------------------------------------
 lower_let_destructure(ctx:I stmt:I) I {
   // Layout: [tag, names_array, value_expr]
   names = load64(stmt + 8)
@@ -1385,7 +1387,7 @@ lower_let_destructure(ctx:I stmt:I) I {
   }
 }
 
-// ── lower_for_in (stub) ─────────────────────────────────────────
+// ------ lower_for_in (stub) ---------------------------------------------------------------------------------------------------------------------------
 lower_for_in(ctx:I stmt:I) I {
   // Layout: [tag, var_name, iterable_expr, body_stmts]
   var_name = load64(stmt + 8)
@@ -1461,7 +1463,7 @@ lower_for_in(ctx:I stmt:I) I {
   0
 }
 
-// ── lower_method_call ───────────────────────────────────────────
+// ------ lower_method_call ---------------------------------------------------------------------------------------------------------------------------------
 lower_method_call(ctx:I expr:I) I {
   object = load64(expr + 8)
   method = load64(expr + 16)
@@ -1471,7 +1473,7 @@ lower_method_call(ctx:I expr:I) I {
   obj_reg = lower_expr(ctx, object)
   obj_type = ctx_get_reg_type(ctx, obj_reg)
 
-  // ── Sender methods ──
+  // ------ Sender methods ------
   if obj_type == IRTY_SENDER {
     if method == "send" {
       val_reg = lower_expr(ctx, args.get(0))
@@ -1483,7 +1485,7 @@ lower_method_call(ctx:I expr:I) I {
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
-  // ── Receiver methods ──
+  // ------ Receiver methods ------
   else if obj_type == IRTY_RECEIVER {
     if method == "recv" {
       dest = ctx_fresh_reg(ctx)
@@ -1493,7 +1495,7 @@ lower_method_call(ctx:I expr:I) I {
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
-  // ── JoinHandle methods ──
+  // ------ JoinHandle methods ------
   else if obj_type == IRTY_JOIN_HANDLE {
     if method == "join" {
       ctx_emit(ctx, ir_thread_join(obj_reg))
@@ -1504,7 +1506,7 @@ lower_method_call(ctx:I expr:I) I {
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
-  // ── Mutex methods ──
+  // ------ Mutex methods ------
   else if obj_type == IRTY_MUTEX {
     if method == "lock" {
       dest = ctx_fresh_reg(ctx)
@@ -1522,32 +1524,32 @@ lower_method_call(ctx:I expr:I) I {
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
-  // ── Array methods ──
+  // ------ Array methods ------
   else if obj_type == IRTY_ARRAY {
     lower_array_method(ctx, obj_reg, method, args)
   }
 
-  // ── String methods ──
+  // ------ String methods ------
   else if obj_type == IRTY_STR {
     lower_string_method(ctx, obj_reg, method, args)
   }
 
-  // ── Map methods ──
+  // ------ Map methods ------
   else if obj_type == IRTY_MAP {
     lower_map_method(ctx, obj_reg, method, args)
   }
 
-  // ── JSON methods ──
+  // ------ JSON methods ------
   else if obj_type == IRTY_JSON {
     lower_json_method(ctx, obj_reg, method, args)
   }
 
-  // ── HTTP Response methods ──
+  // ------ HTTP Response methods ------
   else if obj_type == IRTY_HTTP_RESP {
     lower_http_resp_method(ctx, obj_reg, method, args)
   }
 
-  // ── HTTP Server methods ──
+  // ------ HTTP Server methods ------
   else if obj_type == IRTY_HTTP_SERVER {
     if method == "accept" {
       dest = ctx_fresh_reg(ctx)
@@ -1557,17 +1559,17 @@ lower_method_call(ctx:I expr:I) I {
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
-  // ── HTTP Request methods ──
+  // ------ HTTP Request methods ------
   else if obj_type == IRTY_HTTP_REQ {
     lower_http_req_method(ctx, obj_reg, method, args)
   }
 
-  // ── Result methods ──
+  // ------ Result methods ------
   else if obj_type == IRTY_RESULT {
     lower_result_method(ctx, obj_reg, method, args)
   }
 
-  // ── Int methods (opaque pointers — arrays, maps, strings stored as i64) ──
+  // ------ Int methods (opaque pointers --- arrays, maps, strings stored as i64) ------
   else if obj_type == IRTY_INT {
     // Dispatch common methods for Int-typed values
     if method == "len" {
@@ -1583,7 +1585,7 @@ lower_method_call(ctx:I expr:I) I {
       dest
     } else if method == "push" {
       arg_reg = lower_expr(ctx, args.get(0))
-      ctx_emit(ctx, ir_inst2(IR_ARRAY_PUSH, 0, obj_reg, arg_reg))
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, obj_reg, arg_reg))
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_const(dest, 0))
       ctx_set_reg_type(ctx, dest, IRTY_INT)
@@ -1736,11 +1738,11 @@ lower_method_call(ctx:I expr:I) I {
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
-  // ── Struct/Enum user-defined methods (fallback) ──
+  // ------ Struct/Enum user-defined methods (fallback) ------
   else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
 
-// ── lower_method_fallback (user-defined struct/enum methods) ────
+// ------ lower_method_fallback (user-defined struct/enum methods) ------------
 lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
   // Mangle name as "Type_method" or "module__Type__method" for module context
   type_name = ctx_get_struct_name(ctx, obj_reg)
@@ -1769,7 +1771,7 @@ lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
   dest
 }
 
-// ── lower_array_method ──────────────────────────────────────────
+// ------ lower_array_method ------------------------------------------------------------------------------------------------------------------------------
 lower_array_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "len" {
     dest = ctx_fresh_reg(ctx)
@@ -1872,7 +1874,7 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
-// ── lower_string_method ─────────────────────────────────────────
+// ------ lower_string_method ---------------------------------------------------------------------------------------------------------------------------
 lower_string_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "len" {
     dest = ctx_fresh_reg(ctx)
@@ -1955,7 +1957,7 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
-// ── lower_map_method ────────────────────────────────────────────
+// ------ lower_map_method ------------------------------------------------------------------------------------------------------------------------------------
 lower_map_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "get" {
     key_reg = lower_expr(ctx, args.get(0))
@@ -2001,7 +2003,7 @@ lower_map_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
-// ── lower_json_method ───────────────────────────────────────────
+// ------ lower_json_method ---------------------------------------------------------------------------------------------------------------------------------
 lower_json_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "get" {
     key_reg = lower_expr(ctx, args.get(0))
@@ -2072,7 +2074,7 @@ lower_json_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
-// ── lower_http_resp_method ──────────────────────────────────────
+// ------ lower_http_resp_method ------------------------------------------------------------------------------------------------------------------
 lower_http_resp_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "status" {
     dest = ctx_fresh_reg(ctx)
@@ -2103,7 +2105,7 @@ lower_http_resp_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
-// ── lower_http_req_method ───────────────────────────────────────
+// ------ lower_http_req_method ---------------------------------------------------------------------------------------------------------------------
 lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "path" {
     dest = ctx_fresh_reg(ctx)
@@ -2215,7 +2217,7 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
-// ── lower_result_method ─────────────────────────────────────────
+// ------ lower_result_method ---------------------------------------------------------------------------------------------------------------------------
 lower_result_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "is_ok" {
     dest = ctx_fresh_reg(ctx)
@@ -2252,7 +2254,7 @@ lower_result_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
-// ── lower_field_access ──────────────────────────────────────────
+// ------ lower_field_access ------------------------------------------------------------------------------------------------------------------------------
 lower_field_access(ctx:I expr:I) I {
   object = load64(expr + 8)
   field = load64(expr + 16)
@@ -2317,7 +2319,7 @@ lower_field_access(ctx:I expr:I) I {
   }
 }
 
-// ── lower_method_call_direct (helper for synthetic method calls) ─
+// ------ lower_method_call_direct (helper for synthetic method calls) ---
 lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
   obj_type = ctx_get_reg_type(ctx, obj_reg)
 
@@ -2340,7 +2342,7 @@ lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
   else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
 
-// ── lower_if_expr ───────────────────────────────────────────────
+// ------ lower_if_expr ---------------------------------------------------------------------------------------------------------------------------------------------
 lower_if_expr(ctx:I expr:I) I {
   cond = load64(expr + 8)
   then_stmts = load64(expr + 16)
@@ -2353,31 +2355,37 @@ lower_if_expr(ctx:I expr:I) I {
   else_label = ctx_fresh_label(ctx)
   merge_label = ctx_fresh_label(ctx)
 
+  // Alloca for the result (avoids PHI predecessor tracking issues)
+  result_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(result_ptr))
+
   ctx_emit(ctx, ir_branch(cond_reg, then_label, else_label))
 
   // Then branch
   ctx_emit(ctx, ir_label(then_label))
   lower_stmts(ctx, then_stmts)
   then_reg = lower_expr(ctx, then_expr)
+  ctx_emit(ctx, ir_store(result_ptr, then_reg))
   ctx_emit(ctx, ir_jump(merge_label))
 
   // Else branch
   ctx_emit(ctx, ir_label(else_label))
   lower_stmts(ctx, else_stmts)
   else_reg = lower_expr(ctx, else_expr)
+  ctx_emit(ctx, ir_store(result_ptr, else_reg))
   ctx_emit(ctx, ir_jump(merge_label))
 
-  // Merge
+  // Merge: load from alloca instead of PHI
   ctx_emit(ctx, ir_label(merge_label))
   dest = ctx_fresh_reg(ctx)
-  ctx_emit(ctx, ir_phi(dest, then_reg, then_label, else_reg, else_label))
+  ctx_emit(ctx, ir_load(dest, result_ptr))
   // Take type from then branch
   tty = ctx_get_reg_type(ctx, then_reg)
   ctx_set_reg_type(ctx, dest, if tty != 0 { tty } else { IRTY_INT })
   dest
 }
 
-// ── lower_match ─────────────────────────────────────────────────
+// ------ lower_match ---------------------------------------------------------------------------------------------------------------------------------------------------
 lower_match(ctx:I expr:I) I {
   scrutinee = load64(expr + 8)
   arms = load64(expr + 16)
@@ -2436,7 +2444,7 @@ lower_match(ctx:I expr:I) I {
       ctx_emit(ctx, ir_label(next_label))
       0
     } else {
-      // Last arm — always taken
+      // Last arm --- always taken
       ctx_emit(ctx, ir_jump(arm_label))
       ctx_emit(ctx, ir_label(arm_label))
 
@@ -2461,7 +2469,7 @@ lower_match(ctx:I expr:I) I {
   result_reg
 }
 
-// ── lower_match_lookup_tag ──────────────────────────────────────
+// ------ lower_match_lookup_tag ------------------------------------------------------------------------------------------------------------------
 // Look up the tag index for a variant name from enum_defs.
 // enum_defs is Map: enum_name -> variants_array
 // Each variant entry array: [tag_index, num_data, field_type1, ...]
@@ -2495,7 +2503,7 @@ lower_match_lookup_tag(ctx:I scrutinee_reg:I variant_name:I) I {
   if tmap != 0 && mhas(tmap, variant_name) { mget(tmap, variant_name) } else { 0 }
 }
 
-// ── lower_match_bindings ────────────────────────────────────────
+// ------ lower_match_bindings ------------------------------------------------------------------------------------------------------------------------
 lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
   // Look up field types from variant_fields_map
   vfmap = load64(ctx + 104)
@@ -2519,7 +2527,7 @@ lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
   0
 }
 
-// ── lower_lambda ────────────────────────────────────────────────
+// ------ lower_lambda ------------------------------------------------------------------------------------------------------------------------------------------------
 // Compile lambda body as a lifted function and emit FnRef.
 // Handles both non-capturing and capturing lambdas.
 lower_lambda(ctx:I expr:I) I {
@@ -2598,7 +2606,7 @@ lower_lambda(ctx:I expr:I) I {
     0
   }
 
-  // Lower body statements — last statement is return value
+  // Lower body statements --- last statement is return value
   bj := 0
   while bj < body_stmts.len() {
     is_last = bj == body_stmts.len() - 1
@@ -2781,7 +2789,7 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
   0
 }
 
-// ── lower_array_lit ─────────────────────────────────────────────
+// ------ lower_array_lit ---------------------------------------------------------------------------------------------------------------------------------------
 lower_array_lit(ctx:I expr:I) I {
   elements = load64(expr + 8)
 
@@ -2801,7 +2809,7 @@ lower_array_lit(ctx:I expr:I) I {
   dest
 }
 
-// ── lower_struct_lit ────────────────────────────────────────────
+// ------ lower_struct_lit ------------------------------------------------------------------------------------------------------------------------------------
 lower_struct_lit(ctx:I expr:I) I {
   name = load64(expr + 8)
   field_names = load64(expr + 16)
@@ -2851,7 +2859,7 @@ lower_struct_lit(ctx:I expr:I) I {
   dest
 }
 
-// ── lower_tuple_lit ─────────────────────────────────────────────
+// ------ lower_tuple_lit ---------------------------------------------------------------------------------------------------------------------------------------
 lower_tuple_lit(ctx:I expr:I) I {
   elements = load64(expr + 8)
   num_fields = elements.len()
@@ -2870,7 +2878,7 @@ lower_tuple_lit(ctx:I expr:I) I {
   dest
 }
 
-// ── lower_enum_variant ──────────────────────────────────────────
+// ------ lower_enum_variant ------------------------------------------------------------------------------------------------------------------------------
 lower_enum_variant(ctx:I expr:I) I {
   enum_name = load64(expr + 8)
   variant_name = load64(expr + 16)
@@ -2913,7 +2921,7 @@ lower_enum_variant(ctx:I expr:I) I {
   dest
 }
 
-// ── lower_spawn ─────────────────────────────────────────────────
+// ------ lower_spawn ---------------------------------------------------------------------------------------------------------------------------------------------------
 lower_spawn(ctx:I expr:I) I {
   func_name = load64(expr + 8)
   args = load64(expr + 16)
@@ -2932,7 +2940,7 @@ lower_spawn(ctx:I expr:I) I {
   dest
 }
 
-// ── lower_mutex ─────────────────────────────────────────────────
+// ------ lower_mutex ---------------------------------------------------------------------------------------------------------------------------------------------------
 lower_mutex(ctx:I expr:I) I {
   value_expr = load64(expr + 8)
   val_reg = lower_expr(ctx, value_expr)
@@ -2942,16 +2950,16 @@ lower_mutex(ctx:I expr:I) I {
   dest
 }
 
-// ── lower_array_create ──────────────────────────────────────────
+// ------ lower_array_create ------------------------------------------------------------------------------------------------------------------------------
 lower_array_create(ctx:I expr:I) I {
-  // elem_type_ptr = load64(expr + 8) — used only for type tracking
+  // elem_type_ptr = load64(expr + 8) --- used only for type tracking
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
   ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
   dest
 }
 
-// ── ir_type_for_return ──────────────────────────────────────────
+// ------ ir_type_for_return ------------------------------------------------------------------------------------------------------------------------------
 // Convert a type name string to an IrType tag for return type tracking.
 ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
   if type_name == 0 { IRTY_INT }
@@ -2987,14 +2995,14 @@ ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
   else { IRTY_INT }
 }
 
-// ── map_has helper ──────────────────────────────────────────────
+// ------ map_has helper ------------------------------------------------------------------------------------------------------------------------------------------
 // Check if a Map contains a key (returns 1 or 0)
 map_has(m:I key:I) I {
   v = mget(m, key)
   if v != 0 { 1 } else { 0 }
 }
 
-// ── struct_size_for_param ───────────────────────────────────────
+// ------ struct_size_for_param ---------------------------------------------------------------------------------------------------------------------
 // Returns number of fields if type is a struct, tag+max_data if enum,
 // element count if tuple, 0 for scalars.
 struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
@@ -3003,7 +3011,7 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
     fields = mget(struct_defs, type_name)
     fields.len()
   }
-  // Check enum — return 1 + max data fields across variants
+  // Check enum --- return 1 + max data fields across variants
   else if map_has(enum_defs, type_name) == 1 {
     variants = mget(enum_defs, type_name)
     max_data := 0
@@ -3018,7 +3026,7 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
     }
     1 + max_data
   }
-  // Check tuple — count elements from "(I I I)"
+  // Check tuple --- count elements from "(I I I)"
   else if type_name.sw("(") {
     // Count spaces + 1 for number of tuple elements
     inner_len = slen(type_name) - 2
@@ -3038,7 +3046,7 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
   else { 0 }
 }
 
-// ── lower_function_body ─────────────────────────────────────────
+// ------ lower_function_body ---------------------------------------------------------------------------------------------------------------------------
 // Lower a single function's body, handling last-statement-as-return.
 // Returns an IrFunction pointer.
 lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I vtag_map:I vfields_map:I fn_ret_snames:I module_name:I local_fn_set:I imported_fn_names:I) I {
@@ -3104,7 +3112,7 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
     0
   }
 
-  // Lower body statements — last statement is treated as return value
+  // Lower body statements --- last statement is treated as return value
   body = load64(func + 24)  // Array of Stmt pointers
   j := 0
   while j < body.len() {
@@ -3154,14 +3162,22 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
   result_arr
 }
 
-// ── lower ───────────────────────────────────────────────────────
+// ------ lower ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Top-level entry point: lower a parsed Program to an IrModule.
 lower(program:I module_name:I module_fn_ret_types:I) I {
   lower_with_extra_structs(program, module_name, module_fn_ret_types, 0)
 }
 
-// ── lower_with_extra_structs ────────────────────────────────────
+lower_with_globals(program:I module_name:I module_fn_ret_types:I extra_globals:I) I {
+  lower_full(program, module_name, module_fn_ret_types, 0, extra_globals)
+}
+
+// ------ lower_with_extra_structs ------------------------------------------------------------------------------------------------------------
 lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I) I {
+  lower_full(program, module_name, module_fn_ret_types, extra_struct_defs, 0)
+}
+
+lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I extra_globals:I) I {
   // 1. Collect struct definitions: name -> field names array
   struct_defs = M()
   // Merge extra_struct_defs first
@@ -3353,9 +3369,10 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     0
   }
 
-  // 4. Collect global variable names and types
+  // 4. Collect global variable names, types, and init values
   globals_arr = array<I>()
   global_names = M()
+  global_init_vals = M()
   prog_globals = load64(program + 8)  // Array of GlobalDef pointers
   nglobals = prog_globals.len()
   gi := 0
@@ -3364,15 +3381,36 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     gname = load64(gdef)
     gvalue = load64(gdef + 8)
     globals_arr.push(gname)
-    // Determine type from value expression tag
+    // Determine type and extract init value from value expression
     vtag = load64(gvalue)
-    if vtag == EX_INT_LIT { mset(global_names, gname, IRTY_INT) }
+    if vtag == EX_INT_LIT {
+      mset(global_names, gname, IRTY_INT)
+      mset(global_init_vals, gname, load64(gvalue + 8))
+    }
     if vtag == EX_FLOAT_LIT { mset(global_names, gname, IRTY_FLOAT) }
-    if vtag == EX_BOOL_LIT { mset(global_names, gname, IRTY_BOOL) }
+    if vtag == EX_BOOL_LIT {
+      mset(global_names, gname, IRTY_BOOL)
+      bval = load64(gvalue + 8)
+      mset(global_init_vals, gname, bval)
+    }
     if vtag == EX_STRING_LIT { mset(global_names, gname, IRTY_STR) }
     if vtag != EX_INT_LIT && vtag != EX_FLOAT_LIT && vtag != EX_BOOL_LIT && vtag != EX_STRING_LIT { mset(global_names, gname, IRTY_INT) }
     gi = gi + 1
     0
+  }
+
+  // Merge extra globals from imported modules (so we can distinguish globals from functions)
+  if extra_globals != 0 {
+    eg_keys = extra_globals.keys()
+    egi := 0
+    while egi < eg_keys.len() {
+      egk = eg_keys.get(egi)
+      if mhas(global_names, egk) == 0 {
+        mset(global_names, egk, mget(extra_globals, egk))
+      }
+      egi = egi + 1
+      0
+    }
   }
 
   // 5. Lower each function
@@ -3426,5 +3464,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
   }
 
   // 7. Build and return IrModule
-  make_ir_module(ir_functions, globals_arr, struct_defs)
+  mod = make_ir_module(ir_functions, globals_arr, struct_defs)
+  store64(mod + 24, global_init_vals)
+  mod
 }

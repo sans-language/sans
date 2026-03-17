@@ -1,4 +1,4 @@
-// ── Sans Self-Hosted Compiler Driver ─────────────────────────────
+// ------ Sans Self-Hosted Compiler Driver ---------------------------------------------------------------------------------------
 // CLI entry point: import resolution, parsing, typeck, IR, codegen, linking
 
 import "constants"
@@ -7,8 +7,38 @@ import "parser"
 import "typeck"
 import "ir"
 import "codegen"
+g g_merged = 0
+g g_file = 0
+g g_out = 0
+g g_src = 0
+g g_ll = 0
+g g_link_ll = 0
+g g_link_out = 0
+g g_link_src = 0
+g g_llc = 0
 
-// ── String helpers ──────────────────────────────────────────────
+
+// ------ Find llc binary ---------------------------------------------------------------------------------------------------------------------------------------
+find_llc() S {
+  // Try common llc locations (Homebrew on macOS)
+  if fexists("/opt/homebrew/opt/llvm@17/bin/llc") == 1 { return "/opt/homebrew/opt/llvm@17/bin/llc" }
+  if fexists("/usr/local/opt/llvm@17/bin/llc") == 1 { return "/usr/local/opt/llvm@17/bin/llc" }
+  if fexists("/opt/homebrew/opt/llvm/bin/llc") == 1 { return "/opt/homebrew/opt/llvm/bin/llc" }
+  if fexists("/usr/local/opt/llvm/bin/llc") == 1 { return "/usr/local/opt/llvm/bin/llc" }
+  if fexists("/usr/bin/llc") == 1 { return "/usr/bin/llc" }
+  // Use brew to discover LLVM path
+  sys("brew --prefix llvm@17 > /tmp/.sans_llvm_prefix 2>/dev/null || brew --prefix llvm > /tmp/.sans_llvm_prefix 2>/dev/null")
+  prefix = fr("/tmp/.sans_llvm_prefix")
+  if slen(prefix) > 1 {
+    // Trim trailing newline
+    llc_path = prefix.trim() + "/bin/llc"
+    if fexists(llc_path) == 1 { return llc_path }
+  }
+  // Fallback
+  "llc"
+}
+
+// ------ String helpers ------------------------------------------------------------------------------------------------------------------------------------------
 
 // Find last occurrence of character ch in string s, return index or -1
 find_last(s:S ch:I) I {
@@ -44,10 +74,10 @@ strip_ext(path:S) S {
   if len > 5 { path.substring(0, len - 5) } else { path }
 }
 
-// ── ResolvedModule (24 bytes) ───────────────────────────────────
-// offset 0:  name (I) — module name string
-// offset 8:  path (I) — full file path string
-// offset 16: program (I) — parsed Program pointer
+// ------ ResolvedModule (24 bytes) ---------------------------------------------------------------------------------------------------------
+// offset 0:  name (I) --- module name string
+// offset 8:  path (I) --- full file path string
+// offset 16: program (I) --- parsed Program pointer
 
 make_resolved_module(name:S path:S program:I) I {
   m = alloc(24)
@@ -61,7 +91,7 @@ rm_name(m:I) S = load64(m)
 rm_path(m:I) S = load64(m + 8)
 rm_program(m:I) I = load64(m + 16)
 
-// ── Import Resolution ───────────────────────────────────────────
+// ------ Import Resolution ---------------------------------------------------------------------------------------------------------------------------------
 
 resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   // Resolve path relative to base_dir
@@ -133,7 +163,7 @@ resolve_imports(entry_path:S) I {
   resolved
 }
 
-// ── Build Pipeline ──────────────────────────────────────────────
+// ------ Build Pipeline ------------------------------------------------------------------------------------------------------------------------------------------
 
 build(source_path:S output_path:S) I {
   // 1. Resolve imports (topological order, deps first)
@@ -253,20 +283,42 @@ build_step6_inner(structs_m:I extra_struct_defs:I) I {
 build_step7(modules:I program:I module_fn_ret_types:I extra_struct_defs:I output_path:I source_path:I) I {
   all_functions = array<I>()
   all_globals = array<I>()
+  all_ginits = M()
+  // Track all module globals for cross-module references
+  all_module_globals = M()  // name -> IRTY type tag
   i := 0
   while i < modules.len() {
     mod = modules.get(i)
     mod_n = rm_name(mod)
     mod_prog = rm_program(mod)
-    ir_mod = lower(mod_prog, mod_n, module_fn_ret_types)
+    // Build extra_globals for this module from all previously seen globals
+    ir_mod = lower_with_globals(mod_prog, mod_n, module_fn_ret_types, all_module_globals)
     mod_funcs = irm_functions(ir_mod)
     merge_arr(all_functions, mod_funcs)
     mod_globals = irm_globals(ir_mod)
     merge_arr(all_globals, mod_globals)
+    // Register this module's globals for future modules to reference
+    mgi := 0
+    while mgi < mod_globals.len() {
+      mgname = mod_globals.get(mgi)
+      mset(all_module_globals, mgname, 1)  // type=INT (simplified)
+      mgi = mgi + 1
+      0
+    }
+    // Merge global init values
+    mod_ginits = irm_global_inits(ir_mod)
+    mod_gkeys = mod_ginits.keys()
+    gki := 0
+    while gki < mod_gkeys.len() {
+      gk = mod_gkeys.get(gki)
+      mset(all_ginits, gk, mget(mod_ginits, gk))
+      gki = gki + 1
+      0
+    }
     i = i + 1
     wfd(2, ".")
   }
-  build_step8(program, module_fn_ret_types, extra_struct_defs, all_functions, all_globals, output_path, source_path)
+  build_step8(program, module_fn_ret_types, extra_struct_defs, all_functions, all_globals, all_ginits, all_module_globals, output_path, source_path)
 }
 
 // Helper: merge src array into dst (one while loop)
@@ -281,26 +333,34 @@ merge_arr(dst:I src:I) I {
 }
 
 // Step 8: IR lower entry point + merge main into all_functions/all_globals + finalize
-build_step8(program:I module_fn_ret_types:I extra_struct_defs:I all_functions:I all_globals:I output_path:I source_path:I) I {
+build_step8(program:I module_fn_ret_types:I extra_struct_defs:I all_functions:I all_globals:I all_ginits:I all_module_globals:I output_path:I source_path:I) I {
   main_ir = if extra_struct_defs.keys().len() > 0 {
-    lower_with_extra_structs(program, 0, module_fn_ret_types, extra_struct_defs)
+    lower_full(program, 0, module_fn_ret_types, extra_struct_defs, all_module_globals)
   } else {
-    lower(program, 0, module_fn_ret_types)
+    lower_with_globals(program, 0, module_fn_ret_types, all_module_globals)
   }
   main_globals = irm_globals(main_ir)
   merge_arr(all_globals, main_globals)
   main_funcs = irm_functions(main_ir)
   merge_arr(all_functions, main_funcs)
+  // Merge main module's global init values
+  main_ginits = irm_global_inits(main_ir)
+  main_gkeys = main_ginits.keys()
+  mgki := 0
+  while mgki < main_gkeys.len() {
+    mgk = main_gkeys.get(mgki)
+    mset(all_ginits, mgk, mget(main_ginits, mgk))
+    mgki = mgki + 1
+    0
+  }
   main_struct_defs = irm_struct_defs(main_ir)
   merged = make_ir_module(all_functions, all_globals, main_struct_defs)
+  store64(merged + 24, all_ginits)
   g_merged = merged
   0
 }
 
 
-g g_link_ll = 0
-g g_link_out = 0
-g g_link_src = 0
 
 do_codegen_and_link(merged:I ll_path:S output_path:S source_path:S) I {
   // Store link params in globals since post-compile_to_ll code may not execute
@@ -308,14 +368,21 @@ do_codegen_and_link(merged:I ll_path:S output_path:S source_path:S) I {
   g_link_out = output_path
   g_link_src = source_path
   compile_to_ll(merged, ll_path)
-  // This may be unreachable — do_link is also called from compile_to_ll_impl's last iteration
+  // This may be unreachable --- do_link is also called from compile_to_ll_impl's last iteration
   do_link(ll_path, output_path, source_path)
 }
 
 do_link(ll_path:S output_path:S source_path:S) I {
+  // Find llc binary
+  if g_llc == 0 { g_llc = find_llc() }
+  llc = g_llc
+
   // 11. Invoke llc to produce object file
   obj_path = output_path + ".o"
-  sys("llc -filetype=obj -O2 -o " + obj_path + " " + ll_path)
+  sys(llc + " -filetype=obj -O2 -o " + obj_path + " " + ll_path)
+
+  // Save main .ll for debugging
+  sys("cp " + ll_path + " /tmp/sans_main_debug.ll")
 
   // 12. Compile runtime
   runtime_dir_cwd = "runtime"
@@ -353,7 +420,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
     rir = lower(rprog, 0, empty_fn_ret)
     r_ll = "/tmp/sans_" + rname + "_runtime.ll"
     r_cg = compile_to_ll_runtime(rir, r_ll)
-    sys("llc -filetype=obj -O2 -o " + o_path + " " + r_ll)
+    sys(llc + " -filetype=obj -O2 -o " + o_path + " " + r_ll)
     sys("rm -f " + r_ll)
     runtime_o_paths.push(o_path)
     ri = ri + 1
@@ -383,7 +450,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   0
 }
 
-// ── Main Entry Point ────────────────────────────────────────────
+// ------ Main Entry Point ------------------------------------------------------------------------------------------------------------------------------------
 
 main() I {
   argv = args()
@@ -422,9 +489,14 @@ main() I {
     g_file = file
     g_out = out
     g_src = file
-    // All steps in a single-iteration loop (workaround for post-call unreachable code)
+    // All steps in a single-iteration loop
     step := 0
     while step < 4 {
+      wfd(2, "STEP=")
+      wfd(2, str(step))
+      wfd(2, " FILE=")
+      wfd(2, g_file)
+      wfd(2, "\n")
       if step == 0 { build(g_file, g_out) }
       if step == 1 { g_ll = g_out + ".ll"
         compile_to_ll(g_merged, g_ll) }
@@ -455,11 +527,6 @@ main() I {
   } }
 }
 
-g g_merged = 0
-g g_file = 0
-g g_out = 0
-g g_src = 0
-g g_ll = 0
 
 build_and_link(file:S out:S) I {
   build(file, out)
