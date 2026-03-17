@@ -251,6 +251,14 @@ build(source_path:S output_path:S) I {
       fi = fi + 1
       0
     }
+    // Merge module globals
+    mod_globals = irm_globals(ir_mod)
+    mgi := 0
+    while mgi < mod_globals.len() {
+      all_globals.push(mod_globals.get(mgi))
+      mgi = mgi + 1
+      0
+    }
     i = i + 1
     0
   }

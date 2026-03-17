@@ -235,7 +235,7 @@ irm_struct_defs(m:I) I = load64(m + 16)
 // offset 136: fn_ret_struct_names (I) — Map: func name -> struct name (for struct-returning fns)
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(144)
+  ctx = alloc(152)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -287,6 +287,9 @@ ctx_lifted_fns(ctx:I) I = load64(ctx + 112)
 ctx_lambda_counter(ctx:I) I = load64(ctx + 120)
 ctx_closure_info(ctx:I) I = load64(ctx + 128)
 ctx_fn_ret_struct_names(ctx:I) I = load64(ctx + 136)
+ctx_module_name(ctx:I) I = load64(ctx + 144)
+ctx_set_module_name(ctx:I v:I) I { store64(ctx + 144, v)
+  0 }
 ctx_set_lambda_counter(ctx:I v:I) I { store64(ctx + 120, v)
   0 }
 ctx_fresh_lambda_id(ctx:I) I {
@@ -869,8 +872,32 @@ lower_call_user(ctx:I name:I args:I) I {
       0
     }
     dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_call(dest, name, arg_regs))
-    rt = ctx_get_fn_ret_type(ctx, name)
+    // Check if a mangled version exists (module__name pattern) for intra-module calls
+    call_name = name
+    frt_map = ctx_fn_ret_types(ctx)
+    // Always try to find the mangled version first
+    frt_keys = frt_map.keys()
+    fki := 0
+    while fki < frt_keys.len() {
+      fk = frt_keys.get(fki)
+      nlen = slen(name)
+      fklen = slen(fk)
+      if fklen > nlen + 2 {
+        suffix = fk.substring(fklen - nlen, fklen)
+        sep = fk.substring(fklen - nlen - 2, fklen - nlen)
+        if suffix == name {
+          if sep == "__" {
+            call_name = fk
+            fki = frt_keys.len()
+          }
+        }
+      }
+      fki = fki + 1
+      0
+    }
+    ctx_emit(ctx, ir_call(dest, call_name, arg_regs))
+    rt = ctx_get_fn_ret_type(ctx, call_name)
+    if rt == 0 { rt = ctx_get_fn_ret_type(ctx, name) }
     ctx_set_reg_type(ctx, dest, if rt != 0 { rt } else { IRTY_INT })
     // If return type is struct, propagate struct name for field access
     if rt == IRTY_STRUCT {
@@ -2467,31 +2494,31 @@ lower_lambda(ctx:I expr:I) I {
 find_captures_in_stmts(stmts:I param_set:I ctx:I) I {
   result = array<I>()
   seen = M()
-  _find_captures_stmts(stmts, param_set, ctx, result, seen, M())
+  find_captures_stmts(stmts, param_set, ctx, result, seen, M())
   result
 }
 
-_find_captures_stmts(stmts:I param_set:I ctx:I result:I seen:I local_set:I) I {
+find_captures_stmts(stmts:I param_set:I ctx:I result:I seen:I local_set:I) I {
   i := 0
   while i < stmts.len() {
-    _find_captures_stmt(stmts.get(i), param_set, ctx, result, seen, local_set)
+    find_captures_stmt(stmts.get(i), param_set, ctx, result, seen, local_set)
     i = i + 1
     0
   }
   0
 }
 
-_find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
+find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
   stag = load64(stmt)
-  if stag == ST_EXPR { _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  if stag == ST_EXPR { find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
   else if stag == ST_LET {
     val = load64(stmt + 16)
-    _find_captures_expr(val, param_set, ctx, result, seen, local_set)
+    find_captures_expr(val, param_set, ctx, result, seen, local_set)
     // Add the let-bound name to local_set so it's not treated as a capture
     mset(local_set, load64(stmt + 8), 1)
   }
   else if stag == ST_ASSIGN {
-    _find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
     // The assigned name might itself be a capture
     aname = load64(stmt + 8)
     if mget(param_set, aname) == 0 && mget(local_set, aname) == 0 && mget(seen, aname) == 0 && ctx_get_local(ctx, aname) != 0 {
@@ -2499,20 +2526,20 @@ _find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
       result.push(aname)
     }
   }
-  else if stag == ST_RETURN { _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  else if stag == ST_RETURN { find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
   else if stag == ST_IF {
-    _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
-    _find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
+    find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
     else_stmts = load64(stmt + 24)
-    if else_stmts != 0 { _find_captures_stmts(else_stmts, param_set, ctx, result, seen, local_set) }
+    if else_stmts != 0 { find_captures_stmts(else_stmts, param_set, ctx, result, seen, local_set) }
   }
   else if stag == ST_WHILE {
-    _find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
-    _find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
+    find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
   } else { 0 }
 }
 
-_find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
+find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
   if expr == 0 { return 0 }
   etag = load64(expr)
   if etag == EX_IDENT {
@@ -2524,45 +2551,45 @@ _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
     }
   }
   else if etag == EX_CALL {
-    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
     args = load64(expr + 16)
     ai := 0
     while ai < args.len() {
-      _find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
+      find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
       ai = ai + 1
       0
     }
   }
   else if etag == EX_BINOP {
-    _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
-    _find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
   }
   else if etag == EX_UNARYOP {
-    _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
   }
   else if etag == EX_METHOD_CALL {
-    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
     args = load64(expr + 24)
     ai := 0
     while ai < args.len() {
-      _find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
+      find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
       ai = ai + 1
       0
     }
   }
   else if etag == EX_FIELD_ACCESS {
-    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
   }
   else if etag == EX_IF {
-    _find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
-    _find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
-    _find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
   }
   else if etag == EX_ARRAY_LIT {
     elems = load64(expr + 8)
     ai := 0
     while ai < elems.len() {
-      _find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
+      find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
       ai = ai + 1
       0
     }
@@ -2571,7 +2598,7 @@ _find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
     elems = load64(expr + 8)
     ai := 0
     while ai < elems.len() {
-      _find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
+      find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
       ai = ai + 1
       0
     }
@@ -3043,8 +3070,15 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     ret_type_name = load64(func + 16)
     if ret_type_name != 0 {
       rt = ir_type_for_return(ret_type_name, struct_defs, enum_defs)
-      if IRTY_INT != rt { mset(fn_ret_types, fname, rt) }
-      if rt == IRTY_STRUCT { mset(fn_ret_struct_names, fname, ret_type_name) }
+      if IRTY_INT != rt {
+        mset(fn_ret_types, fname, rt)
+        // Also store with mangled name for intra-module call resolution
+        if module_name != 0 { mset(fn_ret_types, module_name + "__" + fname, rt) }
+      }
+      if rt == IRTY_STRUCT {
+        mset(fn_ret_struct_names, fname, ret_type_name)
+        if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ret_type_name) }
+      }
     }
     fri = fri + 1
     0
@@ -3057,6 +3091,24 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       mk = mkeys.get(mki)
       mset(fn_ret_types, mk, mget(module_fn_ret_types, mk))
       mki = mki + 1
+      0
+    }
+    0
+  }
+
+  // 3b. Register ALL local functions in fn_ret_types with mangled names
+  // This ensures lower_call_user can find intra-module calls
+  if module_name != 0 {
+    lfni := 0
+    while lfni < nfns {
+      lfn = prog_fns.get(lfni)
+      lfname = load64(lfn)
+      mangled_fn = module_name + "__" + lfname
+      // Always register with at least IRTY_INT so the name is findable
+      if mhas(fn_ret_types, mangled_fn) == 0 {
+        mset(fn_ret_types, mangled_fn, IRTY_INT)
+      }
+      lfni = lfni + 1
       0
     }
     0
