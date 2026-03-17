@@ -233,9 +233,12 @@ irm_struct_defs(m:I) I = load64(m + 16)
 // offset 96: variant_tag_map (I) — Map: variant_name -> tag_index
 // offset 104: variant_fields_map (I) — Map: variant_name -> array of field type name strings
 // offset 136: fn_ret_struct_names (I) — Map: func name -> struct name (for struct-returning fns)
+// offset 144: module_name (I) — current module name string (or 0)
+// offset 152: local_fn_set (I) — Map: local function names defined in current module
+// offset 160: imported_fn_names (I) — Map: bare name -> mangled name for imported functions
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(152)
+  ctx = alloc(168)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -289,6 +292,12 @@ ctx_closure_info(ctx:I) I = load64(ctx + 128)
 ctx_fn_ret_struct_names(ctx:I) I = load64(ctx + 136)
 ctx_module_name(ctx:I) I = load64(ctx + 144)
 ctx_set_module_name(ctx:I v:I) I { store64(ctx + 144, v)
+  0 }
+ctx_local_fn_set(ctx:I) I = load64(ctx + 152)
+ctx_set_local_fn_set(ctx:I v:I) I { store64(ctx + 152, v)
+  0 }
+ctx_imported_fn_names(ctx:I) I = load64(ctx + 160)
+ctx_set_imported_fn_names(ctx:I v:I) I { store64(ctx + 160, v)
   0 }
 ctx_set_lambda_counter(ctx:I v:I) I { store64(ctx + 120, v)
   0 }
@@ -872,29 +881,16 @@ lower_call_user(ctx:I name:I args:I) I {
       0
     }
     dest = ctx_fresh_reg(ctx)
-    // Check if a mangled version exists (module__name pattern) for intra-module calls
-    call_name = name
-    frt_map = ctx_fn_ret_types(ctx)
-    // Always try to find the mangled version first
-    frt_keys = frt_map.keys()
-    fki := 0
-    while fki < frt_keys.len() {
-      fk = frt_keys.get(fki)
-      nlen = slen(name)
-      fklen = slen(fk)
-      if fklen > nlen + 2 {
-        suffix = fk.substring(fklen - nlen, fklen)
-        sep = fk.substring(fklen - nlen - 2, fklen - nlen)
-        if suffix == name {
-          if sep == "__" {
-            call_name = fk
-            fki = frt_keys.len()
-          }
-        }
-      }
-      fki = fki + 1
-      0
-    }
+    // Mangle intra-module calls: if we're in a module and this is a local function, prefix with module__
+    // Also check imported_fn_names for cross-module calls
+    mod_name = ctx_module_name(ctx)
+    lfn_set = ctx_local_fn_set(ctx)
+    imp_fns = ctx_imported_fn_names(ctx)
+    call_name = if mod_name != 0 && mhas(lfn_set, name) == 1 {
+      mod_name + "__" + name
+    } else { if imp_fns != 0 && mhas(imp_fns, name) == 1 {
+      mget(imp_fns, name)
+    } else { name } }
     ctx_emit(ctx, ir_call(dest, call_name, arg_regs))
     rt = ctx_get_fn_ret_type(ctx, call_name)
     if rt == 0 { rt = ctx_get_fn_ret_type(ctx, name) }
@@ -1577,9 +1573,19 @@ lower_method_call(ctx:I expr:I) I {
 
 // ── lower_method_fallback (user-defined struct/enum methods) ────
 lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
-  // Mangle name as "Type_method"
+  // Mangle name as "Type_method" or "module__Type__method" for module context
   type_name = ctx_get_struct_name(ctx, obj_reg)
-  mangled = if type_name != 0 { type_name + "_" + method } else { method }
+  base_mangled = if type_name != 0 { type_name + "_" + method } else { method }
+  mod_name = ctx_module_name(ctx)
+  lfn_set = ctx_local_fn_set(ctx)
+  // For impl methods, local_fn_set stores "Type__method" keys
+  impl_key = if type_name != 0 { type_name + "__" + method } else { "" }
+  imp_fns = ctx_imported_fn_names(ctx)
+  mangled = if mod_name != 0 && impl_key != "" && mhas(lfn_set, impl_key) == 1 {
+    mod_name + "__" + type_name + "__" + method
+  } else { if imp_fns != 0 && mhas(imp_fns, base_mangled) == 1 {
+    mget(imp_fns, base_mangled)
+  } else { base_mangled } }
   arg_regs = array<I>()
   arg_regs.push(obj_reg)
   i := 0
@@ -2866,12 +2872,15 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
 // ── lower_function_body ─────────────────────────────────────────
 // Lower a single function's body, handling last-statement-as-return.
 // Returns an IrFunction pointer.
-lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I vtag_map:I vfields_map:I fn_ret_snames:I) I {
+lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I vtag_map:I vfields_map:I fn_ret_snames:I module_name:I local_fn_set:I imported_fn_names:I) I {
   // Create fresh context
   ctx = make_lower_ctx(struct_defs, enum_defs, fn_ret_types, global_names)
   store64(ctx + 96, vtag_map)
   store64(ctx + 104, vfields_map)
   store64(ctx + 136, fn_ret_snames)
+  store64(ctx + 144, module_name)
+  store64(ctx + 152, local_fn_set)
+  store64(ctx + 160, imported_fn_names)
 
   // Set up params
   params_ast = load64(func + 8)   // Array of Param pointers [name@0, type@8]
@@ -3114,6 +3123,67 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     0
   }
 
+  // 3c. Build local_fn_set: map of function names defined in this module
+  local_fn_set = M()
+  if module_name != 0 {
+    lfsi := 0
+    while lfsi < nfns {
+      lfsf = prog_fns.get(lfsi)
+      lfs_name = load64(lfsf)
+      mset(local_fn_set, lfs_name, 1)
+      lfsi = lfsi + 1
+      0
+    }
+    // Also add impl method names as Type__method
+    prog_impls_lfs = load64(program + 48)
+    lfs_ii := 0
+    while lfs_ii < prog_impls_lfs.len() {
+      lfs_impl = prog_impls_lfs.get(lfs_ii)
+      lfs_ttype = load64(lfs_impl + 8)
+      lfs_methods = load64(lfs_impl + 16)
+      lfs_mi := 0
+      while lfs_mi < lfs_methods.len() {
+        lfs_m = lfs_methods.get(lfs_mi)
+        lfs_mname = load64(lfs_m)
+        mset(local_fn_set, lfs_ttype + "__" + lfs_mname, 1)
+        lfs_mi = lfs_mi + 1
+        0
+      }
+      lfs_ii = lfs_ii + 1
+      0
+    }
+    0
+  }
+
+  // 3d. Build imported_fn_names: bare name -> mangled name for cross-module calls
+  imported_fn_names = M()
+  prog_imports = load64(program)  // offset 0 = imports array
+  if prog_imports.len() > 0 && module_fn_ret_types != 0 {
+    // For each key in module_fn_ret_types (format "mod__func"), check if mod is an import
+    mfrt_keys = module_fn_ret_types.keys()
+    imp_ii := 0
+    while imp_ii < prog_imports.len() {
+      imp_name = prog_imports.get(imp_ii)
+      imp_prefix = imp_name + "__"
+      imp_prefix_len = slen(imp_prefix)
+      mfrt_ki := 0
+      while mfrt_ki < mfrt_keys.len() {
+        mfrt_key = mfrt_keys.get(mfrt_ki)
+        if slen(mfrt_key) > imp_prefix_len {
+          if mfrt_key.sw(imp_prefix) {
+            bare_name = mfrt_key.substring(imp_prefix_len, slen(mfrt_key))
+            mset(imported_fn_names, bare_name, mfrt_key)
+          }
+        }
+        mfrt_ki = mfrt_ki + 1
+        0
+      }
+      imp_ii = imp_ii + 1
+      0
+    }
+    0
+  }
+
   // 4. Collect global variable names and types
   globals_arr = array<I>()
   global_names = M()
@@ -3145,7 +3215,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
     fname = load64(func)
     // Handle module name mangling
     func_name = if module_name != 0 { module_name + "__" + fname } else { fname }
-    fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names)
+    fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names)
     // fn_result is [ir_fn, lifted0, lifted1, ...]
     ir_functions.push(fn_result.get(0))
     fri2 := 1
@@ -3171,7 +3241,7 @@ lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_str
       mname = load64(method)
       // Mangle: module__Type__method or Type_method
       mangled = if module_name != 0 { module_name + "__" + target_type + "__" + mname } else { target_type + "_" + mname }
-      mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names)
+      mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names)
       ir_functions.push(mfn_result.get(0))
       mfri := 1
       while mfri < mfn_result.len() {

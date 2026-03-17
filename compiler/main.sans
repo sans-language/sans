@@ -201,9 +201,7 @@ build(source_path:S output_path:S) I {
              if rt_tag == TY_TUPLE { IRTY_TUPLE } else {
              IRTY_INT } } } } } } } } } } } } } } } } } }
       mangled = mod_n + "__" + fname
-      if IRTY_INT != irty {
-        mset(module_fn_ret_types, mangled, irty)
-      }
+      mset(module_fn_ret_types, mangled, irty)
       ki = ki + 1
       0
     }
