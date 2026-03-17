@@ -1247,7 +1247,12 @@ parse_atom(p:I) I {
   }
 
   // Unknown token
-  p("parse error: unexpected token in expression, kind=" + str(kind) + " at pos=" + str(p_pos(p)))
+  pk = 0
+  if p_pos(p) > 0 { pk = tok_kind(p_peek_at(p, -1)) }
+  nk = tok_kind(p_peek_at(p, 1))
+  pv = ""
+  if p_pos(p) > 0 { pv = tok_val(p_peek_at(p, -1)) }
+  p("PARSE ERR kind=" + str(kind) + " pos=" + str(p_pos(p)) + " prev_kind=" + str(pk) + " prev_val=" + pv + " next_kind=" + str(nk))
   exit(1)
   0
 }

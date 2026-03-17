@@ -103,6 +103,8 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
 
   name = mod_name_of(import_path)
   resolved.push(make_resolved_module(name, file_path, program))
+  0
+}
 
 resolve_imports(entry_path:S) I {
   base_dir = dir_of(entry_path)
@@ -151,7 +153,7 @@ build(source_path:S output_path:S) I {
     exports = check_module(mod_prog, mod_exports)
     mset(mod_exports, mod_n, exports)
     i = i + 1
-    0
+    wfd(2, ".")
   }
 
   // 4. Type-check entry point
@@ -204,7 +206,7 @@ build(source_path:S output_path:S) I {
       0
     }
     i = i + 1
-    0
+    wfd(2, ".")
   }
 
   // 6. Build extra_struct_defs from module exports
@@ -227,7 +229,7 @@ build(source_path:S output_path:S) I {
       0
     }
     i = i + 1
-    0
+    wfd(2, ".")
   }
 
   // 7. IR lower each module
@@ -256,7 +258,7 @@ build(source_path:S output_path:S) I {
       0
     }
     i = i + 1
-    0
+    wfd(2, ".")
   }
 
   // 8. IR lower entry point with extra struct defs
@@ -272,7 +274,7 @@ build(source_path:S output_path:S) I {
   while gi < main_globals.len() {
     all_globals.push(main_globals.get(gi))
     gi = gi + 1
-    0
+    wfd(2, ".")
   }
 
   // Merge main functions
@@ -281,7 +283,7 @@ build(source_path:S output_path:S) I {
   while fi2 < main_funcs.len() {
     all_functions.push(main_funcs.get(fi2))
     fi2 = fi2 + 1
-    0
+    wfd(2, ".")
   }
 
   // Get struct defs from main IR
@@ -290,15 +292,18 @@ build(source_path:S output_path:S) I {
   // 9. Create merged IrModule
   merged = make_ir_module(all_functions, all_globals, main_struct_defs)
 
-  // 10. Codegen + link (tail call to separate function)
-  build_finish(merged, output_path + ".ll", output_path, source_path, modules)
+  // 10. Store merged module in global — caller handles codegen+link
+  g_merged = merged
+  0
 }
 
-build_finish(merged:I ll_path:S output_path:S source_path:S modules:I) I {
-  // 10b. Write .ll file
-  cg_result = compile_to_ll(merged, ll_path)
-  write_ll_file(cg_result, ll_path)
+do_codegen_and_link(merged:I ll_path:S output_path:S source_path:S) I {
+  cg = compile_to_ll(merged, ll_path)
+  write_ll_file(cg, ll_path)
+  do_link(ll_path, output_path, source_path)
+}
 
+do_link(ll_path:S output_path:S source_path:S) I {
   // 11. Invoke llc to produce object file
   obj_path = output_path + ".o"
   sys("llc -filetype=obj -O2 -o " + obj_path + " " + ll_path)
@@ -326,6 +331,9 @@ build_finish(merged:I ll_path:S output_path:S source_path:S modules:I) I {
   ri := 0
   while ri < runtime_modules.len() {
     rname = runtime_modules.get(ri)
+    wfd(2, "R:")
+    wfd(2, rname)
+    wfd(2, "\n")
     sans_path = runtime_dir + "/" + rname + ".sans"
     o_path = "/tmp/sans_" + rname + "_runtime.o"
     rsrc = fr(sans_path)
@@ -364,14 +372,8 @@ build_finish(merged:I ll_path:S output_path:S source_path:S modules:I) I {
     0
   }
   p("Built: " + output_path)
-
-// ── Run Command ─────────────────────────────────────────────────
-
-run(source_path:S) I {
-  tmp_out = "/tmp/sans_run_out"
-  build(source_path, tmp_out)
-  sys(tmp_out)
-  sys("rm -f " + tmp_out)
+  0
+}
 
 // ── Main Entry Point ────────────────────────────────────────────
 
@@ -409,12 +411,29 @@ main() I {
 
   if cmd == "build" {
     out = if output == "" { strip_ext(file) } else { output }
-    build(file, out)
+    build_and_link(file, out)
   } else { if cmd == "run" {
-    run(file)
+    tmp_out = "/tmp/sans_run_out"
+    build_and_link(file, tmp_out)
+    sys(tmp_out)
+    sys("rm -f " + tmp_out)
+    0
   } else {
     p("unknown command: " + cmd)
     exit(1)
     0
   } }
+}
+
+g g_merged = 0
+
+build_and_link(file:S out:S) I {
+  build(file, out)
+  do_codegen_and_link_global(out + ".ll", out, file)
+}
+
+do_codegen_and_link_global(ll_path:S output_path:S source_path:S) I {
+  cg = compile_to_ll(g_merged, ll_path)
+  write_ll_file(cg, ll_path)
+  do_link(ll_path, output_path, source_path)
 }
