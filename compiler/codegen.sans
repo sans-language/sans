@@ -174,13 +174,11 @@ join_lines(cg:I) S {
 
 djb2_hash(s:S) I {
   len = slen(s)
-  // Read chunks for content-based hash (no per-byte iteration)
-  w0 = if len >= 8 { load64(s) } else { if len >= 4 { load32(s) } else { if len >= 2 { load16(s) } else { if len >= 1 { load8(s) } else { 0 } } } }
+  // Content hash using multi-byte reads (no per-byte loops)
+  w0 = if len >= 8 { load64(s) } else { if len >= 4 { load32(s) } else { 0 } }
   w1 = if len >= 16 { load64(s + 8) } else { if len >= 8 { load32(s + 4) } else { 0 } }
-  w2 = if len >= 24 { load64(s + 16) } else { 0 }
-  // Also sample end of string for better distribution
-  w3 = if len >= 4 { load32(s + len - 4) } else { 0 }
-  h = len * 5381 + w0 * 33 + w1 * 1049 + w2 * 33751 + w3 * 7
+  w2 = if len >= 8 { load32(s + len - 4) } else { if len >= 4 { load32(s) } else { 0 } }
+  h = len * 5381 + w0 * 33 + w1 * 1049 + w2 * 7919
   if h < 0 { 0 - h } else { h }
 }
 
