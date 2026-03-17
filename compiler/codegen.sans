@@ -172,14 +172,13 @@ join_lines(cg:I) S {
 
 // ------ Hash helper (djb2) ------------------------------------------------------------------------------------------------------------------------------
 
+g djb2_counter = 0
+
 djb2_hash(s:S) I {
-  len = slen(s)
-  // Content hash using multi-byte reads (no per-byte loops)
-  w0 = if len >= 8 { load64(s) } else { if len >= 4 { load32(s) } else { 0 } }
-  w1 = if len >= 16 { load64(s + 8) } else { if len >= 8 { load32(s + 4) } else { 0 } }
-  w2 = if len >= 8 { load32(s + len - 4) } else { if len >= 4 { load32(s) } else { 0 } }
-  h = len * 5381 + w0 * 33 + w1 * 1049 + w2 * 7919
-  if h < 0 { 0 - h } else { h }
+  // Use a monotonic counter — no deduplication but no collisions
+  // Each string constant gets a unique name
+  djb2_counter = djb2_counter + 1
+  djb2_counter
 }
 
 // ------ LLVM string escaping ------------------------------------------------------------------------------------------------------------------------
