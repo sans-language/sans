@@ -720,7 +720,6 @@ s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)
     <h2>Known Limitations</h2>
     <ul>
       <li>No automatic garbage collector &mdash; all heap memory leaked until process exit. Use <code>arena_begin</code>/<code>arena_end</code> for phase-based bulk deallocation.</li>
-      <li>No array bounds checking &mdash; out-of-bounds access is undefined behavior</li>
       <li>Type checker is relaxed for bootstrap compatibility &mdash; some type mismatches (if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time</li>
       <li>Capturing lambdas passed across module boundaries are not yet supported</li>
     </ul>
