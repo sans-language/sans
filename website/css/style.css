@@ -269,6 +269,9 @@ td code {
 table {
   width: 100%;
   border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 thead th {
@@ -561,8 +564,10 @@ footer a:hover {
 .toc-toggle { display: none; }
 
 @media (max-width: 768px) {
-  .container { padding: 0 16px; }
-  .docs-layout { padding: 0 16px; }
+  .container, .container-wide { padding: 0 16px; }
+  .docs-layout { padding: 0 16px; gap: 16px; }
+  .comparison { padding: 32px 0; }
+  body { overflow-x: hidden; }
 
   .hero { padding: 48px 0 40px; }
   .hero h1 { font-size: 28px; }
