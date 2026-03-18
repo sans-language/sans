@@ -7,12 +7,20 @@ A fast, compiled programming language designed for backend and API development. 
 ### Install (macOS)
 
 ```sh
-curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-$(uname -m).tar.gz | tar xz && sudo mv sans /usr/local/bin/
+curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz | tar xz && sudo mv sans /usr/local/bin/
 ```
 
-Requires Xcode Command Line Tools (`xcode-select --install`) for the system linker. If macOS blocks the binary, run `xattr -d com.apple.quarantine /usr/local/bin/sans`.
+Works on Apple Silicon and Intel (via Rosetta). Requires Xcode CLT (`xcode-select --install`). If macOS blocks the binary: `xattr -d com.apple.quarantine /usr/local/bin/sans`.
 
-See the [download page](https://sans-language.org/download) for manual downloads and build-from-source instructions.
+### Install (Linux x86_64)
+
+```sh
+curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz | tar xz && sudo mv sans /usr/local/bin/
+```
+
+Requires `gcc`/`clang`, `libcurl`, `libssl` (`sudo apt install build-essential libcurl4-openssl-dev libssl-dev`).
+
+See the [download page](https://sans-language.github.io/sans/download/) for more options.
 
 ### Usage
 

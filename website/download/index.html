@@ -21,32 +21,15 @@
 
     <h2>macOS</h2>
 
-    <p>Paste the following in your terminal. It detects your architecture automatically.</p>
+    <p>Paste the following in your terminal:</p>
 
     <div class="install-block">
-      <pre id="install-cmd">curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-$(uname -m).tar.gz | tar xz &amp;&amp; sudo mv sans /usr/local/bin/</pre>
+      <pre id="install-cmd">curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz | tar xz &amp;&amp; sudo mv sans /usr/local/bin/</pre>
       <button class="copy-btn" onclick="copyInstall()">Copy</button>
     </div>
 
-    <p>Verify the install:</p>
+    <p>Works on both Apple Silicon and Intel Macs (Intel runs via Rosetta 2). Verify the install:</p>
     <pre><code>sans --version</code></pre>
-
-    <h3>Manual download</h3>
-    <table>
-      <thead><tr><th>Platform</th><th>Arch</th><th>Download</th></tr></thead>
-      <tbody>
-        <tr>
-          <td>macOS 14+ (Sonoma, Sequoia)</td>
-          <td>Apple Silicon (ARM64)</td>
-          <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz">sans-macos-arm64.tar.gz</a></td>
-        </tr>
-        <tr>
-          <td>macOS 13+ (Ventura)</td>
-          <td>Intel (x86_64)</td>
-          <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-macos-x86_64.tar.gz">sans-macos-x86_64.tar.gz</a></td>
-        </tr>
-      </tbody>
-    </table>
 
     <h3>Prerequisites</h3>
     <ul>
@@ -57,8 +40,35 @@
     <p>macOS may block the binary on first run since it is not notarized. To clear the quarantine flag after installing:</p>
     <pre><code>xattr -d com.apple.quarantine /usr/local/bin/sans</code></pre>
 
-    <h2>Linux &amp; Windows</h2>
-    <p>Pre-built binaries for Linux and Windows are not yet available. You can <a href="#build-from-source">build from source</a> or watch the <a href="https://github.com/sans-language/sans/releases">releases page</a> for updates.</p>
+    <h2>Linux</h2>
+
+    <div class="install-block">
+      <pre id="install-cmd-linux">curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz | tar xz &amp;&amp; sudo mv sans /usr/local/bin/</pre>
+      <button class="copy-btn" onclick="copyInstallLinux()">Copy</button>
+    </div>
+
+    <p>x86_64 only. Requires <code>gcc</code> or <code>clang</code> for the system linker, plus <code>libcurl</code> and <code>libssl</code>:</p>
+    <pre><code>sudo apt install build-essential libcurl4-openssl-dev libssl-dev</code></pre>
+
+    <h2>Manual download</h2>
+    <table>
+      <thead><tr><th>Platform</th><th>Arch</th><th>Download</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>macOS</td>
+          <td>ARM64 (Apple Silicon + Intel via Rosetta)</td>
+          <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz">sans-macos-arm64.tar.gz</a></td>
+        </tr>
+        <tr>
+          <td>Linux</td>
+          <td>x86_64</td>
+          <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz">sans-linux-x86_64.tar.gz</a></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Windows</h2>
+    <p>Pre-built binaries for Windows are not yet available. You can <a href="#build-from-source">build from source</a> or watch the <a href="https://github.com/sans-language/sans/releases">releases page</a> for updates.</p>
 
     <h2 id="build-from-source">Build from source</h2>
     <p>Requires: Rust (stable), LLVM 17, Clang/GCC.</p>
@@ -81,15 +91,15 @@ sans run hello.sans     # build + run, cleans up</code></pre>
     <sans-footer base="/sans"></sans-footer>
 
   <script>
-    function copyInstall() {
-      var cmd = document.getElementById('install-cmd').textContent
-        .replace(/&amp;/g, '&');
+    function copyCmd(id, btn) {
+      var cmd = document.getElementById(id).textContent.replace(/&amp;/g, '&');
       navigator.clipboard.writeText(cmd).then(function() {
-        var btn = document.querySelector('.copy-btn');
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
       });
     }
+    function copyInstall() { copyCmd('install-cmd', document.querySelectorAll('.copy-btn')[0]); }
+    function copyInstallLinux() { copyCmd('install-cmd-linux', document.querySelectorAll('.copy-btn')[1]); }
   </script>
 </body>
 </html>
