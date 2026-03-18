@@ -39,6 +39,7 @@
   --peach:    #fe640b;
   --yellow:   #df8e1d;
   --red:      #d20f39;
+  --on-accent: #ffffff;
 }
 
 /* 3. CATPPUCCIN MOCHA — DARK MODE
@@ -59,6 +60,7 @@
   --peach:    #fab387;
   --yellow:   #f9e2af;
   --red:      #f38ba8;
+  --on-accent: #1e1e2e;
 }
 
 /* No-JS dark mode fallback via OS preference */
@@ -79,6 +81,7 @@
     --peach:    #fab387;
     --yellow:   #f9e2af;
     --red:      #f38ba8;
+    --on-accent: #1e1e2e;
   }
 }
 
@@ -177,7 +180,7 @@ a:hover {
 
 .btn-primary {
   background-color: var(--mauve);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .btn-primary:hover {
@@ -442,7 +445,7 @@ td.highlight {
 .tabs > input:nth-of-type(4):checked ~ .tab-bar > label:nth-child(4) .token-badge,
 .tabs > input:nth-of-type(5):checked ~ .tab-bar > label:nth-child(5) .token-badge {
   background-color: var(--mauve);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .tabs > input:nth-of-type(1):checked ~ .tab-panels > .tab-panel:nth-child(1),
