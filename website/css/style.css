@@ -398,6 +398,13 @@ td.highlight {
   border-top: 1px solid var(--surface0);
 }
 
+.example-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--subtext0);
+  margin-bottom: 8px;
+}
+
 .tabs {
   margin-bottom: 32px;
 }
