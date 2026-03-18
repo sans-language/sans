@@ -1,0 +1,14 @@
+// Test scope-based memory management
+// alloc() calls are automatically tracked, freed on function return
+make_buf(val:I) I {
+  buf = alloc(8)
+  store64(buf, val)
+  load64(buf)
+}
+
+main() I {
+  a = make_buf(10)
+  b = make_buf(20)
+  c = make_buf(70)
+  a + b + c
+}

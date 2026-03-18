@@ -1,0 +1,17 @@
+// Test: all heap types created and freed on scope exit
+make_things() I {
+  a = array<I>()
+  a.push(1)
+  a.push(2)
+  m = M()
+  mset(m, "x", 10)
+  j = json_object()
+  j.set("k", json_int(42))
+  r = ok(99)
+  r!
+}
+
+main() I {
+  v = make_things()
+  v
+}

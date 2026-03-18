@@ -1,0 +1,10 @@
+// Test: dynamic strings freed on scope exit
+greet(name:S) S {
+  "hello " + name
+}
+
+main() I {
+  s = greet("world")
+  p(s)
+  0
+}

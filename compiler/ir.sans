@@ -200,17 +200,19 @@ irf_instrs(f:I) I = load64(f + 16)
 irf_ret_type(f:I) I = load64(f + 24)
 irf_param_sizes(f:I) I = load64(f + 32)
 
-// ------ IrModule (24 bytes) ------------------------------------------------------------------------------------------------------------------------
+// ------ IrModule (40 bytes) ------------------------------------------------------------------------------------------------------------------------
 // offset 0:  functions (I) --- Array of IrFunction pointers
 // offset 8:  globals (I) --- Array of global name strings
 // offset 16: struct_defs (I) --- Map: name -> field names array
+// offset 32: fn_ret_types (I) --- Map: func name -> IrType tag
 
 make_ir_module(funcs:I globals:I struct_defs:I) I {
-  m = alloc(32)
+  m = alloc(40)
   store64(m, funcs)
   store64(m + 8, globals)
   store64(m + 16, struct_defs)
   store64(m + 24, M())  // global_init_values map (name -> i64)
+  store64(m + 32, M())
   m
 }
 
@@ -218,6 +220,7 @@ irm_functions(m:I) I = load64(m)
 irm_globals(m:I) I = load64(m + 8)
 irm_struct_defs(m:I) I = load64(m + 16)
 irm_global_inits(m:I) I = load64(m + 24)
+irm_fn_ret_types(m:I) I = load64(m + 32)
 
 // ------ Lowering Context (112 bytes) ---------------------------------------------------------------------------------------------
 // offset 0:  instructions (I) --- Array of instruction pointers
@@ -3479,5 +3482,6 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
   // 7. Build and return IrModule
   mod = make_ir_module(ir_functions, globals_arr, struct_defs)
   store64(mod + 24, global_init_vals)
+  store64(mod + 32, fn_ret_types)
   mod
 }

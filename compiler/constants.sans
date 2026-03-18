@@ -361,6 +361,14 @@ g IR_RC_RETAIN = 213
 g IR_RC_RELEASE = 214
 g IR_RC_COUNT = 215
 
+// Scope GC type tags
+g SCOPE_TAG_RAW = 0
+g SCOPE_TAG_ARRAY = 1
+g SCOPE_TAG_MAP = 2
+g SCOPE_TAG_JSON = 3
+g SCOPE_TAG_RESULT = 4
+g SCOPE_TAG_STRING = 5
+
 // String interpolation part tags
 g INTERP_LITERAL = 0
 g INTERP_IDENT = 1

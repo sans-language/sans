@@ -27,13 +27,15 @@ sans_rc_count(ptr:I) I {
 }
 
 // Scope-based memory management
+// Tracking nodes: 24 bytes [ptr, type_tag, next]
 g rc_alloc_head = 0
 g rc_scope_head = 0
 
-sans_scope_track(ptr:I) I {
-  node = alloc(16)
+sans_scope_track(ptr:I tag:I) I {
+  node = alloc(24)
   store64(node, ptr)
-  store64(node + 8, rc_alloc_head)
+  store64(node + 8, tag)
+  store64(node + 16, rc_alloc_head)
   rc_alloc_head = node
   ptr
 }
@@ -46,6 +48,50 @@ sans_scope_enter() I {
   0
 }
 
+scope_free(ptr:I tag:I) I {
+  if tag == 0 {
+    dealloc(ptr)
+  } else if tag == 1 {
+    dealloc(load64(ptr))
+    dealloc(ptr)
+  } else if tag == 2 {
+    dealloc(load64(ptr))
+    dealloc(load64(ptr + 8))
+    dealloc(load64(ptr + 16))
+    dealloc(ptr)
+  } else if tag == 3 {
+    jt = load64(ptr)
+    if jt == 3 {
+      dealloc(load64(ptr + 8))
+    } else if jt == 4 {
+      arr_ptr = load64(ptr + 8)
+      if arr_ptr != 0 {
+        dealloc(load64(arr_ptr))
+        dealloc(arr_ptr)
+      }
+    } else if jt == 5 {
+      obj_ptr = load64(ptr + 8)
+      if obj_ptr != 0 {
+        dealloc(load64(obj_ptr))
+        dealloc(load64(obj_ptr + 8))
+        dealloc(load64(obj_ptr + 16))
+        dealloc(obj_ptr)
+      }
+    }
+    dealloc(ptr)
+  } else if tag == 4 {
+    rt = load64(ptr)
+    if rt == 1 {
+      err_s = load64(ptr + 16)
+      if err_s != 0 { dealloc(err_s) }
+    }
+    dealloc(ptr)
+  } else if tag == 5 {
+    dealloc(ptr)
+  }
+  0
+}
+
 sans_scope_exit(keep:I) I {
   if rc_scope_head != 0 {
     watermark = load64(rc_scope_head)
@@ -53,15 +99,24 @@ sans_scope_exit(keep:I) I {
     rc_scope_head = load64(rc_scope_head + 8)
     dealloc(old_frame)
 
+    kept_node := 0
     while rc_alloc_head != watermark {
       node = rc_alloc_head
       ptr = load64(node)
-      next = load64(node + 8)
-      if ptr != keep {
-        if ptr != 0 { dealloc(ptr) }
+      tag = load64(node + 8)
+      next = load64(node + 16)
+      if ptr == keep {
+        kept_node = node
+      } else {
+        if ptr != 0 { scope_free(ptr, tag) }
+        dealloc(node)
       }
-      dealloc(node)
       rc_alloc_head = next
+    }
+
+    if kept_node != 0 {
+      store64(kept_node + 16, rc_alloc_head)
+      rc_alloc_head = kept_node
     }
   }
   0

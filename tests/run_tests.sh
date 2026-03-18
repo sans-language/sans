@@ -150,6 +150,10 @@ run_test "tuple_return_typed"        "$REPO_ROOT/tests/fixtures/tuple_return_typ
 run_test "tuple_array"               "$REPO_ROOT/tests/fixtures/tuple_array.sans"               3
 run_test "arena_basic"               "$REPO_ROOT/tests/fixtures/arena_basic.sans"               100
 run_test "arena_nested"              "$REPO_ROOT/tests/fixtures/arena_nested.sans"              141
+run_test "scope_basic"               "$REPO_ROOT/tests/fixtures/scope_basic.sans"               100
+run_test "scope_typed"               "$REPO_ROOT/tests/fixtures/scope_typed.sans"               99
+run_test "scope_nested_calls"        "$REPO_ROOT/tests/fixtures/scope_nested_calls.sans"        60
+run_test "scope_string"              "$REPO_ROOT/tests/fixtures/scope_string.sans"              0
 run_test "system_basic"              "$REPO_ROOT/tests/fixtures/system_basic.sans"              0
 run_test "builtin_override"          "$REPO_ROOT/tests/fixtures/builtin_override.sans"          42
 

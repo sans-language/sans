@@ -1,0 +1,17 @@
+// Test: return values promoted to caller scope
+make_arr() I {
+  a = array<I>()
+  a.push(10)
+  a.push(20)
+  a.push(30)
+  a
+}
+
+sum_arr(a:I) I {
+  a.get(0) + a.get(1) + a.get(2)
+}
+
+main() I {
+  a = make_arr()
+  sum_arr(a)
+}
