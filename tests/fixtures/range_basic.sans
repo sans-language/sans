@@ -1,0 +1,10 @@
+main() I {
+  a = range(5)
+  sum := 0
+  for x in a { sum += x }
+
+  b = range(3, 8)
+  for x in b { sum += x }
+
+  sum
+}

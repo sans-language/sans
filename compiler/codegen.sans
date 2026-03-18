@@ -515,6 +515,11 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_arena_alloc(i64)")
   emit(cg, "declare i64 @sans_arena_end()")
 
+  // ------ Sans runtime: Range & Sort ------
+  emit(cg, "declare i64 @sans_range1(i64)")
+  emit(cg, "declare i64 @sans_range2(i64, i64)")
+  emit(cg, "declare i64 @sans_array_sort(i64)")
+
   // ------ Sans runtime: Reference Counting ------
   emit(cg, "declare i64 @sans_rc_alloc(i64)")
   emit(cg, "declare i64 @sans_rc_retain(i64)")
@@ -3104,6 +3109,24 @@ compile_inst(cg:I inst:I) I {
   if op == IR_MAP_VALS {
     compile_rt1(cg, inst, "sans_map_vals")
     emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 1)
+    return 0
+  }
+
+  // ------ Range & Sort ------
+  if op == IR_RANGE {
+    // Check if 2-arg: ir_field at offset 24 is nonzero for 2-arg calls
+    a2_name = ir_field(inst, 24)
+    if a2_name != 0 {
+      compile_rt2(cg, inst, "sans_range2")
+    } else {
+      compile_rt1(cg, inst, "sans_range1")
+    }
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), 1)
+    return 0
+  }
+  if op == IR_ARRAY_SORT {
+    compile_rt1(cg, inst, "sans_array_sort")
     return 0
   }
 

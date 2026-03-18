@@ -1,0 +1,11 @@
+main() I {
+  a = array<I>()
+  a.push(5)
+  a.push(1)
+  a.push(4)
+  a.push(2)
+  a.push(3)
+  a.sort()
+  // Verify sorted: 1,2,3,4,5
+  a.get(0) + a.get(1) * 2 + a.get(2) * 3 + a.get(3) * 4 + a.get(4) * 5
+}

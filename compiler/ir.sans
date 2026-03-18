@@ -612,6 +612,15 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "set_log_level" { lower_call_1(ctx, args, IR_SET_LOG_LEVEL, IRTY_INT) }
   else if name == "print_err" { lower_call_1(ctx, args, IR_PRINT_ERR, IRTY_INT) }
 
+  // ------ Range ------
+  else if name == "range" {
+    if args.len() == 1 {
+      lower_call_1(ctx, args, IR_RANGE, IRTY_ARRAY)
+    } else {
+      lower_call_2(ctx, args, IR_RANGE, IRTY_ARRAY)
+    }
+  }
+
   // ------ Memory ------
   else if name == "alloc" { lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) }
   else if name == "dealloc" { lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) }
@@ -1746,6 +1755,11 @@ lower_method_call(ctx:I expr:I) I {
       ctx_emit(ctx, ir_inst2(IR_ARRAY_ZIP, dest, obj_reg, arg_reg))
       ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
       dest
+    } else if method == "sort" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_SORT, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
     } else if method == "unwrap" {
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_inst1(IR_RESULT_UNWRAP, dest, obj_reg))
@@ -1905,6 +1919,12 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_REMOVE, dest, obj_reg, idx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "sort" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_SORT, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
   } else {
     lower_method_fallback(ctx, obj_reg, method, args)

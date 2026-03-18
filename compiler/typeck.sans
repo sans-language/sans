@@ -947,6 +947,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("print_err() requires String argument, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
+    // ------ Range ----------------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "range" {
+      if nargs != 1 && nargs != 2 { tc_error("range() takes 1 or 2 arguments") }
+      return make_array_type(make_type(TY_INT))
+    }
+
     // ------ Memory ---------------------------------------------------------------------------------------------------------------------------------------------------------
     if name == "alloc" {
       if nargs != 1 { tc_error("alloc() takes exactly 1 argument (size)") }
@@ -1716,6 +1722,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
         if type_eq(at, arr_inner) == 0 { tc_error("contains() argument must be " + type_to_string(arr_inner) + ", got " + type_to_string(at)) }
         return make_type(TY_BOOL)
+      }
+      if mc_method == "sort" {
+        if mc_nargs != 0 { tc_error("sort() takes no arguments") }
+        return obj_ty
       }
       return tc_error("Array has no method '" + mc_method + "'")
     }
