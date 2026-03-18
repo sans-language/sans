@@ -97,7 +97,7 @@ The release workflow (`.github/workflows/release.yml`) automatically:
 
 The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
 
-**Current version: `0.3.44`**
+**Current version: `0.4.0`**
 
 ## Rules
 - **NEVER commit compiled binaries** (.o files, executables, Mach-O binaries). Use .gitignore to prevent this.
