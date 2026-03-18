@@ -537,4 +537,28 @@ footer a:hover {
     flex-direction: column;
     align-items: center;
   }
+
+  .tab-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .tab-label {
+    font-size: 12px;
+    padding: 6px 10px;
+    gap: 4px;
+  }
+
+  .token-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+  }
+
+  .token-summary table {
+    font-size: 12px;
+  }
+
+  pre {
+    font-size: 13px;
+  }
 }
