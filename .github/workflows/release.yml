@@ -60,18 +60,9 @@ jobs:
           git push origin main
 
   build-macos:
-    name: Build macOS ${{ matrix.arch }}
+    name: Build macOS ARM64
     needs: version-bump
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: macos-15
-            arch: arm64
-            target: aarch64-apple-darwin
-          - os: macos-15
-            arch: x86_64
-            target: x86_64-apple-darwin
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
@@ -88,29 +79,26 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-cargo-
-
-      - name: Add Rust target
-        run: rustup target add ${{ matrix.target }}
+            ${{ runner.os }}-arm64-cargo-
 
       - name: Build
         env:
           LLVM_SYS_170_STATIC: "1"
         run: |
           LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) \
-          cargo build --release --target ${{ matrix.target }}
+          cargo build --release
 
       - name: Package
         run: |
-          cp target/${{ matrix.target }}/release/sans sans
+          cp target/release/sans sans
           strip sans
-          tar czf sans-macos-${{ matrix.arch }}.tar.gz sans
+          tar czf sans-macos-arm64.tar.gz sans
           rm sans
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: sans-macos-${{ matrix.arch }}.tar.gz
+          files: sans-macos-arm64.tar.gz
           generate_release_notes: true
