@@ -377,6 +377,10 @@ td.highlight {
   border-top: 1px solid var(--surface0);
 }
 
+.tabs {
+  margin-bottom: 32px;
+}
+
 /* Hide radio inputs but keep them functional */
 .comparison input[type="radio"] {
   display: none;
