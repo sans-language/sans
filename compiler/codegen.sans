@@ -510,6 +510,12 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_arena_alloc(i64)")
   emit(cg, "declare i64 @sans_arena_end()")
 
+  // ------ Sans runtime: Reference Counting ------
+  emit(cg, "declare i64 @sans_rc_alloc(i64)")
+  emit(cg, "declare i64 @sans_rc_retain(i64)")
+  emit(cg, "declare i64 @sans_rc_release(i64)")
+  emit(cg, "declare i64 @sans_rc_count(i64)")
+
   // ------ Sans runtime: Socket helper ------
   emit(cg, "declare i64 @sans_bind_port(i64, i64)")
 
@@ -1284,6 +1290,43 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + p + " = inttoptr i64 " + ptr_val + " to ptr")
     emit(cg, "  call void @free(ptr " + p + ")")
     cg_set_val(cg, dest, "0")
+    return 0
+  }
+
+  // ------ IR_RC_ALLOC (212): [op, dest, size_reg] ------
+  if op == IR_RC_ALLOC {
+    size_val = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_rc_alloc(i64 " + size_val + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_RC_RETAIN (213): [op, dest, ptr_reg] ------
+  if op == IR_RC_RETAIN {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_rc_retain(i64 " + ptr_val + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_RC_RELEASE (214): [op, dest, ptr_reg] ------
+  if op == IR_RC_RELEASE {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_rc_release(i64 " + ptr_val + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_RC_COUNT (215): [op, dest, ptr_reg] ------
+  if op == IR_RC_COUNT {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_rc_count(i64 " + ptr_val + ")")
+    cg_set_val(cg, dest, r)
     return 0
   }
 

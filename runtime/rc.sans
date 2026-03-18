@@ -1,0 +1,46 @@
+// Reference Counting Runtime
+//
+// Memory layout for RC-managed allocations:
+//   [refcount: 8 bytes][user data: N bytes]
+//   ^                   ^
+//   base (from malloc)  user pointer (returned to caller)
+//
+// The user pointer is always base + 8. Refcount is at user_ptr - 8.
+// Initial refcount is 1.
+
+// Allocate N bytes with a ref count header. Returns pointer to user data.
+// Refcount starts at 1.
+sans_rc_alloc(size:I) I {
+  base = alloc(size + 8)
+  store64(base, 1)        // refcount = 1
+  base + 8               // return user pointer
+}
+
+// Increment the reference count. Safe to call with 0 (no-op).
+sans_rc_retain(ptr:I) I {
+  if ptr != 0 {
+    rc_ptr = ptr - 8
+    count = load64(rc_ptr)
+    store64(rc_ptr, count + 1)
+  }
+  0
+}
+
+// Decrement the reference count. Frees memory when count reaches 0.
+// Safe to call with 0 (no-op).
+sans_rc_release(ptr:I) I {
+  if ptr != 0 {
+    rc_ptr = ptr - 8
+    count = load64(rc_ptr) - 1
+    store64(rc_ptr, count)
+    if count == 0 {
+      dealloc(rc_ptr)
+    }
+  }
+  0
+}
+
+// Get the current reference count (for debugging).
+sans_rc_count(ptr:I) I {
+  if ptr == 0 { 0 } else { load64(ptr - 8) }
+}

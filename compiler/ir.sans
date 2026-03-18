@@ -612,6 +612,10 @@ lower_call(ctx:I name:I args:I) I {
   // ------ Memory ------
   else if name == "alloc" { lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) }
   else if name == "dealloc" { lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) }
+  else if name == "sans_rc_alloc" { lower_call_1(ctx, args, IR_RC_ALLOC, IRTY_INT) }
+  else if name == "sans_rc_retain" { lower_call_1(ctx, args, IR_RC_RETAIN, IRTY_INT) }
+  else if name == "sans_rc_release" { lower_call_1(ctx, args, IR_RC_RELEASE, IRTY_INT) }
+  else if name == "sans_rc_count" { lower_call_1(ctx, args, IR_RC_COUNT, IRTY_INT) }
   else if name == "ralloc" { lower_call_2(ctx, args, IR_RALLOC, IRTY_INT) }
   else if name == "mcpy" { lower_call_3(ctx, args, IR_MCPY, IRTY_INT) }
   else if name == "mzero" { lower_call_2(ctx, args, IR_MZERO, IRTY_INT) }

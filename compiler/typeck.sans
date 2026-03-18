@@ -960,6 +960,31 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("dealloc() ptr must be Int, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
+    // ------ Reference Counting ---------------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "sans_rc_alloc" {
+      if nargs != 1 { tc_error("sans_rc_alloc() takes exactly 1 argument (size)") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("sans_rc_alloc() size must be Int, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "sans_rc_retain" {
+      if nargs != 1 { tc_error("sans_rc_retain() takes exactly 1 argument (ptr)") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("sans_rc_retain() ptr must be Int, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "sans_rc_release" {
+      if nargs != 1 { tc_error("sans_rc_release() takes exactly 1 argument (ptr)") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("sans_rc_release() ptr must be Int, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "sans_rc_count" {
+      if nargs != 1 { tc_error("sans_rc_count() takes exactly 1 argument (ptr)") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("sans_rc_count() ptr must be Int, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
     if name == "ralloc" {
       if nargs != 2 { tc_error("ralloc() takes exactly 2 arguments (ptr, size)") }
       at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
