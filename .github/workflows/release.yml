@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-13
+            arch: x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 17
+        run: brew install llvm@17
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-cargo-
+
+      - name: Build
+        env:
+          LLVM_SYS_170_STATIC: "1"
+        run: |
+          LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) \
+          cargo build --release
+
+      - name: Package
+        run: |
+          cp target/release/sans sans
+          strip sans
+          tar czf sans-macos-${{ matrix.arch }}.tar.gz sans
+          rm sans
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sans-macos-${{ matrix.arch }}.tar.gz
+          generate_release_notes: true

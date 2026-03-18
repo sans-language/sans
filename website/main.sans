@@ -17,7 +17,8 @@ route_static(req:HttpRequest, path:S) I {
 route_pages(req:HttpRequest, path:S) I {
   is_docs = path == "/docs"
   is_bench = path == "/benchmarks"
-  is_docs ? respond_with_file(req, "static/docs.html") : is_bench ? respond_with_file(req, "static/benchmarks.html") : route_static(req, path)
+  is_download = path == "/download"
+  is_docs ? respond_with_file(req, "static/docs.html") : is_bench ? respond_with_file(req, "static/benchmarks.html") : is_download ? respond_with_file(req, "static/download.html") : route_static(req, path)
 }
 
 route(req:HttpRequest, path:S) I {
