@@ -102,3 +102,49 @@ jobs:
         with:
           files: sans-macos-arm64.tar.gz
           generate_release_notes: true
+
+  build-linux:
+    name: Build Linux x86_64
+    needs: version-bump
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install LLVM 17
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
+          sudo apt-get update
+          sudo apt-get install -y llvm-17-dev libpolly-17-dev libcurl4-openssl-dev libssl-dev pkg-config
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-x64-cargo-
+
+      - name: Build
+        env:
+          LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
+          LLVM_SYS_170_STATIC: "1"
+        run: cargo build --release
+
+      - name: Package
+        run: |
+          cp target/release/sans sans
+          strip sans
+          tar czf sans-linux-x86_64.tar.gz sans
+          rm sans
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sans-linux-x86_64.tar.gz
