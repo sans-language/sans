@@ -1,0 +1,571 @@
+/* ============================================================
+   Sans Language — CSS Design System
+   Catppuccin Latte (light) / Mocha (dark)
+   ============================================================ */
+
+/* 1. FONTS
+   ------------------------------------------------------------ */
+@font-face {
+  font-family: 'Source Sans 3';
+  src: url('/sans/fonts/SourceSans3.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Source Code Pro';
+  src: url('/sans/fonts/SourceCodePro.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* 2. CATPPUCCIN LATTE — LIGHT MODE (default)
+   ------------------------------------------------------------ */
+:root {
+  --base:     #eff1f5;
+  --mantle:   #e6e9ef;
+  --crust:    #dce0e8;
+  --surface0: #ccd0da;
+  --surface1: #bcc0cc;
+  --text:     #4c4f69;
+  --subtext1: #5c5f77;
+  --subtext0: #6c6f85;
+  --overlay0: #9ca0b0;
+  --mauve:    #8839ef;
+  --lavender: #7287fd;
+  --green:    #40a02b;
+  --peach:    #fe640b;
+  --yellow:   #df8e1d;
+  --red:      #d20f39;
+}
+
+/* 3. CATPPUCCIN MOCHA — DARK MODE
+   ------------------------------------------------------------ */
+[data-theme="dark"] {
+  --base:     #1e1e2e;
+  --mantle:   #181825;
+  --crust:    #11111b;
+  --surface0: #313244;
+  --surface1: #45475a;
+  --text:     #cdd6f4;
+  --subtext1: #bac2de;
+  --subtext0: #a6adc8;
+  --overlay0: #6c7086;
+  --mauve:    #cba6f7;
+  --lavender: #b4befe;
+  --green:    #a6e3a1;
+  --peach:    #fab387;
+  --yellow:   #f9e2af;
+  --red:      #f38ba8;
+}
+
+/* No-JS dark mode fallback via OS preference */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --base:     #1e1e2e;
+    --mantle:   #181825;
+    --crust:    #11111b;
+    --surface0: #313244;
+    --surface1: #45475a;
+    --text:     #cdd6f4;
+    --subtext1: #bac2de;
+    --subtext0: #a6adc8;
+    --overlay0: #6c7086;
+    --mauve:    #cba6f7;
+    --lavender: #b4befe;
+    --green:    #a6e3a1;
+    --peach:    #fab387;
+    --yellow:   #f9e2af;
+    --red:      #f38ba8;
+  }
+}
+
+/* 4. RESET + BASE
+   ------------------------------------------------------------ */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Source Sans 3', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  background-color: var(--base);
+  color: var(--text);
+}
+
+a {
+  color: var(--lavender);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* 5. LAYOUT
+   ------------------------------------------------------------ */
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+/* 6. HERO
+   ------------------------------------------------------------ */
+.hero {
+  padding: 80px 32px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .hero {
+    padding: 64px 32px;
+  }
+}
+
+.hero h1 {
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.tagline {
+  font-size: 22px;
+  color: var(--subtext0);
+  margin-top: 12px;
+}
+
+.subtitle {
+  font-size: 16px;
+  color: var(--overlay0);
+  margin-top: 8px;
+}
+
+.hero-cta {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.hero-version {
+  font-size: 13px;
+  color: var(--overlay0);
+  margin-top: 12px;
+}
+
+/* 7. BUTTONS
+   ------------------------------------------------------------ */
+.btn-primary,
+.btn-secondary {
+  display: inline-block;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-primary {
+  background-color: var(--mauve);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+  text-decoration: none;
+}
+
+.btn-secondary {
+  background-color: var(--surface0);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background-color: var(--surface1);
+  text-decoration: none;
+}
+
+/* 8. FEATURE CARDS
+   ------------------------------------------------------------ */
+.features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  padding: 48px 0;
+}
+
+.feature-card {
+  background-color: var(--mantle);
+  border: 1px solid var(--surface0);
+  border-radius: 12px;
+  padding: 24px 28px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.feature-card h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.feature-card p {
+  font-size: 15px;
+  color: var(--subtext0);
+}
+
+/* 9. CODE + SYNTAX HIGHLIGHTING
+   ------------------------------------------------------------ */
+pre {
+  background-color: var(--mantle);
+  border-radius: 8px;
+  padding: 20px 24px;
+  overflow-x: auto;
+  font-family: 'Source Code Pro', 'Fira Code', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+code {
+  font-family: 'Source Code Pro', 'Fira Code', monospace;
+}
+
+p code,
+li code,
+td code {
+  background-color: var(--mantle);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+}
+
+/* Syntax token classes */
+.kw      { color: var(--mauve); }
+.fn      { color: var(--lavender); }
+.str     { color: var(--green); }
+.num     { color: var(--peach); }
+.type    { color: var(--yellow); }
+.comment { color: var(--overlay0); font-style: italic; }
+
+/* 10. TABLES
+   ------------------------------------------------------------ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  color: var(--mauve);
+  font-weight: 600;
+  border-bottom: 2px solid var(--surface0);
+  padding: 10px 14px;
+  text-align: left;
+}
+
+tbody tr:nth-child(odd) {
+  background-color: var(--mantle);
+}
+
+tbody tr:nth-child(even) {
+  background-color: var(--base);
+}
+
+td,
+th {
+  padding: 10px 14px;
+}
+
+td.highlight {
+  color: var(--mauve);
+  font-weight: 700;
+}
+
+/* 11. DOCS LAYOUT
+   ------------------------------------------------------------ */
+.docs {
+  padding: 32px 0;
+}
+
+.docs h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.docs h2 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-top: 40px;
+  margin-bottom: 16px;
+  padding-top: 24px;
+  border-top: 1px solid var(--surface0);
+}
+
+.docs h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--subtext1);
+  margin-top: 28px;
+  margin-bottom: 12px;
+}
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 32px;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+
+.toc {
+  position: sticky;
+  top: 72px;
+  background-color: var(--mantle);
+  border-radius: 8px;
+  padding: 20px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  align-self: start;
+}
+
+.toc h3 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--subtext0);
+  margin-bottom: 12px;
+}
+
+.toc a {
+  display: block;
+  font-size: 13px;
+  color: var(--subtext1);
+  padding: 4px 0;
+  text-decoration: none;
+  transition: color 0.1s ease;
+}
+
+.toc a:hover {
+  color: var(--lavender);
+  text-decoration: none;
+}
+
+.toc ul {
+  list-style: none;
+}
+
+/* 12. COMPARISON TABS
+   ------------------------------------------------------------ */
+.comparison {
+  padding: 48px 0;
+  border-top: 1px solid var(--surface0);
+}
+
+/* Hide radio inputs but keep them functional */
+.comparison input[type="radio"] {
+  display: none;
+}
+
+.tab-bar {
+  display: flex;
+  border-bottom: 2px solid var(--surface0);
+  margin-bottom: 24px;
+  gap: 0;
+}
+
+.tab-label {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 20px;
+  cursor: pointer;
+  color: var(--subtext0);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
+
+.tab-label:hover {
+  color: var(--text);
+}
+
+.token-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background-color: var(--crust);
+  color: var(--overlay0);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tab-panels > .tab-panel {
+  display: none;
+}
+
+/* Tab 1 activation */
+#tab1:checked ~ .tab-bar label[for="tab1"] {
+  color: var(--mauve);
+  border-bottom-color: var(--mauve);
+}
+#tab1:checked ~ .tab-bar label[for="tab1"] .token-badge {
+  background-color: var(--mauve);
+  color: #ffffff;
+}
+#tab1:checked ~ .tab-panels > .tab-panel:nth-of-type(1) {
+  display: block;
+}
+
+/* Tab 2 activation */
+#tab2:checked ~ .tab-bar label[for="tab2"] {
+  color: var(--mauve);
+  border-bottom-color: var(--mauve);
+}
+#tab2:checked ~ .tab-bar label[for="tab2"] .token-badge {
+  background-color: var(--mauve);
+  color: #ffffff;
+}
+#tab2:checked ~ .tab-panels > .tab-panel:nth-of-type(2) {
+  display: block;
+}
+
+/* Tab 3 activation */
+#tab3:checked ~ .tab-bar label[for="tab3"] {
+  color: var(--mauve);
+  border-bottom-color: var(--mauve);
+}
+#tab3:checked ~ .tab-bar label[for="tab3"] .token-badge {
+  background-color: var(--mauve);
+  color: #ffffff;
+}
+#tab3:checked ~ .tab-panels > .tab-panel:nth-of-type(3) {
+  display: block;
+}
+
+/* Tab 4 activation */
+#tab4:checked ~ .tab-bar label[for="tab4"] {
+  color: var(--mauve);
+  border-bottom-color: var(--mauve);
+}
+#tab4:checked ~ .tab-bar label[for="tab4"] .token-badge {
+  background-color: var(--mauve);
+  color: #ffffff;
+}
+#tab4:checked ~ .tab-panels > .tab-panel:nth-of-type(4) {
+  display: block;
+}
+
+/* Tab 5 activation */
+#tab5:checked ~ .tab-bar label[for="tab5"] {
+  color: var(--mauve);
+  border-bottom-color: var(--mauve);
+}
+#tab5:checked ~ .tab-bar label[for="tab5"] .token-badge {
+  background-color: var(--mauve);
+  color: #ffffff;
+}
+#tab5:checked ~ .tab-panels > .tab-panel:nth-of-type(5) {
+  display: block;
+}
+
+/* 13. INSTALL BLOCK
+   ------------------------------------------------------------ */
+.install-block {
+  position: relative;
+  background-color: var(--mantle);
+  border-radius: 8px;
+  padding: 16px 20px;
+  font-family: 'Source Code Pro', 'Fira Code', monospace;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.copy-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: var(--surface0);
+  color: var(--text);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.copy-btn:hover {
+  background-color: var(--surface1);
+}
+
+/* 14. FOOTER
+   ------------------------------------------------------------ */
+footer {
+  border-top: 1px solid var(--surface0);
+  padding: 32px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--subtext0);
+}
+
+footer a {
+  color: var(--lavender);
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+/* 15. RESPONSIVE
+   ------------------------------------------------------------ */
+@media (max-width: 1024px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .toc {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero h1 {
+    font-size: 32px;
+  }
+
+  .tagline {
+    font-size: 18px;
+  }
+
+  .features {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-cta {
+    flex-direction: column;
+    align-items: center;
+  }
+}
