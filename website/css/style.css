@@ -422,68 +422,30 @@ td.highlight {
   display: none;
 }
 
-/* Tab 1 activation */
-#tab1:checked ~ .tab-bar label[for="tab1"] {
+/* Tab activation — uses :nth-of-type on radio inputs to match panels by position */
+.tabs > input:nth-of-type(1):checked ~ .tab-bar > label:nth-child(1),
+.tabs > input:nth-of-type(2):checked ~ .tab-bar > label:nth-child(2),
+.tabs > input:nth-of-type(3):checked ~ .tab-bar > label:nth-child(3),
+.tabs > input:nth-of-type(4):checked ~ .tab-bar > label:nth-child(4),
+.tabs > input:nth-of-type(5):checked ~ .tab-bar > label:nth-child(5) {
   color: var(--mauve);
   border-bottom-color: var(--mauve);
-}
-#tab1:checked ~ .tab-bar label[for="tab1"] .token-badge {
-  background-color: var(--mauve);
-  color: #ffffff;
-}
-#tab1:checked ~ .tab-panels > .tab-panel:nth-of-type(1) {
-  display: block;
 }
 
-/* Tab 2 activation */
-#tab2:checked ~ .tab-bar label[for="tab2"] {
-  color: var(--mauve);
-  border-bottom-color: var(--mauve);
-}
-#tab2:checked ~ .tab-bar label[for="tab2"] .token-badge {
+.tabs > input:nth-of-type(1):checked ~ .tab-bar > label:nth-child(1) .token-badge,
+.tabs > input:nth-of-type(2):checked ~ .tab-bar > label:nth-child(2) .token-badge,
+.tabs > input:nth-of-type(3):checked ~ .tab-bar > label:nth-child(3) .token-badge,
+.tabs > input:nth-of-type(4):checked ~ .tab-bar > label:nth-child(4) .token-badge,
+.tabs > input:nth-of-type(5):checked ~ .tab-bar > label:nth-child(5) .token-badge {
   background-color: var(--mauve);
   color: #ffffff;
-}
-#tab2:checked ~ .tab-panels > .tab-panel:nth-of-type(2) {
-  display: block;
 }
 
-/* Tab 3 activation */
-#tab3:checked ~ .tab-bar label[for="tab3"] {
-  color: var(--mauve);
-  border-bottom-color: var(--mauve);
-}
-#tab3:checked ~ .tab-bar label[for="tab3"] .token-badge {
-  background-color: var(--mauve);
-  color: #ffffff;
-}
-#tab3:checked ~ .tab-panels > .tab-panel:nth-of-type(3) {
-  display: block;
-}
-
-/* Tab 4 activation */
-#tab4:checked ~ .tab-bar label[for="tab4"] {
-  color: var(--mauve);
-  border-bottom-color: var(--mauve);
-}
-#tab4:checked ~ .tab-bar label[for="tab4"] .token-badge {
-  background-color: var(--mauve);
-  color: #ffffff;
-}
-#tab4:checked ~ .tab-panels > .tab-panel:nth-of-type(4) {
-  display: block;
-}
-
-/* Tab 5 activation */
-#tab5:checked ~ .tab-bar label[for="tab5"] {
-  color: var(--mauve);
-  border-bottom-color: var(--mauve);
-}
-#tab5:checked ~ .tab-bar label[for="tab5"] .token-badge {
-  background-color: var(--mauve);
-  color: #ffffff;
-}
-#tab5:checked ~ .tab-panels > .tab-panel:nth-of-type(5) {
+.tabs > input:nth-of-type(1):checked ~ .tab-panels > .tab-panel:nth-child(1),
+.tabs > input:nth-of-type(2):checked ~ .tab-panels > .tab-panel:nth-child(2),
+.tabs > input:nth-of-type(3):checked ~ .tab-panels > .tab-panel:nth-child(3),
+.tabs > input:nth-of-type(4):checked ~ .tab-panels > .tab-panel:nth-child(4),
+.tabs > input:nth-of-type(5):checked ~ .tab-panels > .tab-panel:nth-child(5) {
   display: block;
 }
 

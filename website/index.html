@@ -65,7 +65,6 @@
         <label for="ex1-rust" class="tab-label">Rust <span class="token-badge">27 tokens</span></label>
         <label for="ex1-node" class="tab-label">Node <span class="token-badge">22 tokens</span></label>
         <label for="ex1-python" class="tab-label">Python <span class="token-badge">16 tokens</span></label>
-        <span class="tab-title">Fibonacci</span>
       </div>
       <div class="tab-panels">
         <div class="tab-panel"><pre><code><span class="fn">fib</span>(n:<span class="type">I</span>) <span class="type">I</span> = n &lt;= <span class="num">1</span> ? n : <span class="fn">fib</span>(n-<span class="num">1</span>) + <span class="fn">fib</span>(n-<span class="num">2</span>)</code></pre></div>
@@ -98,7 +97,6 @@
         <label for="ex2-rust" class="tab-label">Rust <span class="token-badge">72 tokens</span></label>
         <label for="ex2-node" class="tab-label">Node <span class="token-badge">40 tokens</span></label>
         <label for="ex2-python" class="tab-label">Python <span class="token-badge">34 tokens</span></label>
-        <span class="tab-title">JSON Roundtrip</span>
       </div>
       <div class="tab-panels">
         <div class="tab-panel"><pre><code><span class="fn">main</span>() {
@@ -153,7 +151,6 @@ parsed = json.<span class="fn">loads</span>(json.<span class="fn">dumps</span>(o
         <label for="ex3-rust" class="tab-label">Rust <span class="token-badge">58 tokens</span></label>
         <label for="ex3-node" class="tab-label">Node <span class="token-badge">32 tokens</span></label>
         <label for="ex3-python" class="tab-label">Python <span class="token-badge">26 tokens</span></label>
-        <span class="tab-title">HTTP Server</span>
       </div>
       <div class="tab-panels">
         <div class="tab-panel"><pre><code><span class="fn">handler</span>(req:<span class="type">HR</span>) <span class="type">S</span> = <span class="str">"hello world"</span>
@@ -208,34 +205,6 @@ app.<span class="fn">run</span>(port=<span class="num">8080</span>)</code></pre>
         </tbody>
       </table>
     </div>
-  </section>
-
-  <section class="container comparison" style="border-top: none; padding-top: 0;">
-    <h2>Same Speed</h2>
-    <p style="color:#6c6f85; margin-bottom:24px;">Fewer tokens doesn't mean slower. Sans compiles to native code via LLVM &mdash; competitive with Rust and Go, faster than Node.js and Python.</p>
-    <table>
-      <thead>
-        <tr><th>Benchmark (ms)</th><th>Sans</th><th>Go</th><th>Rust</th><th>Node</th><th>Python</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>fib(40)</td><td class="highlight">49</td><td>76</td><td>45</td><td>106</td><td>1493</td></tr>
-        <tr><td>loop_sum (1B)</td><td class="highlight">17</td><td>22</td><td>15</td><td>51</td><td>94</td></tr>
-        <tr><td>array_ops</td><td class="highlight">15</td><td>26</td><td>15</td><td>56</td><td>50</td></tr>
-        <tr><td>string_concat</td><td>27</td><td>24</td><td class="highlight">25</td><td>51</td><td>48</td></tr>
-        <tr><td>json_roundtrip</td><td>45</td><td>83</td><td class="highlight">39</td><td>55</td><td>80</td></tr>
-      </tbody>
-    </table>
-  </section>
-
-  <section class="container">
-    <h2>Quick Start</h2>
-    <pre><code><span class="comment"># Build from source</span>
-git clone https://github.com/sans-language/sans
-cd sans
-LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
-
-<span class="comment"># Run a program</span>
-sans run hello.sans</code></pre>
   </section>
 
     <sans-footer base="/sans"></sans-footer>
