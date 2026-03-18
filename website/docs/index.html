@@ -17,6 +17,8 @@
 
   <div class="container-wide docs-layout">
     <div class="toc">
+      <button class="toc-toggle" onclick="document.querySelector('.toc-content').classList.toggle('open');this.textContent=this.textContent==='Contents ▾'?'Contents ▸':'Contents ▾'">Contents ▾</button>
+      <div class="toc-content">
       <h3>Contents</h3>
       <ul>
         <li><a href="#getting-started">Getting Started</a></li>
@@ -41,6 +43,7 @@
         <li><a href="#methods">Methods</a></li>
         <li><a href="#self-hosting">Self-Hosting</a></li>
       </ul>
+      </div>
     </div>
 
   <div class="docs">

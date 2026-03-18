@@ -509,6 +509,13 @@ footer a:hover {
 
 /* 15. RESPONSIVE
    ------------------------------------------------------------ */
+
+/* Tables: horizontal scroll on overflow */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 @media (max-width: 1024px) {
   .docs-layout {
     grid-template-columns: 1fr;
@@ -517,48 +524,81 @@ footer a:hover {
   .toc {
     position: static;
     max-height: none;
+    margin-top: 0;
+    margin-bottom: 24px;
+  }
+
+  /* Collapsible TOC on tablet/mobile */
+  .toc-toggle {
+    display: block;
+    width: 100%;
+    background: var(--mantle);
+    border: 1px solid var(--surface0);
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    margin-bottom: 8px;
+  }
+
+  .toc-toggle:hover {
+    background: var(--crust);
+  }
+
+  .toc-content {
+    display: none;
+  }
+
+  .toc-content.open {
+    display: block;
   }
 }
 
+/* Show TOC toggle only on tablet/mobile */
+.toc-toggle { display: none; }
+
 @media (max-width: 768px) {
-  .hero h1 {
-    font-size: 32px;
-  }
+  .container { padding: 0 16px; }
+  .docs-layout { padding: 0 16px; }
 
-  .tagline {
-    font-size: 18px;
-  }
-
-  .features {
-    grid-template-columns: 1fr;
-  }
+  .hero { padding: 48px 0 40px; }
+  .hero h1 { font-size: 28px; }
+  .tagline { font-size: 16px; }
+  .subtitle { font-size: 14px; }
 
   .hero-cta {
     flex-direction: column;
     align-items: center;
+    gap: 10px;
   }
 
-  .tab-bar {
-    flex-wrap: wrap;
-    gap: 4px;
-  }
+  .features { grid-template-columns: 1fr; gap: 12px; padding: 32px 0; }
+  .feature-card { padding: 20px; }
+  .feature-card h3 { font-size: 16px; }
+  .feature-card p { font-size: 14px; }
 
-  .tab-label {
-    font-size: 12px;
-    padding: 6px 10px;
-    gap: 4px;
-  }
+  .comparison { padding: 32px 0; }
 
-  .token-badge {
-    font-size: 10px;
-    padding: 1px 5px;
-  }
+  .tab-bar { flex-wrap: wrap; gap: 4px; }
+  .tab-label { font-size: 12px; padding: 6px 8px; gap: 3px; }
+  .token-badge { font-size: 9px; padding: 1px 5px; }
 
-  .token-summary table {
-    font-size: 12px;
-  }
+  .token-summary table { font-size: 12px; }
+  table { font-size: 13px; }
+  thead th { padding: 8px 10px; }
+  tbody td { padding: 6px 10px; }
 
-  pre {
-    font-size: 13px;
-  }
+  pre { font-size: 12px; padding: 12px 14px; }
+  p code, li code, td code { font-size: 12px; }
+
+  .docs h1 { font-size: 24px; }
+  .docs h2 { font-size: 20px; margin-top: 32px; }
+  .docs h3 { font-size: 16px; }
+
+  .install-block { padding: 12px 48px 12px 14px; font-size: 12px; }
+
+  footer { padding: 24px 16px; }
 }
