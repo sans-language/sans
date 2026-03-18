@@ -66,10 +66,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             arch: arm64
-          - os: macos-13
+            target: aarch64-apple-darwin
+          - os: macos-15
             arch: x86_64
+            target: x86_64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
@@ -90,16 +92,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.arch }}-cargo-
 
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Build
         env:
           LLVM_SYS_170_STATIC: "1"
         run: |
           LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) \
-          cargo build --release
+          cargo build --release --target ${{ matrix.target }}
 
       - name: Package
         run: |
-          cp target/release/sans sans
+          cp target/${{ matrix.target }}/release/sans sans
           strip sans
           tar czf sans-macos-${{ matrix.arch }}.tar.gz sans
           rm sans
