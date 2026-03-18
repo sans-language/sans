@@ -1484,6 +1484,28 @@ lower_method_call(ctx:I expr:I) I {
   method = load64(expr + 16)
   args = load64(expr + 24)
 
+  // ------ Cross-module call: obj is an identifier that is a module name ------
+  if load64(object) == EX_IDENT {
+    mc_imp_fns = ctx_imported_fn_names(ctx)
+    // Check if method is in imported_fn_names (bare name -> mangled name)
+    if mc_imp_fns != 0 && mhas(mc_imp_fns, method) == 1 {
+      mc_mangled = mget(mc_imp_fns, method)
+      mc_arg_regs = array<I>()
+      mc_ai := 0
+      while mc_ai < args.len() {
+        mc_arg_regs.push(lower_expr(ctx, args.get(mc_ai)))
+        mc_ai = mc_ai + 1
+        0
+      }
+      mc_dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_call(mc_dest, mc_mangled, mc_arg_regs))
+      mc_frt = ctx_fn_ret_types(ctx)
+      mc_rt = if mc_frt != 0 { mget(mc_frt, mc_mangled) } else { 0 }
+      ctx_set_reg_type(ctx, mc_dest, if mc_rt != 0 { mc_rt } else { IRTY_INT })
+      return mc_dest
+    }
+  }
+
   // Lower the object
   obj_reg = lower_expr(ctx, object)
   obj_type = ctx_get_reg_type(ctx, obj_reg)
@@ -2801,6 +2823,20 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
       0
     }
   }
+  else if etag == EX_LAMBDA {
+    // Scan nested lambda body for captures from the enclosing scope
+    inner_params = load64(expr + 8)
+    inner_body = load64(expr + 24)
+    // Inner lambda's params are local to it, not captures
+    inner_local = M()
+    ipi := 0
+    while ipi < inner_params.len() {
+      mset(inner_local, load64(inner_params.get(ipi)), 1)
+      ipi = ipi + 1
+      0
+    }
+    find_captures_stmts(inner_body, param_set, ctx, result, seen, inner_local)
+  }
   0
 }
 
@@ -3364,7 +3400,16 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     mfrt_keys = module_fn_ret_types.keys()
     imp_ii := 0
     while imp_ii < prog_imports.len() {
-      imp_name = prog_imports.get(imp_ii)
+      imp_raw = prog_imports.get(imp_ii)
+      // Extract short module name: "models/user" -> "user"
+      imp_slash := -1
+      imp_si := 0
+      while imp_si < slen(imp_raw) {
+        if char_at(imp_raw, imp_si) == 47 { imp_slash = imp_si }
+        imp_si = imp_si + 1
+        0
+      }
+      imp_name = if imp_slash < 0 { imp_raw } else { imp_raw.substring(imp_slash + 1, slen(imp_raw)) }
       imp_prefix = imp_name + "__"
       imp_prefix_len = slen(imp_prefix)
       mfrt_ki := 0

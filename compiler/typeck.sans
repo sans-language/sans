@@ -179,7 +179,7 @@ type_eq(a:I b:I) I {
 // ------ i64-compatible type check ------------------------------------------------------------------------------------------------------------------------
 is_i64_compat(t:I) I {
   tag = type_tag(t)
-  if tag == TY_INT || tag == TY_STRING || tag == TY_BOOL || tag == TY_ARRAY ||
+  if tag == TY_INT || tag == TY_FLOAT || tag == TY_STRING || tag == TY_BOOL || tag == TY_ARRAY ||
      tag == TY_MAP || tag == TY_FN || tag == TY_JSON || tag == TY_HTTP_RESP ||
      tag == TY_HTTP_SERVER || tag == TY_HTTP_REQ || tag == TY_JOIN_HANDLE ||
      tag == TY_SENDER || tag == TY_RECEIVER || tag == TY_MUTEX { return 1 }
@@ -2124,7 +2124,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     found := 0
     fi := 0
     while fi < num_fields {
-    if load64(field_names_p + fi * 8) == ek {
+    if as_str(load64(field_names_p + fi * 8)) == ek {
       found = 1
       fi = num_fields
     }
