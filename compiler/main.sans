@@ -1,0 +1,537 @@
+// ------ Sans Self-Hosted Compiler Driver ---------------------------------------------------------------------------------------
+// CLI entry point: import resolution, parsing, typeck, IR, codegen, linking
+
+import "constants"
+import "lexer"
+import "parser"
+import "typeck"
+import "ir"
+import "codegen"
+g g_merged = 0
+g g_file = 0
+g g_out = 0
+g g_src = 0
+g g_ll = 0
+g g_link_ll = 0
+g g_link_out = 0
+g g_link_src = 0
+g g_llc = 0
+
+
+// ------ Find llc binary ---------------------------------------------------------------------------------------------------------------------------------------
+find_llc() S {
+  // Try common llc locations (Homebrew on macOS)
+  if fexists("/opt/homebrew/opt/llvm@17/bin/llc") == 1 { return "/opt/homebrew/opt/llvm@17/bin/llc" }
+  if fexists("/usr/local/opt/llvm@17/bin/llc") == 1 { return "/usr/local/opt/llvm@17/bin/llc" }
+  if fexists("/opt/homebrew/opt/llvm/bin/llc") == 1 { return "/opt/homebrew/opt/llvm/bin/llc" }
+  if fexists("/usr/local/opt/llvm/bin/llc") == 1 { return "/usr/local/opt/llvm/bin/llc" }
+  if fexists("/usr/bin/llc") == 1 { return "/usr/bin/llc" }
+  // Use brew to discover LLVM path
+  sys("brew --prefix llvm@17 > /tmp/.sans_llvm_prefix 2>/dev/null || brew --prefix llvm > /tmp/.sans_llvm_prefix 2>/dev/null")
+  prefix = fr("/tmp/.sans_llvm_prefix")
+  if slen(prefix) > 1 {
+    // Trim trailing newline
+    llc_path = prefix.trim() + "/bin/llc"
+    if fexists(llc_path) == 1 { return llc_path }
+  }
+  // Fallback
+  "llc"
+}
+
+// ------ String helpers ------------------------------------------------------------------------------------------------------------------------------------------
+
+// Find last occurrence of character ch in string s, return index or -1
+find_last(s:S ch:I) I {
+  i := slen(s) - 1
+  result := -1
+  found := 0
+  while i >= 0 {
+    if found == 0 {
+      if char_at(s, i) == ch { result = i
+        found = 1 }
+    }
+    i = i - 1
+    0
+  }
+  result
+}
+
+// Extract directory from file path (everything before last '/')
+dir_of(path:S) S {
+  idx = find_last(path, 47)  // 47 = '/'
+  if idx < 0 { "." } else { path.substring(0, idx) }
+}
+
+// Extract module name from import path (last component after '/')
+mod_name_of(import_path:S) S {
+  idx = find_last(import_path, 47)  // 47 = '/'
+  if idx < 0 { import_path } else { import_path.substring(idx + 1, slen(import_path)) }
+}
+
+// Strip .sans extension from filename
+strip_ext(path:S) S {
+  len = slen(path)
+  if len > 5 { path.substring(0, len - 5) } else { path }
+}
+
+// ------ ResolvedModule (24 bytes) ---------------------------------------------------------------------------------------------------------
+// offset 0:  name (I) --- module name string
+// offset 8:  path (I) --- full file path string
+// offset 16: program (I) --- parsed Program pointer
+
+make_resolved_module(name:S path:S program:I) I {
+  m = alloc(24)
+  store64(m, name)
+  store64(m + 8, path)
+  store64(m + 16, program)
+  m
+}
+
+rm_name(m:I) S = load64(m)
+rm_path(m:I) S = load64(m + 8)
+rm_program(m:I) I = load64(m + 16)
+
+// ------ Import Resolution ---------------------------------------------------------------------------------------------------------------------------------
+
+resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
+  // Resolve path relative to base_dir
+  file_path = base_dir + "/" + import_path + ".sans"
+
+  // Dedup check
+  if mhas(visited, file_path) {
+    return 0
+    0
+  }
+
+  // Circular import check
+  if mhas(in_progress, file_path) {
+    p("error: circular import detected: " + import_path)
+    exit(1)
+    0
+  }
+
+  mset(in_progress, file_path, 1)
+
+  // Read and parse the module
+  src = fr(file_path)
+  program = parse(src)
+
+  // Recursively resolve sub-imports
+  imports_arr = load64(program)  // offset 0: imports array ptr
+  num_imports = imports_arr.len()
+  ii := 0
+  while ii < num_imports {
+    sub_path_ptr = imports_arr.get(ii)
+    sub_path = sub_path_ptr
+    resolve_import(sub_path, base_dir, resolved, visited, in_progress)
+    ii = ii + 1
+    0
+  }
+
+  // Mark visited, add to result
+  mset(visited, file_path, 1)
+
+  name = mod_name_of(import_path)
+  resolved.push(make_resolved_module(name, file_path, program))
+  0
+}
+
+resolve_imports(entry_path:S) I {
+  base_dir = dir_of(entry_path)
+  resolved = array<I>()
+  visited = M()
+  in_progress = M()
+
+  // Mark entry file as in_progress
+  mset(in_progress, entry_path, 1)
+
+  // Read and parse entry to get its imports
+  src = fr(entry_path)
+  entry_program = parse(src)
+
+  imports_arr = load64(entry_program)
+  num_imports = imports_arr.len()
+  ii := 0
+  while ii < num_imports {
+    import_path_ptr = imports_arr.get(ii)
+    import_path = import_path_ptr
+    resolve_import(import_path, base_dir, resolved, visited, in_progress)
+    ii = ii + 1
+    0
+  }
+
+  resolved
+}
+
+// ------ Build Pipeline ------------------------------------------------------------------------------------------------------------------------------------------
+
+build(source_path:S output_path:S) I {
+  // 1. Resolve imports (topological order, deps first)
+  modules = resolve_imports(source_path)
+  // 2. Parse entry point
+  src = fr(source_path)
+  program = parse(src)
+  build_step3(modules, program, output_path, source_path)
+}
+
+// Step 3: Type-check modules in dependency order (one while loop)
+build_step3(modules:I program:I output_path:I source_path:I) I {
+  mod_exports = M()
+  i := 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    mod_prog = rm_program(mod)
+    exports = check_module(mod_prog, mod_exports)
+    mset(mod_exports, mod_n, exports)
+    i = i + 1
+    wfd(2, ".")
+  }
+  build_step4(modules, program, mod_exports, output_path, source_path)
+}
+
+// Step 4: Type-check entry point (no loop)
+build_step4(modules:I program:I mod_exports:I output_path:I source_path:I) I {
+  check(program, mod_exports)
+  build_step5(modules, program, mod_exports, output_path, source_path)
+}
+
+// Step 5: Build module_fn_ret_types map (one while loop with nested inner loop)
+build_step5(modules:I program:I mod_exports:I output_path:I source_path:I) I {
+  module_fn_ret_types = M()
+  i := 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    exports = mget(mod_exports, mod_n)
+    fn_env = load64(exports + 16)
+    fn_keys = fn_env.keys()
+    build_step5_inner(fn_keys, fn_env, mod_n, module_fn_ret_types)
+    i = i + 1
+    wfd(2, ".")
+  }
+  build_step6(modules, program, mod_exports, module_fn_ret_types, output_path, source_path)
+}
+
+// Step 5 inner: iterate fn_keys for one module (one while loop)
+build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I) I {
+  ki := 0
+  while ki < fn_keys.len() {
+    fname = fn_keys.get(ki)
+    fn_sig = mget(fn_env, fname)
+    ret_type = load64(fn_sig + 8)
+    rt_tag = type_tag(ret_type)
+    irty = if rt_tag == TY_INT { IRTY_INT } else {
+           if rt_tag == TY_FLOAT { IRTY_FLOAT } else {
+           if rt_tag == TY_BOOL { IRTY_BOOL } else {
+           if rt_tag == TY_STRING { IRTY_STR } else {
+           if rt_tag == TY_ARRAY { IRTY_ARRAY } else {
+           if rt_tag == TY_MAP { IRTY_MAP } else {
+           if rt_tag == TY_JSON { IRTY_JSON } else {
+           if rt_tag == TY_HTTP_RESP { IRTY_HTTP_RESP } else {
+           if rt_tag == TY_RESULT { IRTY_RESULT } else {
+           if rt_tag == TY_STRUCT { IRTY_STRUCT } else {
+           if rt_tag == TY_ENUM { IRTY_ENUM } else {
+           if rt_tag == TY_HTTP_REQ { IRTY_HTTP_REQ } else {
+           if rt_tag == TY_HTTP_SERVER { IRTY_HTTP_SERVER } else {
+           if rt_tag == TY_SENDER { IRTY_SENDER } else {
+           if rt_tag == TY_RECEIVER { IRTY_RECEIVER } else {
+           if rt_tag == TY_JOIN_HANDLE { IRTY_JOIN_HANDLE } else {
+           if rt_tag == TY_MUTEX { IRTY_MUTEX } else {
+           if rt_tag == TY_TUPLE { IRTY_TUPLE } else {
+           IRTY_INT } } } } } } } } } } } } } } } } } }
+    mangled = mod_n + "__" + fname
+    mset(module_fn_ret_types, mangled, irty)
+    ki = ki + 1
+    wfd(2, ".")
+  }
+  0
+}
+
+// Step 6: Build extra_struct_defs from module exports (one while loop with nested inner loop)
+build_step6(modules:I program:I mod_exports:I module_fn_ret_types:I output_path:I source_path:I) I {
+  extra_struct_defs = M()
+  i := 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    exports = mget(mod_exports, mod_n)
+    structs_m = load64(exports)
+    build_step6_inner(structs_m, extra_struct_defs)
+    i = i + 1
+    wfd(2, ".")
+  }
+  build_step7(modules, program, module_fn_ret_types, extra_struct_defs, output_path, source_path)
+}
+
+// Step 6 inner: iterate struct keys for one module (one while loop)
+build_step6_inner(structs_m:I extra_struct_defs:I) I {
+  skeys = structs_m.keys()
+  ski := 0
+  while ski < skeys.len() {
+    sname = skeys.get(ski)
+    fields_m = mget(structs_m, sname)
+    field_names = fields_m.keys()
+    mset(extra_struct_defs, sname, field_names)
+    ski = ski + 1
+    0
+  }
+  0
+}
+
+// Step 7: IR lower each module (one while loop, inner loops extracted)
+build_step7(modules:I program:I module_fn_ret_types:I extra_struct_defs:I output_path:I source_path:I) I {
+  all_functions = array<I>()
+  all_globals = array<I>()
+  all_ginits = M()
+  // Track all module globals for cross-module references
+  all_module_globals = M()  // name -> IRTY type tag
+  i := 0
+  while i < modules.len() {
+    mod = modules.get(i)
+    mod_n = rm_name(mod)
+    mod_prog = rm_program(mod)
+    // Build extra_globals for this module from all previously seen globals
+    ir_mod = lower_with_globals(mod_prog, mod_n, module_fn_ret_types, all_module_globals)
+    mod_funcs = irm_functions(ir_mod)
+    merge_arr(all_functions, mod_funcs)
+    mod_globals = irm_globals(ir_mod)
+    merge_arr(all_globals, mod_globals)
+    // Register this module's globals for future modules to reference
+    mgi := 0
+    while mgi < mod_globals.len() {
+      mgname = mod_globals.get(mgi)
+      mset(all_module_globals, mgname, 1)  // type=INT (simplified)
+      mgi = mgi + 1
+      0
+    }
+    // Merge global init values
+    mod_ginits = irm_global_inits(ir_mod)
+    mod_gkeys = mod_ginits.keys()
+    gki := 0
+    while gki < mod_gkeys.len() {
+      gk = mod_gkeys.get(gki)
+      mset(all_ginits, gk, mget(mod_ginits, gk))
+      gki = gki + 1
+      0
+    }
+    i = i + 1
+    wfd(2, ".")
+  }
+  build_step8(program, module_fn_ret_types, extra_struct_defs, all_functions, all_globals, all_ginits, all_module_globals, output_path, source_path)
+}
+
+// Helper: merge src array into dst (one while loop)
+merge_arr(dst:I src:I) I {
+  i := 0
+  while i < src.len() {
+    dst.push(src.get(i))
+    i = i + 1
+    0
+  }
+  0
+}
+
+// Step 8: IR lower entry point + merge main into all_functions/all_globals + finalize
+build_step8(program:I module_fn_ret_types:I extra_struct_defs:I all_functions:I all_globals:I all_ginits:I all_module_globals:I output_path:I source_path:I) I {
+  main_ir = if extra_struct_defs.keys().len() > 0 {
+    lower_full(program, 0, module_fn_ret_types, extra_struct_defs, all_module_globals)
+  } else {
+    lower_with_globals(program, 0, module_fn_ret_types, all_module_globals)
+  }
+  main_globals = irm_globals(main_ir)
+  merge_arr(all_globals, main_globals)
+  main_funcs = irm_functions(main_ir)
+  merge_arr(all_functions, main_funcs)
+  // Merge main module's global init values
+  main_ginits = irm_global_inits(main_ir)
+  main_gkeys = main_ginits.keys()
+  mgki := 0
+  while mgki < main_gkeys.len() {
+    mgk = main_gkeys.get(mgki)
+    mset(all_ginits, mgk, mget(main_ginits, mgk))
+    mgki = mgki + 1
+    0
+  }
+  main_struct_defs = irm_struct_defs(main_ir)
+  merged = make_ir_module(all_functions, all_globals, main_struct_defs)
+  store64(merged + 24, all_ginits)
+  g_merged = merged
+  0
+}
+
+
+
+do_codegen_and_link(merged:I ll_path:S output_path:S source_path:S) I {
+  // Store link params in globals since post-compile_to_ll code may not execute
+  g_link_ll = ll_path
+  g_link_out = output_path
+  g_link_src = source_path
+  compile_to_ll(merged, ll_path)
+  // This may be unreachable --- do_link is also called from compile_to_ll_impl's last iteration
+  do_link(ll_path, output_path, source_path)
+}
+
+do_link(ll_path:S output_path:S source_path:S) I {
+  // Find llc binary
+  if g_llc == 0 { g_llc = find_llc() }
+  llc = g_llc
+
+  // 11. Invoke llc to produce object file
+  obj_path = output_path + ".o"
+  sys(llc + " -filetype=obj -O2 -o " + obj_path + " " + ll_path)
+
+  // 12. Compile runtime
+  runtime_dir_cwd = "runtime"
+  runtime_dir_src = dir_of(source_path) + "/../runtime"
+  runtime_dir = if fexists(runtime_dir_cwd + "/log.sans") == 1 { runtime_dir_cwd } else { runtime_dir_src }
+  runtime_modules = array<I>()
+  runtime_modules.push("log")
+  runtime_modules.push("result")
+  runtime_modules.push("functional")
+  runtime_modules.push("array_ext")
+  runtime_modules.push("string_ext")
+  runtime_modules.push("http")
+  runtime_modules.push("server")
+  runtime_modules.push("json")
+  runtime_modules.push("sock")
+  runtime_modules.push("curl")
+  runtime_modules.push("map")
+  runtime_modules.push("arena")
+  runtime_modules.push("ssl")
+
+  runtime_o_paths = array<I>()
+  ri := 0
+  while ri < runtime_modules.len() {
+    rname = runtime_modules.get(ri)
+    wfd(2, "R:")
+    wfd(2, rname)
+    wfd(2, "\n")
+    sans_path = runtime_dir + "/" + rname + ".sans"
+    o_path = "/tmp/sans_" + rname + "_runtime.o"
+    rsrc = fr(sans_path)
+    rprog = parse(rsrc)
+    empty_exports = M()
+    check_module(rprog, empty_exports)
+    empty_fn_ret = M()
+    rir = lower(rprog, 0, empty_fn_ret)
+    r_ll = "/tmp/sans_" + rname + "_runtime.ll"
+    r_cg = compile_to_ll_runtime(rir, r_ll)
+    sys(llc + " -filetype=obj -O2 -o " + o_path + " " + r_ll)
+    sys("rm -f " + r_ll)
+    runtime_o_paths.push(o_path)
+    ri = ri + 1
+    0
+  }
+
+  // 13. Link
+  link_cmd := "cc " + obj_path
+  li := 0
+  while li < runtime_o_paths.len() {
+    link_cmd = link_cmd + " " + runtime_o_paths.get(li)
+    li = li + 1
+    0
+  }
+  link_cmd = link_cmd + " -lcurl -lz -Wl,-stack_size,0x10000000 $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -o " + output_path
+  sys(link_cmd)
+
+  // 14. Cleanup
+  sys("rm -f " + ll_path + " " + obj_path)
+  ri = 0
+  while ri < runtime_o_paths.len() {
+    sys("rm -f " + runtime_o_paths.get(ri))
+    ri = ri + 1
+    0
+  }
+  p("Built: " + output_path)
+  0
+}
+
+// ------ Main Entry Point ------------------------------------------------------------------------------------------------------------------------------------
+
+main() I {
+  argv = args()
+  argc = argv.len()
+
+  if argc < 2 {
+    p("usage: sans2 <build|run> <file.sans>")
+    exit(1)
+  }
+
+  cmd = argv.get(1)
+
+  if cmd == "--version" || cmd == "-V" {
+    p("sans 0.4.0")
+    exit(0)
+  }
+
+  if argc < 3 {
+    p("usage: sans2 <build|run> <file.sans>")
+    exit(1)
+  }
+
+  file = argv.get(2)
+
+  // Check for -o flag
+  output := ""
+  if argc >= 5 {
+    flag = argv.get(3)
+    if flag == "-o" {
+      output = argv.get(4)
+    }
+  }
+
+  if cmd == "build" {
+    out = if output == "" { strip_ext(file) } else { output }
+    g_file = file
+    g_out = out
+    g_src = file
+    // All steps in a single-iteration loop
+    step := 0
+    while step < 4 {
+      wfd(2, "STEP=")
+      wfd(2, str(step))
+      wfd(2, " FILE=")
+      wfd(2, g_file)
+      wfd(2, "\n")
+      if step == 0 { build(g_file, g_out) }
+      if step == 1 { g_ll = g_out + ".ll"
+        compile_to_ll(g_merged, g_ll) }
+      if step == 2 { do_link(g_ll, g_out, g_src) }
+      step = step + 1
+      wfd(2, "+")
+    }
+  } else { if cmd == "run" {
+    g_file = file
+    g_out = "/tmp/sans_run_out"
+    g_src = file
+    step := 0
+    while step < 5 {
+      if step == 0 { build(g_file, g_out) }
+      if step == 1 { g_ll = g_out + ".ll"
+        compile_to_ll(g_merged, g_ll) }
+      if step == 2 { do_link(g_ll, g_out, g_src) }
+      if step == 3 { sys(g_out) }
+      if step == 4 { sys("rm -f " + g_out) }
+      step = step + 1
+      wfd(2, "+")
+    }
+    0
+  } else {
+    p("unknown command: " + cmd)
+    exit(1)
+    0
+  } }
+}
+
+
+build_and_link(file:S out:S) I {
+  build(file, out)
+  do_codegen_and_link_global(out + ".ll", out, file)
+}
+
+do_codegen_and_link_global(ll_path:S output_path:S source_path:S) I {
+  // compile_to_ll writes file internally now
+  compile_to_ll(g_merged, ll_path)
+  do_link(ll_path, output_path, source_path)
+}

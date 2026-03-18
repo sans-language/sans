@@ -19,17 +19,17 @@ sans_result_err(msg:I) I {
 
 sans_result_is_ok(r:I) I {
   tag = load64(r)
-  tag == 0 ? 1 : 0
+  if tag == 0 { 1 } else { 0 }
 }
 
 sans_result_is_err(r:I) I {
   tag = load64(r)
-  tag == 1 ? 1 : 0
+  if tag == 1 { 1 } else { 0 }
 }
 
 sans_result_unwrap(r:I) I {
   tag = load64(r)
-  tag == 0 ? load64(r + 8) : sans_unwrap_fail(r)
+  if tag == 0 { load64(r + 8) } else { sans_unwrap_fail(r) }
 }
 
 sans_unwrap_fail(r:I) I {
@@ -39,7 +39,7 @@ sans_unwrap_fail(r:I) I {
 
 sans_result_unwrap_or(r:I default_val:I) I {
   tag = load64(r)
-  tag == 0 ? load64(r + 8) : default_val
+  if tag == 0 { load64(r + 8) } else { default_val }
 }
 
 sans_result_error(r:I) I {

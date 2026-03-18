@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  version-bump:
+    name: Bump version files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in all files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Cargo.toml files (all 6 crates)
+          for toml in crates/*/Cargo.toml; do
+            sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" "$toml"
+          done
+
+          # VS Code extension
+          sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" editors/vscode-sans/package.json
+
+          # Website version meta tags
+          for html in website/index.html website/docs/index.html website/benchmarks/index.html website/download/index.html; do
+            sed -i "s/content=\"[0-9]*\.[0-9]*\.[0-9]*\"/content=\"${VERSION}\"/" "$html"
+          done
+
+          # CLAUDE.md current version
+          sed -i "s/\*\*Current version: \`[0-9]*\.[0-9]*\.[0-9]*\`\*\*/\*\*Current version: \`${VERSION}\`\*\*/" CLAUDE.md
+
+          # Self-hosted compiler version string
+          sed -i "s/p(\"sans [0-9]*\.[0-9]*\.[0-9]*\")/p(\"sans ${VERSION}\")/" compiler/main.sans
+
+      - name: Update Cargo.lock
+        run: cargo update --workspace
+
+      - name: Commit version bump
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: bump version to ${VERSION}"
+          git push origin main
+
+  build-macos:
+    name: Build macOS ${{ matrix.arch }}
+    needs: version-bump
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-13
+            arch: x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install LLVM 17
+        run: brew install llvm@17
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-cargo-
+
+      - name: Build
+        env:
+          LLVM_SYS_170_STATIC: "1"
+        run: |
+          LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) \
+          cargo build --release
+
+      - name: Package
+        run: |
+          cp target/release/sans sans
+          strip sans
+          tar czf sans-macos-${{ matrix.arch }}.tar.gz sans
+          rm sans
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sans-macos-${{ matrix.arch }}.tar.gz
+          generate_release_notes: true

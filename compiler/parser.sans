@@ -1,0 +1,1664 @@
+import "constants"
+import "lexer"
+
+// ------ Token accessors ------------------------------------------------------------------------------------------------------------------------------------------
+tok_kind(t:I) I = load64(t)
+tok_val(t:I) I = load64(t + 8)
+
+// ------ Parser state ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Parser: [tokens:I, pos:I, last_try_expr:I] = 24 bytes
+make_parser(tokens:I) I {
+  p = alloc(24)
+  store64(p, tokens)          // tokens array pointer
+  store64(p + 8, 0)          // pos
+  store64(p + 16, 0)         // last_try_expr
+  p
+}
+
+p_tokens(p:I) I = load64(p)
+p_pos(p:I) I = load64(p + 8)
+p_set_pos(p:I v:I) I { store64(p + 8, v)
+  0 }
+p_last_try(p:I) I = load64(p + 16)
+p_set_last_try(p:I v:I) I { store64(p + 16, v)
+  0 }
+
+// Get token at current position
+p_peek(p:I) I {
+  tokens = p_tokens(p)
+  pos = p_pos(p)
+  data = load64(tokens)  // array data pointer is at offset 0
+  load64(data + pos * 8)
+}
+
+p_peek_kind(p:I) I = tok_kind(p_peek(p))
+
+// Get token at pos + offset
+p_peek_at(p:I offset:I) I {
+  tokens = p_tokens(p)
+  pos = p_pos(p) + offset
+  data = load64(tokens)  // array data pointer is at offset 0
+  load64(data + pos * 8)
+}
+
+p_peek_kind_at(p:I offset:I) I = tok_kind(p_peek_at(p, offset))
+
+// Consume and return current token
+p_advance(p:I) I {
+  t = p_peek(p)
+  p_set_pos(p, p_pos(p) + 1)
+  t
+}
+
+// Check if current token matches kind
+p_at(p:I kind:I) I = if p_peek_kind(p) == kind { 1 } else { 0 }
+
+// Consume token of expected kind or error
+p_expect(p:I kind:I) I {
+  if p_at(p, kind) == 1 { p_advance(p) } else {
+    p("parse error: expected token kind ")
+    p(kind)
+    p(" got ")
+    p(p_peek_kind(p))
+    exit(1)
+    0
+  }
+}
+
+// Expect identifier token, return its value (string pointer)
+p_expect_ident(p:I) I {
+  if p_at(p, TK_IDENT) == 1 {
+    t = p_advance(p)
+    tok_val(t)
+  } else {
+    p("parse error: expected identifier, got kind ")
+    p(p_peek_kind(p))
+    exit(1)
+    0
+  }
+}
+
+// ------ AST constructors ---------------------------------------------------------------------------------------------------------------------------------------
+
+// Expr nodes
+make_int_lit(val:I) I {
+  n = alloc(16)
+  store64(n, EX_INT_LIT)
+  store64(n + 8, val)
+  n
+}
+
+make_float_lit(val:I) I {
+  n = alloc(16)
+  store64(n, EX_FLOAT_LIT)
+  store64(n + 8, val)
+  n
+}
+
+make_bool_lit(val:I) I {
+  n = alloc(16)
+  store64(n, EX_BOOL_LIT)
+  store64(n + 8, val)
+  n
+}
+
+make_string_lit(str_ptr:I) I {
+  n = alloc(16)
+  store64(n, EX_STRING_LIT)
+  store64(n + 8, str_ptr)
+  n
+}
+
+make_ident(name_ptr:I) I {
+  n = alloc(16)
+  store64(n, EX_IDENT)
+  store64(n + 8, name_ptr)
+  n
+}
+
+make_binop(op:I left:I right:I) I {
+  n = alloc(32)
+  store64(n, EX_BINOP)
+  store64(n + 8, op)
+  store64(n + 16, left)
+  store64(n + 24, right)
+  n
+}
+
+make_unaryop(op:I operand:I) I {
+  n = alloc(24)
+  store64(n, EX_UNARYOP)
+  store64(n + 8, op)
+  store64(n + 16, operand)
+  n
+}
+
+make_call(name_ptr:I args:I) I {
+  n = alloc(24)
+  store64(n, EX_CALL)
+  store64(n + 8, name_ptr)
+  store64(n + 16, ptr(args))
+  n
+}
+
+make_method_call(object:I method_ptr:I args:I) I {
+  n = alloc(32)
+  store64(n, EX_METHOD_CALL)
+  store64(n + 8, object)
+  store64(n + 16, method_ptr)
+  store64(n + 24, ptr(args))
+  n
+}
+
+make_field_access(object:I field_ptr:I) I {
+  n = alloc(24)
+  store64(n, EX_FIELD_ACCESS)
+  store64(n + 8, object)
+  store64(n + 16, field_ptr)
+  n
+}
+
+// NOTE: then_stmts_p and else_stmts_p are raw array pointers (from ptr(array))
+make_if_expr(cond:I then_stmts_p:I then_expr:I else_stmts_p:I else_expr:I) I {
+  n = alloc(48)
+  store64(n, EX_IF)
+  store64(n + 8, cond)
+  store64(n + 16, then_stmts_p)
+  store64(n + 24, then_expr)
+  store64(n + 32, else_stmts_p)
+  store64(n + 40, else_expr)
+  n
+}
+
+make_lambda(params:I ret_type:I body_stmts:I) I {
+  n = alloc(32)
+  store64(n, EX_LAMBDA)
+  store64(n + 8, ptr(params))
+  store64(n + 16, ret_type)
+  store64(n + 24, ptr(body_stmts))
+  n
+}
+
+make_array_lit(elements:I) I {
+  n = alloc(16)
+  store64(n, EX_ARRAY_LIT)
+  store64(n + 8, ptr(elements))
+  n
+}
+
+make_struct_lit(name_ptr:I field_names:I field_values:I) I {
+  n = alloc(32)
+  store64(n, EX_STRUCT_LIT)
+  store64(n + 8, name_ptr)
+  store64(n + 16, ptr(field_names))
+  store64(n + 24, ptr(field_values))
+  n
+}
+
+make_tuple_lit(elements:I) I {
+  n = alloc(16)
+  store64(n, EX_TUPLE_LIT)
+  store64(n + 8, ptr(elements))
+  n
+}
+
+make_match_expr(scrutinee:I arms:I) I {
+  n = alloc(24)
+  store64(n, EX_MATCH)
+  store64(n + 8, scrutinee)
+  store64(n + 16, ptr(arms))
+  n
+}
+
+make_spawn(func_name_ptr:I args:I) I {
+  n = alloc(24)
+  store64(n, EX_SPAWN)
+  store64(n + 8, func_name_ptr)
+  store64(n + 16, ptr(args))
+  n
+}
+
+make_channel(elem_type_ptr:I capacity_expr:I) I {
+  n = alloc(24)
+  store64(n, EX_CHANNEL)
+  store64(n + 8, elem_type_ptr)
+  store64(n + 16, capacity_expr)
+  n
+}
+
+make_mutex_expr(value_expr:I) I {
+  n = alloc(16)
+  store64(n, EX_MUTEX)
+  store64(n + 8, value_expr)
+  n
+}
+
+make_enum_variant(enum_name:I variant_name:I args:I) I {
+  n = alloc(32)
+  store64(n, EX_ENUM_VARIANT)
+  store64(n + 8, enum_name)
+  store64(n + 16, variant_name)
+  store64(n + 24, ptr(args))
+  n
+}
+
+make_array_create(elem_type_ptr:I) I {
+  n = alloc(16)
+  store64(n, EX_ARRAY_CREATE)
+  store64(n + 8, elem_type_ptr)
+  n
+}
+
+// Stmt nodes
+make_st_let(name_ptr:I mutable:I type_ptr:I value_expr:I) I {
+  n = alloc(40)
+  store64(n, ST_LET)
+  store64(n + 8, name_ptr)
+  store64(n + 16, mutable)
+  store64(n + 24, type_ptr)
+  store64(n + 32, value_expr)
+  n
+}
+
+make_st_while(cond_expr:I body_stmts:I) I {
+  n = alloc(24)
+  store64(n, ST_WHILE)
+  store64(n + 8, cond_expr)
+  store64(n + 16, ptr(body_stmts))
+  n
+}
+
+make_st_return(value_expr:I) I {
+  n = alloc(16)
+  store64(n, ST_RETURN)
+  store64(n + 8, value_expr)
+  n
+}
+
+make_st_assign(target_ptr:I value_expr:I) I {
+  n = alloc(24)
+  store64(n, ST_ASSIGN)
+  store64(n + 8, target_ptr)
+  store64(n + 16, value_expr)
+  n
+}
+
+make_st_if(cond_expr:I body_stmts:I) I {
+  n = alloc(24)
+  store64(n, ST_IF)
+  store64(n + 8, cond_expr)
+  store64(n + 16, ptr(body_stmts))
+  n
+}
+
+make_st_break() I {
+  n = alloc(8)
+  store64(n, ST_BREAK)
+  n
+}
+
+make_st_continue() I {
+  n = alloc(8)
+  store64(n, ST_CONTINUE)
+  n
+}
+
+make_st_let_destr(names:I value_expr:I) I {
+  n = alloc(24)
+  store64(n, ST_LET_DESTR)
+  store64(n + 8, ptr(names))
+  store64(n + 16, value_expr)
+  n
+}
+
+make_st_for_in(var_name_ptr:I iterable_expr:I body_stmts:I) I {
+  n = alloc(32)
+  store64(n, ST_FOR_IN)
+  store64(n + 8, var_name_ptr)
+  store64(n + 16, iterable_expr)
+  store64(n + 24, ptr(body_stmts))
+  n
+}
+
+make_st_expr(expr:I) I {
+  n = alloc(16)
+  store64(n, ST_EXPR)
+  store64(n + 8, expr)
+  n
+}
+
+// Other struct constructors
+make_param(name:I type_name:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, type_name)
+  store64(n + 16, 0)
+  n
+}
+
+make_type_param(name:I bound:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, bound)
+  store64(n + 16, 0)
+  n
+}
+
+make_function(name:I params:I ret_type:I body:I type_params:I is_method:I) I {
+  n = alloc(48)
+  store64(n, name)
+  store64(n + 8, ptr(params))
+  store64(n + 16, ret_type)
+  store64(n + 24, ptr(body))
+  store64(n + 32, ptr(type_params))
+  store64(n + 40, is_method)
+  n
+}
+
+make_struct_def(name:I fields:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, ptr(fields))
+  store64(n + 16, 0)
+  n
+}
+
+make_enum_def(name:I variants:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, ptr(variants))
+  store64(n + 16, 0)
+  n
+}
+
+make_enum_variant_def(name:I fields:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, ptr(fields))
+  store64(n + 16, 0)
+  n
+}
+
+make_trait_def(name:I methods:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, ptr(methods))
+  store64(n + 16, 0)
+  n
+}
+
+make_trait_method_sig(name:I params:I ret_type:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, ptr(params))
+  store64(n + 16, ret_type)
+  n
+}
+
+make_impl_block(trait_name:I target_type:I methods:I) I {
+  n = alloc(32)
+  store64(n, trait_name)
+  store64(n + 8, target_type)
+  store64(n + 16, ptr(methods))
+  store64(n + 24, 0)
+  n
+}
+
+make_match_arm(pattern:I body_expr:I) I {
+  n = alloc(24)
+  store64(n, pattern)
+  store64(n + 8, body_expr)
+  store64(n + 16, 0)
+  n
+}
+
+make_pattern(enum_name:I variant_name:I bindings:I) I {
+  n = alloc(32)
+  store64(n, enum_name)
+  store64(n + 8, variant_name)
+  store64(n + 16, ptr(bindings))
+  store64(n + 24, 0)
+  n
+}
+
+make_program(imports:I globals:I functions:I structs:I enums:I traits:I impls:I) I {
+  n = alloc(56)
+  store64(n, ptr(imports))
+  store64(n + 8, ptr(globals))
+  store64(n + 16, ptr(functions))
+  store64(n + 24, ptr(structs))
+  store64(n + 32, ptr(enums))
+  store64(n + 40, ptr(traits))
+  store64(n + 48, ptr(impls))
+  n
+}
+
+make_global_def(name:I value:I type_name:I) I {
+  n = alloc(24)
+  store64(n, name)
+  store64(n + 8, value)
+  store64(n + 16, type_name)
+  n
+}
+
+// ------ Helper: check if first char is uppercase ---------------------------------------------------------------
+is_upper_start(s:I) I {
+  // s is a string pointer; check first char
+  ch = char_at(s, 0)
+  if ch >= 65 && ch <= 90 { 1 } else { 0 }
+}
+
+// ------ Helper: get string from token value (cast ptr back to string)
+// tok_val returns a ptr (I) to a string; we use it directly as string pointer
+
+// ------ Type name parsing ------------------------------------------------------------------------------------------------------------------------------------
+parse_type_name(p:I) I {
+  // Array type: [T]
+  if p_at(p, TK_LBRACKET) == 1 {
+    p_advance(p)
+    inner = parse_type_name(p)
+    p_expect(p, TK_RBRACKET)
+    // Build "Array<inner>" string
+    result = "Array<" + inner + ">"
+    return ptr(result)
+  }
+
+  // Tuple type: (T1 T2 ...)
+  if p_at(p, TK_LPAREN) == 1 {
+    p_advance(p)
+    parts := ""
+    first := 1
+    while p_at(p, TK_RPAREN) == 0 && p_at(p, TK_EOF) == 0 {
+      inner = parse_type_name(p)
+      if first == 1 {
+        parts = inner
+        first = 0
+      } else {
+        parts = parts + " " + inner
+      }
+    }
+    p_expect(p, TK_RPAREN)
+    result = "(" + parts + ")"
+    return ptr(result)
+  }
+
+  // Simple identifier type
+  name = p_expect_ident(p)
+
+  // Check for parameterized type: Name<Inner>
+  if p_at(p, TK_LT) == 1 {
+    p_advance(p)  // consume <
+    inner = parse_type_name(p)
+    p_expect(p, TK_GT)
+    result = name + "<" + inner + ">"
+    ptr(result)
+  } else { name }
+}
+
+// ------ Type params parsing ------------------------------------------------------------------------------------------------------------------------------
+parse_type_params(p:I) [I] {
+  type_params = array<I>()
+  if p_at(p, TK_LT) == 0 { return type_params }
+  p_advance(p)  // consume <
+  while p_at(p, TK_GT) == 0 {
+    name = p_expect_ident(p)
+    bound := 0
+    if p_at(p, TK_COLON) == 1 {
+      p_advance(p)  // consume :
+      bound = p_expect_ident(p)
+    }
+    type_params.push(make_type_param(name, bound))
+    if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+  }
+  p_expect(p, TK_GT)
+  type_params
+}
+
+// ------ Param parsing ------------------------------------------------------------------------------------------------------------------------------------------------
+parse_params(p:I) [I] {
+  params = array<I>()
+  if p_at(p, TK_RPAREN) == 1 { return params }
+  while 1 {
+    name = p_expect_ident(p)
+    // Allow optional colon between param name and type
+    if p_at(p, TK_COLON) == 1 { p_advance(p) }
+    type_name = parse_type_name(p)
+    params.push(make_param(name, type_name))
+    if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+    if p_at(p, TK_RPAREN) == 1 { return params }
+  }
+  params
+}
+
+// ------ Call args parsing ------------------------------------------------------------------------------------------------------------------------------------
+parse_call_args(p:I) [I] {
+  args = array<I>()
+  if p_at(p, TK_RPAREN) == 1 { return args }
+  while 1 {
+    args.push(parse_expr(p, 0))
+    if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+    if p_at(p, TK_RPAREN) == 1 { return args }
+  }
+  args
+}
+
+// ------ Infix binding power ------------------------------------------------------------------------------------------------------------------------------
+// Returns packed value: left_bp * 10000 + right_bp * 100 + op + 1
+// Returns 0 if not an infix operator
+// We add 1 to op to distinguish op=0 (OP_ADD) from "no match"
+infix_bp(kind:I) I {
+  if kind == TK_OR       { 1 * 10000 + 2 * 100 + OP_OR + 1 }
+  else if kind == TK_AND      { 3 * 10000 + 4 * 100 + OP_AND + 1 }
+  else if kind == TK_EQ_EQ    { 5 * 10000 + 6 * 100 + OP_EQ + 1 }
+  else if kind == TK_NOT_EQ   { 5 * 10000 + 6 * 100 + OP_NEQ + 1 }
+  else if kind == TK_LT       { 7 * 10000 + 8 * 100 + OP_LT + 1 }
+  else if kind == TK_GT       { 7 * 10000 + 8 * 100 + OP_GT + 1 }
+  else if kind == TK_LT_EQ    { 7 * 10000 + 8 * 100 + OP_LTEQ + 1 }
+  else if kind == TK_GT_EQ    { 7 * 10000 + 8 * 100 + OP_GTEQ + 1 }
+  else if kind == TK_PLUS     { 9 * 10000 + 10 * 100 + OP_ADD + 1 }
+  else if kind == TK_MINUS    { 9 * 10000 + 10 * 100 + OP_SUB + 1 }
+  else if kind == TK_STAR     { 11 * 10000 + 12 * 100 + OP_MUL + 1 }
+  else if kind == TK_SLASH    { 11 * 10000 + 12 * 100 + OP_DIV + 1 }
+  else if kind == TK_PERCENT  { 11 * 10000 + 12 * 100 + OP_MOD + 1 }
+  else { 0 }
+}
+
+bp_left(packed:I) I = packed / 10000
+bp_right(packed:I) I = (packed % 10000) / 100
+bp_op(packed:I) I = (packed % 100) - 1
+
+// ------ Look-ahead: check if else follows after block ------------------------------------------------
+peek_has_else_after_block(p:I) I {
+  depth := 1
+  pos := p_pos(p)
+  tokens_data = load64(p_tokens(p))  // get data pointer from array
+  while depth > 0 {
+    kind = tok_kind(load64(tokens_data + pos * 8))
+    if kind == TK_LBRACE { depth = depth + 1 }
+    if kind == TK_RBRACE {
+      depth = depth - 1
+      if depth == 0 {
+        // Check token after matching }
+        next_kind = tok_kind(load64(tokens_data + (pos + 1) * 8))
+        return if next_kind == TK_ELSE { 1 } else { 0 }
+      }
+    }
+    if kind == TK_EOF { return 0 }
+    pos = pos + 1
+  }
+  0
+}
+
+// ------ Block body parsing (stmts + final expr) ------------------------------------------------------------------
+parse_block_body(p:I) [I] {
+  // Returns array of 2: [stmts_array, final_expr]
+  stmts = array<I>()
+  while 1 {
+    if p_at(p, TK_RBRACE) == 1 || p_at(p, TK_EOF) == 1 {
+      print("parse error: expected expression in block\n")
+      exit(1)
+    }
+
+    parsed = parse_stmt(p)
+
+    // If next token is }, the last stmt should be the final expression
+    if p_at(p, TK_RBRACE) == 1 {
+      // Get last element from parsed
+      last_idx = parsed.len() - 1
+      last = parsed.get(last_idx)
+
+      // Add preceding stmts (e.g. try guard)
+      i := 0
+      while i < last_idx {
+        stmts.push(parsed.get(i))
+        i = i + 1
+      }
+
+      // last must be ST_EXPR (or ST_RETURN which also has an expression)
+      last_tag = load64(last)
+      if last_tag == ST_EXPR {
+        result = array<I>()
+        result.push(ptr(stmts))
+        result.push(load64(last + 8))  // the expr
+        return result
+        0
+      } else { if last_tag == ST_RETURN {
+        // return stmt --- add it as a regular stmt, use 0 as the block expression
+        stmts.push(last)
+        result = array<I>()
+        result.push(ptr(stmts))
+        result.push(make_int_lit(0))
+        return result
+        0
+      } else {
+        // Other statements (while, if, etc.) --- wrap as block returning 0
+        stmts.push(last)
+        result = array<I>()
+        result.push(ptr(stmts))
+        result.push(make_int_lit(0))
+        return result
+        0
+      } }
+    } else {
+      // Add all parsed stmts
+      i := 0
+      while i < parsed.len() {
+        stmts.push(parsed.get(i))
+        i = i + 1
+      }
+    }
+  }
+  // unreachable
+  result = array<I>()
+  result
+}
+
+// ------ Body parsing (list of stmts) ------------------------------------------------------------------------------------------------
+parse_body(p:I) [I] {
+  stmts = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    parsed = parse_stmt(p)
+    i := 0
+    while i < parsed.len() {
+      stmts.push(parsed.get(i))
+      i = i + 1
+    }
+  }
+  stmts
+}
+
+// ------ Statement parsing ------------------------------------------------------------------------------------------------------------------------------------
+parse_stmt(p:I) [I] {
+  // Clear any previous try expression
+  p_set_last_try(p, 0)
+
+  result = parse_stmt_inner(p)
+
+  // If parse_expr set last_try_expr, insert a guard statement before the result
+  try_expr = p_last_try(p)
+  if try_expr != 0 {
+    p_set_last_try(p, 0)
+    // Build guard: if try_expr.is_err() { return try_expr }
+    is_err_args = array<I>()
+    is_err_call = make_method_call(try_expr, ptr("is_err"), is_err_args)
+    ret_body = array<I>()
+    ret_body.push(make_st_return(try_expr))
+    guard = make_st_if(is_err_call, ret_body)
+    out = array<I>()
+    out.push(guard)
+    out.push(result)
+    out
+  } else {
+    out = array<I>()
+    out.push(result)
+    out
+  }
+}
+
+parse_stmt_inner(p:I) I {
+  kind = p_peek_kind(p)
+
+  // let
+  if kind == TK_LET { return parse_let(p) }
+
+  // while
+  if kind == TK_WHILE { return parse_while_stmt(p) }
+
+  // break
+  if kind == TK_BREAK {
+    p_advance(p)
+    return make_st_break()
+  }
+
+  // continue
+  if kind == TK_CONTINUE {
+    p_advance(p)
+    return make_st_continue()
+  }
+
+  // return
+  if kind == TK_RETURN { return parse_return(p) }
+
+  // if
+  if kind == TK_IF { return parse_if_or_if_else(p) }
+
+  // for
+  if kind == TK_FOR {
+    p_advance(p)  // consume for
+    var_name = p_expect_ident(p)
+    p_expect(p, TK_IN)
+    iterable = parse_expr(p, 0)
+    p_expect(p, TK_LBRACE)
+    body = parse_body(p)
+    p_expect(p, TK_RBRACE)
+    return make_st_for_in(var_name, iterable, body)
+  }
+
+  // Check for := mutable declaration
+  if kind == TK_IDENT && p_peek_kind_at(p, 1) == TK_COLON_EQ {
+    name = p_expect_ident(p)
+    p_advance(p)  // consume :=
+    value = parse_expr(p, 0)
+    return make_st_let(name, 1, 0, value)
+  }
+
+  // Check for index assignment: ident[expr] = expr
+  if kind == TK_IDENT && p_peek_kind_at(p, 1) == TK_LBRACKET {
+    saved_pos = p_pos(p)
+    name = p_expect_ident(p)
+    p_advance(p)  // consume [
+    index = parse_expr(p, 0)
+    if p_at(p, TK_RBRACKET) == 1 {
+      p_advance(p)  // consume ]
+      if p_at(p, TK_EQ) == 1 {
+        p_advance(p)  // consume =
+        value = parse_expr(p, 0)
+        set_args = array<I>()
+        set_args.push(index)
+        set_args.push(value)
+        mc = make_method_call(make_ident(name), ptr("set"), set_args)
+        return make_st_expr(mc)
+      } else {
+        // Not index assignment, backtrack
+        p_set_pos(p, saved_pos)
+      }
+    } else {
+      // No closing bracket in expected position, backtrack
+      p_set_pos(p, saved_pos)
+    }
+  }
+
+  // Check for compound assignment: ident += expr, etc.
+  if kind == TK_IDENT {
+    next_kind = p_peek_kind_at(p, 1)
+    compound_op := -1
+    if next_kind == TK_PLUS_EQ { compound_op = OP_ADD }
+    if next_kind == TK_MINUS_EQ { compound_op = OP_SUB }
+    if next_kind == TK_STAR_EQ { compound_op = OP_MUL }
+    if next_kind == TK_SLASH_EQ { compound_op = OP_DIV }
+    if next_kind == TK_PERCENT_EQ { compound_op = OP_MOD }
+    if compound_op >= 0 {
+      name = p_expect_ident(p)
+      p_advance(p)  // consume compound operator
+      rhs = parse_expr(p, 0)
+      value = make_binop(compound_op, make_ident(name), rhs)
+      return make_st_assign(name, value)
+    }
+  }
+
+  // Could be an expression or assignment (name = expr)
+  expr = parse_expr(p, 0)
+
+  // Check if this is an assignment: identifier followed by =
+  if p_at(p, TK_EQ) == 1 {
+    if load64(expr) == EX_IDENT {
+      name = load64(expr + 8)
+      p_advance(p)  // consume =
+      value = parse_expr(p, 0)
+      return make_st_assign(name, value)
+    } else {
+      print("parse error: left side of assignment must be a variable name\n")
+      exit(1)
+    }
+  }
+
+  make_st_expr(expr)
+}
+
+// ------ Let statement ------------------------------------------------------------------------------------------------------------------------------------------------
+parse_let(p:I) I {
+  p_expect(p, TK_LET)
+
+  // Check for destructuring: let (a, b) = expr
+  if p_at(p, TK_LPAREN) == 1 {
+    p_advance(p)  // consume (
+    name1 = p_expect_ident(p)
+    p_expect(p, TK_COMMA)
+    name2 = p_expect_ident(p)
+    p_expect(p, TK_RPAREN)
+    p_expect(p, TK_EQ)
+    value = parse_expr(p, 0)
+    names = array<I>()
+    names.push(name1)
+    names.push(name2)
+    return make_st_let_destr(names, value)
+  }
+
+  // Check for mut keyword
+  mutable := 0
+  if p_at(p, TK_MUT) == 1 {
+    p_advance(p)
+    mutable = 1
+  }
+
+  name = p_expect_ident(p)
+
+  // Type annotation (optional --- present if next token is not =)
+  type_name := 0
+  if p_at(p, TK_EQ) == 0 {
+    type_name = parse_type_name(p)
+  }
+
+  p_expect(p, TK_EQ)
+  value = parse_expr(p, 0)
+
+  make_st_let(name, mutable, type_name, value)
+}
+
+// ------ While statement ------------------------------------------------------------------------------------------------------------------------------------------
+parse_while_stmt(p:I) I {
+  p_expect(p, TK_WHILE)
+  cond = parse_expr(p, 0)
+  p_expect(p, TK_LBRACE)
+  body = parse_body(p)
+  p_expect(p, TK_RBRACE)
+  make_st_while(cond, body)
+}
+
+// ------ Return statement ---------------------------------------------------------------------------------------------------------------------------------------
+parse_return(p:I) I {
+  p_expect(p, TK_RETURN)
+  value = parse_expr(p, 0)
+  make_st_return(value)
+}
+
+// ------ If statement / expression ------------------------------------------------------------------------------------------------------------
+parse_if_or_if_else(p:I) I {
+  p_expect(p, TK_IF)
+  cond = parse_expr(p, 0)
+  p_expect(p, TK_LBRACE)
+
+  // Check if this is an if/else expression or an if statement
+  if peek_has_else_after_block(p) == 1 {
+    // if/else expression
+    block = parse_block_body(p)
+    then_stmts_ptr = block.get(0)
+    then_expr = block.get(1)
+    p_expect(p, TK_RBRACE)
+
+    p_expect(p, TK_ELSE)
+    // Support "else if" by recursively parsing
+    if p_at(p, TK_IF) == 1 {
+      else_if_expr = parse_if_expr(p)
+      empty_stmts = array<I>()
+      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr))
+    } else {
+      p_expect(p, TK_LBRACE)
+      else_block = parse_block_body(p)
+      else_stmts_ptr = else_block.get(0)
+      else_expr = else_block.get(1)
+      p_expect(p, TK_RBRACE)
+      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr))
+    }
+  } else {
+    // if statement (no else)
+    body = parse_body(p)
+    p_expect(p, TK_RBRACE)
+    make_st_if(cond, body)
+  }
+}
+
+// ------ Expression parsing (Pratt) ---------------------------------------------------------------------------------------------------------
+parse_expr(p:I min_bp:I) I {
+  lhs := parse_atom(p)
+
+  while 1 {
+    kind = p_peek_kind(p)
+
+    // Field access / method call (highest precedence)
+    if kind == TK_DOT {
+      p_advance(p)  // consume .
+      // Accept identifier or integer literal (for tuple field access like t.0)
+      field_or_method := 0
+      if p_at(p, TK_INT_LIT) == 1 {
+        t = p_advance(p)
+        field_or_method = ptr(str(tok_val(t)))
+      } else {
+        field_or_method = p_expect_ident(p)
+      }
+
+      // Check if method call: followed by (
+      if p_at(p, TK_LPAREN) == 1 {
+        p_advance(p)  // consume (
+        args = parse_call_args(p)
+        p_expect(p, TK_RPAREN)
+        lhs = make_method_call(lhs, field_or_method, args)
+      } else {
+        lhs = make_field_access(lhs, field_or_method)
+      }
+      continue
+    }
+
+    // Postfix unwrap: expr!
+    if kind == TK_BANG {
+      p_advance(p)  // consume !
+      unwrap_args = array<I>()
+      lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args)
+      continue
+    }
+
+    // Index access / slice: expr[index] or expr[start:end]
+    if kind == TK_LBRACKET {
+      p_advance(p)  // consume [
+      saved_lhs = lhs
+
+      // Check for [:end] --- start defaults to 0
+      start_expr := 0
+      if p_at(p, TK_COLON) == 1 {
+        start_expr = make_int_lit(0)
+      } else {
+        start_expr = parse_expr(p, 0)
+      }
+
+      if p_at(p, TK_COLON) == 1 {
+        // Slice syntax: [start:end] or [start:] or [:end]
+        p_advance(p)  // consume :
+        end_expr := 0
+        if p_at(p, TK_RBRACKET) == 1 {
+          // [start:] --- end defaults to len()
+          len_args = array<I>()
+          end_expr = make_method_call(saved_lhs, ptr("len"), len_args)
+        } else {
+          end_expr = parse_expr(p, 0)
+        }
+        p_expect(p, TK_RBRACKET)
+        slice_args = array<I>()
+        slice_args.push(start_expr)
+        slice_args.push(end_expr)
+        lhs = make_method_call(saved_lhs, ptr("substring"), slice_args)
+        continue
+      }
+
+      // Regular index access: [index]
+      p_expect(p, TK_RBRACKET)
+      get_args = array<I>()
+      get_args.push(start_expr)
+      lhs = make_method_call(saved_lhs, ptr("get"), get_args)
+      continue
+    }
+
+    // Infix operators
+    packed = infix_bp(kind)
+    if packed == 0 { 0 } else {
+      left_bp = bp_left(packed)
+      if left_bp < min_bp { 0 } else {
+        right_bp = bp_right(packed)
+        op = bp_op(packed)
+        p_advance(p)  // consume operator
+        rhs = parse_expr(p, right_bp)
+        lhs = make_binop(op, lhs, rhs)
+        continue
+      }
+    }
+
+    // No more operators to consume
+    break
+  }
+
+  // Check for ? --- either ternary (cond ? a : b) or try operator (result?)
+  if min_bp == 0 && p_at(p, TK_QUESTION) == 1 {
+    save_pos = p_pos(p)
+    p_advance(p)  // consume ?
+
+    // Try ternary: parse then_expr and look for :
+    // We need to attempt parsing and check for colon
+    // Save position to backtrack if not ternary
+    then_expr = parse_expr(p, 0)
+    if p_at(p, TK_COLON) == 1 {
+      // It's ternary
+      p_advance(p)  // consume :
+      else_expr = parse_expr(p, 0)
+      empty_then = array<I>()
+      empty_else = array<I>()
+      lhs = make_if_expr(lhs, ptr(empty_then), then_expr, ptr(empty_else), else_expr)
+    } else {
+      // Not ternary --- it's try operator: expr?
+      // Restore to just after ?
+      p_set_pos(p, save_pos + 1)
+      // Store original expr for the guard statement
+      p_set_last_try(p, lhs)
+      unwrap_args = array<I>()
+      lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args)
+    }
+  }
+
+  lhs
+}
+
+// ------ Atom parsing (primary expressions) ---------------------------------------------------------------------------------
+parse_atom(p:I) I {
+  kind = p_peek_kind(p)
+
+  // Integer literal
+  if kind == TK_INT_LIT {
+    t = p_advance(p)
+    return make_int_lit(tok_val(t))
+  }
+
+  // Float literal
+  if kind == TK_FLOAT_LIT {
+    t = p_advance(p)
+    return make_float_lit(tok_val(t))
+  }
+
+  // Identifier
+  if kind == TK_IDENT {
+    name = p_expect_ident(p)
+
+    // Check for enum variant: Name::Variant
+    if p_at(p, TK_COLON_COLON) == 1 {
+      p_advance(p)  // consume ::
+      variant_name = p_expect_ident(p)
+      ev_args := array<I>()
+      if p_at(p, TK_LPAREN) == 1 {
+        p_advance(p)  // consume (
+        ev_args = parse_call_args(p)
+        p_expect(p, TK_RPAREN)
+      }
+      return make_enum_variant(name, variant_name, ev_args)
+    }
+
+    // Check for function call: Name(args)
+    if p_at(p, TK_LPAREN) == 1 {
+      p_advance(p)  // consume (
+      args = parse_call_args(p)
+      p_expect(p, TK_RPAREN)
+      return make_call(name, args)
+    }
+
+    // Check for struct literal: Name { field: value, ... } (uppercase first char)
+    // Must verify it's actually a struct literal by checking for "ident :" after the "{"
+    // Otherwise "TY_INT { expr }" in an if-else would be misinterpreted
+    if p_at(p, TK_LBRACE) == 1 && is_upper_start(name) == 1 && p_peek_kind_at(p, 1) == TK_IDENT && p_peek_kind_at(p, 2) == TK_COLON {
+      p_advance(p)  // consume {
+      field_names = array<I>()
+      field_values = array<I>()
+      while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+        fname = p_expect_ident(p)
+        p_expect(p, TK_COLON)
+        fval = parse_expr(p, 0)
+        field_names.push(fname)
+        field_values.push(fval)
+        if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+      }
+      p_expect(p, TK_RBRACE)
+      return make_struct_lit(name, field_names, field_values)
+    }
+
+    // Plain identifier
+    return make_ident(name)
+  }
+
+  // self
+  if kind == TK_SELF_VAL {
+    p_advance(p)
+    return make_ident(ptr("self"))
+  }
+
+  // true
+  if kind == TK_TRUE {
+    p_advance(p)
+    return make_bool_lit(1)
+  }
+
+  // false
+  if kind == TK_FALSE {
+    p_advance(p)
+    return make_bool_lit(0)
+  }
+
+  // if expression (in expression position)
+  if kind == TK_IF {
+    return parse_if_expr(p)
+  }
+
+  // match expression
+  if kind == TK_MATCH {
+    return parse_match_expr(p)
+  }
+
+  // Prefix !
+  if kind == TK_BANG {
+    p_advance(p)
+    operand = parse_expr(p, 13)
+    return make_unaryop(UOP_NOT, operand)
+  }
+
+  // Prefix -
+  if kind == TK_MINUS {
+    p_advance(p)
+    operand = parse_expr(p, 13)
+    return make_unaryop(UOP_NEG, operand)
+  }
+
+  // String literal
+  if kind == TK_STRING_LIT {
+    t = p_advance(p)
+    return make_string_lit(tok_val(t))
+  }
+
+  // Interpolated string
+  if kind == TK_INTERP_STRING {
+    t = p_advance(p)
+    return desugar_interp_string(p, tok_val(t))
+  }
+
+  // spawn
+  if kind == TK_SPAWN {
+    p_advance(p)
+    func_name = p_expect_ident(p)
+    p_expect(p, TK_LPAREN)
+    args = array<I>()
+    while p_at(p, TK_RPAREN) == 0 {
+      args.push(parse_expr(p, 0))
+      if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+    }
+    p_expect(p, TK_RPAREN)
+    return make_spawn(func_name, args)
+  }
+
+  // array<T>()
+  if kind == TK_ARRAY {
+    p_advance(p)
+    p_expect(p, TK_LT)
+    type_name = parse_type_name(p)
+    p_expect(p, TK_GT)
+    p_expect(p, TK_LPAREN)
+    p_expect(p, TK_RPAREN)
+    return make_array_create(type_name)
+  }
+
+  // mutex(value)
+  if kind == TK_MUTEX {
+    p_advance(p)
+    p_expect(p, TK_LPAREN)
+    value = parse_expr(p, 0)
+    p_expect(p, TK_RPAREN)
+    return make_mutex_expr(value)
+  }
+
+  // channel<T>(capacity?)
+  if kind == TK_CHANNEL {
+    p_advance(p)
+    p_expect(p, TK_LT)
+    type_name = parse_type_name(p)
+    p_expect(p, TK_GT)
+    p_expect(p, TK_LPAREN)
+    capacity := 0
+    if p_at(p, TK_RPAREN) == 0 {
+      capacity = parse_expr(p, 0)
+    }
+    p_expect(p, TK_RPAREN)
+    return make_channel(type_name, capacity)
+  }
+
+  // Parenthesized expression or tuple
+  if kind == TK_LPAREN {
+    p_advance(p)  // consume (
+    first = parse_expr(p, 0)
+    if p_at(p, TK_RPAREN) == 1 {
+      // Single expression in parens --- grouping
+      p_advance(p)
+      return first
+    } else {
+      // Multiple expressions --- tuple literal
+      elements = array<I>()
+      elements.push(first)
+      while p_at(p, TK_RPAREN) == 0 && p_at(p, TK_EOF) == 0 {
+        elements.push(parse_expr(p, 0))
+      }
+      p_expect(p, TK_RPAREN)
+      return make_tuple_lit(elements)
+    }
+  }
+
+  // Array literal: [expr, expr, ...]
+  if kind == TK_LBRACKET {
+    p_advance(p)  // consume [
+    elements = array<I>()
+    while p_at(p, TK_RBRACKET) == 0 && p_at(p, TK_EOF) == 0 {
+      elements.push(parse_expr(p, 0))
+      if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+    }
+    p_expect(p, TK_RBRACKET)
+    if elements.len() == 0 {
+      print("parse error: empty array literal not allowed; use array<T>() for empty arrays\n")
+      exit(1)
+    }
+    return make_array_lit(elements)
+  }
+
+  // Lambda: |params| RetType { body }
+  if kind == TK_PIPE {
+    p_advance(p)  // consume opening |
+    params = array<I>()
+    while p_at(p, TK_PIPE) == 0 && p_at(p, TK_EOF) == 0 {
+      param_name = p_expect_ident(p)
+      p_expect(p, TK_COLON)
+      type_name = parse_type_name(p)
+      params.push(make_param(param_name, type_name))
+    }
+    p_expect(p, TK_PIPE)  // consume closing |
+    ret_type = parse_type_name(p)
+    p_expect(p, TK_LBRACE)
+    body = parse_body(p)
+    p_expect(p, TK_RBRACE)
+    return make_lambda(params, ret_type, body)
+  }
+
+  // Unknown token
+  pk = if p_pos(p) > 0 { tok_kind(p_peek_at(p, -1)) } else { 0 }
+  nk = tok_kind(p_peek_at(p, 1))
+  pv = if p_pos(p) > 0 { tok_val(p_peek_at(p, -1)) } else { ptr("") }
+  p("PARSE ERR kind=" + str(kind) + " pos=" + str(p_pos(p)) + " prev_kind=" + str(pk) + " prev_val=" + pv + " next_kind=" + str(nk))
+  exit(1)
+  0
+}
+
+// ------ If expression (in expression position) ---------------------------------------------------------------------
+parse_if_expr(p:I) I {
+  p_expect(p, TK_IF)
+  cond = parse_expr(p, 0)
+
+  p_expect(p, TK_LBRACE)
+  then_block = parse_block_body(p)
+  then_stmts_ptr = then_block.get(0)
+  then_expr = then_block.get(1)
+  p_expect(p, TK_RBRACE)
+
+  // Check for else branch (may not exist at end of else-if chain)
+  if p_at(p, TK_ELSE) == 1 {
+    p_advance(p)  // consume else
+    // Support "else if" by recursively parsing
+    if p_at(p, TK_IF) == 1 {
+      else_if_expr = parse_if_expr(p)
+      empty_stmts = array<I>()
+      make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr)
+    } else {
+      p_expect(p, TK_LBRACE)
+      else_block = parse_block_body(p)
+      else_stmts_ptr = else_block.get(0)
+      else_expr = else_block.get(1)
+      p_expect(p, TK_RBRACE)
+      make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr)
+    }
+  } else {
+    // No else --- use 0 as default
+    empty_stmts = array<I>()
+    make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), make_int_lit(0))
+  }
+}
+
+// ------ Match expression ---------------------------------------------------------------------------------------------------------------------------------------
+parse_match_expr(p:I) I {
+  p_expect(p, TK_MATCH)
+  scrutinee = parse_expr(p, 0)
+  p_expect(p, TK_LBRACE)
+  arms = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    arm = parse_match_arm(p)
+    arms.push(arm)
+    if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+  }
+  p_expect(p, TK_RBRACE)
+  make_match_expr(scrutinee, arms)
+}
+
+parse_match_arm(p:I) I {
+  pattern = parse_pattern(p)
+  p_expect(p, TK_FAT_ARROW)
+  body = parse_expr(p, 0)
+  make_match_arm(pattern, body)
+}
+
+parse_pattern(p:I) I {
+  enum_name = p_expect_ident(p)
+  p_expect(p, TK_COLON_COLON)
+  variant_name = p_expect_ident(p)
+  bindings = array<I>()
+  if p_at(p, TK_LPAREN) == 1 {
+    p_advance(p)  // consume (
+    while p_at(p, TK_RPAREN) == 0 {
+      binding = p_expect_ident(p)
+      bindings.push(binding)
+      if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+    }
+    p_expect(p, TK_RPAREN)
+  }
+  make_pattern(enum_name, variant_name, bindings)
+}
+
+// ------ Interpolated string desugaring ---------------------------------------------------------------------------------------------
+desugar_interp_string(p:I parts_ptr:I) I {
+  // parts_ptr is a pointer to an array of interp parts
+  // Each part: [tag:I, value_ptr:I] = 16 bytes
+  parts = parts_ptr  // this is already the array pointer
+  result := 0
+  i := 0
+  len = load64(parts + 8)  // array length at offset 8
+  data = load64(parts)      // array data pointer at offset 0
+
+  // Actually, parts is an Array<I> from the lexer
+  // Arrays in Sans are opaque --- we need to iterate properly
+  // The lexer returns parts as array<I>, and tok_val returns ptr(parts)
+  // So parts_ptr = ptr(parts_array)
+  // We need to reconstruct: parts_array.get(i) gives us each part pointer
+
+  // Actually let's use the array methods on the original array
+  // The token value for INTERP_STRING is ptr(parts) where parts is [I]
+  // We cast it back
+
+  // In Sans, arrays are opaque runtime objects. ptr(arr) gives us the pointer.
+  // We can't easily iterate from a raw pointer. Instead let's use load64-based
+  // array access. Sans arrays have: [data_ptr, length, capacity] at the pointer.
+
+  num_parts = load64(parts_ptr + 8)
+  data_ptr = load64(parts_ptr)
+
+  while i < num_parts {
+    part = load64(data_ptr + i * 8)
+    tag = load64(part)
+    val = load64(part + 8)
+
+    expr := 0
+    if tag == INTERP_LITERAL {
+      expr = make_string_lit(val)
+    } else { if tag == INTERP_IDENT {
+      // Just create an identifier (type checker handles str conversion)
+      expr = make_ident(val)
+    } else { if tag == INTERP_EXPR {
+      // Re-lex the expression text, parse it, wrap in str()
+      expr_text = val  // string pointer
+      sub_tokens = lex(expr_text)
+      sub_p = make_parser(sub_tokens)
+      inner_expr = parse_expr(sub_p, 0)
+      str_args = array<I>()
+      str_args.push(inner_expr)
+      expr = make_call(ptr("str"), str_args)
+    } } }
+
+    if result == 0 {
+      result = expr
+    } else {
+      result = make_binop(OP_ADD, result, expr)
+    }
+    i = i + 1
+  }
+
+  if result == 0 { make_string_lit(ptr("")) } else { result }
+}
+
+// ------ Function parsing ---------------------------------------------------------------------------------------------------------------------------------------
+parse_function(p:I) I {
+  // fn keyword is optional
+  if p_at(p, TK_FN) == 1 { p_advance(p) }
+
+  name = p_expect_ident(p)
+  type_params = parse_type_params(p)
+
+  p_expect(p, TK_LPAREN)
+  params = parse_params(p)
+  p_expect(p, TK_RPAREN)
+
+  // Return type: default to "I" when next token starts the body
+  ret_type := 0
+  if p_at(p, TK_LBRACE) == 1 || p_at(p, TK_EQ) == 1 {
+    ret_type = ptr("I")
+  } else {
+    ret_type = parse_type_name(p)
+  }
+
+  // Single-expression body with =
+  if p_at(p, TK_EQ) == 1 {
+    p_advance(p)  // consume =
+    expr = parse_expr(p, 0)
+    body = array<I>()
+    body.push(make_st_expr(expr))
+    return make_function(name, params, ret_type, body, type_params, 0)
+  }
+
+  p_expect(p, TK_LBRACE)
+  body = parse_body(p)
+  p_expect(p, TK_RBRACE)
+
+  make_function(name, params, ret_type, body, type_params, 0)
+}
+
+// ------ Method parsing (within impl block) ---------------------------------------------------------------------------------
+parse_method(p:I target_type:I) I {
+  // fn keyword is optional
+  if p_at(p, TK_FN) == 1 { p_advance(p) }
+
+  name = p_expect_ident(p)
+  type_params = parse_type_params(p)
+
+  p_expect(p, TK_LPAREN)
+
+  // First param must be self --- translate to typed param
+  p_expect(p, TK_SELF_VAL)
+  params = array<I>()
+  params.push(make_param(ptr("self"), target_type))
+
+  // Parse remaining params
+  while p_at(p, TK_COMMA) == 1 {
+    p_advance(p)  // consume comma
+    if p_at(p, TK_RPAREN) == 1 { break }
+    param_name = p_expect_ident(p)
+    // Allow optional colon
+    if p_at(p, TK_COLON) == 1 { p_advance(p) }
+    type_name = parse_type_name(p)
+    params.push(make_param(param_name, type_name))
+  }
+  p_expect(p, TK_RPAREN)
+
+  // Return type
+  ret_type := 0
+  if p_at(p, TK_LBRACE) == 1 || p_at(p, TK_EQ) == 1 {
+    ret_type = ptr("I")
+  } else {
+    ret_type = parse_type_name(p)
+  }
+
+  // Single-expression body with =
+  if p_at(p, TK_EQ) == 1 {
+    p_advance(p)
+    expr = parse_expr(p, 0)
+    body = array<I>()
+    body.push(make_st_expr(expr))
+    return make_function(name, params, ret_type, body, type_params, 1)
+  }
+
+  p_expect(p, TK_LBRACE)
+  body = parse_body(p)
+  p_expect(p, TK_RBRACE)
+
+  make_function(name, params, ret_type, body, type_params, 1)
+}
+
+// ------ Struct definition ------------------------------------------------------------------------------------------------------------------------------------
+parse_struct_def(p:I) I {
+  p_expect(p, TK_STRUCT)
+  name = p_expect_ident(p)
+  p_expect(p, TK_LBRACE)
+
+  // fields stored as flat array: name0, type0, name1, type1, ...
+  fields = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    field_name = p_expect_ident(p)
+    type_name = parse_type_name(p)
+    fields.push(field_name)
+    fields.push(type_name)
+    if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+  }
+  p_expect(p, TK_RBRACE)
+
+  make_struct_def(name, fields)
+}
+
+// ------ Enum definition ------------------------------------------------------------------------------------------------------------------------------------------
+parse_enum_def(p:I) I {
+  p_expect(p, TK_ENUM)
+  name = p_expect_ident(p)
+  p_expect(p, TK_LBRACE)
+
+  variants = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    variant_name = p_expect_ident(p)
+    variant_fields = array<I>()
+    if p_at(p, TK_LPAREN) == 1 {
+      p_advance(p)  // consume (
+      while p_at(p, TK_RPAREN) == 0 {
+        variant_fields.push(parse_type_name(p))
+        if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+      }
+      p_expect(p, TK_RPAREN)
+    }
+    variants.push(make_enum_variant_def(variant_name, variant_fields))
+    if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+  }
+  p_expect(p, TK_RBRACE)
+
+  make_enum_def(name, variants)
+}
+
+// ------ Trait definition ---------------------------------------------------------------------------------------------------------------------------------------
+parse_trait_def(p:I) I {
+  p_expect(p, TK_TRAIT)
+  name = p_expect_ident(p)
+  p_expect(p, TK_LBRACE)
+
+  methods = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    methods.push(parse_trait_method_sig(p))
+  }
+  p_expect(p, TK_RBRACE)
+
+  make_trait_def(name, methods)
+}
+
+parse_trait_method_sig(p:I) I {
+  p_expect(p, TK_FN)
+  name = p_expect_ident(p)
+  type_params = parse_type_params(p)
+  p_expect(p, TK_LPAREN)
+
+  // First param must be self
+  p_expect(p, TK_SELF_VAL)
+
+  // Parse remaining params (each preceded by comma)
+  params = array<I>()
+  while p_at(p, TK_COMMA) == 1 {
+    p_advance(p)  // consume comma
+    if p_at(p, TK_RPAREN) == 1 { break }
+    param_name = p_expect_ident(p)
+    type_name = parse_type_name(p)
+    params.push(type_name)
+  }
+  p_expect(p, TK_RPAREN)
+
+  ret_type = parse_type_name(p)
+  make_trait_method_sig(name, params, ret_type)
+}
+
+// ------ Impl block ---------------------------------------------------------------------------------------------------------------------------------------------------------
+parse_impl_block(p:I) I {
+  p_expect(p, TK_IMPL)
+  first_name = p_expect_ident(p)
+
+  trait_name := 0
+  target_type := first_name
+
+  if p_at(p, TK_FOR) == 1 {
+    p_advance(p)  // consume for
+    target_type = p_expect_ident(p)
+    trait_name = first_name
+  }
+
+  p_expect(p, TK_LBRACE)
+  methods = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    methods.push(parse_method(p, target_type))
+  }
+  p_expect(p, TK_RBRACE)
+
+  make_impl_block(trait_name, target_type, methods)
+}
+
+// ------ Import parsing ---------------------------------------------------------------------------------------------------------------------------------------------
+parse_import(p:I) I {
+  p_expect(p, TK_IMPORT)
+  t = p_peek(p)
+  if tok_kind(t) == TK_STRING_LIT {
+    p_advance(p)
+    tok_val(t)  // return the string pointer (import path)
+  } else {
+    print("parse error: expected string literal after import\n")
+    exit(1)
+    0
+  }
+}
+
+// ------ Global definition ------------------------------------------------------------------------------------------------------------------------------------
+parse_global_def(p:I) I {
+  p_expect(p, TK_GLOBAL)
+  name = p_expect_ident(p)
+  p_expect(p, TK_EQ)
+  value = parse_expr(p, 0)
+  make_global_def(name, value, 0)
+}
+
+// ------ Top-level program parsing ------------------------------------------------------------------------------------------------------------
+parse_program(p:I) I {
+  imports = array<I>()
+  globals = array<I>()
+  functions = array<I>()
+  structs = array<I>()
+  enums = array<I>()
+  traits = array<I>()
+  impls = array<I>()
+
+  while p_at(p, TK_EOF) == 0 {
+    kind = p_peek_kind(p)
+
+    if kind == TK_IMPORT {
+      imports.push(parse_import(p))
+    } else { if kind == TK_GLOBAL {
+      globals.push(parse_global_def(p))
+    } else { if kind == TK_ENUM {
+      enums.push(parse_enum_def(p))
+    } else { if kind == TK_STRUCT {
+      structs.push(parse_struct_def(p))
+    } else { if kind == TK_TRAIT {
+      traits.push(parse_trait_def(p))
+    } else { if kind == TK_IMPL {
+      impls.push(parse_impl_block(p))
+    } else { if kind == TK_FN {
+      functions.push(parse_function(p))
+    } else { if kind == TK_IDENT {
+      // Check if next token is ( or < --- if so, parse as fn without keyword
+      next_kind = p_peek_kind_at(p, 1)
+      if next_kind == TK_LPAREN || next_kind == TK_LT {
+        functions.push(parse_function(p))
+      } else {
+        print("parse error: unexpected token at top level, kind=")
+        print(kind)
+        print("\n")
+        exit(1)
+      }
+    } else {
+      print("parse error: unexpected token at top level, kind=")
+      print(kind)
+      print("\n")
+      exit(1)
+    } } } } } } } }
+  }
+
+  make_program(imports, globals, functions, structs, enums, traits, impls)
+}
+
+// ------ Entry point ------------------------------------------------------------------------------------------------------------------------------------------------------
+parse(src:S) I {
+  tokens = lex(src)
+  p = make_parser(tokens)
+  parse_program(p)
+}

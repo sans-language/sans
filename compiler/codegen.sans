@@ -1,0 +1,3494 @@
+import "constants"
+import "ir"
+
+// ------ Codegen state layout (80 bytes) ---------------------------------------------------------------------------------------
+// offset 0:  lines        --- Array<I> of string pointers (LLVM IR lines)
+// offset 8:  reg_counter  --- next LLVM SSA register number
+// offset 16: string_pool  --- Map: hash_key --- global name ptr
+// offset 24: struct_defs  --- Map: struct name --- field count
+// offset 32: label_map    --- Map: IR label name --- LLVM label name
+// offset 40: reg_map      --- Map: IR register --- LLVM value string ptr
+// offset 48: ptr_set      --- Map: IR register --- 1 (tracks pointer regs)
+// offset 56: has_main     --- 1 if module has main function
+// offset 72: label_counter --- separate counter for unique label suffixes
+
+make_codegen() I {
+  cg = alloc(136)
+  store64(cg, array<I>())       // lines (unused in streaming mode)
+  store64(cg + 8, 0)            // reg_counter
+  store64(cg + 16, M())         // string_pool
+  store64(cg + 24, M())         // struct_defs
+  store64(cg + 32, M())         // label_map
+  store64(cg + 40, M())         // reg_map
+  store64(cg + 48, M())         // ptr_set
+  store64(cg + 56, 0)           // has_main
+  store64(cg + 64, array<I>())  // string_const_lines
+  store64(cg + 72, 0)           // label_counter
+  store64(cg + 80, 0)           // current_ir_label
+  store64(cg + 88, M())         // label_end_map
+  store64(cg + 96, 0)           // current_block
+  store64(cg + 104, M())        // label_parent
+  store64(cg + 112, 0)          // output_path (0 = buffer mode, non-0 = streaming)
+  store64(cg + 120, 0)          // line_buffer (accumulated string for batch flush)
+  store64(cg + 128, M())        // ret_labels: set of labels terminated by ret
+  cg
+}
+
+// ------ Codegen accessors ---------------------------------------------------------------------------------------------------------------------------------
+cg_lines(cg:I) I = load64(cg)
+cg_reg_counter(cg:I) I = load64(cg + 8)
+cg_string_pool(cg:I) I = load64(cg + 16)
+cg_struct_defs(cg:I) I = load64(cg + 24)
+cg_label_map(cg:I) I = load64(cg + 32)
+cg_reg_map(cg:I) I = load64(cg + 40)
+cg_ptr_set(cg:I) I = load64(cg + 48)
+cg_has_main(cg:I) I = load64(cg + 56)
+
+cg_string_const_lines(cg:I) I = load64(cg + 64)
+
+// Emit a global constant line (goes to string_const_lines, not main lines)
+emit_global_const(cg:I line:S) I {
+  sc = cg_string_const_lines(cg)
+  sc.push(ptr(line))
+  0
+}
+cg_current_label(cg:I) I = load64(cg + 80)  // IR-level label
+cg_set_current_label(cg:I v:I) I { store64(cg + 80, v) 0 }
+cg_label_end_map(cg:I) I = load64(cg + 88)
+cg_current_block(cg:I) I = load64(cg + 96)  // actual LLVM block (may differ after inline ops)
+cg_set_current_block(cg:I v:I) I { store64(cg + 96, v) 0 }
+cg_label_parent(cg:I) I = load64(cg + 104)  // child --- parent label map
+
+cg_set_reg_counter(cg:I v:I) I { store64(cg + 8, v) 0 }
+cg_set_has_main(cg:I v:I) I { store64(cg + 56, v) 0 }
+
+// Record that the code for IR label `ir_label` actually ends at LLVM label `end_label`
+cg_record_label_end(cg:I ir_label:I end_label:I) I {
+  lem = cg_label_end_map(cg)
+  mset(lem, ir_label, end_label)
+  0
+}
+
+// Get the actual LLVM label that IR label ends at (for PHI predecessors)
+cg_get_label_end(cg:I ir_label:I) I {
+  lem = cg_label_end_map(cg)
+  if mhas(lem, ir_label) { mget(lem, ir_label) } else { ir_label }
+}
+
+// ------ Core helpers ------------------------------------------------------------------------------------------------------------------------------------------------
+
+// Emit a line of LLVM IR --- streams to file when output_path set
+emit(cg:I line:S) I {
+  opath = load64(cg + 112)
+  if opath != 0 {
+    // Streaming mode: write line to file
+    fa(opath, line)
+    fa(opath, "\n")
+  } else {
+    // Buffer mode (for small compilations)
+    lines = cg_lines(cg)
+    lines.push(ptr(line))
+  }
+  0
+}
+
+// Flush any remaining buffered lines to file
+cg_flush(cg:I) I {
+  opath = load64(cg + 112)
+  if opath != 0 {
+    buf = load64(cg + 120)
+    if buf != 0 {
+      if slen(buf) > 0 { fa(opath, buf) }
+      store64(cg + 120, 0)
+    }
+  }
+  0
+}
+
+// Get next LLVM SSA register name: "%0", "%1", etc.
+cg_fresh_reg(cg:I) S {
+  n = cg_reg_counter(cg)
+  cg_set_reg_counter(cg, n + 1)
+  "%" + str(n)
+}
+
+// Map an IR register to an LLVM value string
+cg_set_val(cg:I ir_reg:I llvm_val:S) I {
+  rm = load64(cg + 40)
+  mset(rm, ir_reg, ptr(llvm_val))
+  0
+}
+
+// Get the LLVM value for an IR register
+cg_get_val(cg:I ir_reg:I) S {
+  rm = load64(cg + 40)
+  if mhas(rm, ir_reg) { mget(rm, ir_reg) } else { "0" }
+}
+
+// Mark a register as holding a pointer
+cg_set_ptr(cg:I ir_reg:I) I {
+  ps = load64(cg + 48)
+  mset(ps, ir_reg, 1)
+  0
+}
+
+// Check if register holds a pointer
+cg_is_ptr(cg:I ir_reg:I) I {
+  ps = load64(cg + 48)
+  mhas(ps, ir_reg)
+}
+
+// ------ String building: join_lines ---------------------------------------------------------------------------------------------------
+
+join_lines(cg:I) S {
+  lines = cg_lines(cg)
+  n = lines.len()
+  // Calculate total length
+  total := 0
+  i := 0
+  while i < n {
+    s = lines.get(i)
+    total = total + slen(s) + 1
+    i = i + 1
+    0
+  }
+  // Allocate buffer and copy
+  buf = alloc(total + 1)
+  pos := 0
+  i = 0
+  while i < n {
+    s = lines.get(i)
+    len = slen(s)
+    mcpy(buf + pos, s, len)
+    pos = pos + len
+    store8(0, buf + pos, 10)
+    pos = pos + 1
+    i = i + 1
+    0
+  }
+  store8(0, buf + pos, 0)
+  buf
+}
+
+// ------ Hash helper (djb2) ------------------------------------------------------------------------------------------------------------------------------
+
+g djb2_counter = 0
+
+djb2_hash(s:S) I {
+  // Use a monotonic counter — no deduplication but no collisions
+  // Each string constant gets a unique name
+  djb2_counter = djb2_counter + 1
+  djb2_counter
+}
+
+// ------ LLVM string escaping ------------------------------------------------------------------------------------------------------------------------
+
+llvm_esc_bs(s:S) S {
+  // Escape backslashes by splitting on them and joining with \5C
+  parts = s.split("\\")
+  if parts.len() <= 1 { return s }
+  result := parts.get(0)
+  i := 1
+  while i < parts.len() {
+    result = result + "\\5C" + parts.get(i)
+    i = i + 1
+    0
+  }
+  result
+}
+
+llvm_escape_string(s:S) S {
+  // Phase 1: escape backslashes (split/join approach avoids re-escaping)
+  r = llvm_esc_bs(s)
+  // Phase 2: escape other special characters
+  r = r.replace("\n", "\\0A")
+  r = r.replace("\t", "\\09")
+  r = r.replace("\"", "\\22")
+  r
+}
+
+llvm_escape_char(buf:I pos:I c:I) I {
+  if c == 10 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 48)
+    store8(0, buf + pos + 2, 65)
+    pos + 3
+  } else { if c == 9 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 48)
+    store8(0, buf + pos + 2, 57)
+    pos + 3
+  } else { if c == 92 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 53)
+    store8(0, buf + pos + 2, 67)
+    pos + 3
+  } else { if c == 34 {
+    store8(0, buf + pos, 92)
+    store8(0, buf + pos + 1, 50)
+    store8(0, buf + pos + 2, 50)
+    pos + 3
+  } else { if c < 32 {
+    store8(0, buf + pos, 92)
+    hi = c / 16
+    lo = c % 16
+    store8(0, buf + pos + 1, if hi < 10 { hi + 48 } else { hi - 10 + 65 })
+    store8(0, buf + pos + 2, if lo < 10 { lo + 48 } else { lo - 10 + 65 })
+    pos + 3
+  } else {
+    store8(0, buf + pos, c)
+    pos + 1
+  } } } } }
+}
+
+llvm_escape_step(s:S buf:I pos:I i:I len:I) I {
+  if i >= len { pos }
+  else {
+    c = char_at(s, i)
+    new_pos = llvm_escape_char(buf, pos, c)
+    llvm_escape_step(s, buf, new_pos, i + 1, len)
+  }
+}
+
+llvm_escape_string_UNUSED(s:S) S {
+  len = slen(s)
+  buf = alloc(len * 3 + 1)
+  final_pos = llvm_escape_step(s, buf, 0, 0, len)
+  store8(0, buf + final_pos, 0)
+  buf
+}
+
+// ------ String constant emission ------------------------------------------------------------------------------------------------------------
+
+emit_string_const(cg:I value:S) S {
+  pool = cg_string_pool(cg)
+  hash = djb2_hash(value)
+  key = str(hash)
+  if mhas(pool, key) {
+    return mget(pool, key)
+  }
+  name = "@str." + key
+  mset(pool, key, ptr(name))
+  escaped = llvm_escape_string(value)
+  len = slen(value) + 1
+  line = name + " = private unnamed_addr constant [" + str(len) + " x i8] c\"" + escaped + "\\00\""
+  sc_lines = cg_string_const_lines(cg)
+  sc_lines.push(ptr(line))
+  name
+}
+
+// ------ LLVM IR header ------------------------------------------------------------------------------------------------------------------------------------------
+
+emit_header(cg:I) I {
+  emit(cg, "target triple = \"arm64-apple-macosx14.0.0\"")
+  emit(cg, "")
+  0
+}
+
+// ------ External function declarations ------------------------------------------------------------------------------------------
+
+// Core externals only (C stdlib, file I/O, threading, curl, sockets) --- no sans_* runtime
+emit_externals_core(cg:I) I {
+  emit(cg, "declare i64 @printf(ptr, ...)")
+  emit(cg, "declare ptr @malloc(i64)")
+  emit(cg, "declare void @free(ptr)")
+  emit(cg, "declare i64 @strlen(ptr)")
+  emit(cg, "declare ptr @memcpy(ptr, ptr, i64)")
+  emit(cg, "declare ptr @memset(ptr, i64, i64)")
+  emit(cg, "declare ptr @realloc(ptr, i64)")
+  emit(cg, "declare i32 @memcmp(ptr, ptr, i64)")
+  emit(cg, "declare i32 @strcmp(ptr, ptr)")
+  emit(cg, "declare i32 @snprintf(ptr, i64, ptr, ...)")
+  emit(cg, "declare i64 @strtol(ptr, ptr, i64)")
+  emit(cg, "declare i64 @write(i64, ptr, i64)")
+  emit(cg, "declare void @exit(i64)")
+  emit(cg, "declare i32 @system(ptr)")
+  emit(cg, "declare i32 @access(ptr, i32)")
+  emit(cg, "declare ptr @strstr(ptr, ptr)")
+  emit(cg, "declare ptr @fopen(ptr, ptr)")
+  emit(cg, "declare i32 @fclose(ptr)")
+  emit(cg, "declare i64 @fread(ptr, i64, i64, ptr)")
+  emit(cg, "declare i64 @fwrite(ptr, i64, i64, ptr)")
+  emit(cg, "declare i32 @fseek(ptr, i64, i32)")
+  emit(cg, "declare i64 @ftell(ptr)")
+  emit(cg, "declare i32 @pthread_create(ptr, ptr, ptr, ptr)")
+  emit(cg, "declare i32 @pthread_join(i64, ptr)")
+  emit(cg, "declare i32 @pthread_mutex_init(ptr, ptr)")
+  emit(cg, "declare i32 @pthread_mutex_lock(ptr)")
+  emit(cg, "declare i32 @pthread_mutex_unlock(ptr)")
+  emit(cg, "declare i32 @pthread_cond_init(ptr, ptr)")
+  emit(cg, "declare i32 @pthread_cond_wait(ptr, ptr)")
+  emit(cg, "declare i32 @pthread_cond_signal(ptr)")
+  emit(cg, "declare i64 @curl_easy_init()")
+  emit(cg, "declare i64 @curl_easy_setopt(i64, i64, ...)")
+  emit(cg, "declare i64 @curl_easy_perform(i64)")
+  emit(cg, "declare void @curl_easy_cleanup(i64)")
+  emit(cg, "declare i64 @curl_easy_getinfo(i64, i64, ...)")
+  emit(cg, "declare i64 @curl_slist_append(i64, i64)")
+  emit(cg, "declare void @curl_slist_free_all(i64)")
+  emit(cg, "declare i64 @socket(i64, i64, i64)")
+  emit(cg, "declare i64 @bind(i64, ptr, i64)")
+  emit(cg, "declare i64 @listen(i64, i64)")
+  emit(cg, "declare i64 @accept(i64, ptr, ptr)")
+  emit(cg, "declare i64 @recv(i64, ptr, i64, i64)")
+  emit(cg, "declare i64 @send(i64, ptr, i64, i64)")
+  emit(cg, "declare i64 @close(i64)")
+  emit(cg, "declare i64 @setsockopt(i64, i64, i64, ptr, i64)")
+
+  // ------ Signal / Poll ------
+  emit(cg, "declare i64 @signal(i32, ptr)")
+  emit(cg, "declare i32 @poll(ptr, i32, i32)")
+  emit(cg, "@__sans_signal_flag = external global i64")
+  emit(cg, "declare void @__sans_signal_handler(i32)")
+
+  // ------ OpenSSL ------
+  emit(cg, "declare ptr @TLS_server_method()")
+  emit(cg, "declare ptr @SSL_CTX_new(ptr)")
+  emit(cg, "declare i32 @SSL_CTX_use_certificate_file(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_CTX_use_PrivateKey_file(ptr, ptr, i32)")
+  emit(cg, "declare ptr @SSL_new(ptr)")
+  emit(cg, "declare i32 @SSL_set_fd(ptr, i32)")
+  emit(cg, "declare i32 @SSL_accept(ptr)")
+  emit(cg, "declare i32 @SSL_read(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_write(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_shutdown(ptr)")
+  emit(cg, "declare void @SSL_free(ptr)")
+
+
+  // ------ zlib ------
+  emit(cg, "declare i32 @deflateInit2_(ptr, i32, i32, i32, i32, i32, ptr, i32)")
+  emit(cg, "declare i32 @deflate(ptr, i32)")
+  emit(cg, "declare i32 @deflateEnd(ptr)")
+  emit(cg, "declare i64 @deflateBound(ptr, i64)")
+
+  // ------ LLVM intrinsics ------
+  emit(cg, "declare i16 @llvm.bswap.i16(i16)")
+
+  0
+}
+
+emit_externals(cg:I) I {
+  // ------ C standard library ------
+  emit(cg, "declare i64 @printf(ptr, ...)")
+  emit(cg, "declare ptr @malloc(i64)")
+  emit(cg, "declare void @free(ptr)")
+  emit(cg, "declare i64 @strlen(ptr)")
+  emit(cg, "declare ptr @memcpy(ptr, ptr, i64)")
+  emit(cg, "declare ptr @memset(ptr, i64, i64)")
+  emit(cg, "declare ptr @realloc(ptr, i64)")
+  emit(cg, "declare i32 @memcmp(ptr, ptr, i64)")
+  emit(cg, "declare i32 @strcmp(ptr, ptr)")
+  emit(cg, "declare i32 @snprintf(ptr, i64, ptr, ...)")
+  emit(cg, "declare i64 @strtol(ptr, ptr, i64)")
+  emit(cg, "declare i64 @write(i64, ptr, i64)")
+  emit(cg, "declare void @exit(i64)")
+  emit(cg, "declare i32 @system(ptr)")
+  emit(cg, "declare i32 @access(ptr, i32)")
+  emit(cg, "declare ptr @strstr(ptr, ptr)")
+
+  // ------ File I/O ------
+  emit(cg, "declare ptr @fopen(ptr, ptr)")
+  emit(cg, "declare i32 @fclose(ptr)")
+  emit(cg, "declare i64 @fread(ptr, i64, i64, ptr)")
+  emit(cg, "declare i64 @fwrite(ptr, i64, i64, ptr)")
+  emit(cg, "declare i32 @fseek(ptr, i64, i32)")
+  emit(cg, "declare i64 @ftell(ptr)")
+
+  // ------ Threading ------
+  emit(cg, "declare i32 @pthread_create(ptr, ptr, ptr, ptr)")
+  emit(cg, "declare i32 @pthread_join(i64, ptr)")
+  emit(cg, "declare i32 @pthread_mutex_init(ptr, ptr)")
+  emit(cg, "declare i32 @pthread_mutex_lock(ptr)")
+  emit(cg, "declare i32 @pthread_mutex_unlock(ptr)")
+  emit(cg, "declare i32 @pthread_cond_init(ptr, ptr)")
+  emit(cg, "declare i32 @pthread_cond_wait(ptr, ptr)")
+  emit(cg, "declare i32 @pthread_cond_signal(ptr)")
+
+  // ------ Curl ------
+  emit(cg, "declare i64 @curl_easy_init()")
+  emit(cg, "declare i64 @curl_easy_setopt(i64, i64, ...)")
+  emit(cg, "declare i64 @curl_easy_perform(i64)")
+  emit(cg, "declare void @curl_easy_cleanup(i64)")
+  emit(cg, "declare i64 @curl_easy_getinfo(i64, i64, ...)")
+  emit(cg, "declare i64 @curl_slist_append(i64, i64)")
+  emit(cg, "declare void @curl_slist_free_all(i64)")
+
+  // ------ Sockets ------
+  emit(cg, "declare i64 @socket(i64, i64, i64)")
+  emit(cg, "declare i64 @bind(i64, ptr, i64)")
+  emit(cg, "declare i64 @listen(i64, i64)")
+  emit(cg, "declare i64 @accept(i64, ptr, ptr)")
+  emit(cg, "declare i64 @recv(i64, ptr, i64, i64)")
+  emit(cg, "declare i64 @send(i64, ptr, i64, i64)")
+  emit(cg, "declare i64 @close(i64)")
+  emit(cg, "declare i64 @setsockopt(i64, i64, i64, ptr, i64)")
+
+  // ------ Sans runtime: JSON ------
+  emit(cg, "declare i64 @sans_json_parse(i64)")
+  emit(cg, "declare i64 @sans_json_object()")
+  emit(cg, "declare i64 @sans_json_array()")
+  emit(cg, "declare i64 @sans_json_string(i64)")
+  emit(cg, "declare i64 @sans_json_int(i64)")
+  emit(cg, "declare i64 @sans_json_bool(i64)")
+  emit(cg, "declare i64 @sans_json_null()")
+  emit(cg, "declare i64 @sans_json_get(i64, i64)")
+  emit(cg, "declare i64 @sans_json_get_index(i64, i64)")
+  emit(cg, "declare i64 @sans_json_get_string(i64)")
+  emit(cg, "declare i64 @sans_json_get_int(i64)")
+  emit(cg, "declare i64 @sans_json_get_bool(i64)")
+  emit(cg, "declare i64 @sans_json_len(i64)")
+  emit(cg, "declare i64 @sans_json_type_of(i64)")
+  emit(cg, "declare i64 @sans_json_set(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_json_push(i64, i64)")
+  emit(cg, "declare i64 @sans_json_stringify(i64)")
+
+  // ------ Sans runtime: HTTP ------
+  emit(cg, "declare i64 @sans_http_listen(i64)")
+  emit(cg, "declare i64 @sans_http_accept(i64)")
+  emit(cg, "declare i64 @sans_http_respond(i64, i64, i64, i64)")
+  emit(cg, "declare i64 @sans_http_get(i64)")
+  emit(cg, "declare i64 @sans_http_post(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_http_status(i64)")
+  emit(cg, "declare i64 @sans_http_ok(i64)")
+  emit(cg, "declare i64 @sans_http_body(i64)")
+  emit(cg, "declare i64 @sans_http_header(i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_path(i64)")
+  emit(cg, "declare i64 @sans_http_request_method(i64)")
+  emit(cg, "declare i64 @sans_http_request_body(i64)")
+
+  // ------ Sans runtime: Arrays ------
+  emit(cg, "declare i64 @sans_array_map(i64, i64)")
+  emit(cg, "declare i64 @sans_array_filter(i64, i64)")
+  emit(cg, "declare i64 @sans_array_any(i64, i64)")
+  emit(cg, "declare i64 @sans_array_find(i64, i64)")
+  emit(cg, "declare i64 @sans_array_enumerate(i64)")
+  emit(cg, "declare i64 @sans_array_zip(i64, i64)")
+  emit(cg, "declare i64 @sans_array_contains(i64, i64)")
+  emit(cg, "declare i64 @sans_array_pop(i64)")
+  emit(cg, "declare i64 @sans_array_remove(i64, i64)")
+
+  // ------ Sans runtime: Strings ------
+  emit(cg, "declare i64 @sans_string_trim(i64)")
+  emit(cg, "declare i64 @sans_string_starts_with(i64, i64)")
+  emit(cg, "declare i64 @sans_string_ends_with(i64, i64)")
+  emit(cg, "declare i64 @sans_string_contains(i64, i64)")
+  emit(cg, "declare i64 @sans_string_split(i64, i64)")
+  emit(cg, "declare i64 @sans_string_replace(i64, i64, i64)")
+
+  // ------ Sans runtime: Result ------
+  emit(cg, "declare i64 @sans_result_ok(i64)")
+  emit(cg, "declare i64 @sans_result_err(i64)")
+  emit(cg, "declare i64 @sans_result_is_ok(i64)")
+  emit(cg, "declare i64 @sans_result_is_err(i64)")
+  emit(cg, "declare i64 @sans_result_unwrap(i64)")
+  emit(cg, "declare i64 @sans_result_error(i64)")
+  emit(cg, "declare i64 @sans_result_unwrap_or(i64, i64)")
+
+  // ------ Sans runtime: Logging ------
+  emit(cg, "declare i64 @sans_log_debug(i64)")
+  emit(cg, "declare i64 @sans_log_info(i64)")
+  emit(cg, "declare i64 @sans_log_warn(i64)")
+  emit(cg, "declare i64 @sans_log_error(i64)")
+  emit(cg, "declare i64 @sans_log_set_level(i64)")
+
+  // ------ Sans runtime: Kernel ------
+  emit(cg, "declare i64 @sans_print_err(i64)")
+  emit(cg, "declare i64 @sans_get_log_level()")
+  emit(cg, "declare i64 @sans_set_log_level(i64)")
+
+  // ------ Sans runtime: Map ------
+  emit(cg, "declare i64 @sans_map_create()")
+  emit(cg, "declare i64 @sans_map_get(i64, i64)")
+  emit(cg, "declare i64 @sans_map_set(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_map_has(i64, i64)")
+  emit(cg, "declare i64 @sans_map_len(i64)")
+  emit(cg, "declare i64 @sans_map_keys(i64)")
+  emit(cg, "declare i64 @sans_map_vals(i64)")
+
+  // ------ Sans runtime: Arena ------
+  emit(cg, "declare i64 @sans_arena_begin()")
+  emit(cg, "declare i64 @sans_arena_alloc(i64)")
+  emit(cg, "declare i64 @sans_arena_end()")
+
+  // ------ Sans runtime: Socket helper ------
+  emit(cg, "declare i64 @sans_bind_port(i64, i64)")
+
+  // ------ Sans runtime: HTTPS / SSL ------
+  emit(cg, "declare i64 @sans_https_listen(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_https_accept(i64)")
+  emit(cg, "declare i64 @sans_https_respond(i64, i64, i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_header(i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_set_header(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_cookie(i64, i64)")
+  emit(cg, "declare i64 @sans_cors(i64, i64)")
+  emit(cg, "declare i64 @sans_cors_all(i64)")
+  emit(cg, "declare i64 @sans_http_request_query(i64, i64)")
+  emit(cg, "declare i64 @sans_http_request_path_only(i64)")
+  emit(cg, "declare i64 @sans_http_request_content_length(i64)")
+  emit(cg, "declare i64 @sans_http_respond_json(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_url_decode(i64)")
+  emit(cg, "declare i64 @sans_path_segment(i64, i64)")
+  emit(cg, "declare i64 @sans_serve_file(i64, i64)")
+  emit(cg, "declare i64 @sans_serve(i64, i64)")
+  emit(cg, "declare i64 @sans_serve_tls(i64, i64, i64, i64)")
+  emit(cg, "declare i64 @sans_respond_stream(i64, i64)")
+  emit(cg, "declare i64 @sans_stream_write(i64, i64)")
+  emit(cg, "declare i64 @sans_stream_end(i64)")
+  emit(cg, "declare i64 @sans_http_request_form(i64, i64)")
+
+  // ------ WebSocket ------
+  emit(cg, "declare i64 @sans_ws_is_upgrade(i64)")
+  emit(cg, "declare i64 @sans_ws_upgrade(i64)")
+  emit(cg, "declare i64 @sans_ws_send(i64, i64)")
+  emit(cg, "declare i64 @sans_ws_recv(i64)")
+  emit(cg, "declare i64 @sans_ws_close(i64)")
+
+  // ------ Signal / Poll ------
+  emit(cg, "declare i64 @signal(i32, ptr)")
+  emit(cg, "declare i32 @poll(ptr, i32, i32)")
+
+  // ------ Signal handler global + function ------
+  emit(cg, "@__sans_signal_flag = global i64 0")
+  emit(cg, "define void @__sans_signal_handler(i32 %sig) {")
+  emit(cg, "  store i64 1, ptr @__sans_signal_flag")
+  emit(cg, "  ret void")
+  emit(cg, "}")
+
+  // ------ OpenSSL ------
+  emit(cg, "declare ptr @TLS_server_method()")
+  emit(cg, "declare ptr @SSL_CTX_new(ptr)")
+  emit(cg, "declare i32 @SSL_CTX_use_certificate_file(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_CTX_use_PrivateKey_file(ptr, ptr, i32)")
+  emit(cg, "declare ptr @SSL_new(ptr)")
+  emit(cg, "declare i32 @SSL_set_fd(ptr, i32)")
+  emit(cg, "declare i32 @SSL_accept(ptr)")
+  emit(cg, "declare i32 @SSL_read(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_write(ptr, ptr, i32)")
+  emit(cg, "declare i32 @SSL_shutdown(ptr)")
+  emit(cg, "declare void @SSL_free(ptr)")
+
+  // __sans_args is defined inline (not declared as external)
+
+  // ------ zlib ------
+  emit(cg, "declare i32 @deflateInit2_(ptr, i32, i32, i32, i32, i32, ptr, i32)")
+  emit(cg, "declare i32 @deflate(ptr, i32)")
+  emit(cg, "declare i32 @deflateEnd(ptr)")
+  emit(cg, "declare i64 @deflateBound(ptr, i64)")
+
+  // ------ LLVM intrinsics ------
+  emit(cg, "declare i16 @llvm.bswap.i16(i16)")
+
+  emit(cg, "")
+  0
+}
+
+// ------ SSL-aware dispatch helpers ------------------------------------------------------------------------------------------------------------
+
+// server.accept() --- check if server has SSL context at offset 16
+// If non-zero: call sans_https_accept, else call sans_http_accept
+compile_http_accept(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  a = cg_get_val(cg, ir_field(inst, 16))
+  uid = cg_label_id(cg)
+  // Load offset 16 of server struct (SSL context ptr)
+  sp = cg_fresh_reg(cg)
+  emit(cg, "  " + sp + " = inttoptr i64 " + a + " to ptr")
+  ssl_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_ptr + " = getelementptr i8, ptr " + sp + ", i64 16")
+  ssl_val = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_val + " = load i64, ptr " + ssl_ptr)
+  cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp + " = icmp ne i64 " + ssl_val + ", 0")
+  ssl_lbl = "accept_ssl_" + uid
+  plain_lbl = "accept_plain_" + uid
+  merge_lbl = "accept_merge_" + uid
+  emit(cg, "  br i1 " + cmp + ", label %" + ssl_lbl + ", label %" + plain_lbl)
+  // SSL path
+  emit(cg, ssl_lbl + ":")
+  r_ssl = cg_fresh_reg(cg)
+  emit(cg, "  " + r_ssl + " = call i64 @sans_https_accept(i64 " + a + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Plain path
+  emit(cg, plain_lbl + ":")
+  r_plain = cg_fresh_reg(cg)
+  emit(cg, "  " + r_plain + " = call i64 @sans_http_accept(i64 " + a + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Merge
+  emit(cg, merge_lbl + ":")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = phi i64 [" + r_ssl + ", %" + ssl_lbl + "], [" + r_plain + ", %" + plain_lbl + "]")
+  cg_set_val(cg, dest, r)
+  cg_set_current_block(cg, merge_lbl)
+  0
+}
+
+// req.respond() --- check if request has SSL at offset 48
+// If non-zero: call sans_https_respond, else call sans_http_respond
+compile_http_respond(cg:I req_v:S status_v:S body_v:S ct_v:S) I {
+  uid = cg_label_id(cg)
+  // Load offset 48 of request struct (SSL ptr)
+  rp = cg_fresh_reg(cg)
+  emit(cg, "  " + rp + " = inttoptr i64 " + req_v + " to ptr")
+  ssl_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_ptr + " = getelementptr i8, ptr " + rp + ", i64 48")
+  ssl_val = cg_fresh_reg(cg)
+  emit(cg, "  " + ssl_val + " = load i64, ptr " + ssl_ptr)
+  cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp + " = icmp ne i64 " + ssl_val + ", 0")
+  ssl_lbl = "respond_ssl_" + uid
+  plain_lbl = "respond_plain_" + uid
+  merge_lbl = "respond_merge_" + uid
+  emit(cg, "  br i1 " + cmp + ", label %" + ssl_lbl + ", label %" + plain_lbl)
+  // SSL path
+  emit(cg, ssl_lbl + ":")
+  r_ssl = cg_fresh_reg(cg)
+  emit(cg, "  " + r_ssl + " = call i64 @sans_https_respond(i64 " + req_v + ", i64 " + status_v + ", i64 " + body_v + ", i64 " + ct_v + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Plain path
+  emit(cg, plain_lbl + ":")
+  r_plain = cg_fresh_reg(cg)
+  emit(cg, "  " + r_plain + " = call i64 @sans_http_respond(i64 " + req_v + ", i64 " + status_v + ", i64 " + body_v + ", i64 " + ct_v + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  // Merge
+  emit(cg, merge_lbl + ":")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = phi i64 [" + r_ssl + ", %" + ssl_lbl + "], [" + r_plain + ", %" + plain_lbl + "]")
+  cg_set_current_block(cg, merge_lbl)
+  r
+}
+
+// ------ Format string globals (emitted once, lazily) ------------------------------------------------
+
+cg_fmt_int(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_int") { return mget(pool, "__fmt_int") }
+  name = "@fmt.int"
+  mset(pool, "__fmt_int", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\"")
+  name
+}
+
+cg_fmt_float(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_float") { return mget(pool, "__fmt_float") }
+  name = "@fmt.float"
+  mset(pool, "__fmt_float", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [4 x i8] c\"%g\\0A\\00\"")
+  name
+}
+
+cg_fmt_str(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_str") { return mget(pool, "__fmt_str") }
+  name = "@fmt.str"
+  mset(pool, "__fmt_str", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"")
+  name
+}
+
+cg_bool_true(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__bool_true") { return mget(pool, "__bool_true") }
+  name = "@bool.true"
+  mset(pool, "__bool_true", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [6 x i8] c\"true\\0A\\00\"")
+  name
+}
+
+cg_bool_false(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__bool_false") { return mget(pool, "__bool_false") }
+  name = "@bool.false"
+  mset(pool, "__bool_false", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [7 x i8] c\"false\\0A\\00\"")
+  name
+}
+
+// Format string for %ld (no newline, for snprintf)
+cg_fmt_ld(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_ld") { return mget(pool, "__fmt_ld") }
+  name = "@fmt.ld"
+  mset(pool, "__fmt_ld", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [4 x i8] c\"%ld\\00\"")
+  name
+}
+
+// Format string for %g (no newline, for snprintf)
+cg_fmt_g(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_g") { return mget(pool, "__fmt_g") }
+  name = "@fmt.g"
+  mset(pool, "__fmt_g", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [3 x i8] c\"%g\\00\"")
+  name
+}
+
+// File mode strings
+cg_fmode_r(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmode_r") { return mget(pool, "__fmode_r") }
+  name = "@fmode.r"
+  mset(pool, "__fmode_r", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [2 x i8] c\"r\\00\"")
+  name
+}
+
+cg_fmode_w(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmode_w") { return mget(pool, "__fmode_w") }
+  name = "@fmode.w"
+  mset(pool, "__fmode_w", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [2 x i8] c\"w\\00\"")
+  name
+}
+
+cg_fmode_a(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmode_a") { return mget(pool, "__fmode_a") }
+  name = "@fmode.a"
+  mset(pool, "__fmode_a", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [2 x i8] c\"a\\00\"")
+  name
+}
+
+// Generate a unique label suffix from a separate label counter
+// (must NOT consume SSA register numbers)
+cg_label_id(cg:I) S {
+  n = load64(cg + 72)
+  store64(cg + 72, n + 1)
+  "L" + str(n)
+}
+
+// ------ Generic runtime call helpers ---------------------------------------------------------------------------------------------------
+
+// 0-arg: dest = call i64 @fname()
+compile_rt0(cg:I inst:I fname:S) I {
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "()")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 1-arg: dest = call i64 @fname(i64 arg1)
+compile_rt1(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 2-arg: dest = call i64 @fname(i64 arg1, i64 arg2)
+compile_rt2(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  b = cg_get_val(cg, ir_field(inst, 24))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ", i64 " + b + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 3-arg: dest = call i64 @fname(i64 arg1, i64 arg2, i64 arg3)
+compile_rt3(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  b = cg_get_val(cg, ir_field(inst, 24))
+  c = cg_get_val(cg, ir_field(inst, 32))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ", i64 " + b + ", i64 " + c + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// 4-arg: dest = call i64 @fname(i64 a1, i64 a2, i64 a3, i64 a4)
+compile_rt4(cg:I inst:I fname:S) I {
+  a = cg_get_val(cg, ir_field(inst, 16))
+  b = cg_get_val(cg, ir_field(inst, 24))
+  c = cg_get_val(cg, ir_field(inst, 32))
+  e = cg_get_val(cg, ir_field(inst, 40))
+  d = cg_fresh_reg(cg)
+  emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ", i64 " + b + ", i64 " + c + ", i64 " + e + ")")
+  cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// ------ Compile a single IR instruction to LLVM IR text ---------------------------------------
+
+compile_inst(cg:I inst:I) I {
+  op = ir_op(inst)
+  dest = ir_dest(inst)
+
+  // ------ IR_CONST (0): [op, dest, value] ------
+  if op == IR_CONST {
+    val = ir_field(inst, 16)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = add i64 " + str(val) + ", 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_FLOAT_CONST (1): [op, dest, float_str_ptr] ------
+  if op == IR_FLOAT_CONST {
+    float_str = ir_field(inst, 16)
+    // float_str is a string pointer containing the float text (e.g. "3.14")
+    // Emit LLVM bitcast from double to i64
+    ftmp = cg_fresh_reg(cg)
+    emit(cg, "  " + ftmp + " = bitcast double " + float_str + " to i64")
+    cg_set_val(cg, dest, ftmp)
+    return 0
+  }
+
+  // ------ IR_BOOL_CONST (2): [op, dest, value] ------
+  if op == IR_BOOL_CONST {
+    val = ir_field(inst, 16)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = add i64 " + str(val) + ", 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRING_CONST (3): [op, dest, string_ptr] ------
+  if op == IR_STRING_CONST {
+    str_raw = ir_field(inst, 16)
+    str_val = if str_raw == 0 { ptr("") } else { str_raw }
+    global_name = emit_string_const(cg, str_val)
+    len = slen(str_val) + 1
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + global_name + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_BINOP (4): [op, dest, binop, left, right] ------
+  if op == IR_BINOP {
+    binop = ir_field(inst, 16)
+    left = cg_get_val(cg, ir_field(inst, 24))
+    right = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    op_str = if binop == 0 { "add" } else { if binop == 1 { "sub" } else { if binop == 2 { "mul" } else { if binop == 3 { "sdiv" } else { "srem" } } } }
+    emit(cg, "  " + r + " = " + op_str + " i64 " + left + ", " + right)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_FLOAT_BINOP (5): [op, dest, binop, left, right] ------
+  if op == IR_FLOAT_BINOP {
+    binop = ir_field(inst, 16)
+    left = cg_get_val(cg, ir_field(inst, 24))
+    right = cg_get_val(cg, ir_field(inst, 32))
+    fl = cg_fresh_reg(cg)
+    emit(cg, "  " + fl + " = bitcast i64 " + left + " to double")
+    fr = cg_fresh_reg(cg)
+    emit(cg, "  " + fr + " = bitcast i64 " + right + " to double")
+    fres = cg_fresh_reg(cg)
+    fop = if binop == 0 { "fadd" } else { if binop == 1 { "fsub" } else { if binop == 2 { "fmul" } else { if binop == 3 { "fdiv" } else { "frem" } } } }
+    emit(cg, "  " + fres + " = " + fop + " double " + fl + ", " + fr)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + fres + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_CMPOP (6): [op, dest, cmpop, left, right] ------
+  if op == IR_CMPOP {
+    cmpop = ir_field(inst, 16)
+    left = cg_get_val(cg, ir_field(inst, 24))
+    right = cg_get_val(cg, ir_field(inst, 32))
+    pred = if cmpop == 0 { "eq" } else { if cmpop == 1 { "ne" } else { if cmpop == 2 { "slt" } else { if cmpop == 3 { "sgt" } else { if cmpop == 4 { "sle" } else { "sge" } } } } }
+    tmp = cg_fresh_reg(cg)
+    emit(cg, "  " + tmp + " = icmp " + pred + " i64 " + left + ", " + right)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i1 " + tmp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_FLOAT_CMPOP (7): [op, dest, cmpop, left, right] ------
+  if op == IR_FLOAT_CMPOP {
+    cmpop = ir_field(inst, 16)
+    left = cg_get_val(cg, ir_field(inst, 24))
+    right = cg_get_val(cg, ir_field(inst, 32))
+    fl = cg_fresh_reg(cg)
+    emit(cg, "  " + fl + " = bitcast i64 " + left + " to double")
+    fr = cg_fresh_reg(cg)
+    emit(cg, "  " + fr + " = bitcast i64 " + right + " to double")
+    pred = if cmpop == 0 { "oeq" } else { if cmpop == 1 { "one" } else { if cmpop == 2 { "olt" } else { if cmpop == 3 { "ogt" } else { if cmpop == 4 { "ole" } else { "oge" } } } } }
+    tmp = cg_fresh_reg(cg)
+    emit(cg, "  " + tmp + " = fcmp " + pred + " double " + fl + ", " + fr)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i1 " + tmp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRING_CMPOP (8): [op, dest, cmpop, left, right] ------
+  if op == IR_STRING_CMPOP {
+    cmpop = ir_field(inst, 16)
+    left = cg_get_val(cg, ir_field(inst, 24))
+    right = cg_get_val(cg, ir_field(inst, 32))
+    p1 = cg_fresh_reg(cg)
+    emit(cg, "  " + p1 + " = inttoptr i64 " + left + " to ptr")
+    p2 = cg_fresh_reg(cg)
+    emit(cg, "  " + p2 + " = inttoptr i64 " + right + " to ptr")
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = call i32 @strcmp(ptr " + p1 + ", ptr " + p2 + ")")
+    pred = if cmpop == 0 { "eq" } else { if cmpop == 1 { "ne" } else { if cmpop == 2 { "slt" } else { if cmpop == 3 { "sgt" } else { if cmpop == 4 { "sle" } else { "sge" } } } } }
+    res = cg_fresh_reg(cg)
+    emit(cg, "  " + res + " = icmp " + pred + " i32 " + cmp + ", 0")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i1 " + res + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_NOT (9): [op, dest, src] ------
+  if op == IR_NOT {
+    src = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = xor i64 " + src + ", 1")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_NEG (10): [op, dest, src] ------
+  if op == IR_NEG {
+    src = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sub i64 0, " + src)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_COPY (11): [op, dest, src] ------
+  if op == IR_COPY {
+    src_reg = ir_field(inst, 16)
+    cg_set_val(cg, dest, cg_get_val(cg, src_reg))
+    if cg_is_ptr(cg, src_reg) { cg_set_ptr(cg, dest) }
+    return 0
+  }
+
+  // ------ IR_CALL (12): [op, dest, fname, args_array] ------
+  if op == IR_CALL {
+    fname_ptr = ir_field(inst, 16)
+    fname = fname_ptr
+    args = ir_field(inst, 24)
+    nargs = args.len()
+    // Build arg list string: "i64 %a, i64 %b, ..."
+    arg_str := ""
+    i := 0
+    while i < nargs {
+      if i > 0 { arg_str = arg_str + ", " }
+      arg_str = arg_str + "i64 " + cg_get_val(cg, args.get(i))
+      i = i + 1
+      0
+    }
+    // Use __sans_main for "main"
+    llvm_fname = if fname == "main" { "__sans_main" } else { fname }
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @" + llvm_fname + "(" + arg_str + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_RET (13): [op, value_reg] ------
+  if op == IR_RET {
+    val = cg_get_val(cg, dest)
+    emit(cg, "  ret i64 " + val)
+    // Record that the current label's block ends with ret (for PHI filtering)
+    cur_lbl = cg_current_label(cg)
+    rl = load64(cg + 128)
+    mset(rl, cur_lbl, 1)
+    return 0
+  }
+
+  // ------ IR_LABEL (14): [op, label_name] ------
+  if op == IR_LABEL {
+    label_name = dest
+    cg_set_current_label(cg, label_name)
+    cg_set_current_block(cg, label_name)
+    emit(cg, label_name + ":")
+    return 0
+  }
+
+  // ------ IR_BRANCH (15): [op, cond, then_label, else_label] ------
+  if op == IR_BRANCH {
+    cond_val = cg_get_val(cg, dest)
+    then_label = ir_field(inst, 16)
+    else_label = ir_field(inst, 24)
+    // Record parent relationships: then_label and else_label are children of current label
+    ir_lbl = cg_current_label(cg)
+    lp = cg_label_parent(cg)
+    mset(lp, then_label, ir_lbl)
+    mset(lp, else_label, ir_lbl)
+    tmp = cg_fresh_reg(cg)
+    emit(cg, "  " + tmp + " = trunc i64 " + cond_val + " to i1")
+    emit(cg, "  br i1 " + tmp + ", label %" + then_label + ", label %" + else_label)
+    return 0
+  }
+
+  // ------ IR_JUMP (16): [op, target_label] ------
+  if op == IR_JUMP {
+    target = dest
+    // Record that the current IR label ends at the actual LLVM block
+    ir_lbl = cg_current_label(cg)
+    cur_blk = cg_current_block(cg)
+    cg_record_label_end(cg, ir_lbl, cur_blk)
+    // Propagate parent: the jump target inherits this label's parent chain
+    // This handles: L_3 (child of L_0) jumps to L_5 --- L_5 becomes child of L_0
+    lp = cg_label_parent(cg)
+    if mhas(lp, ir_lbl) {
+      // Set target's parent to the jumping label itself (not the parent's parent).
+      // Only set if target doesn't already have a parent --- avoids loop back-edge
+      // overwriting (which would create cycles in the parent chain).
+      if mhas(lp, target) == 0 {
+        mset(lp, target, ir_lbl)
+        0
+      } else { 0 }
+      // Walk up the parent chain, updating label_end for ALL ancestors
+      ancestor := ir_lbl
+      depth := 0
+      while mhas(lp, ancestor) && depth < 20 {
+        parent = mget(lp, ancestor)
+        cg_record_label_end(cg, parent, cur_blk)
+        ancestor = parent
+        depth = depth + 1
+        0
+      }
+    }
+    emit(cg, "  br label %" + target)
+    return 0
+  }
+
+  // ------ IR_PHI (17): [op, dest, a_val, a_label, b_val, b_label] ------
+  if op == IR_PHI {
+    a_val = cg_get_val(cg, ir_field(inst, 16))
+    a_label_ir = ir_field(inst, 24)
+    b_val = cg_get_val(cg, ir_field(inst, 32))
+    b_label_ir = ir_field(inst, 40)
+    // Use the actual end labels (handles nested if/else creating extra blocks)
+    a_label = cg_get_label_end(cg, a_label_ir)
+    b_label = cg_get_label_end(cg, b_label_ir)
+    // Check if either predecessor was terminated by ret (dead branch)
+    rl = load64(cg + 128)
+    a_dead = mhas(rl, a_label)
+    b_dead = mhas(rl, b_label)
+    r = cg_fresh_reg(cg)
+    if a_dead && b_dead {
+      // Both branches return - this merge is dead code, emit constant
+      emit(cg, "  " + r + " = add i64 0, 0")
+    } else { if a_dead {
+      // Only else branch reaches merge
+      emit(cg, "  " + r + " = add i64 " + b_val + ", 0")
+    } else { if b_dead {
+      // Only then branch reaches merge
+      emit(cg, "  " + r + " = add i64 " + a_val + ", 0")
+    } else {
+      // Both branches reach merge - normal PHI
+      emit(cg, "  " + r + " = phi i64 [" + a_val + ", %" + a_label + "], [" + b_val + ", %" + b_label + "]")
+    } } }
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_PRINT_INT (18): [op, value_reg] ------
+  if op == IR_PRINT_INT {
+    val = cg_get_val(cg, dest)
+    fmt = cg_fmt_int(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + val + ")")
+    return 0
+  }
+
+  // ------ IR_PRINT_FLOAT (19): [op, value_reg] ------
+  if op == IR_PRINT_FLOAT {
+    val = cg_get_val(cg, dest)
+    fl = cg_fresh_reg(cg)
+    emit(cg, "  " + fl + " = bitcast i64 " + val + " to double")
+    fmt = cg_fmt_float(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", double " + fl + ")")
+    return 0
+  }
+
+  // ------ IR_PRINT_STRING (20): [op, value_reg] ------
+  if op == IR_PRINT_STRING {
+    val = cg_get_val(cg, dest)
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + val + " to ptr")
+    fmt = cg_fmt_str(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", ptr " + p + ")")
+    return 0
+  }
+
+  // ------ IR_PRINT_BOOL (21): [op, value_reg] ------
+  if op == IR_PRINT_BOOL {
+    val = cg_get_val(cg, dest)
+    tname = cg_bool_true(cg)
+    fname = cg_bool_false(cg)
+    cond = cg_fresh_reg(cg)
+    emit(cg, "  " + cond + " = trunc i64 " + val + " to i1")
+    sel = cg_fresh_reg(cg)
+    emit(cg, "  " + sel + " = select i1 " + cond + ", ptr " + tname + ", ptr " + fname)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + sel + ")")
+    return 0
+  }
+
+  // ------ IR_ALLOCA (22): [op, dest] ------
+  // Already hoisted to entry block in pre-scan pass
+  if op == IR_ALLOCA {
+    return 0
+  }
+
+  // ------ IR_STORE (23): [op, ptr_reg, value_reg] ------
+  if op == IR_STORE {
+    ptr_val = cg_get_val(cg, dest)
+    val = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + ptr_val + " to ptr")
+    emit(cg, "  store i64 " + val + ", ptr " + p)
+    return 0
+  }
+
+  // ------ IR_LOAD (24): [op, dest, ptr_reg] ------
+  if op == IR_LOAD {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + ptr_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + p)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRUCT_ALLOC (25): [op, dest, num_fields] ------
+  if op == IR_STRUCT_ALLOC {
+    nf = ir_field(inst, 16)
+    sz = cg_fresh_reg(cg)
+    emit(cg, "  " + sz + " = mul i64 " + str(nf) + ", 8")
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = call ptr @malloc(i64 " + sz + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_FIELD_STORE (26): [op, ptr_reg, field_idx, value_reg] ------
+  if op == IR_FIELD_STORE {
+    ptr_val = cg_get_val(cg, dest)
+    fidx = ir_field(inst, 16)
+    val = cg_get_val(cg, ir_field(inst, 24))
+    base = cg_fresh_reg(cg)
+    emit(cg, "  " + base + " = inttoptr i64 " + ptr_val + " to ptr")
+    gep = cg_fresh_reg(cg)
+    emit(cg, "  " + gep + " = getelementptr i64, ptr " + base + ", i64 " + str(fidx))
+    emit(cg, "  store i64 " + val + ", ptr " + gep)
+    return 0
+  }
+
+  // ------ IR_FIELD_LOAD (27): [op, dest, ptr_reg, field_idx, num_fields] ------
+  if op == IR_FIELD_LOAD {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    fidx = ir_field(inst, 24)
+    base = cg_fresh_reg(cg)
+    emit(cg, "  " + base + " = inttoptr i64 " + ptr_val + " to ptr")
+    gep = cg_fresh_reg(cg)
+    emit(cg, "  " + gep + " = getelementptr i64, ptr " + base + ", i64 " + str(fidx))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + gep)
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ENUM_ALLOC (28): [op, dest, tag, num_data_fields] ------
+  if op == IR_ENUM_ALLOC {
+    tag = ir_field(inst, 16)
+    ndata = ir_field(inst, 24)
+    total = ndata + 1
+    sz = cg_fresh_reg(cg)
+    emit(cg, "  " + sz + " = mul i64 " + str(total) + ", 8")
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = call ptr @malloc(i64 " + sz + ")")
+    // Store tag at field 0
+    emit(cg, "  store i64 " + str(tag) + ", ptr " + p)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ENUM_TAG (29): [op, dest, ptr_reg] ------
+  if op == IR_ENUM_TAG {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    base = cg_fresh_reg(cg)
+    emit(cg, "  " + base + " = inttoptr i64 " + ptr_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + base)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_ENUM_DATA (30): [op, dest, ptr_reg, field_idx] ------
+  if op == IR_ENUM_DATA {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    fidx = ir_field(inst, 24) + 1
+    base = cg_fresh_reg(cg)
+    emit(cg, "  " + base + " = inttoptr i64 " + ptr_val + " to ptr")
+    gep = cg_fresh_reg(cg)
+    emit(cg, "  " + gep + " = getelementptr i64, ptr " + base + ", i64 " + str(fidx))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + gep)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_GLOBAL_LOAD (31): [op, dest, name] ------
+  if op == IR_GLOBAL_LOAD {
+    gname = ir_field(inst, 16)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr @" + gname)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_GLOBAL_STORE (32): [op, name, value_reg] ------
+  if op == IR_GLOBAL_STORE {
+    gname = dest
+    val = cg_get_val(cg, ir_field(inst, 16))
+    emit(cg, "  store i64 " + val + ", ptr @" + gname)
+    return 0
+  }
+
+  // ------ IR_ALLOC (33): [op, dest, size_reg] ------
+  if op == IR_ALLOC {
+    size_val = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = call ptr @malloc(i64 " + size_val + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_DEALLOC (34): [op, dest, ptr_reg] ------
+  if op == IR_DEALLOC {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + ptr_val + " to ptr")
+    emit(cg, "  call void @free(ptr " + p + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+
+  // ------ IR_RALLOC (35): [op, dest, ptr_reg, size_reg] ------
+  if op == IR_RALLOC {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    size_val = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + ptr_val + " to ptr")
+    np = cg_fresh_reg(cg)
+    emit(cg, "  " + np + " = call ptr @realloc(ptr " + p + ", i64 " + size_val + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + np + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ARRAY_CREATE (36): [op, dest] ------
+  if op == IR_ARRAY_CREATE {
+    // malloc(24) for struct [data_ptr, len, capacity]
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = call ptr @malloc(i64 24)")
+    // malloc(64) for initial buffer (8 elements * 8 bytes)
+    dp = cg_fresh_reg(cg)
+    emit(cg, "  " + dp + " = call ptr @malloc(i64 64)")
+    // Store data_ptr as i64 at offset 0
+    di = cg_fresh_reg(cg)
+    emit(cg, "  " + di + " = ptrtoint ptr " + dp + " to i64")
+    emit(cg, "  store i64 " + di + ", ptr " + sp)
+    // Store len=0 at offset 1
+    lp = cg_fresh_reg(cg)
+    emit(cg, "  " + lp + " = getelementptr i64, ptr " + sp + ", i64 1")
+    emit(cg, "  store i64 0, ptr " + lp)
+    // Store capacity=8 at offset 2
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = getelementptr i64, ptr " + sp + ", i64 2")
+    emit(cg, "  store i64 8, ptr " + cp)
+    // Result
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + sp + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ARRAY_PUSH (37): [op, array_reg, value_reg] ------
+  if op == IR_ARRAY_PUSH {
+    arr_val = cg_get_val(cg, dest)
+    val = cg_get_val(cg, ir_field(inst, 16))
+    uid = cg_label_id(cg)
+    // inttoptr array
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + arr_val + " to ptr")
+    // Load len from offset 1
+    lp = cg_fresh_reg(cg)
+    emit(cg, "  " + lp + " = getelementptr i64, ptr " + ap + ", i64 1")
+    ln = cg_fresh_reg(cg)
+    emit(cg, "  " + ln + " = load i64, ptr " + lp)
+    // Load cap from offset 2
+    kp = cg_fresh_reg(cg)
+    emit(cg, "  " + kp + " = getelementptr i64, ptr " + ap + ", i64 2")
+    kv = cg_fresh_reg(cg)
+    emit(cg, "  " + kv + " = load i64, ptr " + kp)
+    // Compare len == cap
+    ng = cg_fresh_reg(cg)
+    emit(cg, "  " + ng + " = icmp eq i64 " + ln + ", " + kv)
+    grow_lbl = "ap_grow_" + uid
+    write_lbl = "ap_write_" + uid
+    emit(cg, "  br i1 " + ng + ", label %" + grow_lbl + ", label %" + write_lbl)
+    // Grow block
+    emit(cg, grow_lbl + ":")
+    nc = cg_fresh_reg(cg)
+    emit(cg, "  " + nc + " = mul i64 " + kv + ", 2")
+    nbs = cg_fresh_reg(cg)
+    emit(cg, "  " + nbs + " = mul i64 " + nc + ", 8")
+    nb = cg_fresh_reg(cg)
+    emit(cg, "  " + nb + " = call ptr @malloc(i64 " + nbs + ")")
+    // Load old data ptr
+    odi = cg_fresh_reg(cg)
+    emit(cg, "  " + odi + " = load i64, ptr " + ap)
+    odp = cg_fresh_reg(cg)
+    emit(cg, "  " + odp + " = inttoptr i64 " + odi + " to ptr")
+    // memcpy old to new (len * 8)
+    csz = cg_fresh_reg(cg)
+    emit(cg, "  " + csz + " = mul i64 " + ln + ", 8")
+    mc1 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc1 + " = call ptr @memcpy(ptr " + nb + ", ptr " + odp + ", i64 " + csz + ")")
+    // Free old
+    emit(cg, "  call void @free(ptr " + odp + ")")
+    // Update data ptr and capacity
+    nbi = cg_fresh_reg(cg)
+    emit(cg, "  " + nbi + " = ptrtoint ptr " + nb + " to i64")
+    emit(cg, "  store i64 " + nbi + ", ptr " + ap)
+    emit(cg, "  store i64 " + nc + ", ptr " + kp)
+    emit(cg, "  br label %" + write_lbl)
+    // Write block: reload len and data (may have changed after grow)
+    emit(cg, write_lbl + ":")
+    ln2 = cg_fresh_reg(cg)
+    emit(cg, "  " + ln2 + " = load i64, ptr " + lp)
+    di2 = cg_fresh_reg(cg)
+    emit(cg, "  " + di2 + " = load i64, ptr " + ap)
+    dp2 = cg_fresh_reg(cg)
+    emit(cg, "  " + dp2 + " = inttoptr i64 " + di2 + " to ptr")
+    // Store value at data[len]
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i64, ptr " + dp2 + ", i64 " + ln2)
+    emit(cg, "  store i64 " + val + ", ptr " + ep)
+    // Increment len
+    nl = cg_fresh_reg(cg)
+    emit(cg, "  " + nl + " = add i64 " + ln2 + ", 1")
+    emit(cg, "  store i64 " + nl + ", ptr " + lp)
+    // Update: record that the original IR label now ends at write_lbl
+    
+    cg_set_current_block(cg, write_lbl)
+    return 0
+  }
+
+  // ------ IR_ARRAY_GET (38): [op, dest, array_reg, index_reg] ------
+  if op == IR_ARRAY_GET {
+    arr_val = cg_get_val(cg, ir_field(inst, 16))
+    idx_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    // inttoptr array
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + arr_val + " to ptr")
+    // Load len from offset 1
+    lp = cg_fresh_reg(cg)
+    emit(cg, "  " + lp + " = getelementptr i64, ptr " + ap + ", i64 1")
+    ln = cg_fresh_reg(cg)
+    emit(cg, "  " + ln + " = load i64, ptr " + lp)
+    // Bounds check
+    ib = cg_fresh_reg(cg)
+    emit(cg, "  " + ib + " = icmp slt i64 " + idx_val + ", " + ln)
+    nn = cg_fresh_reg(cg)
+    emit(cg, "  " + nn + " = icmp sge i64 " + idx_val + ", 0")
+    ok = cg_fresh_reg(cg)
+    emit(cg, "  " + ok + " = and i1 " + ib + ", " + nn)
+    then_lbl = "ag_then_" + uid
+    else_lbl = "ag_else_" + uid
+    merge_lbl = "ag_merge_" + uid
+    emit(cg, "  br i1 " + ok + ", label %" + then_lbl + ", label %" + else_lbl)
+    // In-bounds path
+    emit(cg, then_lbl + ":")
+    di = cg_fresh_reg(cg)
+    emit(cg, "  " + di + " = load i64, ptr " + ap)
+    dp = cg_fresh_reg(cg)
+    emit(cg, "  " + dp + " = inttoptr i64 " + di + " to ptr")
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i64, ptr " + dp + ", i64 " + idx_val)
+    lv = cg_fresh_reg(cg)
+    emit(cg, "  " + lv + " = load i64, ptr " + ep)
+    emit(cg, "  br label %" + merge_lbl)
+    // Out-of-bounds path
+    emit(cg, else_lbl + ":")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [" + lv + ", %" + then_lbl + "], [0, %" + else_lbl + "]")
+    cg_set_val(cg, dest, r)
+    // Update current_label --- we're now in merge_lbl
+    
+    cg_set_current_block(cg, merge_lbl)
+    return 0
+  }
+
+  // ------ IR_ARRAY_SET (39): [op, array_reg, index_reg, value_reg] ------
+  if op == IR_ARRAY_SET {
+    arr_val = cg_get_val(cg, dest)
+    idx_val = cg_get_val(cg, ir_field(inst, 16))
+    val = cg_get_val(cg, ir_field(inst, 24))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + arr_val + " to ptr")
+    di = cg_fresh_reg(cg)
+    emit(cg, "  " + di + " = load i64, ptr " + ap)
+    dp = cg_fresh_reg(cg)
+    emit(cg, "  " + dp + " = inttoptr i64 " + di + " to ptr")
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i64, ptr " + dp + ", i64 " + idx_val)
+    emit(cg, "  store i64 " + val + ", ptr " + ep)
+    return 0
+  }
+
+  // ------ IR_ARRAY_LEN (40): [op, dest, array_reg] ------
+  if op == IR_ARRAY_LEN {
+    arr_val = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + arr_val + " to ptr")
+    lp = cg_fresh_reg(cg)
+    emit(cg, "  " + lp + " = getelementptr i64, ptr " + ap + ", i64 1")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + lp)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_ARRAY_MAP (41): call i64 @sans_array_map(i64, i64) ------
+  if op == IR_ARRAY_MAP {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_map(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ARRAY_FILTER (42): call i64 @sans_array_filter(i64, i64) ------
+  if op == IR_ARRAY_FILTER {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_filter(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ARRAY_ANY (43): call i64 @sans_array_any(i64, i64) ------
+  if op == IR_ARRAY_ANY {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_any(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_ARRAY_FIND (44): call i64 @sans_array_find(i64, i64) ------
+  if op == IR_ARRAY_FIND {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_find(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_ARRAY_ENUMERATE (45): call i64 @sans_array_enumerate(i64) ------
+  if op == IR_ARRAY_ENUMERATE {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_enumerate(i64 " + a1 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ARRAY_ZIP (46): call i64 @sans_array_zip(i64, i64) ------
+  if op == IR_ARRAY_ZIP {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_zip(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_ARRAY_POP (47): call i64 @sans_array_pop(i64) ------
+  if op == IR_ARRAY_POP {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_pop(i64 " + a1 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_ARRAY_CONTAINS (48): call i64 @sans_array_contains(i64, i64) ------
+  if op == IR_ARRAY_CONTAINS {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_contains(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_ARRAY_REMOVE (49): call i64 @sans_array_remove(i64, i64) ------
+  if op == IR_ARRAY_REMOVE {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_array_remove(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRING_LEN (50): [op, dest, string_reg] ------
+  if op == IR_STRING_LEN {
+    sv = cg_get_val(cg, ir_field(inst, 16))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @strlen(ptr " + sp + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRING_CONCAT (51): [op, dest, left_reg, right_reg] ------
+  if op == IR_STRING_CONCAT {
+    lv = cg_get_val(cg, ir_field(inst, 16))
+    rv = cg_get_val(cg, ir_field(inst, 24))
+    p1 = cg_fresh_reg(cg)
+    emit(cg, "  " + p1 + " = inttoptr i64 " + lv + " to ptr")
+    p2 = cg_fresh_reg(cg)
+    emit(cg, "  " + p2 + " = inttoptr i64 " + rv + " to ptr")
+    l1 = cg_fresh_reg(cg)
+    emit(cg, "  " + l1 + " = call i64 @strlen(ptr " + p1 + ")")
+    l2 = cg_fresh_reg(cg)
+    emit(cg, "  " + l2 + " = call i64 @strlen(ptr " + p2 + ")")
+    tot = cg_fresh_reg(cg)
+    emit(cg, "  " + tot + " = add i64 " + l1 + ", " + l2)
+    asz = cg_fresh_reg(cg)
+    emit(cg, "  " + asz + " = add i64 " + tot + ", 1")
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 " + asz + ")")
+    // memcpy left
+    mc2 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc2 + " = call ptr @memcpy(ptr " + buf + ", ptr " + p1 + ", i64 " + l1 + ")")
+    // GEP buf+len1
+    mid = cg_fresh_reg(cg)
+    emit(cg, "  " + mid + " = getelementptr i8, ptr " + buf + ", i64 " + l1)
+    // memcpy right
+    mc3 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc3 + " = call ptr @memcpy(ptr " + mid + ", ptr " + p2 + ", i64 " + l2 + ")")
+    // null-terminate
+    endp = cg_fresh_reg(cg)
+    emit(cg, "  " + endp + " = getelementptr i8, ptr " + buf + ", i64 " + tot)
+    emit(cg, "  store i8 0, ptr " + endp)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_STRING_SUBSTRING (52): [op, dest, string_reg, start_reg, end_reg] ------
+  if op == IR_STRING_SUBSTRING {
+    sv = cg_get_val(cg, ir_field(inst, 16))
+    st = cg_get_val(cg, ir_field(inst, 24))
+    en = cg_get_val(cg, ir_field(inst, 32))
+    ln = cg_fresh_reg(cg)
+    emit(cg, "  " + ln + " = sub i64 " + en + ", " + st)
+    asz = cg_fresh_reg(cg)
+    emit(cg, "  " + asz + " = add i64 " + ln + ", 1")
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 " + asz + ")")
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
+    src = cg_fresh_reg(cg)
+    emit(cg, "  " + src + " = getelementptr i8, ptr " + sp + ", i64 " + st)
+    mc4 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc4 + " = call ptr @memcpy(ptr " + buf + ", ptr " + src + ", i64 " + ln + ")")
+    endp = cg_fresh_reg(cg)
+    emit(cg, "  " + endp + " = getelementptr i8, ptr " + buf + ", i64 " + ln)
+    emit(cg, "  store i8 0, ptr " + endp)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_INT_TO_STRING (53): [op, dest, value_reg] ------
+  if op == IR_INT_TO_STRING {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 21)")
+    fmt = cg_fmt_ld(cg)
+    sn = cg_fresh_reg(cg)
+    emit(cg, "  " + sn + " = call i32 (ptr, i64, ptr, ...) @snprintf(ptr " + buf + ", i64 21, ptr " + fmt + ", i64 " + val + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_STRING_TO_INT (54): [op, dest, string_reg] ------
+  if op == IR_STRING_TO_INT {
+    sv = cg_get_val(cg, ir_field(inst, 16))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @strtol(ptr " + sp + ", ptr null, i64 10)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_FLOAT_TO_STRING (55): [op, dest, value_reg] ------
+  if op == IR_FLOAT_TO_STRING {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 32)")
+    fmt = cg_fmt_g(cg)
+    sn = cg_fresh_reg(cg)
+    emit(cg, "  " + sn + " = call i32 (ptr, i64, ptr, ...) @snprintf(ptr " + buf + ", i64 32, ptr " + fmt + ", double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_STRING_TRIM (56): call i64 @sans_string_trim(i64) ------
+  if op == IR_STRING_TRIM {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_trim(i64 " + a1 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_STRING_STARTS_WITH (57): call i64 @sans_string_starts_with(i64, i64) ------
+  if op == IR_STRING_STARTS_WITH {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_starts_with(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRING_ENDS_WITH (58): call i64 @sans_string_ends_with(i64, i64) ------
+  if op == IR_STRING_ENDS_WITH {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_ends_with(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRING_CONTAINS (59): call i64 @sans_string_contains(i64, i64) ------
+  if op == IR_STRING_CONTAINS {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_contains(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_STRING_SPLIT (60): call i64 @sans_string_split(i64, i64) ------
+  if op == IR_STRING_SPLIT {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_split(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_STRING_REPLACE (61): call i64 @sans_string_replace(i64, i64, i64) ------
+  if op == IR_STRING_REPLACE {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    a3 = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_replace(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+
+  // ------ IR_FILE_READ (62): [op, dest, path_reg] ------
+  if op == IR_FILE_READ {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    uid = cg_label_id(cg)
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    mode = cg_fmode_r(cg)
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = call ptr @fopen(ptr " + pp + ", ptr " + mode + ")")
+    // Null check
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = ptrtoint ptr " + fp + " to i64")
+    isn = cg_fresh_reg(cg)
+    emit(cg, "  " + isn + " = icmp eq i64 " + fi + ", 0")
+    err_lbl = "fr_err_" + uid
+    ok_lbl = "fr_ok_" + uid
+    merge_lbl = "fr_merge_" + uid
+    emit(cg, "  br i1 " + isn + ", label %" + err_lbl + ", label %" + ok_lbl)
+    // Error path: return empty string
+    emit(cg, err_lbl + ":")
+    eb = cg_fresh_reg(cg)
+    emit(cg, "  " + eb + " = call ptr @malloc(i64 1)")
+    emit(cg, "  store i8 0, ptr " + eb)
+    ei = cg_fresh_reg(cg)
+    emit(cg, "  " + ei + " = ptrtoint ptr " + eb + " to i64")
+    emit(cg, "  br label %" + merge_lbl)
+    // Success path: fseek/ftell/fread
+    emit(cg, ok_lbl + ":")
+    fs1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fs1 + " = call i32 @fseek(ptr " + fp + ", i64 0, i32 2)")
+    fsz = cg_fresh_reg(cg)
+    emit(cg, "  " + fsz + " = call i64 @ftell(ptr " + fp + ")")
+    fs2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fs2 + " = call i32 @fseek(ptr " + fp + ", i64 0, i32 0)")
+    bsz = cg_fresh_reg(cg)
+    emit(cg, "  " + bsz + " = add i64 " + fsz + ", 1")
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 " + bsz + ")")
+    frd = cg_fresh_reg(cg)
+    emit(cg, "  " + frd + " = call i64 @fread(ptr " + buf + ", i64 1, i64 " + fsz + ", ptr " + fp + ")")
+    // null-terminate
+    endp = cg_fresh_reg(cg)
+    emit(cg, "  " + endp + " = getelementptr i8, ptr " + buf + ", i64 " + fsz)
+    emit(cg, "  store i8 0, ptr " + endp)
+    // fclose
+    fcl = cg_fresh_reg(cg)
+    emit(cg, "  " + fcl + " = call i32 @fclose(ptr " + fp + ")")
+    bi = cg_fresh_reg(cg)
+    emit(cg, "  " + bi + " = ptrtoint ptr " + buf + " to i64")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [" + ei + ", %" + err_lbl + "], [" + bi + ", %" + ok_lbl + "]")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    // Update current_label --- we're now in merge_lbl
+    
+    cg_set_current_block(cg, merge_lbl)
+    return 0
+  }
+
+  // ------ IR_FILE_WRITE (63): [op, dest, path_reg, content_reg] ------
+  if op == IR_FILE_WRITE {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    cv = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + cv + " to ptr")
+    // strlen(content)
+    cl = cg_fresh_reg(cg)
+    emit(cg, "  " + cl + " = call i64 @strlen(ptr " + cp + ")")
+    // fopen(path, "w")
+    mode = cg_fmode_w(cg)
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = call ptr @fopen(ptr " + pp + ", ptr " + mode + ")")
+    // Null check
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = ptrtoint ptr " + fp + " to i64")
+    isn = cg_fresh_reg(cg)
+    emit(cg, "  " + isn + " = icmp eq i64 " + fi + ", 0")
+    chk_lbl = "fw_chk_" + uid
+    ok_lbl = "fw_ok_" + uid
+    merge_lbl = "fw_merge_" + uid
+    emit(cg, "  br label %" + chk_lbl)
+    emit(cg, chk_lbl + ":")
+    emit(cg, "  br i1 " + isn + ", label %" + merge_lbl + ", label %" + ok_lbl)
+    // Success path
+    emit(cg, ok_lbl + ":")
+    fw1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fw1 + " = call i64 @fwrite(ptr " + cp + ", i64 1, i64 " + cl + ", ptr " + fp + ")")
+    fc1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fc1 + " = call i32 @fclose(ptr " + fp + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge: phi(0 on null, 1 on success)
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [0, %" + chk_lbl + "], [1, %" + ok_lbl + "]")
+    cg_set_val(cg, dest, r)
+    
+    cg_set_current_block(cg, merge_lbl)
+    return 0
+  }
+
+  // ------ IR_FILE_APPEND (64): [op, dest, path_reg, content_reg] ------
+  if op == IR_FILE_APPEND {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    cv = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + cv + " to ptr")
+    // strlen(content)
+    cl = cg_fresh_reg(cg)
+    emit(cg, "  " + cl + " = call i64 @strlen(ptr " + cp + ")")
+    // fopen(path, "a")
+    mode = cg_fmode_a(cg)
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = call ptr @fopen(ptr " + pp + ", ptr " + mode + ")")
+    // Null check
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = ptrtoint ptr " + fp + " to i64")
+    isn = cg_fresh_reg(cg)
+    emit(cg, "  " + isn + " = icmp eq i64 " + fi + ", 0")
+    chk_lbl = "fa_chk_" + uid
+    ok_lbl = "fa_ok_" + uid
+    merge_lbl = "fa_merge_" + uid
+    emit(cg, "  br label %" + chk_lbl)
+    emit(cg, chk_lbl + ":")
+    emit(cg, "  br i1 " + isn + ", label %" + merge_lbl + ", label %" + ok_lbl)
+    // Success path
+    emit(cg, ok_lbl + ":")
+    fw2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fw2 + " = call i64 @fwrite(ptr " + cp + ", i64 1, i64 " + cl + ", ptr " + fp + ")")
+    fc2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fc2 + " = call i32 @fclose(ptr " + fp + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [0, %" + chk_lbl + "], [1, %" + ok_lbl + "]")
+    cg_set_val(cg, dest, r)
+    
+    cg_set_current_block(cg, merge_lbl)
+    return 0
+  }
+
+  // ------ IR_FILE_EXISTS (65): [op, dest, path_reg] ------
+  if op == IR_FILE_EXISTS {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    ar = cg_fresh_reg(cg)
+    emit(cg, "  " + ar + " = call i32 @access(ptr " + pp + ", i32 0)")
+    ok = cg_fresh_reg(cg)
+    emit(cg, "  " + ok + " = icmp eq i32 " + ar + ", 0")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i1 " + ok + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ JSON (66-82) --- runtime calls ------
+  if op == IR_JSON_PARSE { return compile_rt1(cg, inst, "sans_json_parse") }
+  if op == IR_JSON_OBJECT { return compile_rt0(cg, inst, "sans_json_object") }
+  if op == IR_JSON_ARRAY { return compile_rt0(cg, inst, "sans_json_array") }
+  if op == IR_JSON_STRING { return compile_rt1(cg, inst, "sans_json_string") }
+  if op == IR_JSON_INT { return compile_rt1(cg, inst, "sans_json_int") }
+  if op == IR_JSON_BOOL { return compile_rt1(cg, inst, "sans_json_bool") }
+  if op == IR_JSON_NULL { return compile_rt0(cg, inst, "sans_json_null") }
+  if op == IR_JSON_GET { return compile_rt2(cg, inst, "sans_json_get") }
+  if op == IR_JSON_GET_INDEX { return compile_rt2(cg, inst, "sans_json_get_index") }
+  if op == IR_JSON_GET_STRING { return compile_rt1(cg, inst, "sans_json_get_string") }
+  if op == IR_JSON_GET_INT { return compile_rt1(cg, inst, "sans_json_get_int") }
+  if op == IR_JSON_GET_BOOL { return compile_rt1(cg, inst, "sans_json_get_bool") }
+  if op == IR_JSON_LEN { return compile_rt1(cg, inst, "sans_json_len") }
+  if op == IR_JSON_TYPE_OF { return compile_rt1(cg, inst, "sans_json_type_of") }
+  if op == IR_JSON_SET { return compile_rt3(cg, inst, "sans_json_set") }
+  if op == IR_JSON_PUSH { return compile_rt2(cg, inst, "sans_json_push") }
+  if op == IR_JSON_STRINGIFY { return compile_rt1(cg, inst, "sans_json_stringify") }
+
+  // ------ HTTP Server (83-89) ------
+  if op == IR_HTTP_LISTEN { return compile_rt1(cg, inst, "sans_http_listen") }
+  if op == IR_HTTP_ACCEPT { return compile_http_accept(cg, inst) }
+  if op == IR_HTTP_REQUEST_PATH { return compile_rt1(cg, inst, "sans_http_request_path") }
+  if op == IR_HTTP_REQUEST_METHOD { return compile_rt1(cg, inst, "sans_http_request_method") }
+  if op == IR_HTTP_REQUEST_BODY { return compile_rt1(cg, inst, "sans_http_request_body") }
+  if op == IR_HTTPS_LISTEN { return compile_rt3(cg, inst, "sans_https_listen") }
+  if op == IR_HTTP_REQUEST_HEADER { return compile_rt2(cg, inst, "sans_http_request_header") }
+  if op == IR_HTTP_REQUEST_SET_HEADER { return compile_rt3(cg, inst, "sans_http_request_set_header") }
+  if op == IR_HTTP_REQUEST_COOKIE { return compile_rt2(cg, inst, "sans_http_request_cookie") }
+  if op == IR_CORS { return compile_rt2(cg, inst, "sans_cors") }
+  if op == IR_CORS_ALL { return compile_rt1(cg, inst, "sans_cors_all") }
+  if op == IR_HTTP_REQUEST_QUERY { return compile_rt2(cg, inst, "sans_http_request_query") }
+  if op == IR_HTTP_REQUEST_PATH_ONLY { return compile_rt1(cg, inst, "sans_http_request_path_only") }
+  if op == IR_HTTP_REQUEST_CONTENT_LENGTH { return compile_rt1(cg, inst, "sans_http_request_content_length") }
+  if op == IR_HTTP_RESPOND_JSON { return compile_rt3(cg, inst, "sans_http_respond_json") }
+  if op == IR_URL_DECODE { return compile_rt1(cg, inst, "sans_url_decode") }
+  if op == IR_PATH_SEGMENT { return compile_rt2(cg, inst, "sans_path_segment") }
+  if op == IR_SERVE_FILE { return compile_rt2(cg, inst, "sans_serve_file") }
+  if op == IR_SERVE { return compile_rt2(cg, inst, "sans_serve") }
+  if op == IR_SERVE_TLS { return compile_rt4(cg, inst, "sans_serve_tls") }
+  if op == IR_RESPOND_STREAM { return compile_rt2(cg, inst, "sans_respond_stream") }
+  if op == IR_STREAM_WRITE { return compile_rt2(cg, inst, "sans_stream_write") }
+  if op == IR_STREAM_END { return compile_rt1(cg, inst, "sans_stream_end") }
+  if op == IR_HTTP_REQUEST_FORM { return compile_rt2(cg, inst, "sans_http_request_form") }
+
+  // ------ WebSocket ------
+  if op == IR_WS_IS_UPGRADE { return compile_rt1(cg, inst, "sans_ws_is_upgrade") }
+  if op == IR_WS_UPGRADE { return compile_rt1(cg, inst, "sans_ws_upgrade") }
+  if op == IR_WS_SEND { return compile_rt2(cg, inst, "sans_ws_send") }
+  if op == IR_WS_RECV { return compile_rt1(cg, inst, "sans_ws_recv") }
+  if op == IR_WS_CLOSE { return compile_rt1(cg, inst, "sans_ws_close") }
+
+  // ------ Signal handler: call signal(signum_i32, @__sans_signal_handler) ------
+  if op == IR_SIGNAL_HANDLER {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    t = cg_fresh_reg(cg)
+    emit(cg, "  " + t + " = trunc i64 " + a + " to i32")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @signal(i32 " + t + ", ptr @__sans_signal_handler)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ Signal check: load @__sans_signal_flag ------
+  if op == IR_SIGNAL_CHECK {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr @__sans_signal_flag")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ spoll(fd, timeout_ms): alloca pollfd, call poll, return >0?1:0 ------
+  if op == IR_SPOLL {
+    fd_val = cg_get_val(cg, ir_field(inst, 16))
+    to_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    pfd = cg_fresh_reg(cg)
+    emit(cg, "  " + pfd + " = alloca i64")
+    // Store fd as i32 at offset 0
+    fd32 = cg_fresh_reg(cg)
+    emit(cg, "  " + fd32 + " = trunc i64 " + fd_val + " to i32")
+    emit(cg, "  store i32 " + fd32 + ", ptr " + pfd)
+    // Store events=1 (POLLIN) as i16 at offset 4
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i8, ptr " + pfd + ", i64 4")
+    emit(cg, "  store i16 1, ptr " + ep)
+    // Call poll(pfd, 1, timeout_i32)
+    to32 = cg_fresh_reg(cg)
+    emit(cg, "  " + to32 + " = trunc i64 " + to_val + " to i32")
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i32 @poll(ptr " + pfd + ", i32 1, i32 " + to32 + ")")
+    // result > 0 ? 1 : 0
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp sgt i32 " + pr + ", 0")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i1 " + cmp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ SSL low-level ------
+  if op == IR_SSL_METHOD {
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @TLS_server_method()")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_CTX_NEW {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @SSL_CTX_new(ptr " + ap + ")")
+    r2 = cg_fresh_reg(cg)
+    emit(cg, "  " + r2 + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r2)
+    return 0
+  }
+  if op == IR_SSL_CTX_CERT {
+    ctx_v = cg_get_val(cg, ir_field(inst, 16))
+    file_v = cg_get_val(cg, ir_field(inst, 24))
+    typ_v = cg_get_val(cg, ir_field(inst, 32))
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + ctx_v + " to ptr")
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + file_v + " to ptr")
+    ti = cg_fresh_reg(cg)
+    emit(cg, "  " + ti + " = trunc i64 " + typ_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_CTX_use_certificate_file(ptr " + cp + ", ptr " + fp + ", i32 " + ti + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_CTX_KEY {
+    ctx_v = cg_get_val(cg, ir_field(inst, 16))
+    file_v = cg_get_val(cg, ir_field(inst, 24))
+    typ_v = cg_get_val(cg, ir_field(inst, 32))
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + ctx_v + " to ptr")
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + file_v + " to ptr")
+    ti = cg_fresh_reg(cg)
+    emit(cg, "  " + ti + " = trunc i64 " + typ_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_CTX_use_PrivateKey_file(ptr " + cp + ", ptr " + fp + ", i32 " + ti + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_NEW {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @SSL_new(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_SET_FD {
+    ssl_v = cg_get_val(cg, ir_field(inst, 16))
+    fd_v = cg_get_val(cg, ir_field(inst, 24))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + ssl_v + " to ptr")
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = trunc i64 " + fd_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_set_fd(ptr " + sp + ", i32 " + fi + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_DO_ACCEPT {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_accept(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_READ {
+    ssl_v = cg_get_val(cg, ir_field(inst, 16))
+    buf_v = cg_get_val(cg, ir_field(inst, 24))
+    len_v = cg_get_val(cg, ir_field(inst, 32))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + ssl_v + " to ptr")
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf_v + " to ptr")
+    li = cg_fresh_reg(cg)
+    emit(cg, "  " + li + " = trunc i64 " + len_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_read(ptr " + sp + ", ptr " + bp + ", i32 " + li + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_WRITE {
+    ssl_v = cg_get_val(cg, ir_field(inst, 16))
+    buf_v = cg_get_val(cg, ir_field(inst, 24))
+    len_v = cg_get_val(cg, ir_field(inst, 32))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + ssl_v + " to ptr")
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf_v + " to ptr")
+    li = cg_fresh_reg(cg)
+    emit(cg, "  " + li + " = trunc i64 " + len_v + " to i32")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_write(ptr " + sp + ", ptr " + bp + ", i32 " + li + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_SHUTDOWN {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @SSL_shutdown(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + ri + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSL_FREE {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + a + " to ptr")
+    emit(cg, "  call void @SSL_free(ptr " + ap + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = add i64 0, 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_HTTP_RESPOND {
+    // 3 IR args + default content type = 4 C args
+    a = cg_get_val(cg, ir_field(inst, 16))
+    b = cg_get_val(cg, ir_field(inst, 24))
+    c = cg_get_val(cg, ir_field(inst, 32))
+    ct_name = emit_string_const(cg, "text/html; charset=utf-8")
+    ct = cg_fresh_reg(cg)
+    emit(cg, "  " + ct + " = ptrtoint ptr " + ct_name + " to i64")
+    d = compile_http_respond(cg, a, b, c, ct)
+    cg_set_val(cg, dest, d)
+    return 0
+  }
+  if op == IR_HTTP_RESPOND_CT {
+    // 4 IR args: request, status, body, content_type
+    a = cg_get_val(cg, ir_field(inst, 16))
+    b = cg_get_val(cg, ir_field(inst, 24))
+    c = cg_get_val(cg, ir_field(inst, 32))
+    e = cg_get_val(cg, ir_field(inst, 40))
+    d = compile_http_respond(cg, a, b, c, e)
+    cg_set_val(cg, dest, d)
+    return 0
+  }
+
+  // ------ HTTP Client (90-95) ------
+  if op == IR_HTTP_GET { return compile_rt1(cg, inst, "sans_http_get") }
+  if op == IR_HTTP_POST { return compile_rt3(cg, inst, "sans_http_post") }
+  if op == IR_HTTP_STATUS { return compile_rt1(cg, inst, "sans_http_status") }
+  if op == IR_HTTP_BODY { return compile_rt1(cg, inst, "sans_http_body") }
+  if op == IR_HTTP_HEADER { return compile_rt2(cg, inst, "sans_http_header") }
+  if op == IR_HTTP_OK { return compile_rt1(cg, inst, "sans_http_ok") }
+
+  // ------ Concurrency (96-104) ------
+  if op == IR_THREAD_SPAWN {
+    // Layout: [op@0, dest@8, func_name@16, args_array@24]
+    func_name = ir_field(inst, 16)
+    arg_regs = ir_field(inst, 24)
+    num_args = arg_regs.len()
+    llvm_fname = if func_name == "main" { "__sans_main" } else { func_name }
+
+    // Malloc arg struct (num_args * 8 bytes)
+    ap = cg_fresh_reg(cg)
+    if num_args > 0 {
+      sz = num_args * 8
+      emit(cg, "  " + ap + " = call ptr @malloc(i64 " + str(sz) + ")")
+    }
+    if num_args == 0 {
+      emit(cg, "  " + ap + " = inttoptr i64 0 to ptr")
+    }
+
+    // Store each arg into the arg struct
+    ai := 0
+    while ai < num_args {
+      av = cg_get_val(cg, arg_regs.get(ai))
+      sp = cg_fresh_reg(cg)
+      emit(cg, "  " + sp + " = getelementptr i64, ptr " + ap + ", i64 " + str(ai))
+      emit(cg, "  store i64 " + av + ", ptr " + sp)
+      ai = ai + 1
+      0
+    }
+
+    // Emit trampoline function (global scope, via emit_global_const)
+    tramp_name = "__trampoline_" + func_name
+    pool = cg_string_pool(cg)
+    if mhas(pool, tramp_name) == 0 {
+      mset(pool, tramp_name, 1)
+      emit_global_const(cg, "define ptr @" + tramp_name + "(ptr %arg) {")
+      emit_global_const(cg, "entry:")
+      // Load each arg from struct and call target
+      call_args := ""
+      ti := 0
+      while ti < num_args {
+        emit_global_const(cg, "  %sp" + str(ti) + " = getelementptr i64, ptr %arg, i64 " + str(ti))
+        emit_global_const(cg, "  %a" + str(ti) + " = load i64, ptr %sp" + str(ti))
+        if ti > 0 { call_args = call_args + ", " }
+        call_args = call_args + "i64 %a" + str(ti)
+        ti = ti + 1
+        0
+      }
+      emit_global_const(cg, "  call i64 @" + llvm_fname + "(" + call_args + ")")
+      if num_args > 0 {
+        emit_global_const(cg, "  call void @free(ptr %arg)")
+      }
+      emit_global_const(cg, "  ret ptr null")
+      emit_global_const(cg, "}")
+    }
+
+    // Alloca for thread id, call pthread_create
+    tid = cg_fresh_reg(cg)
+    emit(cg, "  " + tid + " = alloca i64")
+    pc = cg_fresh_reg(cg)
+    emit(cg, "  " + pc + " = call i32 @pthread_create(ptr " + tid + ", ptr null, ptr @" + tramp_name + ", ptr " + ap + ")")
+    handle = cg_fresh_reg(cg)
+    emit(cg, "  " + handle + " = load i64, ptr " + tid)
+    cg_set_val(cg, dest, handle)
+    return 0
+  }
+  if op == IR_THREAD_JOIN {
+    // dest field holds the handle register
+    hv = cg_get_val(cg, dest)
+    tj = cg_fresh_reg(cg)
+    emit(cg, "  " + tj + " = call i32 @pthread_join(i64 " + hv + ", ptr null)")
+    return 0
+  }
+  if op == IR_CHANNEL_CREATE {
+    // Layout: [op@0, tx_dest@8, rx_dest@16]
+    // Allocate channel struct: 26 * 8 = 208 bytes
+    chan = cg_fresh_reg(cg)
+    emit(cg, "  " + chan + " = call ptr @malloc(i64 208)")
+    // Allocate buffer: 16 * 8 = 128 bytes
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 128)")
+    bufi = cg_fresh_reg(cg)
+    emit(cg, "  " + bufi + " = ptrtoint ptr " + buf + " to i64")
+    // offset 0: buffer pointer
+    emit(cg, "  store i64 " + bufi + ", ptr " + chan)
+    // offset 1: capacity = 16
+    p1 = cg_fresh_reg(cg)
+    emit(cg, "  " + p1 + " = getelementptr i64, ptr " + chan + ", i64 1")
+    emit(cg, "  store i64 16, ptr " + p1)
+    // offset 2: count = 0
+    p2 = cg_fresh_reg(cg)
+    emit(cg, "  " + p2 + " = getelementptr i64, ptr " + chan + ", i64 2")
+    emit(cg, "  store i64 0, ptr " + p2)
+    // offset 3: head = 0
+    p3 = cg_fresh_reg(cg)
+    emit(cg, "  " + p3 + " = getelementptr i64, ptr " + chan + ", i64 3")
+    emit(cg, "  store i64 0, ptr " + p3)
+    // offset 4: tail = 0
+    p4 = cg_fresh_reg(cg)
+    emit(cg, "  " + p4 + " = getelementptr i64, ptr " + chan + ", i64 4")
+    emit(cg, "  store i64 0, ptr " + p4)
+    // offset 5: mutex init
+    mtx = cg_fresh_reg(cg)
+    emit(cg, "  " + mtx + " = getelementptr i64, ptr " + chan + ", i64 5")
+    mi = cg_fresh_reg(cg)
+    emit(cg, "  " + mi + " = call i32 @pthread_mutex_init(ptr " + mtx + ", ptr null)")
+    // offset 13: recv condvar init
+    rcv = cg_fresh_reg(cg)
+    emit(cg, "  " + rcv + " = getelementptr i64, ptr " + chan + ", i64 13")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @pthread_cond_init(ptr " + rcv + ", ptr null)")
+    // offset 19: send condvar init
+    snd = cg_fresh_reg(cg)
+    emit(cg, "  " + snd + " = getelementptr i64, ptr " + chan + ", i64 19")
+    si = cg_fresh_reg(cg)
+    emit(cg, "  " + si + " = call i32 @pthread_cond_init(ptr " + snd + ", ptr null)")
+    // offset 25: is_bounded = 0
+    p25 = cg_fresh_reg(cg)
+    emit(cg, "  " + p25 + " = getelementptr i64, ptr " + chan + ", i64 25")
+    emit(cg, "  store i64 0, ptr " + p25)
+    // Convert to i64 for both tx and rx
+    chan_i = cg_fresh_reg(cg)
+    emit(cg, "  " + chan_i + " = ptrtoint ptr " + chan + " to i64")
+    cg_set_val(cg, dest, chan_i)
+    rx_dest = ir_field(inst, 16)
+    cg_set_val(cg, rx_dest, chan_i)
+    return 0
+  }
+  if op == IR_CHANNEL_CREATE_BOUNDED {
+    // Layout: [op@0, tx_dest@8, rx_dest@16, cap_reg@24]
+    cap_val = cg_get_val(cg, ir_field(inst, 24))
+    // Allocate channel struct: 26 * 8 = 208 bytes
+    chan = cg_fresh_reg(cg)
+    emit(cg, "  " + chan + " = call ptr @malloc(i64 208)")
+    // Buffer size = capacity * 8
+    bsz = cg_fresh_reg(cg)
+    emit(cg, "  " + bsz + " = mul i64 " + cap_val + ", 8")
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 " + bsz + ")")
+    bufi = cg_fresh_reg(cg)
+    emit(cg, "  " + bufi + " = ptrtoint ptr " + buf + " to i64")
+    // offset 0: buffer
+    emit(cg, "  store i64 " + bufi + ", ptr " + chan)
+    // offset 1: capacity
+    p1 = cg_fresh_reg(cg)
+    emit(cg, "  " + p1 + " = getelementptr i64, ptr " + chan + ", i64 1")
+    emit(cg, "  store i64 " + cap_val + ", ptr " + p1)
+    // offset 2: count = 0
+    p2 = cg_fresh_reg(cg)
+    emit(cg, "  " + p2 + " = getelementptr i64, ptr " + chan + ", i64 2")
+    emit(cg, "  store i64 0, ptr " + p2)
+    // offset 3: head = 0
+    p3 = cg_fresh_reg(cg)
+    emit(cg, "  " + p3 + " = getelementptr i64, ptr " + chan + ", i64 3")
+    emit(cg, "  store i64 0, ptr " + p3)
+    // offset 4: tail = 0
+    p4 = cg_fresh_reg(cg)
+    emit(cg, "  " + p4 + " = getelementptr i64, ptr " + chan + ", i64 4")
+    emit(cg, "  store i64 0, ptr " + p4)
+    // offset 5: mutex init
+    mtx = cg_fresh_reg(cg)
+    emit(cg, "  " + mtx + " = getelementptr i64, ptr " + chan + ", i64 5")
+    mi = cg_fresh_reg(cg)
+    emit(cg, "  " + mi + " = call i32 @pthread_mutex_init(ptr " + mtx + ", ptr null)")
+    // offset 13: recv condvar init
+    rcv = cg_fresh_reg(cg)
+    emit(cg, "  " + rcv + " = getelementptr i64, ptr " + chan + ", i64 13")
+    ri = cg_fresh_reg(cg)
+    emit(cg, "  " + ri + " = call i32 @pthread_cond_init(ptr " + rcv + ", ptr null)")
+    // offset 19: send condvar init
+    snd = cg_fresh_reg(cg)
+    emit(cg, "  " + snd + " = getelementptr i64, ptr " + chan + ", i64 19")
+    si = cg_fresh_reg(cg)
+    emit(cg, "  " + si + " = call i32 @pthread_cond_init(ptr " + snd + ", ptr null)")
+    // offset 25: is_bounded = 1
+    p25 = cg_fresh_reg(cg)
+    emit(cg, "  " + p25 + " = getelementptr i64, ptr " + chan + ", i64 25")
+    emit(cg, "  store i64 1, ptr " + p25)
+    // Convert to i64 for both tx and rx
+    chan_i = cg_fresh_reg(cg)
+    emit(cg, "  " + chan_i + " = ptrtoint ptr " + chan + " to i64")
+    cg_set_val(cg, dest, chan_i)
+    rx_dest = ir_field(inst, 16)
+    cg_set_val(cg, rx_dest, chan_i)
+    return 0
+  }
+  if op == IR_CHANNEL_SEND {
+    // Layout: [op@0, tx_reg@8, value_reg@16]
+    tx_val = cg_get_val(cg, dest)
+    val = cg_get_val(cg, ir_field(inst, 16))
+    // inttoptr tx to channel pointer
+    chanp = cg_fresh_reg(cg)
+    emit(cg, "  " + chanp + " = inttoptr i64 " + tx_val + " to ptr")
+    // Lock mutex at offset 5
+    mtx = cg_fresh_reg(cg)
+    emit(cg, "  " + mtx + " = getelementptr i64, ptr " + chanp + ", i64 5")
+    ml = cg_fresh_reg(cg)
+    emit(cg, "  " + ml + " = call i32 @pthread_mutex_lock(ptr " + mtx + ")")
+    // Load count, tail, capacity, buffer
+    cnt_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cnt_p + " = getelementptr i64, ptr " + chanp + ", i64 2")
+    count = cg_fresh_reg(cg)
+    emit(cg, "  " + count + " = load i64, ptr " + cnt_p)
+    tail_p = cg_fresh_reg(cg)
+    emit(cg, "  " + tail_p + " = getelementptr i64, ptr " + chanp + ", i64 4")
+    tail = cg_fresh_reg(cg)
+    emit(cg, "  " + tail + " = load i64, ptr " + tail_p)
+    cap_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cap_p + " = getelementptr i64, ptr " + chanp + ", i64 1")
+    cap = cg_fresh_reg(cg)
+    emit(cg, "  " + cap + " = load i64, ptr " + cap_p)
+    buf_i = cg_fresh_reg(cg)
+    emit(cg, "  " + buf_i + " = load i64, ptr " + chanp)
+    bufp = cg_fresh_reg(cg)
+    emit(cg, "  " + bufp + " = inttoptr i64 " + buf_i + " to ptr")
+    // Store value at buf[tail]
+    slot = cg_fresh_reg(cg)
+    emit(cg, "  " + slot + " = getelementptr i64, ptr " + bufp + ", i64 " + tail)
+    emit(cg, "  store i64 " + val + ", ptr " + slot)
+    // tail = (tail + 1) % cap
+    t1 = cg_fresh_reg(cg)
+    emit(cg, "  " + t1 + " = add i64 " + tail + ", 1")
+    nt = cg_fresh_reg(cg)
+    emit(cg, "  " + nt + " = srem i64 " + t1 + ", " + cap)
+    emit(cg, "  store i64 " + nt + ", ptr " + tail_p)
+    // count += 1
+    nc = cg_fresh_reg(cg)
+    emit(cg, "  " + nc + " = add i64 " + count + ", 1")
+    emit(cg, "  store i64 " + nc + ", ptr " + cnt_p)
+    // Signal recv condvar at offset 13
+    rcv = cg_fresh_reg(cg)
+    emit(cg, "  " + rcv + " = getelementptr i64, ptr " + chanp + ", i64 13")
+    cs = cg_fresh_reg(cg)
+    emit(cg, "  " + cs + " = call i32 @pthread_cond_signal(ptr " + rcv + ")")
+    // Unlock mutex
+    mu = cg_fresh_reg(cg)
+    emit(cg, "  " + mu + " = call i32 @pthread_mutex_unlock(ptr " + mtx + ")")
+    return 0
+  }
+  if op == IR_CHANNEL_RECV {
+    // Layout: [op@0, dest@8, rx_reg@16]
+    rx_val = cg_get_val(cg, ir_field(inst, 16))
+    // inttoptr rx to channel pointer
+    chanp = cg_fresh_reg(cg)
+    emit(cg, "  " + chanp + " = inttoptr i64 " + rx_val + " to ptr")
+    // Lock mutex at offset 5
+    mtx = cg_fresh_reg(cg)
+    emit(cg, "  " + mtx + " = getelementptr i64, ptr " + chanp + ", i64 5")
+    ml = cg_fresh_reg(cg)
+    emit(cg, "  " + ml + " = call i32 @pthread_mutex_lock(ptr " + mtx + ")")
+    // Wait loop: while count == 0, wait on recv condvar
+    lid = cg_label_id(cg)
+    lbl_wait = "recv_wait_" + lid
+    lbl_sleep = "recv_sleep_" + lid
+    lbl_read = "recv_read_" + lid
+    emit(cg, "  br label %" + lbl_wait)
+    emit(cg, lbl_wait + ":")
+    cnt_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cnt_p + " = getelementptr i64, ptr " + chanp + ", i64 2")
+    count = cg_fresh_reg(cg)
+    emit(cg, "  " + count + " = load i64, ptr " + cnt_p)
+    empty = cg_fresh_reg(cg)
+    emit(cg, "  " + empty + " = icmp eq i64 " + count + ", 0")
+    emit(cg, "  br i1 " + empty + ", label %" + lbl_sleep + ", label %" + lbl_read)
+    emit(cg, lbl_sleep + ":")
+    rcv = cg_fresh_reg(cg)
+    emit(cg, "  " + rcv + " = getelementptr i64, ptr " + chanp + ", i64 13")
+    cw = cg_fresh_reg(cg)
+    emit(cg, "  " + cw + " = call i32 @pthread_cond_wait(ptr " + rcv + ", ptr " + mtx + ")")
+    emit(cg, "  br label %" + lbl_wait)
+    emit(cg, lbl_read + ":")
+    // Load from buf[head]
+    head_p = cg_fresh_reg(cg)
+    emit(cg, "  " + head_p + " = getelementptr i64, ptr " + chanp + ", i64 3")
+    head = cg_fresh_reg(cg)
+    emit(cg, "  " + head + " = load i64, ptr " + head_p)
+    buf_i = cg_fresh_reg(cg)
+    emit(cg, "  " + buf_i + " = load i64, ptr " + chanp)
+    bufp = cg_fresh_reg(cg)
+    emit(cg, "  " + bufp + " = inttoptr i64 " + buf_i + " to ptr")
+    slot = cg_fresh_reg(cg)
+    emit(cg, "  " + slot + " = getelementptr i64, ptr " + bufp + ", i64 " + head)
+    val = cg_fresh_reg(cg)
+    emit(cg, "  " + val + " = load i64, ptr " + slot)
+    // head = (head + 1) % capacity
+    cap_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cap_p + " = getelementptr i64, ptr " + chanp + ", i64 1")
+    cap = cg_fresh_reg(cg)
+    emit(cg, "  " + cap + " = load i64, ptr " + cap_p)
+    h1 = cg_fresh_reg(cg)
+    emit(cg, "  " + h1 + " = add i64 " + head + ", 1")
+    nh = cg_fresh_reg(cg)
+    emit(cg, "  " + nh + " = srem i64 " + h1 + ", " + cap)
+    emit(cg, "  store i64 " + nh + ", ptr " + head_p)
+    // count -= 1
+    count2 = cg_fresh_reg(cg)
+    emit(cg, "  " + count2 + " = load i64, ptr " + cnt_p)
+    nc = cg_fresh_reg(cg)
+    emit(cg, "  " + nc + " = sub i64 " + count2 + ", 1")
+    emit(cg, "  store i64 " + nc + ", ptr " + cnt_p)
+    // Signal send condvar at offset 19
+    snd = cg_fresh_reg(cg)
+    emit(cg, "  " + snd + " = getelementptr i64, ptr " + chanp + ", i64 19")
+    cs = cg_fresh_reg(cg)
+    emit(cg, "  " + cs + " = call i32 @pthread_cond_signal(ptr " + snd + ")")
+    // Unlock mutex
+    mu = cg_fresh_reg(cg)
+    emit(cg, "  " + mu + " = call i32 @pthread_mutex_unlock(ptr " + mtx + ")")
+    // Set result
+    cg_set_val(cg, dest, val)
+    // Update current block label for subsequent instructions
+    cg_set_current_block(cg, lbl_read)
+    return 0
+  }
+  if op == IR_MUTEX_CREATE {
+    // [op, dest, value_reg]: malloc 72 bytes, init mutex, store value
+    val = cg_get_val(cg, ir_field(inst, 16))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = call ptr @malloc(i64 72)")
+    // Store value at offset 0
+    emit(cg, "  store i64 " + val + ", ptr " + mp)
+    // Init mutex at offset 8 (64 bytes for pthread_mutex_t)
+    mx = cg_fresh_reg(cg)
+    emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
+    mi = cg_fresh_reg(cg)
+    emit(cg, "  " + mi + " = call i32 @pthread_mutex_init(ptr " + mx + ", ptr null)")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + mp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_MUTEX_LOCK {
+    // [op, dest, mutex_reg]: lock, load value
+    mv = cg_get_val(cg, ir_field(inst, 16))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = inttoptr i64 " + mv + " to ptr")
+    mx = cg_fresh_reg(cg)
+    emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
+    ml = cg_fresh_reg(cg)
+    emit(cg, "  " + ml + " = call i32 @pthread_mutex_lock(ptr " + mx + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + mp)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_MUTEX_UNLOCK {
+    // [op, mutex_reg, value_reg]: store value, unlock
+    mv = cg_get_val(cg, dest)
+    val = cg_get_val(cg, ir_field(inst, 16))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = inttoptr i64 " + mv + " to ptr")
+    emit(cg, "  store i64 " + val + ", ptr " + mp)
+    mx = cg_fresh_reg(cg)
+    emit(cg, "  " + mx + " = getelementptr i8, ptr " + mp + ", i64 8")
+    mu = cg_fresh_reg(cg)
+    emit(cg, "  " + mu + " = call i32 @pthread_mutex_unlock(ptr " + mx + ")")
+    return 0
+  }
+
+  // ------ Function Refs (105-109) ------
+  if op == IR_FN_REF {
+    // [op, dest, name_ptr]: ptrtoint of function pointer
+    // In text IR, we emit the function name directly
+    fname = ir_field(inst, 16)
+    llvm_fname = if fname == "main" { "__sans_main" } else { fname }
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+  if op == IR_FPTR_NAMED {
+    // [op, dest, func_name_ptr]: same as FN_REF
+    fname = ir_field(inst, 16)
+    llvm_fname = if fname == "main" { "__sans_main" } else { fname }
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    return 0
+  }
+  if op == IR_FCALL {
+    // [op, dest, fn_ptr_reg, arg_reg]: indirect call with 1 arg
+    fp_val = cg_get_val(cg, ir_field(inst, 16))
+    arg_val = cg_get_val(cg, ir_field(inst, 24))
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + arg_val + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FCALL2 {
+    // [op, dest, fn_ptr_reg, arg1_reg, arg2_reg]
+    fp_val = cg_get_val(cg, ir_field(inst, 16))
+    a1 = cg_get_val(cg, ir_field(inst, 24))
+    a2 = cg_get_val(cg, ir_field(inst, 32))
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FCALL3 {
+    // [op, dest, fn_ptr_reg, arg1_reg, arg2_reg, arg3_reg]
+    fp_val = cg_get_val(cg, ir_field(inst, 16))
+    a1 = cg_get_val(cg, ir_field(inst, 24))
+    a2 = cg_get_val(cg, ir_field(inst, 32))
+    a3 = cg_get_val(cg, ir_field(inst, 40))
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ Float Conversion (110-111) ------
+  if op == IR_INT_TO_FLOAT {
+    // sitofp i64 to double, bitcast double to i64
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = sitofp i64 " + val + " to double")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + fv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FLOAT_TO_INT {
+    // bitcast i64 to double, fptosi double to i64
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = fptosi double " + fv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ Result (112-118) --- runtime calls ------
+  if op == IR_RESULT_OK { return compile_rt1(cg, inst, "sans_result_ok") }
+  if op == IR_RESULT_ERR { return compile_rt1(cg, inst, "sans_result_err") }
+  if op == IR_RESULT_IS_OK { return compile_rt1(cg, inst, "sans_result_is_ok") }
+  if op == IR_RESULT_IS_ERR { return compile_rt1(cg, inst, "sans_result_is_err") }
+  if op == IR_RESULT_UNWRAP { return compile_rt1(cg, inst, "sans_result_unwrap") }
+  if op == IR_RESULT_UNWRAP_OR { return compile_rt2(cg, inst, "sans_result_unwrap_or") }
+  if op == IR_RESULT_ERROR { return compile_rt1(cg, inst, "sans_result_error") }
+
+  // ------ Logging (119-125) --- runtime calls ------
+  if op == IR_LOG_DEBUG { return compile_rt1(cg, inst, "sans_log_debug") }
+  if op == IR_LOG_INFO { return compile_rt1(cg, inst, "sans_log_info") }
+  if op == IR_LOG_WARN { return compile_rt1(cg, inst, "sans_log_warn") }
+  if op == IR_LOG_ERROR { return compile_rt1(cg, inst, "sans_log_error") }
+  if op == IR_LOG_SET_LEVEL { return compile_rt1(cg, inst, "sans_log_set_level") }
+  if op == IR_GET_LOG_LEVEL { return compile_rt0(cg, inst, "sans_get_log_level") }
+  if op == IR_SET_LOG_LEVEL { return compile_rt1(cg, inst, "sans_set_log_level") }
+
+  // ------ Low-Level Memory (126-135) ------
+  if op == IR_LOAD8 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = load i8, ptr " + p)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i8 " + bv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE8 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = trunc i64 " + vv + " to i8")
+    emit(cg, "  store i8 " + bv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_LOAD16 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    sv = cg_fresh_reg(cg)
+    emit(cg, "  " + sv + " = load i16, ptr " + p)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i16 " + sv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE16 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    sv = cg_fresh_reg(cg)
+    emit(cg, "  " + sv + " = trunc i64 " + vv + " to i16")
+    emit(cg, "  store i16 " + sv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_LOAD32 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    wv = cg_fresh_reg(cg)
+    emit(cg, "  " + wv + " = load i32, ptr " + p)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i32 " + wv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE32 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    wv = cg_fresh_reg(cg)
+    emit(cg, "  " + wv + " = trunc i64 " + vv + " to i32")
+    emit(cg, "  store i32 " + wv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_LOAD64 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr " + p)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STORE64 {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    vv = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    emit(cg, "  store i64 " + vv + ", ptr " + p)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_BSWAP16 {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    sv = cg_fresh_reg(cg)
+    emit(cg, "  " + sv + " = trunc i64 " + val + " to i16")
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = call i16 @llvm.bswap.i16(i16 " + sv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i16 " + bv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SLEN {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + pv + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @strlen(ptr " + p + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ Sockets (136-145) ------
+  if op == IR_SOCK {
+    // socket(domain, type, proto) --- all i64 in our ABI
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    a3 = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @socket(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SBIND {
+    // sans_bind_port(fd, port)
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_bind_port(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SLISTEN {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    a2 = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @listen(i64 " + a1 + ", i64 " + a2 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SACCEPT {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @accept(i64 " + a1 + ", ptr null, ptr null)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SRECV {
+    // recv(fd, buf, len, 0)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    buf = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @recv(i64 " + fd + ", ptr " + bp + ", i64 " + ln + ", i64 0)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SSEND {
+    // send(fd, buf, len, 0)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    buf = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + buf + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @send(i64 " + fd + ", ptr " + bp + ", i64 " + ln + ", i64 0)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SCLOSE {
+    a1 = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @close(i64 " + a1 + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_RBIND {
+    // bind(fd, addr_ptr, len)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    addr = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + addr + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @bind(i64 " + fd + ", ptr " + ap + ", i64 " + ln + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_RSETSOCKOPT {
+    // setsockopt(fd, level, opt, val_ptr, val_len)
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    lvl = cg_get_val(cg, ir_field(inst, 24))
+    opt = cg_get_val(cg, ir_field(inst, 32))
+    vp = cg_get_val(cg, ir_field(inst, 40))
+    vl = cg_get_val(cg, ir_field(inst, 48))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + vp + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @setsockopt(i64 " + fd + ", i64 " + lvl + ", i64 " + opt + ", ptr " + pp + ", i64 " + vl + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_STRSTR {
+    // strstr(haystack, needle) --- both are string ptrs
+    hv = cg_get_val(cg, ir_field(inst, 16))
+    nv = cg_get_val(cg, ir_field(inst, 24))
+    hp = cg_fresh_reg(cg)
+    emit(cg, "  " + hp + " = inttoptr i64 " + hv + " to ptr")
+    np = cg_fresh_reg(cg)
+    emit(cg, "  " + np + " = inttoptr i64 " + nv + " to ptr")
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @strstr(ptr " + hp + ", ptr " + np + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rp + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ Curl (146-153) ------
+  if op == IR_CINIT {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @curl_easy_init()")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CSETS {
+    // curl_easy_setopt(handle, opt, val) --- all i64
+    h = cg_get_val(cg, ir_field(inst, 16))
+    o = cg_get_val(cg, ir_field(inst, 24))
+    v = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 (i64, i64, ...) @curl_easy_setopt(i64 " + h + ", i64 " + o + ", i64 " + v + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CSETI {
+    h = cg_get_val(cg, ir_field(inst, 16))
+    o = cg_get_val(cg, ir_field(inst, 24))
+    v = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 (i64, i64, ...) @curl_easy_setopt(i64 " + h + ", i64 " + o + ", i64 " + v + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CPERF {
+    h = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @curl_easy_perform(i64 " + h + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CCLEAN {
+    h = cg_get_val(cg, ir_field(inst, 16))
+    emit(cg, "  call void @curl_easy_cleanup(i64 " + h + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_CINFO {
+    // curl_easy_getinfo(handle, info, buf) --- variadic
+    h = cg_get_val(cg, ir_field(inst, 16))
+    info = cg_get_val(cg, ir_field(inst, 24))
+    buf = cg_get_val(cg, ir_field(inst, 32))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 (i64, i64, ...) @curl_easy_getinfo(i64 " + h + ", i64 " + info + ", i64 " + buf + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CURL_SLIST_APPEND {
+    sl = cg_get_val(cg, ir_field(inst, 16))
+    sv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @curl_slist_append(i64 " + sl + ", i64 " + sv + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CURL_SLIST_FREE {
+    sl = cg_get_val(cg, ir_field(inst, 16))
+    emit(cg, "  call void @curl_slist_free_all(i64 " + sl + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+
+  // ------ Map (154-160) --- runtime calls ------
+  if op == IR_MAP_CREATE { return compile_rt0(cg, inst, "sans_map_create") }
+  if op == IR_MAP_GET { return compile_rt2(cg, inst, "sans_map_get") }
+  if op == IR_MAP_SET { return compile_rt3(cg, inst, "sans_map_set") }
+  if op == IR_MAP_HAS { return compile_rt2(cg, inst, "sans_map_has") }
+  if op == IR_MAP_LEN { return compile_rt1(cg, inst, "sans_map_len") }
+  if op == IR_MAP_KEYS { return compile_rt1(cg, inst, "sans_map_keys") }
+  if op == IR_MAP_VALS { return compile_rt1(cg, inst, "sans_map_vals") }
+
+  // ------ Arena (161-163) --- runtime calls ------
+  if op == IR_ARENA_BEGIN { return compile_rt0(cg, inst, "sans_arena_begin") }
+  if op == IR_ARENA_ALLOC { return compile_rt1(cg, inst, "sans_arena_alloc") }
+  if op == IR_ARENA_END { return compile_rt0(cg, inst, "sans_arena_end") }
+
+  // ------ Misc (164-172) ------
+  if op == IR_ARGS {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @__sans_args()")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_EXIT {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    emit(cg, "  call void @exit(i64 " + val + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_PRINT_ERR {
+    return compile_rt1(cg, inst, "sans_print_err")
+  }
+  if op == IR_WRITE_FD {
+    // write(fd, msg_ptr, strlen(msg))
+    fd = cg_get_val(cg, ir_field(inst, 16))
+    mv = cg_get_val(cg, ir_field(inst, 24))
+    mp = cg_fresh_reg(cg)
+    emit(cg, "  " + mp + " = inttoptr i64 " + mv + " to ptr")
+    ln = cg_fresh_reg(cg)
+    emit(cg, "  " + ln + " = call i64 @strlen(ptr " + mp + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @write(i64 " + fd + ", ptr " + mp + ", i64 " + ln + ")")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SYSTEM {
+    cv = cg_get_val(cg, ir_field(inst, 16))
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + cv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @system(ptr " + cp + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + rv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_MCPY {
+    // memcpy(dst, src, len)
+    dv = cg_get_val(cg, ir_field(inst, 16))
+    sv = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    dp = cg_fresh_reg(cg)
+    emit(cg, "  " + dp + " = inttoptr i64 " + dv + " to ptr")
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
+    mc5 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc5 + " = call ptr @memcpy(ptr " + dp + ", ptr " + sp + ", i64 " + ln + ")")
+    cg_set_val(cg, dest, dv)
+    return 0
+  }
+  if op == IR_MZERO {
+    // memset(ptr, 0, len)
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    ln = cg_get_val(cg, ir_field(inst, 24))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    ms1 = cg_fresh_reg(cg)
+    emit(cg, "  " + ms1 + " = call ptr @memset(ptr " + pp + ", i64 0, i64 " + ln + ")")
+    cg_set_val(cg, dest, pv)
+    return 0
+  }
+  if op == IR_MCMP {
+    // memcmp(a, b, len)
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    ln = cg_get_val(cg, ir_field(inst, 32))
+    ap = cg_fresh_reg(cg)
+    emit(cg, "  " + ap + " = inttoptr i64 " + av + " to ptr")
+    bp = cg_fresh_reg(cg)
+    emit(cg, "  " + bp + " = inttoptr i64 " + bv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @memcmp(ptr " + ap + ", ptr " + bp + ", i64 " + ln + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + rv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CHAR_AT {
+    // [op, dest, str_reg, idx_reg]: add ptr+offset, load i8, zext
+    sv = cg_get_val(cg, ir_field(inst, 16))
+    iv = cg_get_val(cg, ir_field(inst, 24))
+    sp = cg_fresh_reg(cg)
+    emit(cg, "  " + sp + " = inttoptr i64 " + sv + " to ptr")
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i8, ptr " + sp + ", i64 " + iv)
+    bv = cg_fresh_reg(cg)
+    emit(cg, "  " + bv + " = load i8, ptr " + ep)
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = zext i8 " + bv + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ gzip_compress (211) ------
+  if op == IR_GZIP_COMPRESS {
+    // gzip_compress(data_ptr, len) -> ptr to [compressed_ptr, compressed_len]
+    dv = cg_get_val(cg, ir_field(inst, 16))
+    lv = cg_get_val(cg, ir_field(inst, 24))
+
+    // Allocate z_stream (112 bytes) and zero it
+    zs = cg_fresh_reg(cg)
+    emit(cg, "  " + zs + " = call ptr @malloc(i64 112)")
+    zs2 = cg_fresh_reg(cg)
+    emit(cg, "  " + zs2 + " = call ptr @memset(ptr " + zs + ", i64 0, i64 112)")
+
+    // Version string for deflateInit2_
+    vs = cg_fresh_reg(cg)
+    emit(cg, "  " + vs + " = call ptr @malloc(i64 6)")
+    vs1 = cg_fresh_reg(cg)
+    emit(cg, "  " + vs1 + " = call ptr @memset(ptr " + vs + ", i64 0, i64 6)")
+    // Store "1.3.0" manually
+    vg0 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg0 + " = getelementptr i8, ptr " + vs + ", i64 0")
+    emit(cg, "  store i8 49, ptr " + vg0)
+    vg1 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg1 + " = getelementptr i8, ptr " + vs + ", i64 1")
+    emit(cg, "  store i8 46, ptr " + vg1)
+    vg2 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg2 + " = getelementptr i8, ptr " + vs + ", i64 2")
+    emit(cg, "  store i8 51, ptr " + vg2)
+    vg3 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg3 + " = getelementptr i8, ptr " + vs + ", i64 3")
+    emit(cg, "  store i8 46, ptr " + vg3)
+    vg4 = cg_fresh_reg(cg)
+    emit(cg, "  " + vg4 + " = getelementptr i8, ptr " + vs + ", i64 4")
+    emit(cg, "  store i8 48, ptr " + vg4)
+
+    // deflateInit2_(stream, level=6, method=8, windowBits=31, memLevel=8, strategy=0, version, stream_size=112)
+    di = cg_fresh_reg(cg)
+    emit(cg, "  " + di + " = call i32 @deflateInit2_(ptr " + zs + ", i32 6, i32 8, i32 31, i32 8, i32 0, ptr " + vs + ", i32 112)")
+
+    // Set next_in (offset 0) = inttoptr data
+    dp = cg_fresh_reg(cg)
+    emit(cg, "  " + dp + " = inttoptr i64 " + dv + " to ptr")
+    ni_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ni_ptr + " = getelementptr i8, ptr " + zs + ", i64 0")
+    emit(cg, "  store ptr " + dp + ", ptr " + ni_ptr)
+
+    // Set avail_in (offset 8) = trunc len to i32
+    lt = cg_fresh_reg(cg)
+    emit(cg, "  " + lt + " = trunc i64 " + lv + " to i32")
+    ai_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ai_ptr + " = getelementptr i8, ptr " + zs + ", i64 8")
+    ai_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + ai_bc + " = bitcast ptr " + ai_ptr + " to ptr")
+    emit(cg, "  store i32 " + lt + ", ptr " + ai_bc)
+
+    // Call deflateBound to get max output size
+    db = cg_fresh_reg(cg)
+    emit(cg, "  " + db + " = call i64 @deflateBound(ptr " + zs + ", i64 " + lv + ")")
+
+    // Malloc output buffer
+    ob = cg_fresh_reg(cg)
+    emit(cg, "  " + ob + " = call ptr @malloc(i64 " + db + ")")
+
+    // Set next_out (offset 24)
+    no_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + no_ptr + " = getelementptr i8, ptr " + zs + ", i64 24")
+    emit(cg, "  store ptr " + ob + ", ptr " + no_ptr)
+
+    // Set avail_out (offset 32) = trunc bound to i32
+    bt = cg_fresh_reg(cg)
+    emit(cg, "  " + bt + " = trunc i64 " + db + " to i32")
+    ao_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ao_ptr + " = getelementptr i8, ptr " + zs + ", i64 32")
+    ao_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + ao_bc + " = bitcast ptr " + ao_ptr + " to ptr")
+    emit(cg, "  store i32 " + bt + ", ptr " + ao_bc)
+
+    // Call deflate(stream, Z_FINISH=4)
+    df = cg_fresh_reg(cg)
+    emit(cg, "  " + df + " = call i32 @deflate(ptr " + zs + ", i32 4)")
+
+    // Read avail_out back (offset 32)
+    ao2_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2_ptr + " = getelementptr i8, ptr " + zs + ", i64 32")
+    ao2_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2_bc + " = bitcast ptr " + ao2_ptr + " to ptr")
+    ao2 = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2 + " = load i32, ptr " + ao2_bc)
+    ao2x = cg_fresh_reg(cg)
+    emit(cg, "  " + ao2x + " = zext i32 " + ao2 + " to i64")
+
+    // compressed_len = bound - avail_out
+    cl = cg_fresh_reg(cg)
+    emit(cg, "  " + cl + " = sub i64 " + db + ", " + ao2x)
+
+    // deflateEnd
+    de = cg_fresh_reg(cg)
+    emit(cg, "  " + de + " = call i32 @deflateEnd(ptr " + zs + ")")
+
+    // Malloc result struct (16 bytes): [ptr_as_i64, len_as_i64]
+    rs = cg_fresh_reg(cg)
+    emit(cg, "  " + rs + " = call ptr @malloc(i64 16)")
+    // Store output ptr as i64
+    oi = cg_fresh_reg(cg)
+    emit(cg, "  " + oi + " = ptrtoint ptr " + ob + " to i64")
+    rp0 = cg_fresh_reg(cg)
+    emit(cg, "  " + rp0 + " = getelementptr i8, ptr " + rs + ", i64 0")
+    rp0_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + rp0_bc + " = bitcast ptr " + rp0 + " to ptr")
+    emit(cg, "  store i64 " + oi + ", ptr " + rp0_bc)
+    // Store compressed len
+    rp1 = cg_fresh_reg(cg)
+    emit(cg, "  " + rp1 + " = getelementptr i8, ptr " + rs + ", i64 8")
+    rp1_bc = cg_fresh_reg(cg)
+    emit(cg, "  " + rp1_bc + " = bitcast ptr " + rp1 + " to ptr")
+    emit(cg, "  store i64 " + cl + ", ptr " + rp1_bc)
+
+    // Return result struct pointer as i64
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + rs + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // Unknown opcode --- emit comment
+  emit(cg, "  ; unknown opcode " + str(op))
+  0
+}
+
+// ------ Top-level code generation ---------------------------------------------------------------------------------------------------
+
+// Emit global variable declarations
+emit_globals(cg:I module:I) I {
+  funcs = irm_functions(module)
+  nf = funcs.len()
+  // Check if module has main --- emit argc/argv globals
+  has_main = cg_has_main(cg)
+  if has_main {
+    emit(cg, "@__sans_argc = global i64 0")
+    emit(cg, "@__sans_argv = global ptr null")
+  }
+  // Emit user globals (with init values from IR module)
+  globals = irm_globals(module)
+  ginits = irm_global_inits(module)
+  ng = globals.len()
+  i := 0
+  while i < ng {
+    gname = globals.get(i)
+    if mhas(ginits, gname) {
+      gval = mget(ginits, gname)
+      emit(cg, "@" + gname + " = global i64 " + str(gval))
+    } else {
+      emit(cg, "@" + gname + " = global i64 0")
+    }
+    i = i + 1
+    0
+  }
+  emit(cg, "")
+  0
+}
+
+// First pass: declare a function (forward declaration)
+emit_function_decl(cg:I func:I) I {
+  fname = irf_name(func)
+  llvm_name = if fname == "main" { "__sans_main" } else { fname }
+  params = irf_params(func)
+  np = params.len()
+  param_str := ""
+  i := 0
+  while i < np {
+    if i > 0 { param_str = param_str + ", " }
+    param_str = param_str + "i64"
+    i = i + 1
+    0
+  }
+  emit(cg, "declare i64 @" + llvm_name + "(" + param_str + ")")
+  0
+}
+
+// Second pass: compile a function body
+emit_function_body(cg:I func:I) I {
+  fname = irf_name(func)
+  llvm_name = if fname == "main" { "__sans_main" } else { fname }
+  params = irf_params(func)
+  np = params.len()
+  instrs = irf_instrs(func)
+  ni = instrs.len()
+  param_sizes = irf_param_sizes(func)
+
+  // Build parameter list: "i64 %p0, i64 %p1, ..."
+  param_str := ""
+  i := 0
+  while i < np {
+    if i > 0 { param_str = param_str + ", " }
+    param_str = param_str + "i64 %p" + str(i)
+    i = i + 1
+    0
+  }
+
+  emit(cg, "define i64 @" + llvm_name + "(" + param_str + ") {")
+  emit(cg, "entry:")
+
+  // Reset per-function state
+  cg_set_reg_counter(cg, 0)
+  // Skip dealloc - may cause heap corruption with map internals
+  store64(cg + 40, M())   // reg_map
+  store64(cg + 48, M())   // ptr_set
+  store64(cg + 72, 0)     // label_counter
+  cg_set_current_label(cg, "entry")
+  cg_set_current_block(cg, "entry")
+  store64(cg + 88, M())   // label_end_map
+  store64(cg + 104, M())  // label_parent
+  store64(cg + 128, M())  // ret_labels
+
+  // Map parameters: store each param name --- %pN in reg_map
+  i = 0
+  while i < np {
+    pname = params.get(i)
+    pval = "%p" + str(i)
+    rm = load64(cg + 40)
+    mset(rm, pname, ptr(pval))
+    // Handle struct params: if param_struct_sizes[i] > 0, convert i64 to ptr
+    if param_sizes.get(i) > 0 {
+      pp = cg_fresh_reg(cg)
+      emit(cg, "  " + pp + " = inttoptr i64 " + pval + " to ptr")
+      ps = load64(cg + 48)
+      mset(ps, pname, 1)
+    }
+    i = i + 1
+    0
+  }
+
+  // Pre-scan: hoist all ALLOCA instructions to the entry block
+  // LLVM requires allocas to be in the entry block for correct domination
+  aj := 0
+  while aj < ni {
+    ainst = instrs.get(aj)
+    aop = ir_op(ainst)
+    if aop == IR_ALLOCA {
+      // Emit alloca + ptrtoint in entry block
+      p = cg_fresh_reg(cg)
+      emit(cg, "  " + p + " = alloca i64")
+      r = cg_fresh_reg(cg)
+      emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
+      cg_set_val(cg, ir_dest(ainst), r)
+      cg_set_ptr(cg, ir_dest(ainst))
+    }
+    aj = aj + 1
+    0
+  }
+
+  // Compile instructions with dead-code elimination after terminators
+  terminated := 0
+  j := 0
+  while j < ni {
+    inst = instrs.get(j)
+    op = ir_op(inst)
+    if terminated {
+      // Skip dead code until next label
+      if op == IR_LABEL {
+        terminated = 0
+        compile_inst(cg, inst)
+      }
+    } else {
+      compile_inst(cg, inst)
+      // Mark terminated after ret or branch/jump
+      if op == IR_RET { terminated = 1 }
+      if op == IR_BRANCH { terminated = 1 }
+      if op == IR_JUMP { terminated = 1 }
+    }
+    j = j + 1
+    0
+  }
+
+  // If function body doesn't end with a terminator, add implicit ret
+  if terminated == 0 {
+    emit(cg, "  ret i64 0")
+  }
+
+  emit(cg, "}")
+  emit(cg, "")
+  0
+}
+
+// Emit C-compatible main wrapper
+emit_main_wrapper(cg:I) I {
+  emit(cg, "define i32 @main(i32 %argc, ptr %argv) {")
+  emit(cg, "entry:")
+  emit(cg, "  %argc_ext = sext i32 %argc to i64")
+  emit(cg, "  store i64 %argc_ext, ptr @__sans_argc")
+  emit(cg, "  %argv_i64 = ptrtoint ptr %argv to i64")
+  emit(cg, "  store i64 %argv_i64, ptr @__sans_argv")
+  emit(cg, "  %result = call i64 @__sans_main()")
+  emit(cg, "  %ret = trunc i64 %result to i32")
+  emit(cg, "  ret i32 %ret")
+  emit(cg, "}")
+  emit(cg, "")
+  0
+}
+
+// Emit __sans_args() --- builds a Sans array from argc/argv
+emit_sans_args(cg:I) I {
+  emit(cg, "define i64 @__sans_args() {")
+  emit(cg, "entry:")
+  // Load argc and argv from globals
+  emit(cg, "  %argc = load i64, ptr @__sans_argc")
+  emit(cg, "  %argv_i = load i64, ptr @__sans_argv")
+  emit(cg, "  %argv = inttoptr i64 %argv_i to ptr")
+  // Allocate array struct (24 bytes): [data_ptr, len, capacity]
+  emit(cg, "  %arr_struct = call ptr @malloc(i64 24)")
+  // Allocate data buffer: argc * 8 bytes (min 8)
+  emit(cg, "  %buf_sz = mul i64 %argc, 8")
+  emit(cg, "  %need_min = icmp ult i64 %buf_sz, 8")
+  emit(cg, "  %actual_sz = select i1 %need_min, i64 8, i64 %buf_sz")
+  emit(cg, "  %arr_buf = call ptr @malloc(i64 %actual_sz)")
+  // Store data ptr at offset 0
+  emit(cg, "  %buf_int = ptrtoint ptr %arr_buf to i64")
+  emit(cg, "  store i64 %buf_int, ptr %arr_struct")
+  // Store len = argc at offset 1
+  emit(cg, "  %len_ptr = getelementptr i64, ptr %arr_struct, i64 1")
+  emit(cg, "  store i64 %argc, ptr %len_ptr")
+  // Store capacity = argc at offset 2
+  emit(cg, "  %cap_ptr = getelementptr i64, ptr %arr_struct, i64 2")
+  emit(cg, "  store i64 %argc, ptr %cap_ptr")
+  // Loop setup: i = 0
+  emit(cg, "  %i_alloca = alloca i64")
+  emit(cg, "  store i64 0, ptr %i_alloca")
+  emit(cg, "  br label %loop")
+  // Loop header: if i < 0argc goto body else done
+  emit(cg, "loop:")
+  emit(cg, "  %i = load i64, ptr %i_alloca")
+  emit(cg, "  %cmp = icmp ult i64 %i, %argc")
+  emit(cg, "  br i1 %cmp, label %body, label %done")
+  // Loop body: load argv[i], strlen, malloc+memcpy, store in buf[i]
+  emit(cg, "body:")
+  emit(cg, "  %i2 = load i64, ptr %i_alloca")
+  emit(cg, "  %argv_i_ptr = getelementptr ptr, ptr %argv, i64 %i2")
+  emit(cg, "  %arg_str = load ptr, ptr %argv_i_ptr")
+  emit(cg, "  %slen = call i64 @strlen(ptr %arg_str)")
+  emit(cg, "  %sp1 = add i64 %slen, 1")
+  emit(cg, "  %copy = call ptr @malloc(i64 %sp1)")
+  emit(cg, "  call ptr @memcpy(ptr %copy, ptr %arg_str, i64 %sp1)")
+  emit(cg, "  %copy_int = ptrtoint ptr %copy to i64")
+  emit(cg, "  %slot = getelementptr i64, ptr %arr_buf, i64 %i2")
+  emit(cg, "  store i64 %copy_int, ptr %slot")
+  // i++
+  emit(cg, "  %i_next = add i64 %i2, 1")
+  emit(cg, "  store i64 %i_next, ptr %i_alloca")
+  emit(cg, "  br label %loop")
+  // Done: return struct_ptr as i64
+  emit(cg, "done:")
+  emit(cg, "  %args_result = ptrtoint ptr %arr_struct to i64")
+  emit(cg, "  ret i64 %args_result")
+  emit(cg, "}")
+  emit(cg, "")
+  0
+}
+
+// ------ Top-level entry point ---------------------------------------------------------------------------------------------------------------
+
+compile_to_ll(module:I output_path:S) I {
+  cg = compile_to_ll_impl(module, output_path, 0)
+  cg
+}
+
+compile_to_ll_runtime(module:I output_path:S) I {
+  cg = compile_to_ll_impl(module, output_path, 1)
+  cg
+}
+
+compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
+  cg = make_codegen()
+
+  // Enable streaming mode: write to file as we go
+  fw(output_path, "")  // create/truncate file
+  store64(cg + 112, output_path)  // set output_path for streaming emit
+
+  // Check if module has a "main" function
+  funcs = irm_functions(module)
+  nf = funcs.len()
+  i := 0
+  while i < nf {
+    f = funcs.get(i)
+    fname = irf_name(f)
+    if fname == "main" {
+      cg_set_has_main(cg, 1)
+    }
+    i = i + 1
+    0
+  }
+
+  // 1. Emit LLVM IR header
+  emit_header(cg)
+
+  // 2. Emit external function declarations (skip sans_* for runtime modules)
+  if is_runtime == 1 { emit_externals_core(cg) } else { emit_externals(cg) }
+
+  // 3. Emit global variable declarations
+  emit_globals(cg, module)
+
+  // 4. Skip function declarations --- LLVM IR doesn't require forward decls
+  emit(cg, "")
+
+  // 5. If has_main: emit main wrapper and __sans_args
+  if cg_has_main(cg) {
+    emit_main_wrapper(cg)
+    emit_sans_args(cg)
+  }
+
+  // 6. Second pass: compile each function body (streaming to file)
+  i = 0
+  while i < nf {
+    f_cur = funcs.get(i)
+    emit_function_body(cg, f_cur)
+
+    // On last function: flush buffer + write string constants
+    if i == nf - 1 {
+      cg_flush(cg)
+      // Write string constants
+      sc_lines = cg_string_const_lines(cg)
+      sci := 0
+      while sci < sc_lines.len() {
+        fa(output_path, sc_lines.get(sci) + "\n")
+        sci = sci + 1
+        0
+      }
+    }
+    i = i + 1
+    0
+  }
+  0
+}
+
+write_ll_file(cg:I output_path:S) I {
+  main_lines = cg_lines(cg)
+  sc_lines = cg_string_const_lines(cg)
+  si := 0
+  while si < sc_lines.len() {
+    main_lines.push(sc_lines.get(si))
+    si = si + 1
+    0
+  }
+  fw(output_path, "")
+  wi := 0
+  while wi < main_lines.len() {
+    fa(output_path, main_lines.get(wi) + "\n")
+    wi = wi + 1
+    0
+  }
+  0
+}

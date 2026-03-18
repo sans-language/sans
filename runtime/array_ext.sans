@@ -13,7 +13,7 @@ sans_array_contains(arr:I value:I) I {
 
 sans_array_pop(arr:I) I {
   len = load64(arr + 8)
-  len <= 0 ? 0 : sans_array_pop_inner(arr, len)
+  if len <= 0 { 0 } else { sans_array_pop_inner(arr, len) }
 }
 
 sans_array_pop_inner(arr:I len:I) I {
@@ -25,14 +25,14 @@ sans_array_pop_inner(arr:I len:I) I {
 
 sans_array_remove(arr:I index:I) I {
   len = load64(arr + 8)
-  index < 0 ? 0 : index >= len ? 0 : sans_array_remove_inner(arr, index, len)
+  if index < 0 { 0 } else { if index >= len { 0 } else { sans_array_remove_inner(arr, index, len) } }
 }
 
 sans_array_remove_inner(arr:I index:I len:I) I {
   data = load64(arr)
   value = load64(data + index * 8)
   remaining = len - index - 1
-  remaining > 0 ? mcpy(data + index * 8, data + (index + 1) * 8, remaining * 8) : 0
+  if remaining > 0 { mcpy(data + index * 8, data + (index + 1) * 8, remaining * 8) } else { 0 }
   store64(arr + 8, len - 1)
   value
 }

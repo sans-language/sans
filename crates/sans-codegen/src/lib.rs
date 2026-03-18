@@ -31,10 +31,43 @@ impl fmt::Display for CodegenError {
 
 impl std::error::Error for CodegenError {}
 
+/// Check if `source` block is a predecessor of `target` block.
+/// A block is a predecessor if its terminator branches to target.
+fn is_predecessor<'ctx>(
+    source: inkwell::basic_block::BasicBlock<'ctx>,
+    target: inkwell::basic_block::BasicBlock<'ctx>,
+) -> bool {
+    if let Some(term) = source.get_terminator() {
+        let num_ops = term.get_num_operands();
+        for i in 0..num_ops {
+            if let Some(inkwell::values::Operand::Block(bb)) = term.get_operand(i) {
+                if bb == target {
+                    return true;
+                }
+            }
+        }
+        false
+    } else {
+        // No terminator — block hasn't been finalized, not a predecessor.
+        false
+    }
+}
+
 /// Compile an IR module to a native object file.
 pub fn compile_to_object(module: &Module, output_path: &str) -> Result<(), CodegenError> {
     let context = Context::create();
     let llvm_module = generate_llvm(&context, module)?;
+
+    // Dump LLVM IR for debugging
+    if std::env::var("SANS_DUMP_LL").is_ok() {
+        eprintln!("{}", llvm_module.print_to_string().to_string_lossy());
+    }
+
+    // Verify LLVM IR before emitting object code to catch invalid IR early
+    // (instead of segfaulting during code emission).
+    if let Err(msg) = llvm_module.verify() {
+        return Err(CodegenError::LlvmError(format!("LLVM verification failed: {}", msg.to_string())));
+    }
 
     Target::initialize_native(&InitializationConfig::default())
         .map_err(|e| CodegenError::TargetError(e.to_string()))?;
@@ -119,6 +152,9 @@ fn generate_llvm<'ctx>(
     let exit_type = context.void_type().fn_type(&[i64_type.into()], false);
     llvm_module.add_function("exit", exit_type, Some(Linkage::External));
 
+    let system_type = i32_type.fn_type(&[ptr_type.into()], false);
+    llvm_module.add_function("system", system_type, Some(Linkage::External));
+
     let memcpy_type = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("memcpy", memcpy_type, Some(Linkage::External));
 
@@ -131,6 +167,19 @@ fn generate_llvm<'ctx>(
 
     let memcmp_type = i32_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false);
     llvm_module.add_function("memcmp", memcmp_type, Some(Linkage::External));
+
+    // zlib
+    let deflate_init2_type = i32_type.fn_type(&[ptr_type.into(), i32_type.into(), i32_type.into(), i32_type.into(), i32_type.into(), i32_type.into(), ptr_type.into(), i32_type.into()], false);
+    llvm_module.add_function("deflateInit2_", deflate_init2_type, Some(Linkage::External));
+
+    let deflate_type = i32_type.fn_type(&[ptr_type.into(), i32_type.into()], false);
+    llvm_module.add_function("deflate", deflate_type, Some(Linkage::External));
+
+    let deflate_end_type = i32_type.fn_type(&[ptr_type.into()], false);
+    llvm_module.add_function("deflateEnd", deflate_end_type, Some(Linkage::External));
+
+    let deflate_bound_type = i64_type.fn_type(&[ptr_type.into(), i64_type.into()], false);
+    llvm_module.add_function("deflateBound", deflate_bound_type, Some(Linkage::External));
 
     let snprintf_type = i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], true);
     llvm_module.add_function("snprintf", snprintf_type, Some(Linkage::External));
@@ -219,6 +268,9 @@ fn generate_llvm<'ctx>(
     llvm_module.add_function("strcmp", strcmp_type, Some(Linkage::External));
 
     // Declare HTTP server runtime functions (all i64 — Sans ABI)
+    let serve_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+    llvm_module.add_function("sans_serve", serve_type, Some(Linkage::External));
+
     let http_listen_type = i64_type.fn_type(&[i64_type.into()], false);
     llvm_module.add_function("sans_http_listen", http_listen_type, Some(Linkage::External));
 
@@ -309,6 +361,35 @@ fn generate_llvm<'ctx>(
 
     let arena_end_type = i64_type.fn_type(&[], false);
     llvm_module.add_function("sans_arena_end", arena_end_type, Some(Linkage::External));
+
+    // Form data parsing
+    let form_type = i64_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+    llvm_module.add_function("sans_http_request_form", form_type, Some(Linkage::External));
+
+    // Signal handling and poll
+    // signal(i32, ptr) -> i64
+    let signal_fn_type = i64_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
+    llvm_module.add_function("signal", signal_fn_type, Some(Linkage::External));
+
+    // poll(ptr, i32, i32) -> i32
+    let poll_fn_type = i32_type.fn_type(&[ptr_type.into(), i32_type.into(), i32_type.into()], false);
+    llvm_module.add_function("poll", poll_fn_type, Some(Linkage::External));
+
+    // Global signal flag
+    let signal_flag = llvm_module.add_global(i64_type, None, "__sans_signal_flag");
+    signal_flag.set_initializer(&i64_type.const_zero());
+    signal_flag.set_linkage(Linkage::Common);
+
+    // Signal handler function: void @__sans_signal_handler(i32)
+    let handler_fn_type = context.void_type().fn_type(&[i32_type.into()], false);
+    let handler_fn = llvm_module.add_function("__sans_signal_handler", handler_fn_type, Some(Linkage::LinkOnceODR));
+    let handler_bb = context.append_basic_block(handler_fn, "entry");
+    builder.position_at_end(handler_bb);
+    let flag_ptr = llvm_module.get_global("__sans_signal_flag").unwrap().as_pointer_value();
+    builder.build_store(flag_ptr, i64_type.const_int(1, false))
+        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+    builder.build_return(None)
+        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
 
     // Declare HTTP runtime functions (all i64 — Sans ABI)
     let http_get_type = i64_type.fn_type(&[i64_type.into()], false);
@@ -634,7 +715,10 @@ fn generate_llvm<'ctx>(
         // Generate instructions
         let mut block_terminated = false;
         let mut current_label_name: Option<String> = None;
-        let mut ret_terminated_labels: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Track the actual LLVM basic block that was active when we left each IR label.
+        // This can differ from label_blocks[label] when codegen inserts extra blocks
+        // (e.g. arr_grow/arr_write for ArrayPush, bounds check blocks for ArrayGet).
+        let mut label_end_blocks: HashMap<String, inkwell::basic_block::BasicBlock<'ctx>> = HashMap::new();
         for instr in &func.body {
             // Skip dead code after a terminator (ret/br) until a new label starts a new block
             if block_terminated {
@@ -648,6 +732,17 @@ fn generate_llvm<'ctx>(
                 Instruction::Const { dest, value } => {
                     let val = i64_type.const_int(*value as u64, true);
                     regs.insert(dest.clone(), val);
+                }
+                Instruction::Serve { dest, port, handler } => {
+                    let port_val = regs[port];
+                    let handler_val = regs[handler];
+                    let fn_ref = llvm_module.get_function("sans_serve").unwrap();
+                    let call = builder.build_call(fn_ref, &[port_val.into(), handler_val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let as_int = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_serve: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), as_int);
                 }
                 Instruction::HttpListen { dest, port } => {
                     let port_val = regs[port];
@@ -1188,13 +1283,11 @@ fn generate_llvm<'ctx>(
                         .build_return(Some(&ret_val))
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     block_terminated = true;
-                    if let Some(ref lbl) = current_label_name {
-                        ret_terminated_labels.insert(lbl.clone());
-                    }
                 }
                 Instruction::BoolConst { dest, value } => {
-                    let bool_type = context.bool_type();
-                    let val = bool_type.const_int(*value as u64, false);
+                    // All Sans values are i64; use i64 constant (not i1) to avoid
+                    // PHI type mismatches in short-circuit ||/&& codegen.
+                    let val = i64_type.const_int(*value as u64, false);
                     regs.insert(dest.clone(), val);
                 }
                 Instruction::CmpOp {
@@ -1213,8 +1306,13 @@ fn generate_llvm<'ctx>(
                         IrCmpOp::LtEq => IntPredicate::SLE,
                         IrCmpOp::GtEq => IntPredicate::SGE,
                     };
+                    // ICmp returns i1; zext to i64 so all regs stay i64
+                    // (avoids type mismatches in downstream PHI / ICmp uses).
+                    let cmp_i1 = builder
+                        .build_int_compare(pred, lhs, rhs, &format!("{}_cmp", dest))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let result = builder
-                        .build_int_compare(pred, lhs, rhs, dest)
+                        .build_int_z_extend(cmp_i1, i64_type, dest)
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), result);
                 }
@@ -1260,6 +1358,17 @@ fn generate_llvm<'ctx>(
                     regs.insert(dest.clone(), result);
                 }
                 Instruction::Label { name } => {
+                    // Before switching to the new label, record where the
+                    // *previous* label's codegen actually ended.  Instructions
+                    // like ArrayPush / ArrayGet may have inserted extra basic
+                    // blocks, so the builder's current insert block can differ
+                    // from the block created for the IR label.  Phi nodes need
+                    // this mapping to reference the correct predecessor.
+                    if let Some(ref prev) = current_label_name {
+                        if let Some(cur_bb) = builder.get_insert_block() {
+                            label_end_blocks.insert(prev.clone(), cur_bb);
+                        }
+                    }
                     current_label_name = Some(name.clone());
                     let bb = label_blocks[name];
                     builder.position_at_end(bb);
@@ -1269,6 +1378,12 @@ fn generate_llvm<'ctx>(
                     then_label,
                     else_label,
                 } => {
+                    // Record the actual LLVM block we're branching from
+                    if let Some(ref label_name) = current_label_name {
+                        if let Some(current_bb) = builder.get_insert_block() {
+                            label_end_blocks.insert(label_name.clone(), current_bb);
+                        }
+                    }
                     let cond_val = regs[cond];
                     // Ensure condition is i1; if it's a wider int (e.g. i64 from Load), compare != 0
                     let cond_i1 = if cond_val.get_type().get_bit_width() == 1 {
@@ -1286,6 +1401,13 @@ fn generate_llvm<'ctx>(
                     block_terminated = true;
                 }
                 Instruction::Jump { target } => {
+                    // Record the actual LLVM block we're jumping from (may differ from IR label
+                    // if codegen inserted extra blocks, e.g. for ArrayPush grow/write)
+                    if let Some(ref label_name) = current_label_name {
+                        if let Some(current_bb) = builder.get_insert_block() {
+                            label_end_blocks.insert(label_name.clone(), current_bb);
+                        }
+                    }
                     let target_bb = label_blocks[target];
                     builder
                         .build_unconditional_branch(target_bb)
@@ -1299,13 +1421,27 @@ fn generate_llvm<'ctx>(
                     b_val,
                     b_label,
                 } => {
-                    let a_ret_terminated = ret_terminated_labels.contains(a_label);
-                    let b_ret_terminated = ret_terminated_labels.contains(b_label);
+                    // Resolve the actual LLVM end-block for each IR label
+                    // (may differ from the label's entry block when codegen
+                    // inserts extra blocks, e.g. for ArrayPush grow/write).
+                    let a_bb = label_end_blocks.get(a_label)
+                        .copied()
+                        .unwrap_or_else(|| label_blocks[a_label]);
+                    let b_bb = label_end_blocks.get(b_label)
+                        .copied()
+                        .unwrap_or_else(|| label_blocks[b_label]);
 
-                    if a_ret_terminated && b_ret_terminated {
-                        // Both branches returned — this phi is dead code, use a dummy value
+                    // Check if each predecessor actually branches to the
+                    // current block.  A predecessor is "diverted" if its
+                    // terminator goes elsewhere (return, break, continue).
+                    let current_bb = builder.get_insert_block().unwrap();
+                    let a_is_pred = is_predecessor(a_bb, current_bb);
+                    let b_is_pred = is_predecessor(b_bb, current_bb);
+
+                    if !a_is_pred && !b_is_pred {
+                        // Both branches diverted — phi is dead code, use dummy
                         regs.insert(dest.clone(), i64_type.const_int(0, false));
-                    } else if a_ret_terminated {
+                    } else if !a_is_pred {
                         // Only b is a valid predecessor — skip phi, use b directly
                         let b = if let Some(v) = regs.get(b_val) {
                             *v
@@ -1313,13 +1449,13 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_b")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
+                            i64_type.const_int(0, false)
                         };
                         regs.insert(dest.clone(), b);
                         if let Some(sz) = struct_sizes.get(b_val) {
                             struct_sizes.insert(dest.clone(), *sz);
                         }
-                    } else if b_ret_terminated {
+                    } else if !b_is_pred {
                         // Only a is a valid predecessor — skip phi, use a directly
                         let a = if let Some(v) = regs.get(a_val) {
                             *v
@@ -1327,7 +1463,7 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_a")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
+                            i64_type.const_int(0, false)
                         };
                         regs.insert(dest.clone(), a);
                         if let Some(sz) = struct_sizes.get(a_val) {
@@ -1341,7 +1477,7 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_a")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", a_val)));
+                            i64_type.const_int(0, false)
                         };
                         let b = if let Some(v) = regs.get(b_val) {
                             *v
@@ -1349,15 +1485,21 @@ fn generate_llvm<'ctx>(
                             builder.build_ptr_to_int(*p, i64_type, "phi_b")
                                 .map_err(|e| CodegenError::LlvmError(e.to_string()))?
                         } else {
-                            return Err(CodegenError::LlvmError(format!("phi: register {} not found", b_val)));
+                            i64_type.const_int(0, false)
                         };
-                        let a_bb = label_blocks[a_label];
-                        let b_bb = label_blocks[b_label];
 
-                        // Determine the phi type from the incoming values
-                        let phi_type = a.get_type();
+                        // Always use i64 for PHI (all Sans values are i64).
+                        // Zext any i1 incoming values to i64.
+                        let a = if a.get_type().get_bit_width() == 1 {
+                            builder.build_int_z_extend(a, i64_type, &format!("{}_a_zext", dest))
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else { a };
+                        let b = if b.get_type().get_bit_width() == 1 {
+                            builder.build_int_z_extend(b, i64_type, &format!("{}_b_zext", dest))
+                                .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        } else { b };
                         let phi = builder
-                            .build_phi(phi_type, dest)
+                            .build_phi(i64_type, dest)
                             .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                         phi.add_incoming(&[(&a, a_bb), (&b, b_bb)]);
                         regs.insert(dest.clone(), phi.as_basic_value().into_int_value());
@@ -2960,7 +3102,14 @@ fn generate_llvm<'ctx>(
                     ptrs.insert(dest.clone(), ptr_val);
                 }
                 Instruction::JsonBool { dest, value } => {
-                    let val = regs[value];
+                    let raw_val = regs[value];
+                    // sans_json_bool expects i64, but BoolConst produces i1; zext if needed
+                    let val = if raw_val.get_type().get_bit_width() == 1 {
+                        builder.build_int_z_extend(raw_val, i64_type, "jbool_zext")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    } else {
+                        raw_val
+                    };
                     let fn_ref = llvm_module.get_function("sans_json_bool").unwrap();
                     let call = builder.build_call(fn_ref, &[val.into()], dest).map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     let as_int = match call.try_as_basic_value() { inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(), _ => return Err(CodegenError::LlvmError("sans_json_bool: expected return".into())) };
@@ -3299,6 +3448,80 @@ fn generate_llvm<'ctx>(
                     };
                     regs.insert(dest.clone(), result);
                 }
+                Instruction::HttpRequestForm { dest, req, name } => {
+                    let req_val = regs[req];
+                    let name_val = regs[name];
+                    let fn_ref = llvm_module.get_function("sans_http_request_form").unwrap();
+                    let call = builder.build_call(fn_ref, &[req_val.into(), name_val.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("sans_http_request_form: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                    ptrs.insert(dest.clone(), builder.build_int_to_ptr(result, context.ptr_type(inkwell::AddressSpace::default()), &format!("{}_p", dest))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?);
+                }
+                Instruction::SignalHandler { dest, signum } => {
+                    let signum_val = regs[signum];
+                    let i32_type = context.i32_type();
+                    let signum_i32 = builder.build_int_truncate(signum_val, i32_type, "sig_i32")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let handler_fn = llvm_module.get_function("__sans_signal_handler").unwrap();
+                    let handler_ptr = handler_fn.as_global_value().as_pointer_value();
+                    let signal_fn = llvm_module.get_function("signal").unwrap();
+                    let call = builder.build_call(signal_fn, &[signum_i32.into(), handler_ptr.into()], dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("signal: expected return".into())),
+                    };
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::SignalCheck { dest } => {
+                    let flag_global = llvm_module.get_global("__sans_signal_flag").unwrap();
+                    let flag_ptr = flag_global.as_pointer_value();
+                    let result = builder.build_load(i64_type, flag_ptr, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    regs.insert(dest.clone(), result);
+                }
+                Instruction::Spoll { dest, fd, timeout } => {
+                    let fd_val = regs[fd];
+                    let to_val = regs[timeout];
+                    let i32_type = context.i32_type();
+                    let i16_type = context.i16_type();
+                    // alloca 8 bytes for pollfd struct
+                    let pfd = builder.build_alloca(i64_type, "pollfd")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store fd as i32 at offset 0
+                    let fd_i32 = builder.build_int_truncate(fd_val, i32_type, "fd_i32")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(pfd, fd_i32)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store events=1 (POLLIN) as i16 at offset 4
+                    let i8_type = context.i8_type();
+                    let events_ptr = unsafe { builder.build_gep(i8_type, pfd, &[i64_type.const_int(4, false)], "events_ptr")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))? };
+                    builder.build_store(events_ptr, i16_type.const_int(1, false))
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Call poll(pfd, 1, timeout_i32)
+                    let to_i32 = builder.build_int_truncate(to_val, i32_type, "to_i32")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let poll_fn = llvm_module.get_function("poll").unwrap();
+                    let poll_call = builder.build_call(poll_fn, &[pfd.into(), i32_type.const_int(1, false).into(), to_i32.into()], "poll_r")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let poll_result = match poll_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("poll: expected return".into())),
+                    };
+                    // result > 0 ? 1 : 0
+                    let cmp = builder.build_int_compare(inkwell::IntPredicate::SGT, poll_result, i32_type.const_zero(), "poll_cmp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let result = builder.build_int_z_extend(cmp, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
+                }
                 Instruction::Alloc { dest, size } => {
                     let size_val = regs[size];
                     let malloc_fn = llvm_module.get_function("malloc").unwrap();
@@ -3531,11 +3754,176 @@ fn generate_llvm<'ctx>(
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), int_val);
                 }
+                Instruction::GzipCompress { dest, data, len } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let i32_type_local = context.i32_type();
+
+                    // Allocate z_stream (112 bytes) and zero it
+                    let malloc_fn = llvm_module.get_function("malloc").unwrap();
+                    let memset_fn = llvm_module.get_function("memset").unwrap();
+
+                    let zs_call = builder.build_call(malloc_fn, &[i64_type.const_int(112, false).into()], "gz_zs")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let zs = match zs_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc zs failed".into())),
+                    };
+                    builder.build_call(memset_fn, &[zs.into(), i64_type.const_int(0, false).into(), i64_type.const_int(112, false).into()], "gz_zs_zero")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Version string "1.3.0"
+                    let vs_call = builder.build_call(malloc_fn, &[i64_type.const_int(6, false).into()], "gz_vs")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let vs = match vs_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc vs failed".into())),
+                    };
+                    builder.build_call(memset_fn, &[vs.into(), i64_type.const_int(0, false).into(), i64_type.const_int(6, false).into()], "gz_vs_zero")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    // Store "1.3.0\0"
+                    let i8_type = context.i8_type();
+                    for (i, ch) in [49u8, 46, 51, 46, 48].iter().enumerate() {
+                        let gep = unsafe { builder.build_gep(i8_type, vs, &[i64_type.const_int(i as u64, false)], "gz_vg") }
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                        builder.build_store(gep, i8_type.const_int(*ch as u64, false))
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    }
+
+                    // deflateInit2_(stream, 6, 8, 31, 8, 0, version, 112)
+                    let di_fn = llvm_module.get_function("deflateInit2_").unwrap();
+                    builder.build_call(di_fn, &[
+                        zs.into(),
+                        i32_type_local.const_int(6, false).into(),
+                        i32_type_local.const_int(8, false).into(),
+                        i32_type_local.const_int(31, false).into(),
+                        i32_type_local.const_int(8, false).into(),
+                        i32_type_local.const_int(0, false).into(),
+                        vs.into(),
+                        i32_type_local.const_int(112, false).into(),
+                    ], "gz_di")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Set next_in (offset 0) = inttoptr data
+                    let dp = builder.build_int_to_ptr(regs[data], ptr_type, "gz_dp")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ni_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(0, false)], "gz_ni") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(ni_ptr, dp)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Set avail_in (offset 8) = trunc len to i32
+                    let lt = builder.build_int_truncate(regs[len], i32_type_local, "gz_lt")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ai_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(8, false)], "gz_ai") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(ai_ptr, lt)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // deflateBound
+                    let db_fn = llvm_module.get_function("deflateBound").unwrap();
+                    let db_call = builder.build_call(db_fn, &[zs.into(), regs[len].into()], "gz_db")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let db = match db_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: deflateBound failed".into())),
+                    };
+
+                    // Malloc output buffer
+                    let ob_call = builder.build_call(malloc_fn, &[db.into()], "gz_ob")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ob = match ob_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc ob failed".into())),
+                    };
+
+                    // Set next_out (offset 24)
+                    let no_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(24, false)], "gz_no") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(no_ptr, ob)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Set avail_out (offset 32) = trunc bound to i32
+                    let bt = builder.build_int_truncate(db, i32_type_local, "gz_bt")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ao_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(32, false)], "gz_ao") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(ao_ptr, bt)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // deflate(stream, Z_FINISH=4)
+                    let df_fn = llvm_module.get_function("deflate").unwrap();
+                    builder.build_call(df_fn, &[zs.into(), i32_type_local.const_int(4, false).into()], "gz_df")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Read avail_out back (offset 32)
+                    let ao2_ptr = unsafe { builder.build_gep(i8_type, zs, &[i64_type.const_int(32, false)], "gz_ao2") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let ao2 = builder.build_load(i32_type_local, ao2_ptr, "gz_ao2v")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                        .into_int_value();
+                    let ao2x = builder.build_int_z_extend(ao2, i64_type, "gz_ao2x")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // compressed_len = bound - avail_out
+                    let cl = builder.build_int_sub(db, ao2x, "gz_cl")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // deflateEnd
+                    let de_fn = llvm_module.get_function("deflateEnd").unwrap();
+                    builder.build_call(de_fn, &[zs.into()], "gz_de")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Malloc result struct (16 bytes): [ptr_as_i64, len_as_i64]
+                    let rs_call = builder.build_call(malloc_fn, &[i64_type.const_int(16, false).into()], "gz_rs")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let rs = match rs_call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_pointer_value(),
+                        _ => return Err(CodegenError::LlvmError("gzip_compress: malloc rs failed".into())),
+                    };
+
+                    // Store output ptr as i64
+                    let oi = builder.build_ptr_to_int(ob, i64_type, "gz_oi")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let rp0 = unsafe { builder.build_gep(i8_type, rs, &[i64_type.const_int(0, false)], "gz_rp0") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(rp0, oi)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Store compressed len
+                    let rp1 = unsafe { builder.build_gep(i8_type, rs, &[i64_type.const_int(8, false)], "gz_rp1") }
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    builder.build_store(rp1, cl)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+
+                    // Return result struct pointer as i64
+                    let result = builder.build_ptr_to_int(rs, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
+                }
                 Instruction::Exit { dest, code } => {
                     let fn_ref = llvm_module.get_function("exit").unwrap();
                     builder.build_call(fn_ref, &[regs[code].into()], "")
                         .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
                     regs.insert(dest.clone(), i64_type.const_int(0, false));
+                }
+                Instruction::System { dest, command } => {
+                    let ptr_type = context.ptr_type(inkwell::AddressSpace::default());
+                    let cmd_ptr = if let Some(p) = ptrs.get(command) {
+                        *p
+                    } else {
+                        builder.build_int_to_ptr(regs[command], ptr_type, "sys_cmd")
+                            .map_err(|e| CodegenError::LlvmError(e.to_string()))?
+                    };
+                    let fn_ref = llvm_module.get_function("system").unwrap();
+                    let call = builder.build_call(fn_ref, &[cmd_ptr.into()], "sys_r")
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    let i32_result = match call.try_as_basic_value() {
+                        inkwell::values::ValueKind::Basic(bv) => bv.into_int_value(),
+                        _ => return Err(CodegenError::LlvmError("system: expected return".into())),
+                    };
+                    let result = builder.build_int_s_extend(i32_result, i64_type, dest)
+                        .map_err(|e| CodegenError::LlvmError(e.to_string()))?;
+                    regs.insert(dest.clone(), result);
                 }
                 Instruction::GetLogLevel { dest } => {
                     let fn_ref = llvm_module.get_function("sans_get_log_level").unwrap();

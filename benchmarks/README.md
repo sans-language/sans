@@ -1,88 +1,54 @@
 # Sans Benchmark Results
 
-Comparing Sans against Python, Go, Node.js, and Rust across 5 workloads.
+Comparing Sans against Python, Go, Node.js, and Rust across 8 workloads.
 
-All times in milliseconds (lower is better). Speedup relative to Python.
+All times in milliseconds (lower is better). HTTP in req/sec (higher is better).
 
-## Results
+## Compute Results
 
 | Benchmark | Sans (ms) | Python (ms) | Go (ms) | Node.js (ms) | Rust (ms) |
 |-----------|---:|---:|---:|---:|---:|
-| fib | 51.5 | 1547.3 | 78.2 | 108.9 | 42.5 |
-| loop_sum | 16.4 | 96.3 | 22.1 | 52.7 | 12.3 |
-| array_ops | 15.0 | 48.6 | 25.1 | 53.8 | 12.8 |
-| string_concat | 21.8 | 47.4 | 22.2 | 50.2 | 22.0 |
-| json_roundtrip | 129.8 | 80.5 | 86.1 | 58.5 | 42.1 |
+| fib | 49.4 | 1566.3 | 80.1 | 109.8 | 42.7 |
+| loop_sum | 18.8 | 100.2 | 23.6 | 53.4 | 14.1 |
+| array_ops | 17.6 | 54.0 | 25.6 | 58.7 | 14.4 |
+| string_concat | 24.9 | 53.9 | 22.1 | 51.9 | 22.9 |
+| json_roundtrip | 48.5 | 81.9 | 88.0 | 58.3 | 42.4 |
+| concurrent | 19.0 | 81.5 | 24.1 | 83.2 | 14.0 |
+| file_io | 34.4 | 41.5 | 23.4 | 52.1 | 13.9 |
+| mixed | 17.2 | 50.8 | 23.9 | 51.8 | 15.0 |
 
-## Speedup vs Python
+## HTTP Throughput (req/sec, 8 threads, 100 connections, 10s)
+
+| Language | Req/sec | Avg latency | p99 latency |
+|----------|--------:|------------:|------------:|
+| Sans | 45,044 | 2.13ms | 4.13ms |
+| Python | 44,577 | 2.15ms | 4.18ms |
+| Go | 41,107 | 2.38ms | 7.33ms |
+| Node.js | 44,493 | 2.18ms | 5.06ms |
+| Rust | 45,447 | 2.11ms | 4.10ms |
+
+Sans matches Rust on HTTP throughput — all languages top out around 45k req/sec
+on this machine, bound by connection/OS overhead rather than language runtime.
+
+## Speedup vs Python (compute)
 
 | Benchmark | Sans | Python | Go | Node.js | Rust |
 |-----------|---:|---:|---:|---:|---:|
-| fib | 30.0x | 1.0x | 19.8x | 14.2x | 36.4x |
-| loop_sum | 5.9x | 1.0x | 4.4x | 1.8x | 7.8x |
-| array_ops | 3.2x | 1.0x | 1.9x | 0.9x | 3.8x |
-| string_concat | 2.2x | 1.0x | 2.1x | 0.9x | 2.2x |
-| json_roundtrip | 0.6x | 1.0x | 0.9x | 1.4x | 1.9x |
-
-## Details
-
-### fib
-
-| Language | Mean (ms) | Std Dev | Min | Max |
-|----------|--------:|--------:|----:|----:|
-| Sans | 51.5 | 2.6 | 47.3 | 55.5 |
-| Python | 1547.3 | 19.7 | 1525.5 | 1579.7 |
-| Go | 78.2 | 3.0 | 71.4 | 82.5 |
-| Node.js | 108.9 | 2.7 | 103.8 | 112.0 |
-| Rust | 42.5 | 2.0 | 40.0 | 47.0 |
-
-### loop_sum
-
-| Language | Mean (ms) | Std Dev | Min | Max |
-|----------|--------:|--------:|----:|----:|
-| Sans | 16.4 | 4.1 | 13.7 | 27.6 |
-| Python | 96.3 | 3.0 | 92.9 | 102.0 |
-| Go | 22.1 | 3.0 | 19.4 | 30.0 |
-| Node.js | 52.7 | 1.5 | 50.3 | 56.0 |
-| Rust | 12.3 | 3.5 | 9.5 | 22.1 |
-
-### array_ops
-
-| Language | Mean (ms) | Std Dev | Min | Max |
-|----------|--------:|--------:|----:|----:|
-| Sans | 15.0 | 4.8 | 11.3 | 27.8 |
-| Python | 48.6 | 1.7 | 46.2 | 51.0 |
-| Go | 25.1 | 1.9 | 21.3 | 28.0 |
-| Node.js | 53.8 | 4.8 | 49.0 | 61.1 |
-| Rust | 12.8 | 4.0 | 9.7 | 23.9 |
-
-### string_concat
-
-| Language | Mean (ms) | Std Dev | Min | Max |
-|----------|--------:|--------:|----:|----:|
-| Sans | 21.8 | 3.7 | 17.9 | 30.0 |
-| Python | 47.4 | 2.5 | 42.7 | 51.0 |
-| Go | 22.2 | 3.4 | 19.2 | 31.1 |
-| Node.js | 50.2 | 3.1 | 44.5 | 54.3 |
-| Rust | 22.0 | 4.3 | 16.9 | 33.1 |
-
-### json_roundtrip
-
-| Language | Mean (ms) | Std Dev | Min | Max |
-|----------|--------:|--------:|----:|----:|
-| Sans | 129.8 | 19.4 | 79.0 | 145.6 |
-| Python | 80.5 | 2.0 | 77.1 | 83.1 |
-| Go | 86.1 | 1.7 | 83.2 | 88.9 |
-| Node.js | 58.5 | 1.9 | 55.4 | 62.8 |
-| Rust | 42.1 | 2.6 | 39.1 | 48.9 |
+| fib | 31.7x | 1.0x | 19.6x | 14.3x | 36.7x |
+| loop_sum | 5.3x | 1.0x | 4.2x | 1.9x | 7.1x |
+| array_ops | 3.1x | 1.0x | 2.1x | 0.9x | 3.8x |
+| string_concat | 2.2x | 1.0x | 2.4x | 1.0x | 2.4x |
+| json_roundtrip | 1.7x | 1.0x | 0.9x | 1.4x | 1.9x |
+| concurrent | 4.3x | 1.0x | 3.4x | 1.0x | 5.8x |
+| file_io | 1.2x | 1.0x | 1.8x | 0.8x | 3.0x |
+| mixed | 3.0x | 1.0x | 2.1x | 1.0x | 3.4x |
 
 ## Methodology
 
-- Each benchmark runs 10 times (1 warmup + 10 timed)
-- Wall-clock time measured via Python `time.perf_counter()`
+- Compute: each benchmark runs 10 times (1 warmup + 10 timed), wall-clock via `time.perf_counter()`
+- HTTP: `wrk -t8 -c100 -d10s` with 2s warmup, endpoint returns `{"message":"hello","n":42}`
 - Sans, Go, and Rust are compiled ahead of time with optimizations
 - Python uses CPython, Node.js uses V8
-- All programs produce identical output for correctness verification
 
 ## Workloads
 
@@ -93,3 +59,7 @@ All times in milliseconds (lower is better). Speedup relative to Python.
 | array_ops | Build 100k array, map (*2), filter (even), sum |
 | string_concat | Concatenate 5 strings per iteration, 100k iterations |
 | json_roundtrip | Build/stringify/parse JSON with 1k keys, 100 iterations |
+| concurrent | 4 worker threads each summing 1M integers via channels |
+| file_io | Write 1000 lines (70KB) to disk, read back, report length |
+| mixed | 10k array map+filter + JSON serialize/deserialize + file write/read |
+| http_throughput | GET `/` → JSON response, 8 threads, 100 connections |

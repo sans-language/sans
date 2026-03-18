@@ -1,0 +1,20 @@
+// CORS-enabled HTTP server example
+main() I {
+  s = hl(3000)
+  p("Listening on :3000 with CORS")
+  count := 0
+  while count < 100 {
+    req = s.accept()
+    path = req.path()
+    slen(path) > 0 ? cors_handle(req) : 0
+    count += 1
+    0
+  }
+  0
+}
+
+cors_handle(req:HR) I {
+  cors_all(req)
+  method = req.method()
+  method == "OPTIONS" ? req.respond(204 "") : req.respond(200 "OK")
+}

@@ -2,7 +2,7 @@ sans_array_map(arr:I fn_p:I) I {
   data = load64(arr)
   len = load64(arr + 8)
   result = alloc(24)
-  cap = len > 0 ? len : 1
+  cap = if len > 0 { len } else { 1 }
   new_data = alloc(cap * 8)
   i := 0
   while i < len {
@@ -21,15 +21,15 @@ sans_array_filter(arr:I fn_p:I) I {
   data = load64(arr)
   len = load64(arr + 8)
   result = alloc(24)
-  cap = len > 0 ? len : 1
+  cap = if len > 0 { len } else { 1 }
   new_data = alloc(cap * 8)
   new_len := 0
   i := 0
   while i < len {
     elem = load64(data + i * 8)
     keep = fcall(fn_p, elem)
-    keep != 0 ? store64(new_data + new_len * 8, elem) : 0
-    new_len = keep != 0 ? new_len + 1 : new_len
+    if keep != 0 { store64(new_data + new_len * 8, elem) } else { 0 }
+    new_len = if keep != 0 { new_len + 1 } else { new_len }
     i += 1
   }
   store64(result, new_data)
@@ -80,7 +80,7 @@ sans_array_enumerate(arr:I) I {
   data = load64(arr)
   len = load64(arr + 8)
   result = alloc(24)
-  cap = len > 0 ? len : 1
+  cap = if len > 0 { len } else { 1 }
   new_data = alloc(cap * 8)
   i := 0
   while i < len {
@@ -103,9 +103,9 @@ sans_array_zip(a:I b:I) I {
   alen = load64(a + 8)
   bdata = load64(b)
   blen = load64(b + 8)
-  len = alen < blen ? alen : blen
+  len = if alen < blen { alen } else { blen }
   result = alloc(24)
-  cap = len > 0 ? len : 1
+  cap = if len > 0 { len } else { 1 }
   new_data = alloc(cap * 8)
   i := 0
   while i < len {

@@ -1,0 +1,898 @@
+// ------ SSL / HTTPS runtime ---------------------------------------------------------------------------------------------------------------------------
+// Wraps OpenSSL functions for HTTPS server support.
+// Request struct layout (64 bytes):
+//   offset  0: client fd (I)
+//   offset  8: method (S)
+//   offset 16: path (S)
+//   offset 24: body (S)
+//   offset 32: headers map (I) --- 0 if not parsed
+//   offset 40: response headers array (I) --- 0 if none
+//   offset 48: ssl ptr (I) --- 0 for plain HTTP
+//   offset 56: keep_alive (I) --- 1 if connection should stay open
+
+// ------ SSL Context Setup ---------------------------------------------------------------------------------------------------------------------------------
+
+sans_ssl_ctx(cert:I key:I) I {
+  method = ssl_method()
+  if method == 0 { 0 } else { sans_ssl_ctx_inner(method, cert, key) }
+}
+
+sans_ssl_ctx_inner(method:I cert:I key:I) I {
+  ctx = ssl_ctx_new(method)
+  if ctx == 0 { 0 } else { sans_ssl_ctx_load(ctx, cert, key) }
+}
+
+sans_ssl_ctx_load(ctx:I cert:I key:I) I {
+  r1 = ssl_ctx_cert(ctx, cert, 1)
+  if r1 <= 0 { 0 } else { sans_ssl_ctx_load_key(ctx, key) }
+}
+
+sans_ssl_ctx_load_key(ctx:I key:I) I {
+  r2 = ssl_ctx_key(ctx, key, 1)
+  if r2 <= 0 { 0 } else { ctx }
+}
+
+// ------ HTTPS Listen ------------------------------------------------------------------------------------------------------------------------------------------------
+
+sans_https_listen(port:I cert:I key:I) I {
+  ctx = sans_ssl_ctx(cert, key)
+  if ctx == 0 { sans_ssl_make_error_server(port) } else { sans_https_listen_bind(port, ctx) }
+}
+
+sans_ssl_make_error_server(port:I) I {
+  s = alloc(24)
+  store64(s, -1)
+  store64(s + 8, port)
+  store64(s + 16, 0)
+  s
+}
+
+sans_https_listen_bind(port:I ctx:I) I {
+  fd = sock(2, 1, 0)
+  if fd < 0 { sans_ssl_make_error_server(port) } else { sans_https_listen_try(fd, port, ctx) }
+}
+
+sans_ssl_bind_port(fd:I port:I) I {
+  addr = alloc(16)
+  store8(addr, 16)
+  store8(addr + 1, 2)
+  store16(addr + 2, bswap16(port))
+  store32(addr + 4, 0)
+  store64(addr + 8, 0)
+  opt = alloc(4)
+  store32(opt, 1)
+  rsetsockopt(fd, 65535, 4, opt, 4)
+  rbind(fd, addr, 16)
+}
+
+sans_https_listen_try(fd:I port:I ctx:I) I {
+  r = sans_ssl_bind_port(fd, port)
+  if r < 0 {
+    sclose(fd)
+    sans_ssl_make_error_server(port)
+  } else {
+    lr = slisten(fd, 128)
+    if lr < 0 {
+      sclose(fd)
+      sans_ssl_make_error_server(port)
+    } else {
+      s = alloc(24)
+      store64(s, fd)
+      store64(s + 8, port)
+      store64(s + 16, ctx)
+      s
+    }
+  }
+}
+
+// ------ HTTPS Accept ------------------------------------------------------------------------------------------------------------------------------------------------
+
+sans_https_accept(server:I) I {
+  sfd = load64(server)
+  ctx = load64(server + 16)
+  cfd = saccept(sfd)
+  if cfd < 0 { sans_ssl_make_empty_req() } else { sans_https_accept_ssl(ctx, cfd) }
+}
+
+sans_https_accept_ssl(ctx:I cfd:I) I {
+  ssl = ssl_new(ctx)
+  if ssl == 0 {
+    sclose(cfd)
+    sans_ssl_make_empty_req()
+  } else {
+    sans_https_accept_fd(ssl, cfd)
+  }
+}
+
+sans_https_accept_fd(ssl:I cfd:I) I {
+  r1 = ssl_set_fd(ssl, cfd)
+  r2 = ssl_do_accept(ssl)
+  if r2 <= 0 {
+    ssl_free(ssl)
+    sclose(cfd)
+    sans_ssl_make_empty_req()
+  } else {
+    sans_https_read(ssl, cfd)
+  }
+}
+
+sans_https_read(ssl:I cfd:I) I {
+  buf = alloc(8192)
+  n = ssl_read(ssl, buf, 8191)
+  if n <= 0 {
+    ssl_shutdown(ssl)
+    ssl_free(ssl)
+    sclose(cfd)
+    sans_ssl_make_empty_req()
+  } else {
+    sans_https_parse(ssl, cfd, buf, n)
+  }
+}
+
+sans_https_parse(ssl:I cfd:I buf:I n:I) I {
+  store8(buf + n, 0)
+  mend = sans_ssl_find_space(buf, n, 0)
+  mlen = mend
+  pstart = if mend < n { mend + 1 } else { mend }
+  pend = sans_ssl_find_space(buf, n, pstart)
+  plen = pend - pstart
+  method = alloc(mlen + 1)
+  if mlen > 0 { mcpy(method, buf, mlen) } else { 0 }
+  store8(method + mlen, 0)
+  path = alloc(plen + 1)
+  if plen > 0 { mcpy(path, buf + pstart, plen) } else { 0 }
+  store8(path + plen, 0)
+  bstart = sans_ssl_find_body(buf, n)
+  body = sans_ssl_extract_body(buf, n, bstart)
+  req = alloc(64)
+  store64(req, cfd)
+  store64(req + 8, method)
+  store64(req + 16, path)
+  store64(req + 24, body)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, ssl)
+  store64(req + 56, 0)
+  sans_ssl_parse_headers(req, buf, n)
+  req
+}
+
+// ------ HTTPS Respond ---------------------------------------------------------------------------------------------------------------------------------------------
+// Called when req has SSL ptr at offset 48
+
+sans_https_respond(req:I status:I body:I ct:I) I {
+  fd = load64(req)
+  if fd < 0 { 0 } else { sans_https_respond_build(req, fd, status, body, ct) }
+}
+
+sans_https_respond_build(req:I fd:I status:I body:I ct:I) I {
+  ssl = load64(req + 48)
+  ka = load64(req + 56)
+  body_len = slen(body)
+  status_str = sans_ssl_int_to_buf(status)
+  status_str_len = slen(status_str)
+  blen_str = sans_ssl_int_to_buf(body_len)
+  blen_str_len = slen(blen_str)
+  st = sans_ssl_status_text(status)
+  st_len = slen(st)
+  ct_len = slen(ct)
+
+  // Build custom response headers string
+  custom_hdrs = sans_ssl_build_resp_headers(req)
+  custom_len = slen(custom_hdrs)
+
+  // Choose connection header based on keep_alive flag
+  conn_hdr = if ka == 1 { sans_ssl_lit_cka() } else { sans_ssl_lit_cc() }
+  conn_len = slen(conn_hdr)
+
+  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + custom_len + conn_len
+  buf = alloc(header_len + 1)
+  pos := 0
+  pos = sans_ssl_bw(buf, pos, sans_ssl_lit_http11(), 9)
+  pos = sans_ssl_bw(buf, pos, status_str, status_str_len)
+  pos = sans_ssl_bw(buf, pos, sans_ssl_lit_space(), 1)
+  pos = sans_ssl_bw(buf, pos, st, st_len)
+  pos = sans_ssl_bw(buf, pos, sans_ssl_lit_cl(), 18)
+  pos = sans_ssl_bw(buf, pos, blen_str, blen_str_len)
+  pos = sans_ssl_bw(buf, pos, sans_ssl_lit_ct(), 16)
+  pos = sans_ssl_bw(buf, pos, ct, ct_len)
+  if custom_len > 0 {
+    pos = sans_ssl_bw(buf, pos, custom_hdrs, custom_len)
+  }
+  pos = sans_ssl_bw(buf, pos, conn_hdr, conn_len)
+  store8(buf + pos, 0)
+  total = pos + body_len
+  resp = alloc(total)
+  mcpy(resp, buf, pos)
+  if body_len > 0 { mcpy(resp + pos, body, body_len) } else { 0 }
+  sans_ssl_send_all(ssl, resp, total)
+  // Only close if not keep-alive
+  if ka != 1 {
+    ssl_shutdown(ssl)
+    ssl_free(ssl)
+    sclose(fd)
+    store64(req, -1)
+    store64(req + 48, 0)
+  }
+  1
+}
+
+sans_ssl_send_all(ssl:I data:I total:I) I {
+  sent := 0
+  ok := 1
+  while sent < total {
+    n = ssl_write(ssl, data + sent, total - sent)
+    if n <= 0 {
+      ok = 0
+      sent = total
+      0
+    } else {
+      sent += n
+      0
+    }
+  }
+  ok
+}
+
+// ------ Duplicated helpers (self-contained for independent compilation) ---
+
+sans_ssl_make_empty_req() I {
+  req = alloc(64)
+  store64(req, -1)
+  empty = alloc(1)
+  store8(empty, 0)
+  store64(req + 8, empty)
+  e2 = alloc(1)
+  store8(e2, 0)
+  store64(req + 16, e2)
+  e3 = alloc(1)
+  store8(e3, 0)
+  store64(req + 24, e3)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, 0)
+  store64(req + 56, 0)
+  req
+}
+
+sans_ssl_empty_str() I {
+  s = alloc(1)
+  store8(s, 0)
+  s
+}
+
+sans_ssl_copy_str(src:I len:I) I {
+  s = alloc(len + 1)
+  if len > 0 { mcpy(s, src, len) } else { 0 }
+  store8(s + len, 0)
+  s
+}
+
+sans_ssl_find_space(buf:I n:I start:I) I {
+  i := start
+  done := 0
+  while done == 0 {
+    if i >= n {
+      done = 1
+      0
+    } else {
+      if load8(buf + i) == 32 {
+        done = 1
+        0
+      } else {
+        i += 1
+        0
+      }
+      0
+    }
+  }
+  i
+}
+
+sans_ssl_find_body(buf:I n:I) I {
+  i := 0
+  done := 0
+  while done == 0 {
+    if i + 3 >= n {
+      done = 1
+      0
+    } else {
+      if load8(buf + i) == 13 {
+        if load8(buf + i + 1) == 10 {
+          if load8(buf + i + 2) == 13 {
+            if load8(buf + i + 3) == 10 {
+              done = 1
+              0
+            } else {
+              i += 1
+              0
+            }
+          } else {
+            i += 1
+            0
+          }
+        } else {
+          i += 1
+          0
+        }
+      } else {
+        i += 1
+        0
+      }
+    }
+  }
+  if i + 3 < n { i + 4 } else { n }
+}
+
+sans_ssl_extract_body(buf:I n:I bstart:I) I {
+  blen = n - bstart
+  if blen < 0 { sans_ssl_empty_str() } else { sans_ssl_copy_str(buf + bstart, blen) }
+}
+
+// ------ Header parsing (duplicated for ssl module) ------------------------------------------------------
+
+sans_ssl_parse_headers(req:I buf:I n:I) I {
+  hdrs = alloc(16 + 32 * 16)
+  store64(hdrs, 0)
+  store64(hdrs + 8, 32)
+  store64(req + 32, hdrs)
+  i := sans_ssl_find_crlf(buf, n, 0)
+  if i < 0 { 0 } else { sans_ssl_parse_headers_loop(hdrs, buf, n, i + 2) }
+}
+
+sans_ssl_find_crlf(buf:I n:I start:I) I {
+  i := start
+  found := -1
+  while i + 1 < n {
+    if load8(buf + i) == 13 {
+      if load8(buf + i + 1) == 10 {
+        found = i
+        i = n
+        0
+      } else {
+        i += 1
+        0
+      }
+    } else {
+      i += 1
+      0
+    }
+  }
+  found
+}
+
+sans_ssl_parse_headers_loop(hdrs:I buf:I n:I pos:I) I {
+  done := 0
+  cur := pos
+  while done == 0 {
+    if cur + 1 >= n {
+      done = 1
+      0
+    } else {
+      if load8(buf + cur) == 13 {
+        if load8(buf + cur + 1) == 10 {
+          done = 1
+          0
+        } else {
+          cur = sans_ssl_parse_one_header(hdrs, buf, n, cur)
+          0
+        }
+      } else {
+        cur = sans_ssl_parse_one_header(hdrs, buf, n, cur)
+        0
+      }
+    }
+  }
+  0
+}
+
+sans_ssl_parse_one_header(hdrs:I buf:I n:I pos:I) I {
+  colon := sans_ssl_find_char(buf, n, pos, 58)
+  if colon < 0 { sans_ssl_skip_line(buf, n, pos) } else { sans_ssl_parse_header_kv(hdrs, buf, n, pos, colon) }
+}
+
+sans_ssl_parse_header_kv(hdrs:I buf:I n:I pos:I colon:I) I {
+  name = sans_ssl_lowercase_slice(buf, pos, colon)
+  vstart := colon + 1
+  if vstart < n {
+    if load8(buf + vstart) == 32 {
+      vstart = vstart + 1
+    }
+  }
+  eol = sans_ssl_find_crlf(buf, n, vstart)
+  vend = if eol < 0 { n } else { eol }
+  value = sans_ssl_copy_str(buf + vstart, vend - vstart)
+  sans_ssl_hdrs_add(hdrs, name, value)
+  if eol < 0 { n } else { eol + 2 }
+}
+
+sans_ssl_hdrs_add(hdrs:I name:I value:I) I {
+  count = load64(hdrs)
+  cap = load64(hdrs + 8)
+  if count < cap { sans_ssl_hdrs_add_inner(hdrs, count, name, value) } else { 0 }
+}
+
+sans_ssl_hdrs_add_inner(hdrs:I count:I name:I value:I) I {
+  off = 16 + count * 16
+  store64(hdrs + off, name)
+  store64(hdrs + off + 8, value)
+  store64(hdrs, count + 1)
+  0
+}
+
+sans_ssl_find_char(buf:I n:I start:I ch:I) I {
+  i := start
+  found := -1
+  while i < n {
+    if load8(buf + i) == ch {
+      found = i
+      i = n
+      0
+    } else {
+      if load8(buf + i) == 13 {
+        i = n
+        0
+      } else {
+        i += 1
+        0
+      }
+    }
+  }
+  found
+}
+
+sans_ssl_skip_line(buf:I n:I pos:I) I {
+  eol = sans_ssl_find_crlf(buf, n, pos)
+  if eol < 0 { n } else { eol + 2 }
+}
+
+sans_ssl_lowercase_slice(buf:I start:I end:I) I {
+  len = end - start
+  s = alloc(len + 1)
+  i := 0
+  while i < len {
+    ch = load8(buf + start + i)
+    lc = if ch >= 65 && ch <= 90 { ch + 32 } else { ch }
+    store8(s + i, lc)
+    i += 1
+    0
+  }
+  store8(s + len, 0)
+  s
+}
+
+// ------ Response header building (duplicated) ---------------------------------------------------------------------
+
+sans_ssl_build_resp_headers(req:I) I {
+  arr = load64(req + 40)
+  if arr == 0 { sans_ssl_empty_str() } else { sans_ssl_build_resp_headers_inner(arr) }
+}
+
+sans_ssl_build_resp_headers_inner(arr:I) I {
+  count = load64(arr)
+  if count == 0 { sans_ssl_empty_str() } else { sans_ssl_build_resp_hdrs_loop(arr, count) }
+}
+
+sans_ssl_build_resp_hdrs_loop(arr:I count:I) I {
+  total := 0
+  i := 0
+  while i < count {
+    off = 16 + i * 16
+    name = load64(arr + off)
+    value = load64(arr + off + 8)
+    total = total + 2 + slen(name) + 2 + slen(value)
+    i += 1
+    0
+  }
+  buf = alloc(total + 1)
+  pos := 0
+  i = 0
+  while i < count {
+    off = 16 + i * 16
+    name = load64(arr + off)
+    value = load64(arr + off + 8)
+    nlen = slen(name)
+    vlen = slen(value)
+    store8(buf + pos, 13)
+    store8(buf + pos + 1, 10)
+    pos = pos + 2
+    if nlen > 0 { mcpy(buf + pos, name, nlen) } else { 0 }
+    pos = pos + nlen
+    store8(buf + pos, 58)
+    store8(buf + pos + 1, 32)
+    pos = pos + 2
+    if vlen > 0 { mcpy(buf + pos, value, vlen) } else { 0 }
+    pos = pos + vlen
+    i += 1
+    0
+  }
+  store8(buf + pos, 0)
+  buf
+}
+
+// ------ HTTP literal helpers (duplicated, prefixed) ---------------------------------------------------
+
+sans_ssl_bw(buf:I pos:I src:I len:I) I {
+  if len > 0 { mcpy(buf + pos, src, len) } else { 0 }
+  pos + len
+}
+
+sans_ssl_int_to_buf(n:I) I {
+  if n == 0 { sans_ssl_int_zero() } else { sans_ssl_int_to_buf_pos(n) }
+}
+
+sans_ssl_int_zero() I {
+  buf = alloc(2)
+  store8(buf, 48)
+  store8(buf + 1, 0)
+  buf
+}
+
+sans_ssl_int_to_buf_pos(n:I) I {
+  digits := 0
+  tmp := n
+  while tmp > 0 {
+    digits += 1
+    tmp = tmp / 10
+  }
+  buf = alloc(digits + 1)
+  store8(buf + digits, 0)
+  i := digits - 1
+  tmp = n
+  while tmp > 0 {
+    store8(buf + i, 48 + tmp % 10)
+    tmp = tmp / 10
+    i -= 1
+  }
+  buf
+}
+
+sans_ssl_status_text(s:I) I {
+  if s == 404 { sans_ssl_st_nf() } else { if s == 500 { sans_ssl_st_ie() } else { if s == 400 { sans_ssl_st_br() } else { sans_ssl_st_ok() } } }
+}
+
+sans_ssl_st_ok() I {
+  buf = alloc(3)
+  store8(buf, 79)
+  store8(buf + 1, 75)
+  store8(buf + 2, 0)
+  buf
+}
+
+sans_ssl_st_nf() I {
+  buf = alloc(10)
+  store8(buf, 78)
+  store8(buf + 1, 111)
+  store8(buf + 2, 116)
+  store8(buf + 3, 32)
+  store8(buf + 4, 70)
+  store8(buf + 5, 111)
+  store8(buf + 6, 117)
+  store8(buf + 7, 110)
+  store8(buf + 8, 100)
+  store8(buf + 9, 0)
+  buf
+}
+
+sans_ssl_st_ie() I {
+  buf = alloc(22)
+  store8(buf, 73)
+  store8(buf + 1, 110)
+  store8(buf + 2, 116)
+  store8(buf + 3, 101)
+  store8(buf + 4, 114)
+  store8(buf + 5, 110)
+  store8(buf + 6, 97)
+  store8(buf + 7, 108)
+  store8(buf + 8, 32)
+  store8(buf + 9, 83)
+  store8(buf + 10, 101)
+  store8(buf + 11, 114)
+  store8(buf + 12, 118)
+  store8(buf + 13, 101)
+  store8(buf + 14, 114)
+  store8(buf + 15, 32)
+  store8(buf + 16, 69)
+  store8(buf + 17, 114)
+  store8(buf + 18, 114)
+  store8(buf + 19, 111)
+  store8(buf + 20, 114)
+  store8(buf + 21, 0)
+  buf
+}
+
+sans_ssl_st_br() I {
+  buf = alloc(12)
+  store8(buf, 66)
+  store8(buf + 1, 97)
+  store8(buf + 2, 100)
+  store8(buf + 3, 32)
+  store8(buf + 4, 82)
+  store8(buf + 5, 101)
+  store8(buf + 6, 113)
+  store8(buf + 7, 117)
+  store8(buf + 8, 101)
+  store8(buf + 9, 115)
+  store8(buf + 10, 116)
+  store8(buf + 11, 0)
+  buf
+}
+
+sans_ssl_lit_http11() I {
+  buf = alloc(10)
+  store8(buf, 72)
+  store8(buf + 1, 84)
+  store8(buf + 2, 84)
+  store8(buf + 3, 80)
+  store8(buf + 4, 47)
+  store8(buf + 5, 49)
+  store8(buf + 6, 46)
+  store8(buf + 7, 49)
+  store8(buf + 8, 32)
+  store8(buf + 9, 0)
+  buf
+}
+
+sans_ssl_lit_space() I {
+  buf = alloc(2)
+  store8(buf, 32)
+  store8(buf + 1, 0)
+  buf
+}
+
+sans_ssl_lit_cl() I {
+  buf = alloc(19)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)
+  store8(buf + 3, 111)
+  store8(buf + 4, 110)
+  store8(buf + 5, 116)
+  store8(buf + 6, 101)
+  store8(buf + 7, 110)
+  store8(buf + 8, 116)
+  store8(buf + 9, 45)
+  store8(buf + 10, 76)
+  store8(buf + 11, 101)
+  store8(buf + 12, 110)
+  store8(buf + 13, 103)
+  store8(buf + 14, 116)
+  store8(buf + 15, 104)
+  store8(buf + 16, 58)
+  store8(buf + 17, 32)
+  store8(buf + 18, 0)
+  buf
+}
+
+sans_ssl_lit_ct() I {
+  buf = alloc(17)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)
+  store8(buf + 3, 111)
+  store8(buf + 4, 110)
+  store8(buf + 5, 116)
+  store8(buf + 6, 101)
+  store8(buf + 7, 110)
+  store8(buf + 8, 116)
+  store8(buf + 9, 45)
+  store8(buf + 10, 84)
+  store8(buf + 11, 121)
+  store8(buf + 12, 112)
+  store8(buf + 13, 101)
+  store8(buf + 14, 58)
+  store8(buf + 15, 32)
+  store8(buf + 16, 0)
+  buf
+}
+
+sans_ssl_lit_cc() I {
+  buf = alloc(24)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)
+  store8(buf + 3, 111)
+  store8(buf + 4, 110)
+  store8(buf + 5, 110)
+  store8(buf + 6, 101)
+  store8(buf + 7, 99)
+  store8(buf + 8, 116)
+  store8(buf + 9, 105)
+  store8(buf + 10, 111)
+  store8(buf + 11, 110)
+  store8(buf + 12, 58)
+  store8(buf + 13, 32)
+  store8(buf + 14, 99)
+  store8(buf + 15, 108)
+  store8(buf + 16, 111)
+  store8(buf + 17, 115)
+  store8(buf + 18, 101)
+  store8(buf + 19, 13)
+  store8(buf + 20, 10)
+  store8(buf + 21, 13)
+  store8(buf + 22, 10)
+  store8(buf + 23, 0)
+  buf
+}
+
+sans_ssl_lit_cka() I {
+  // "\r\nConnection: keep-alive\r\n\r\n" = 28 bytes
+  buf = alloc(29)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)   // C
+  store8(buf + 3, 111)  // o
+  store8(buf + 4, 110)  // n
+  store8(buf + 5, 110)  // n
+  store8(buf + 6, 101)  // e
+  store8(buf + 7, 99)   // c
+  store8(buf + 8, 116)  // t
+  store8(buf + 9, 105)  // i
+  store8(buf + 10, 111) // o
+  store8(buf + 11, 110) // n
+  store8(buf + 12, 58)  // : store8(buf + 13, 32)  //
+  store8(buf + 14, 107) // k
+  store8(buf + 15, 101) // e
+  store8(buf + 16, 101) // e
+  store8(buf + 17, 112) // p
+  store8(buf + 18, 45)  // -
+  store8(buf + 19, 97)  // a
+  store8(buf + 20, 108) // l
+  store8(buf + 21, 105) // i
+  store8(buf + 22, 118) // v
+  store8(buf + 23, 101) // e
+  store8(buf + 24, 13)
+  store8(buf + 25, 10)
+  store8(buf + 26, 13)
+  store8(buf + 27, 10)
+  store8(buf + 28, 0)
+  buf
+}
+
+// ------ serve_tls() --- HTTPS production server ------------------------------------------------------------------
+
+sans_serve_tls(port:I cert:I key:I handler:I) I {
+  signal_handler(2)
+  signal_handler(15)
+  srv = sans_https_listen(port, cert, key)
+  fd = load64(srv)
+  if fd < 0 { 0 } else { sans_serve_tls_loop(srv, handler) }
+}
+
+sans_serve_tls_loop(srv:I handler:I) I {
+  sfd = load64(srv)
+  while signal_check() == 0 {
+    ready = spoll(sfd, 1000)
+    if ready > 0 {
+      req = sans_https_accept(srv)
+      fd = load64(req)
+      if fd >= 0 {
+        targ = alloc(24)
+        store64(targ, handler)
+        store64(targ + 8, req)
+        store64(targ + 16, srv)
+        spawn sans_ssl_serve_worker(targ)
+      }
+    }
+    0
+  }
+  p("Shutting down...")
+  sclose(sfd)
+  0
+}
+
+sans_ssl_serve_worker(targ:I) I {
+  handler = load64(targ)
+  req = load64(targ + 8)
+  store64(req + 56, 1)
+  sans_ssl_serve_worker_loop(handler, req)
+}
+
+sans_ssl_serve_worker_loop(handler:I req:I) I {
+  done := 0
+  cur := req
+  while done == 0 {
+    store64(cur + 40, 0)
+    fcall(handler, cur)
+    if sans_ssl_check_close(cur) == 1 {
+      done = 1
+      0
+    } else {
+      fd = load64(cur)
+      ssl = load64(cur + 48)
+      nxt = sans_ssl_read_next_request(fd, ssl)
+      nfd = load64(nxt)
+      if nfd < 0 {
+        done = 1
+        0
+      } else {
+        cur = nxt
+        store64(cur + 56, 1)
+        0
+      }
+    }
+    0
+  }
+  cfd = load64(cur)
+  ssl = load64(cur + 48)
+  if ssl != 0 {
+    ssl_shutdown(ssl)
+    ssl_free(ssl)
+  }
+  if cfd >= 0 { sclose(cfd) } else { 0 }
+  store64(cur, -1)
+  0
+}
+
+sans_ssl_check_close(req:I) I {
+  hdrs = load64(req + 32)
+  if hdrs == 0 { 0 } else { sans_ssl_check_close_inner(hdrs) }
+}
+
+sans_ssl_check_close_inner(hdrs:I) I {
+  lname = sans_ssl_lowercase_slice("connection", 0, 10)
+  count = load64(hdrs)
+  nlen = slen(lname)
+  sans_ssl_check_close_at(hdrs, lname, nlen, count, 0)
+}
+
+sans_ssl_check_close_at(hdrs:I name:I nlen:I count:I i:I) I {
+  if i >= count { 0 } else { sans_ssl_check_close_check(hdrs, name, nlen, count, i) }
+}
+
+sans_ssl_check_close_check(hdrs:I name:I nlen:I count:I i:I) I {
+  off = 16 + i * 16
+  hname = load64(hdrs + off)
+  hlen = slen(hname)
+  if hlen == nlen && mcmp(hname, name, nlen) == 0 {
+    val = load64(hdrs + off + 8)
+    lval = sans_ssl_lowercase_slice(val, 0, slen(val))
+    if slen(lval) == 5 && load8(lval) == 99 && load8(lval+1) == 108 && load8(lval+2) == 111 && load8(lval+3) == 115 && load8(lval+4) == 101 { 1 } else { 0 }
+  } else {
+    sans_ssl_check_close_at(hdrs, name, nlen, count, i + 1)
+  }
+}
+
+sans_ssl_read_next_request(fd:I ssl:I) I {
+  if fd < 0 { sans_ssl_make_empty_req() } else { if ssl != 0 { sans_ssl_read_next_ssl(fd, ssl) } else { sans_ssl_read_next_plain(fd) } }
+}
+
+sans_ssl_read_next_plain(fd:I) I {
+  buf = alloc(65536)
+  n = srecv(fd, buf, 65535)
+  if n <= 0 { sans_ssl_make_empty_req() } else { sans_ssl_parse_next_request(fd, 0, buf, n) }
+}
+
+sans_ssl_read_next_ssl(fd:I ssl:I) I {
+  buf = alloc(65536)
+  n = ssl_read(ssl, buf, 65535)
+  if n <= 0 { sans_ssl_make_empty_req() } else { sans_ssl_parse_next_request(fd, ssl, buf, n) }
+}
+
+sans_ssl_parse_next_request(fd:I ssl:I buf:I n:I) I {
+  store8(buf + n, 0)
+  mend = sans_ssl_find_space(buf, n, 0)
+  mlen = mend
+  pstart = if mend < n { mend + 1 } else { mend }
+  pend = sans_ssl_find_space(buf, n, pstart)
+  plen = pend - pstart
+  method = alloc(mlen + 1)
+  if mlen > 0 { mcpy(method, buf, mlen) } else { 0 }
+  store8(method + mlen, 0)
+  path = alloc(plen + 1)
+  if plen > 0 { mcpy(path, buf + pstart, plen) } else { 0 }
+  store8(path + plen, 0)
+  bstart = sans_ssl_find_body(buf, n)
+  body = sans_ssl_extract_body(buf, n, bstart)
+  req = alloc(64)
+  store64(req, fd)
+  store64(req + 8, method)
+  store64(req + 16, path)
+  store64(req + 24, body)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, ssl)
+  store64(req + 56, 0)
+  sans_ssl_parse_headers(req, buf, n)
+  req
+}

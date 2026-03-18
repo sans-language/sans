@@ -4,5 +4,5 @@ sans_http_body(resp:I) I = load64(resp + 8)
 
 sans_http_ok(resp:I) I {
   s = load64(resp)
-  s >= 200 ? s < 300 ? 1 : 0 : 0
+  if s >= 200 { if s < 300 { 1 } else { 0 } } else { 0 }
 }

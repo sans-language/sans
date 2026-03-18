@@ -87,7 +87,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
         let ir = sans_ir::lower(&module.program, Some(&module.name), &module_fn_ret_types);
         all_ir_functions.extend(ir.functions);
     }
-    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs);
+    let main_ir = sans_ir::lower_with_extra_structs(&main_program, None, &module_fn_ret_types, &extra_struct_defs, &std::collections::HashMap::new());
     let all_globals = main_ir.globals;
     all_ir_functions.extend(main_ir.functions);
 
@@ -114,6 +114,7 @@ fn compile_and_run_dir(fixture_dir: &str) -> i32 {
     let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];
     link_args.extend(runtime_objs.iter().map(|p| p.to_str().unwrap().to_string()));
     link_args.push("-lcurl".to_string());
+    link_args.push("-lz".to_string());
     link_args.push("-o".to_string());
     link_args.push(bin_path.to_str().unwrap().to_string());
     let link_status = Command::new("cc")
@@ -175,6 +176,7 @@ fn compile_and_run(fixture: &str) -> i32 {
     let mut link_args: Vec<String> = vec![obj_path.to_str().unwrap().to_string()];
     link_args.extend(runtime_objs.iter().map(|p| p.to_str().unwrap().to_string()));
     link_args.push("-lcurl".to_string());
+    link_args.push("-lz".to_string());
     link_args.push("-o".to_string());
     link_args.push(bin_path.to_str().unwrap().to_string());
     let link_status = Command::new("cc")
@@ -613,4 +615,14 @@ fn e2e_arena_basic() {
 #[test]
 fn e2e_arena_nested() {
     assert_eq!(compile_and_run("arena_nested.sans"), 141);
+}
+
+#[test]
+fn e2e_system_basic() {
+    assert_eq!(compile_and_run("system_basic.sans"), 0);
+}
+
+#[test]
+fn e2e_builtin_override() {
+    assert_eq!(compile_and_run("builtin_override.sans"), 42);
 }

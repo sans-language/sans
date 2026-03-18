@@ -1,0 +1,8 @@
+// User-defined function named 'map' takes precedence over the builtin Map constructor
+map() I {
+  42
+}
+
+main() I {
+  map()
+}

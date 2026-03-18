@@ -63,6 +63,41 @@ const HOVER_DATA: Record<string, string> = {
     'listen': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
     'hl': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
     'http_listen': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
+    'hl_s': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nAlias: `hl_s`\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
+    'https_listen': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
+    'serve': '**serve**(port: Int, handler: Fn) -> Int\n\nStart a production HTTP server with auto-threading, HTTP/1.1 keep-alive, and graceful shutdown (SIGINT/SIGTERM). Each connection is handled in a new thread. The handler receives an HttpRequest.\n\nUsage: `serve(8080 fptr("handle"))`',
+    'serve_tls': '**serve_tls**(port: Int, cert: String, key: String, handler: Fn) -> Int\n\nStart a production HTTPS server with auto-threading, keep-alive, and graceful shutdown.\n\nUsage: `serve_tls(8443 "cert.pem" "key.pem" fptr("handle"))`',
+    'stream_write': '**stream_write**(writer: Int, data: String) -> Int\n\nSend a chunk of data in a chunked HTTP response. The writer is obtained from `req.respond_stream(status)`.\n\nUsage: `stream_write(w "hello\\n")`',
+    'stream_end': '**stream_end**(writer: Int) -> Int\n\nFinalize a chunked HTTP response by sending the terminal chunk.\n\nUsage: `stream_end(w)`',
+    'cors': '**cors**(req: HttpRequest, origin: String) -> Int\n\nSet CORS response headers: `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers`. Call before `respond`.\n\nUsage: `cors(req "https://example.com")`',
+    'cors_all': '**cors_all**(req: HttpRequest) -> Int\n\nSet CORS response headers with wildcard origin (`*`). Shorthand for `cors(req "*")`.\n\nUsage: `cors_all(req)`',
+    'ssl_ctx': '**ssl_ctx**(cert: String, key: String) -> Int\n\nCreate an SSL context from PEM certificate and private key file paths. Returns opaque context pointer.\n\nAdvanced — prefer `https_listen` for most use cases.\n\nUsage: `ctx = ssl_ctx("cert.pem" "key.pem")`',
+    'ssl_accept': '**ssl_accept**(ctx: Int, fd: Int) -> Int\n\nPerform TLS handshake on an accepted socket fd using the given SSL context. Returns SSL object pointer.\n\nUsage: `ssl = ssl_accept(ctx fd)`',
+    'ssl_read': '**ssl_read**(ssl: Int, buf: Int, len: Int) -> Int\n\nRead up to `len` bytes from a TLS connection into buffer. Returns bytes read.\n\nUsage: `n = ssl_read(ssl buf 4096)`',
+    'ssl_write': '**ssl_write**(ssl: Int, buf: Int, len: Int) -> Int\n\nWrite `len` bytes from buffer to a TLS connection. Returns bytes written.\n\nUsage: `ssl_write(ssl ptr(data) data.len)`',
+    'ssl_close': '**ssl_close**(ssl: Int) -> Int\n\nShut down TLS connection and free the SSL object.\n\nUsage: `ssl_close(ssl)`',
+
+    // HttpRequest methods
+    'header': '**header**(name: String) -> String\n\nGet request header value by name (case-insensitive). Returns "" if not found.\n\nUsage: `ct = req.header("Content-Type")`',
+    'set_header': '**set_header**(name: String, value: String) -> Int\n\nAdd a custom response header. Must be called before `respond`.\n\nUsage: `req.set_header("X-Request-Id" "abc123")`',
+    'cookie': '**cookie**(name: String) -> String\n\nGet cookie value from the `Cookie` request header. Returns "" if not found.\n\nUsage: `token = req.cookie("session")`',
+    'form': '**form**(name: String) -> String\n\nParse form field from POST body. Supports `application/x-www-form-urlencoded` and `multipart/form-data` (text fields only). Returns "" if not found.\n\nUsage: `username = req.form("username")`',
+    'signal_handler': '**signal_handler**(signum: Int) -> Int\n\nRegister a signal handler that sets a global shutdown flag. Used by `serve()` internally for graceful shutdown.\n\nUsage: `signal_handler(2)  // SIGINT`',
+    'signal_check': '**signal_check**() -> Int\n\nReturns 1 if a registered signal was received, 0 otherwise.\n\nUsage: `while signal_check() == 0 { ... }`',
+    'spoll': '**spoll**(fd: Int, timeout_ms: Int) -> Int\n\nPoll a file descriptor for readability with timeout. Returns 1 if ready, 0 on timeout.\n\nUsage: `ready = spoll(fd 1000)`',
+    'ws_send': '**ws_send**(ws: Int, msg: String) -> Int\n\nSend a WebSocket text frame.\n\nUsage: `ws_send(ws "hello")`',
+    'ws_recv': '**ws_recv**(ws: Int) -> String\n\nReceive next WebSocket text frame. Handles ping/pong automatically. Returns "" on close.\n\nUsage: `msg = ws_recv(ws)`',
+    'ws_close': '**ws_close**(ws: Int) -> Int\n\nSend WebSocket close frame and close the socket.\n\nUsage: `ws_close(ws)`',
+    'is_ws_upgrade': '**is_ws_upgrade**() -> Int\n\nHttpRequest method. Returns 1 if request is a WebSocket upgrade request, 0 otherwise.\n\nUsage: `req.is_ws_upgrade()`',
+    'upgrade_ws': '**upgrade_ws**() -> Int\n\nHttpRequest method. Performs WebSocket handshake (SHA-1 + Base64) and sends 101 response. Returns WebSocket handle.\n\nUsage: `ws = req.upgrade_ws()`',
+    'serve_file': '**serve_file**(req: HttpRequest, dir: String) -> Int\n\nServe a static file from `dir` matching the request path. Handles content-type detection, 404 for missing files, and directory traversal protection.\n\nUsage: `serve_file(req "./public")`',
+    'url_decode': '**url_decode**(s: String) -> String\n\nDecode a URL-encoded string (`%20` becomes space, `+` becomes space).\n\nUsage: `name = url_decode(raw_name)`',
+    'path_segment': '**path_segment**(path: String, idx: Int) -> String\n\nExtract URL path segment at index. Segments are split by `/`.\n\nUsage: `path_segment("/api/users/42" 2)  // "42"`',
+    'query': '**query**(name: String) -> String\n\nHttpRequest method. Get query parameter value by name. Returns "" if not found.\n\nUsage: `page = req.query("page")`',
+    'path_only': '**path_only**() -> String\n\nHttpRequest method. Returns the path without query string.\n\nUsage: `p = req.path_only()`',
+    'content_length': '**content_length**() -> Int\n\nHttpRequest method. Get the Content-Length header value as an integer.\n\nUsage: `len = req.content_length()`',
+    'respond_json': '**respond_json**(status: Int, body: String) -> Int\n\nHttpRequest method. Send a JSON response (sets Content-Type: application/json automatically).\n\nUsage: `req.respond_json(200 jfy(data))`',
+    'respond_stream': '**respond_stream**(status: Int) -> Int\n\nHttpRequest method. Send HTTP headers with Transfer-Encoding: chunked and return a writer handle. Use `stream_write(w, data)` to send chunks and `stream_end(w)` to finalize.\n\nUsage: `w = req.respond_stream(200)`',
 
     // Logging
     'ld': '**log_debug**(msg: String) -> Int\n\nLog message at DEBUG level to stderr.',
@@ -98,6 +133,11 @@ const HOVER_DATA: Record<string, string> = {
     'strstr': '**strstr**(haystack: String, needle: String) -> Int\n\nReturn pointer to first occurrence of needle in haystack, or 0 if not found.\n\nUsage: `p = strstr(s, "foo")`',
     'bswap16': '**bswap16**(n: Int) -> Int\n\nByte-swap a 16-bit integer (reverse byte order).\n\nUsage: `be = bswap16(le)`',
     'exit': '**exit**(code: Int) -> Int\n\nTerminate the process with the given exit code.\n\nUsage: `exit(1)`',
+    'system': '**system**(cmd: String) -> Int\n\nRun a shell command via libc `system()` and return the exit code.\n\nAlias: `sys`\n\nUsage: `r = system("ls -la")`',
+    'sys': '**sys**(cmd: String) -> Int\n\nAlias for `system()`. Run a shell command and return the exit code.\n\nUsage: `r = sys("make")`',
+
+    // Compression
+    'gzip_compress': '**gzip_compress**(data: Int, len: Int) -> Int\n\nGzip-compress `len` bytes at `data` pointer. Returns pointer to a 16-byte struct: `[compressed_ptr (i64), compressed_len (i64)]`.\n\nUsage: `result = gzip_compress(buf, buf_len)`\n`ptr = load64(result)`\n`clen = load64(result + 8)`',
 
     // Arena allocator
     'arena_begin': '**arena_begin**() -> Int\n\nPush a new arena onto the stack. All subsequent `arena_alloc()` calls allocate from this arena until `arena_end()`. Nestable up to 8 deep.\n\nUsage: `arena_begin()`',
@@ -149,6 +189,11 @@ const HOVER_DATA: Record<string, string> = {
     // Multi-arg function pointer calls
     'fcall2': '**fcall2**(ptr: Int, a: Int, b: Int) -> Int\n\nCall a function pointer with 2 arguments.\n\nUsage: `add(a:I b:I) I = a + b`\n`fcall2(fptr("add") 10 20)  // 30`',
     'fcall3': '**fcall3**(ptr: Int, a: Int, b: Int, c: Int) -> Int\n\nCall a function pointer with 3 arguments.\n\nUsage: `fcall3(fptr("f") 1 2 3)`',
+
+    // Map operations (explicit built-ins)
+    'mget': '**mget**(map: Int, key: String) -> Int\n\nGet value from Map by string key. Returns 0 if not found.\nUse when a Map is stored as Int (e.g. from `load64`) and `.get()` would dispatch incorrectly.\n\nUsage: `v = mget(m "key")`',
+    'mset': '**mset**(map: Int, key: String, val: Int) -> Int\n\nSet key-value pair in Map.\nUse when a Map is stored as Int (e.g. from `load64`) and `.set()` would dispatch incorrectly.\n\nUsage: `mset(m "key" 42)`',
+    'mhas': '**mhas**(map: Int, key: String) -> Int\n\nCheck if Map contains key. Returns 1 if found, 0 if not.\nUse when a Map is stored as Int (e.g. from `load64`) and `.has()` would dispatch incorrectly.\n\nUsage: `mhas(m "key")  // 1 or 0`',
 
     // File I/O (read_file / write_file / args)
     'read_file': '**read_file**(path: String) -> String\n\nRead entire file contents to string.\n\nUsage: `content = read_file("input.txt")`',

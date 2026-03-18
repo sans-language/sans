@@ -1,5 +1,16 @@
+// ------ HTTP Server Runtime ---------------------------------------------------------------------------------------------------------------------------
+// Request struct layout (64 bytes):
+//   offset  0: client fd (I)
+//   offset  8: method (S)
+//   offset 16: path (S)
+//   offset 24: body (S)
+//   offset 32: headers map (I) --- 0 if not parsed
+//   offset 40: response headers array (I) --- 0 if none
+//   offset 48: ssl ptr (I) --- 0 for plain HTTP
+//   offset 56: keep_alive (I) --- 1 if connection should stay open
+
 sans_make_empty_request() I {
-  req = alloc(32)
+  req = alloc(64)
   store64(req, -1)
   empty = alloc(1)
   store8(empty, 0)
@@ -10,23 +21,27 @@ sans_make_empty_request() I {
   e3 = alloc(1)
   store8(e3, 0)
   store64(req + 24, e3)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, 0)
+  store64(req + 56, 0)
   req
 }
 
 sans_http_accept(server:I) I {
   sfd = load64(server)
-  sfd < 0 ? sans_make_empty_request() : sans_http_accept_inner(sfd)
+  if sfd < 0 { sans_make_empty_request() } else { sans_http_accept_inner(sfd) }
 }
 
 sans_http_accept_inner(sfd:I) I {
   cfd = saccept(sfd)
-  cfd < 0 ? sans_make_empty_request() : sans_http_accept_read(cfd)
+  if cfd < 0 { sans_make_empty_request() } else { sans_http_accept_read(cfd) }
 }
 
 sans_http_accept_read(cfd:I) I {
-  buf = alloc(8192)
-  n = srecv(cfd, buf, 8191)
-  n <= 0 ? sans_http_accept_fail(cfd, buf) : sans_http_accept_parse(cfd, buf, n)
+  buf = alloc(65536)
+  n = srecv(cfd, buf, 65535)
+  if n <= 0 { sans_http_accept_fail(cfd, buf) } else { sans_http_accept_parse(cfd, buf, n) }
 }
 
 sans_http_accept_fail(cfd:I buf:I) I {
@@ -38,22 +53,27 @@ sans_http_accept_parse(cfd:I buf:I n:I) I {
   store8(buf + n, 0)
   mend = sans_find_space(buf, n, 0)
   mlen = mend
-  pstart = mend < n ? mend + 1 : mend
+  pstart = if mend < n { mend + 1 } else { mend }
   pend = sans_find_space(buf, n, pstart)
   plen = pend - pstart
   method = alloc(mlen + 1)
-  mlen > 0 ? mcpy(method, buf, mlen) : 0
+  if mlen > 0 { mcpy(method, buf, mlen) } else { 0 }
   store8(method + mlen, 0)
   path = alloc(plen + 1)
-  plen > 0 ? mcpy(path, buf + pstart, plen) : 0
+  if plen > 0 { mcpy(path, buf + pstart, plen) } else { 0 }
   store8(path + plen, 0)
   bstart = sans_find_body(buf, n)
   body = sans_extract_body(buf, n, bstart)
-  req = alloc(32)
+  req = alloc(64)
   store64(req, cfd)
   store64(req + 8, method)
   store64(req + 16, path)
   store64(req + 24, body)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, 0)
+  store64(req + 56, 0)
+  sans_parse_headers(req, buf, n)
   req
 }
 
@@ -110,12 +130,12 @@ sans_find_body(buf:I n:I) I {
       }
     }
   }
-  i + 3 < n ? i + 4 : n
+  if i + 3 < n { i + 4 } else { n }
 }
 
 sans_extract_body(buf:I n:I bstart:I) I {
   blen = n - bstart
-  blen < 0 ? sans_empty_str() : sans_copy_str(buf + bstart, blen)
+  if blen < 0 { sans_empty_str() } else { sans_copy_str(buf + bstart, blen) }
 }
 
 sans_empty_str() I {
@@ -126,7 +146,7 @@ sans_empty_str() I {
 
 sans_copy_str(src:I len:I) I {
   s = alloc(len + 1)
-  len > 0 ? mcpy(s, src, len) : 0
+  if len > 0 { mcpy(s, src, len) } else { 0 }
   store8(s + len, 0)
   s
 }
@@ -135,13 +155,293 @@ sans_http_request_path(req:I) I = load64(req + 16)
 sans_http_request_method(req:I) I = load64(req + 8)
 sans_http_request_body(req:I) I = load64(req + 24)
 
-sans_http_respond(req:I status:I body:I ct:I) I {
-  fd = load64(req)
-  fd < 0 ? 0 : sans_http_respond_inner(req, fd, status, body, ct)
+// ------ Header Parsing ------------------------------------------------------------------------------------------------------------------------------------------
+
+// Header storage: simple array at offset 32 of req
+// Layout: offset 0 = count, offset 8 = capacity, offset 16+ = entries (16 bytes each: name, value)
+sans_parse_headers(req:I buf:I n:I) I {
+  hdrs = alloc(16 + 32 * 16)
+  store64(hdrs, 0)
+  store64(hdrs + 8, 32)
+  store64(req + 32, hdrs)
+  // Skip first line (request line) --- find \r\n
+  i := sans_find_crlf(buf, n, 0)
+  if i < 0 { 0 } else { sans_parse_headers_loop(hdrs, buf, n, i + 2) }
 }
 
-sans_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
-  body_len = slen(body)
+sans_find_crlf(buf:I n:I start:I) I {
+  i := start
+  found := -1
+  while i + 1 < n {
+    if load8(buf + i) == 13 {
+      if load8(buf + i + 1) == 10 {
+        found = i
+        i = n
+        0
+      } else {
+        i += 1
+        0
+      }
+    } else {
+      i += 1
+      0
+    }
+  }
+  found
+}
+
+sans_parse_headers_loop(hdrs:I buf:I n:I pos:I) I {
+  done := 0
+  cur := pos
+  while done == 0 {
+    if cur + 1 >= n {
+      done = 1
+      0
+    } else {
+      // Check for blank line (\r\n = end of headers)
+      if load8(buf + cur) == 13 {
+        if load8(buf + cur + 1) == 10 {
+          done = 1
+          0
+        } else {
+          cur = sans_parse_one_header(hdrs, buf, n, cur)
+          0
+        }
+      } else {
+        cur = sans_parse_one_header(hdrs, buf, n, cur)
+        0
+      }
+    }
+  }
+  0
+}
+
+sans_parse_one_header(hdrs:I buf:I n:I pos:I) I {
+  // Find colon
+  colon := sans_find_char(buf, n, pos, 58)
+  if colon < 0 { sans_skip_line(buf, n, pos) } else { sans_parse_header_kv(hdrs, buf, n, pos, colon) }
+}
+
+sans_parse_header_kv(hdrs:I buf:I n:I pos:I colon:I) I {
+  // Extract name (lowercase)
+  name = sans_lowercase_slice(buf, pos, colon)
+  // Skip colon + optional space
+  vstart := colon + 1
+  vstart = if vstart < n && load8(buf + vstart) == 32 { vstart + 1 } else { vstart }
+  // Find end of line
+  eol = sans_find_crlf(buf, n, vstart)
+  vend = if eol < 0 { n } else { eol }
+  value = sans_copy_str(buf + vstart, vend - vstart)
+  sans_hdrs_add(hdrs, name, value)
+  if eol < 0 { n } else { eol + 2 }
+}
+
+sans_hdrs_add(hdrs:I name:I value:I) I {
+  count = load64(hdrs)
+  cap = load64(hdrs + 8)
+  if count < cap { sans_hdrs_add_inner(hdrs, count, name, value) } else { 0 }
+}
+
+sans_hdrs_add_inner(hdrs:I count:I name:I value:I) I {
+  off = 16 + count * 16
+  store64(hdrs + off, name)
+  store64(hdrs + off + 8, value)
+  store64(hdrs, count + 1)
+  0
+}
+
+sans_find_char(buf:I n:I start:I ch:I) I {
+  i := start
+  found := -1
+  while i < n {
+    if load8(buf + i) == ch {
+      found = i
+      i = n
+      0
+    } else {
+      // Stop at \r (end of header line)
+      if load8(buf + i) == 13 {
+        i = n
+        0
+      } else {
+        i += 1
+        0
+      }
+    }
+  }
+  found
+}
+
+sans_skip_line(buf:I n:I pos:I) I {
+  eol = sans_find_crlf(buf, n, pos)
+  if eol < 0 { n } else { eol + 2 }
+}
+
+sans_lowercase_slice(buf:I start:I end:I) I {
+  len = end - start
+  s = alloc(len + 1)
+  i := 0
+  while i < len {
+    ch = load8(buf + start + i)
+    // A-Z (65-90) -> a-z (97-122)
+    lc = if ch >= 65 && ch <= 90 { ch + 32 } else { ch }
+    store8(s + i, lc)
+    i += 1
+    0
+  }
+  store8(s + len, 0)
+  s
+}
+
+// ------ Header Access ---------------------------------------------------------------------------------------------------------------------------------------------
+
+sans_http_request_header(req:I name:I) I {
+  hdrs = load64(req + 32)
+  if hdrs == 0 { sans_empty_str() } else { sans_http_request_header_lookup(hdrs, name) }
+}
+
+sans_http_request_header_lookup(hdrs:I name:I) I {
+  // Lowercase the name for lookup
+  lname = sans_lowercase_string(name)
+  sans_hdrs_find(hdrs, lname)
+}
+
+sans_lowercase_string(s:I) I {
+  len = slen(s)
+  r = alloc(len + 1)
+  i := 0
+  while i < len {
+    ch = load8(s + i)
+    lc = if ch >= 65 && ch <= 90 { ch + 32 } else { ch }
+    store8(r + i, lc)
+    i += 1
+    0
+  }
+  store8(r + len, 0)
+  r
+}
+
+sans_hdrs_find(hdrs:I name:I) I {
+  count = load64(hdrs)
+  nlen = slen(name)
+  sans_hdrs_find_at(hdrs, name, nlen, count, 0)
+}
+
+sans_hdrs_find_at(hdrs:I name:I nlen:I count:I i:I) I {
+  if i >= count { sans_empty_str() } else { sans_hdrs_find_check(hdrs, name, nlen, count, i) }
+}
+
+sans_hdrs_find_check(hdrs:I name:I nlen:I count:I i:I) I {
+  off = 16 + i * 16
+  hname = load64(hdrs + off)
+  hlen = slen(hname)
+  if hlen == nlen && mcmp(hname, name, nlen) == 0 { load64(hdrs + off + 8) } else { sans_hdrs_find_at(hdrs, name, nlen, count, i + 1) }
+}
+
+// ------ Response Headers (set_header) ---------------------------------------------------------------------------------------------
+
+sans_http_request_set_header(req:I name:I value:I) I {
+  arr = load64(req + 40)
+  if arr == 0 { sans_set_header_init(req, name, value) } else { sans_resp_headers_add(arr, name, value) }
+}
+
+sans_set_header_init(req:I name:I value:I) I {
+  arr = sans_resp_headers_init()
+  store64(req + 40, arr)
+  sans_resp_headers_add(arr, name, value)
+}
+
+sans_resp_headers_init() I {
+  // Simple array: pairs of (name, value) stored sequentially
+  // offset 0: count, offset 8: capacity, offset 16+: pairs (16 bytes each)
+  arr = alloc(16 + 16 * 16)
+  store64(arr, 0)
+  store64(arr + 8, 16)
+  arr
+}
+
+sans_resp_headers_add(arr:I name:I value:I) I {
+  count = load64(arr)
+  cap = load64(arr + 8)
+  if count < cap { sans_resp_headers_add_inner(arr, count, name, value) } else { 0 }
+}
+
+sans_resp_headers_add_inner(arr:I count:I name:I value:I) I {
+  off = 16 + count * 16
+  store64(arr + off, name)
+  store64(arr + off + 8, value)
+  store64(arr, count + 1)
+  0
+}
+
+// ------ Gzip Auto-Compression ------------------------------------------------------------------------------------------------------------------------
+
+sans_is_compressible_ct(ct:I) I {
+  // text/* -> compressible
+  if slen(ct) >= 5 && load8(ct) == 116 && load8(ct+1) == 101 && load8(ct+2) == 120 && load8(ct+3) == 116 && load8(ct+4) == 47 { 1 } else { if ct == "application/json" { 1 } else { if ct == "application/javascript" { 1 } else { if ct == "application/xml" { 1 } else { if ct == "image/svg+xml" { 1 } else { 0 } } } } }
+}
+
+sans_should_compress(req:I body_len:I ct:I) I {
+  if body_len < 1024 { 0 } else { sans_should_compress_ae(req, ct) }
+}
+
+sans_should_compress_ae(req:I ct:I) I {
+  ae = sans_http_request_header(req, "accept-encoding")
+  if slen(ae) == 0 { 0 } else { sans_should_compress_ae2(req, ae, ct) }
+}
+
+sans_should_compress_ae2(req:I ae:I ct:I) I {
+  if strstr(ae, ptr("gzip")) == 0 { 0 } else { sans_should_compress_nc(req, ct) }
+}
+
+sans_should_compress_nc(req:I ct:I) I {
+  // Check X-No-Compress response header
+  nc = sans_get_resp_header(req, "X-No-Compress")
+  if nc == 1 { 0 } else { sans_is_compressible_ct(ct) }
+}
+
+sans_get_resp_header(req:I name:I) I {
+  arr = load64(req + 40)
+  if arr == 0 { 0 } else { sans_get_resp_header_search(arr, name) }
+}
+
+sans_get_resp_header_search(arr:I name:I) I {
+  count = load64(arr)
+  nlen = slen(name)
+  sans_get_resp_header_at(arr, name, nlen, count, 0)
+}
+
+sans_get_resp_header_at(arr:I name:I nlen:I count:I i:I) I {
+  if i >= count { 0 } else { sans_get_resp_header_check(arr, name, nlen, count, i) }
+}
+
+sans_get_resp_header_check(arr:I name:I nlen:I count:I i:I) I {
+  off = 16 + i * 16
+  hname = load64(arr + off)
+  hval = load64(arr + off + 8)
+  hlen = slen(hname)
+  if hlen == nlen && mcmp(hname, name, nlen) == 0 && hval == "1" { 1 } else { sans_get_resp_header_at(arr, name, nlen, count, i + 1) }
+}
+
+// ------ HTTP Respond (SSL-aware) ------------------------------------------------------------------------------------------------------------
+
+sans_http_respond(req:I status:I body:I ct:I) I {
+  fd = load64(req)
+  if fd < 0 { 0 } else { sans_http_respond_build(req, fd, status, body, ct) }
+}
+
+sans_http_respond_build(req:I fd:I status:I body:I ct:I) I {
+  body_len := slen(body)
+  body_ptr := body
+
+  // Auto-compress if conditions met
+  if sans_should_compress(req, body_len, ct) == 1 {
+    gz = gzip_compress(body, body_len)
+    body_ptr = load64(gz)
+    body_len = load64(gz + 8)
+    sans_http_request_set_header(req, "Content-Encoding", "gzip")
+  }
+
   status_str = sans_int_to_buf(status)
   status_str_len = slen(status_str)
   blen_str = sans_int_to_buf(body_len)
@@ -149,7 +449,17 @@ sans_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
   st = sans_status_text(status)
   st_len = slen(st)
   ct_len = slen(ct)
-  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + 23
+
+  // Build custom response headers string
+  custom_hdrs = sans_build_resp_headers(req)
+  custom_len = slen(custom_hdrs)
+
+  // Choose connection header based on keep_alive flag
+  ka = load64(req + 56)
+  conn_hdr = if ka == 1 { sans_lit_conn_keepalive() } else { sans_lit_conn_close() }
+  conn_len = slen(conn_hdr)
+
+  header_len = 9 + status_str_len + 1 + st_len + 18 + blen_str_len + 16 + ct_len + custom_len + conn_len
   buf = alloc(header_len + 1)
   pos := 0
   pos = sans_buf_write(buf, pos, sans_lit_http11(), 9)
@@ -160,25 +470,160 @@ sans_http_respond_inner(req:I fd:I status:I body:I ct:I) I {
   pos = sans_buf_write(buf, pos, blen_str, blen_str_len)
   pos = sans_buf_write(buf, pos, sans_lit_content_type(), 16)
   pos = sans_buf_write(buf, pos, ct, ct_len)
-  pos = sans_buf_write(buf, pos, sans_lit_conn_close(), 23)
+  if custom_len > 0 {
+    pos = sans_buf_write(buf, pos, custom_hdrs, custom_len)
+  }
+  pos = sans_buf_write(buf, pos, conn_hdr, conn_len)
   store8(buf + pos, 0)
-  total = header_len + body_len
+  total = pos + body_len
   resp = alloc(total)
-  mcpy(resp, buf, header_len)
-  body_len > 0 ? mcpy(resp + header_len, body, body_len) : 0
+  mcpy(resp, buf, pos)
+  if body_len > 0 { mcpy(resp + pos, body_ptr, body_len) } else { 0 }
+
+  sans_http_respond_plain(req, fd, resp, total)
+}
+
+sans_http_respond_plain(req:I fd:I resp:I total:I) I {
+  ka = load64(req + 56)
   sans_send_all(fd, resp, total)
-  sclose(fd)
-  store64(req, -1)
+  // Only close if not keep-alive
+  if ka == 1 { 0 } else { sclose(fd) }
+  if ka == 1 { 0 } else { store64(req, -1) }
   1
 }
 
+sans_build_resp_headers(req:I) I {
+  arr = load64(req + 40)
+  if arr == 0 { sans_empty_str() } else { sans_build_resp_headers_inner(arr) }
+}
+
+sans_build_resp_headers_inner(arr:I) I {
+  count = load64(arr)
+  if count == 0 { sans_empty_str() } else { sans_build_resp_headers_loop(arr, count) }
+}
+
+sans_build_resp_headers_loop(arr:I count:I) I {
+  // Each header: "\r\nName: Value"
+  // Pre-calculate total length
+  total := 0
+  i := 0
+  while i < count {
+    off = 16 + i * 16
+    name = load64(arr + off)
+    value = load64(arr + off + 8)
+    total = total + 2 + slen(name) + 2 + slen(value)
+    i += 1
+    0
+  }
+  buf = alloc(total + 1)
+  pos := 0
+  i = 0
+  while i < count {
+    off = 16 + i * 16
+    name = load64(arr + off)
+    value = load64(arr + off + 8)
+    nlen = slen(name)
+    vlen = slen(value)
+    store8(buf + pos, 13)
+    store8(buf + pos + 1, 10)
+    pos = pos + 2
+    if nlen > 0 { mcpy(buf + pos, name, nlen) } else { 0 }
+    pos = pos + nlen
+    store8(buf + pos, 58)
+    store8(buf + pos + 1, 32)
+    pos = pos + 2
+    if vlen > 0 { mcpy(buf + pos, value, vlen) } else { 0 }
+    pos = pos + vlen
+    i += 1
+    0
+  }
+  store8(buf + pos, 0)
+  buf
+}
+
+// ------ CORS helpers ------------------------------------------------------------------------------------------------------------------------------------------------
+
+sans_cors(req:I origin:I) I {
+  sans_http_request_set_header(req, "Access-Control-Allow-Origin", origin)
+  sans_http_request_set_header(req, "Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+  sans_http_request_set_header(req, "Access-Control-Allow-Headers", "Content-Type, Authorization")
+  0
+}
+
+sans_cors_all(req:I) I = sans_cors(req, "*")
+
+// ------ Cookie parsing ------------------------------------------------------------------------------------------------------------------------------------------
+
+sans_http_request_cookie(req:I name:I) I {
+  hdr = sans_http_request_header(req, "cookie")
+  if slen(hdr) == 0 { sans_empty_str() } else { sans_parse_cookie_value(hdr, name) }
+}
+
+sans_parse_cookie_value(hdr:I name:I) I {
+  nlen = slen(name)
+  hlen = slen(hdr)
+  sans_parse_cookie_at(hdr, hlen, name, nlen, 0)
+}
+
+sans_parse_cookie_at(hdr:I hlen:I name:I nlen:I pos:I) I {
+  if pos >= hlen { sans_empty_str() } else { sans_parse_cookie_skip(hdr, hlen, name, nlen, pos) }
+}
+
+sans_parse_cookie_skip(hdr:I hlen:I name:I nlen:I pos:I) I {
+  // Skip whitespace
+  p = if pos < hlen && load8(hdr + pos) == 32 { pos + 1 } else { pos }
+  if p >= hlen { sans_empty_str() } else { sans_parse_cookie_try(hdr, hlen, name, nlen, p) }
+}
+
+sans_parse_cookie_try(hdr:I hlen:I name:I nlen:I pos:I) I {
+  if sans_cookie_name_match(hdr, hlen, pos, name, nlen) == 1 { sans_parse_cookie_extract(hdr, hlen, pos + nlen + 1) } else { sans_parse_cookie_next(hdr, hlen, name, nlen, pos) }
+}
+
+sans_parse_cookie_extract(hdr:I hlen:I vstart:I) I {
+  vend = sans_find_cookie_end(hdr, hlen, vstart)
+  sans_copy_str(hdr + vstart, vend - vstart)
+}
+
+sans_parse_cookie_next(hdr:I hlen:I name:I nlen:I pos:I) I {
+  end = sans_find_cookie_end(hdr, hlen, pos)
+  npos = if end < hlen && load8(hdr + end) == 59 { end + 1 } else { end }
+  sans_parse_cookie_at(hdr, hlen, name, nlen, npos)
+}
+
+sans_cookie_name_match(hdr:I hlen:I pos:I name:I nlen:I) I {
+  if pos + nlen >= hlen { 0 } else { if load8(hdr + pos + nlen) != 61 { 0 } else { if mcmp(hdr + pos, name, nlen) == 0 { 1 } else { 0 } } }
+}
+
+sans_find_cookie_end(hdr:I hlen:I start:I) I {
+  i := start
+  done := 0
+  while done == 0 {
+    if i >= hlen {
+      done = 1
+      0
+    } else {
+      if load8(hdr + i) == 59 {
+        done = 1
+        0
+      } else {
+        i += 1
+        0
+      }
+      0
+    }
+  }
+  i
+}
+
+// ------ Helper functions ------------------------------------------------------------------------------------------------------------------------------------
+
 sans_buf_write(buf:I pos:I src:I len:I) I {
-  len > 0 ? mcpy(buf + pos, src, len) : 0
+  if len > 0 { mcpy(buf + pos, src, len) } else { 0 }
   pos + len
 }
 
 sans_int_to_buf(n:I) I {
-  n == 0 ? sans_int_zero_str() : sans_int_to_buf_pos(n)
+  if n == 0 { sans_int_zero_str() } else { sans_int_to_buf_pos(n) }
 }
 
 sans_int_zero_str() I {
@@ -208,7 +653,23 @@ sans_int_to_buf_pos(n:I) I {
 }
 
 sans_status_text(s:I) I {
-  s == 404 ? sans_st_not_found() : s == 500 ? sans_st_internal_error() : s == 400 ? sans_st_bad_request() : sans_st_ok()
+  if s == 200 { return sans_st_ok() }
+  if s == 201 { return sans_st_created() }
+  if s == 204 { return sans_st_no_content() }
+  if s == 301 { return sans_st_moved() }
+  if s == 302 { return sans_st_found() }
+  if s == 304 { return sans_st_not_modified() }
+  if s == 400 { return sans_st_bad_request() }
+  if s == 401 { return sans_st_unauthorized() }
+  if s == 403 { return sans_st_forbidden() }
+  if s == 404 { return sans_st_not_found() }
+  if s == 405 { return sans_st_method_not_allowed() }
+  if s == 409 { return sans_st_conflict() }
+  if s == 429 { return sans_st_too_many() }
+  if s == 500 { return sans_st_internal_error() }
+  if s == 502 { return sans_st_bad_gateway() }
+  if s == 503 { return sans_st_unavailable() }
+  sans_st_ok()
 }
 
 sans_st_ok() I {
@@ -275,6 +736,22 @@ sans_st_bad_request() I {
   store8(buf + 9, 115)
   store8(buf + 10, 116)
   store8(buf + 11, 0)
+  buf
+}
+
+sans_st_no_content() I {
+  buf = alloc(11)
+  store8(buf, 78)
+  store8(buf + 1, 111)
+  store8(buf + 2, 32)
+  store8(buf + 3, 67)
+  store8(buf + 4, 111)
+  store8(buf + 5, 110)
+  store8(buf + 6, 116)
+  store8(buf + 7, 101)
+  store8(buf + 8, 110)
+  store8(buf + 9, 116)
+  store8(buf + 10, 0)
   buf
 }
 
@@ -393,4 +870,1439 @@ sans_send_all(fd:I data:I total:I) I {
     }
   }
   ok
+}
+
+// ------ Extended Status Texts ------------------------------------------------------------------------------------------------------------------
+
+sans_st_created() I = sans_copy_str("Created", 7)
+sans_st_moved() I = sans_copy_str("Moved Permanently", 17)
+sans_st_found() I = sans_copy_str("Found", 5)
+sans_st_not_modified() I = sans_copy_str("Not Modified", 12)
+sans_st_unauthorized() I = sans_copy_str("Unauthorized", 12)
+sans_st_forbidden() I = sans_copy_str("Forbidden", 9)
+sans_st_method_not_allowed() I = sans_copy_str("Method Not Allowed", 18)
+sans_st_conflict() I = sans_copy_str("Conflict", 8)
+sans_st_too_many() I = sans_copy_str("Too Many Requests", 17)
+sans_st_bad_gateway() I = sans_copy_str("Bad Gateway", 11)
+sans_st_unavailable() I = sans_copy_str("Service Unavailable", 19)
+
+// ------ Form Data Parsing ---------------------------------------------------------------------------------------------------------------------------
+
+sans_http_request_form(req:I name:I) I {
+  ct = sans_http_request_header(req, "content-type")
+  ctlen = slen(ct)
+  if ctlen == 0 { sans_empty_str() } else { sans_http_request_form_dispatch(req, name, ct, ctlen) }
+}
+
+sans_http_request_form_dispatch(req:I name:I ct:I ctlen:I) I {
+  // Check for "application/x-www-form-urlencoded"
+  if sans_ct_is_urlencoded(ct, ctlen) == 1 {
+    return sans_parse_urlencoded_form(load64(req + 24), name)
+  }
+  // Check for "multipart/form-data"
+  if sans_ct_is_multipart(ct, ctlen) == 1 {
+    return sans_form_dispatch_multipart(req, name, ct, ctlen)
+  }
+  sans_empty_str()
+}
+
+sans_form_dispatch_multipart(req:I name:I ct:I ctlen:I) I {
+  body = load64(req + 24)
+  boundary = sans_extract_boundary(ct, ctlen)
+  if slen(boundary) == 0 { sans_empty_str() } else { sans_parse_multipart_form(body, boundary, name) }
+}
+
+// Check if content-type starts with "application/x-www-form-urlencoded"
+sans_ct_is_urlencoded(ct:I ctlen:I) I {
+  // "application/x-www-form-urlencoded" = 33 chars
+  if ctlen < 33 { return 0 }
+  if mcmp(ct, ptr("application/x-www-form-urlencoded"), 33) == 0 { 1 } else { 0 }
+}
+
+// Check if content-type starts with "multipart/form-data"
+sans_ct_is_multipart(ct:I ctlen:I) I {
+  // "multipart/form-data" = 19 chars
+  if ctlen < 19 { return 0 }
+  if mcmp(ct, ptr("multipart/form-data"), 19) == 0 { 1 } else { 0 }
+}
+
+// Parse URL-encoded form body: key1=value1&key2=value2
+sans_parse_urlencoded_form(body:I name:I) I {
+  blen = slen(body)
+  nlen = slen(name)
+  if blen == 0 { sans_empty_str() } else { sans_urlenc_find(body, blen, name, nlen, 0) }
+}
+
+sans_urlenc_find(body:I blen:I name:I nlen:I pos:I) I {
+  if pos >= blen { sans_empty_str() } else { sans_urlenc_try(body, blen, name, nlen, pos) }
+}
+
+sans_urlenc_try(body:I blen:I name:I nlen:I pos:I) I {
+  // Find end of this pair (next & or end)
+  amp = sans_find_char_in(body, blen, pos, 38)
+  pend = if amp < 0 { blen } else { amp }
+  // Find = in this pair
+  eq = sans_find_char_in(body, pend, pos, 61)
+  if eq < 0 { sans_urlenc_next(body, blen, name, nlen, pend) } else { sans_urlenc_check(body, blen, name, nlen, pos, eq, pend) }
+}
+
+sans_urlenc_check(body:I blen:I name:I nlen:I pos:I eq:I pend:I) I {
+  klen = eq - pos
+  if klen == nlen && mcmp(body + pos, name, nlen) == 0 {
+    return sans_urlenc_extract(body, eq, pend)
+  }
+  sans_urlenc_next(body, blen, name, nlen, pend)
+}
+
+sans_urlenc_extract(body:I eq:I pend:I) I {
+  vstart = eq + 1
+  vlen = pend - vstart
+  raw = sans_copy_str(body + vstart, vlen)
+  sans_url_decode(raw)
+}
+
+sans_urlenc_next(body:I blen:I name:I nlen:I pend:I) I {
+  npos = if pend < blen { pend + 1 } else { blen }
+  sans_urlenc_find(body, blen, name, nlen, npos)
+}
+
+// Extract boundary from Content-Type header: "multipart/form-data; boundary=..."
+sans_extract_boundary(ct:I ctlen:I) I {
+  // Search for "boundary="
+  i := 0
+  found := -1
+  while i + 9 <= ctlen {
+    if mcmp(ct + i, ptr("boundary="), 9) == 0 {
+      found = i + 9
+      i = ctlen
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  if found < 0 { sans_empty_str() } else { sans_copy_str(ct + found, ctlen - found) }
+}
+
+// Parse multipart form data
+sans_parse_multipart_form(body:I boundary:I name:I) I {
+  blen = slen(body)
+  bnlen = slen(boundary)
+  nlen = slen(name)
+  // Build delimiter: "--" + boundary
+  dlen = 2 + bnlen
+  delim = alloc(dlen + 1)
+  store8(delim, 45)
+  store8(delim + 1, 45)
+  if bnlen > 0 { mcpy(delim + 2, boundary, bnlen) } else { 0 }
+  store8(delim + dlen, 0)
+  sans_multipart_find(body, blen, delim, dlen, name, nlen, 0)
+}
+
+sans_multipart_find(body:I blen:I delim:I dlen:I name:I nlen:I pos:I) I {
+  // Find next delimiter
+  dpos = sans_find_substr(body, blen, delim, dlen, pos)
+  if dpos < 0 { sans_empty_str() } else { sans_multipart_parse_part(body, blen, delim, dlen, name, nlen, dpos + dlen) }
+}
+
+sans_multipart_parse_part(body:I blen:I delim:I dlen:I name:I nlen:I start:I) I {
+  // Skip \r\n after delimiter
+  s := start
+  if s < blen && load8(body + s) == 13 { s = s + 1 }
+  if s < blen && load8(body + s) == 10 { s = s + 1 }
+  // Check for "--" (end marker)
+  if s + 1 < blen && load8(body + s) == 45 && load8(body + s + 1) == 45 { return sans_empty_str() }
+  // Find Content-Disposition header and extract name
+  sans_multipart_check_name(body, blen, delim, dlen, name, nlen, s)
+}
+
+sans_multipart_check_name(body:I blen:I delim:I dlen:I name:I nlen:I start:I) I {
+  // Find blank line (\r\n\r\n) that separates headers from value
+  blank = sans_find_blank_line(body, blen, start)
+  if blank < 0 { sans_empty_str() } else { sans_multipart_check_name2(body, blen, delim, dlen, name, nlen, start, blank) }
+}
+
+sans_multipart_check_name2(body:I blen:I delim:I dlen:I name:I nlen:I start:I blank:I) I {
+  // Search for name="..." in headers between start and blank
+  field_name = sans_extract_disposition_name(body, start, blank)
+  fnlen = slen(field_name)
+  if fnlen == nlen && mcmp(field_name, name, nlen) == 0 {
+    // Check for filename= (skip file uploads)
+    if sans_has_filename(body, start, blank) == 1 {
+      return sans_multipart_find(body, blen, delim, dlen, name, nlen, blank + 4)
+    }
+    return sans_multipart_extract_value(body, blen, delim, dlen, blank)
+  }
+  sans_multipart_find(body, blen, delim, dlen, name, nlen, blank + 4)
+}
+
+sans_multipart_extract_value(body:I blen:I delim:I dlen:I blank:I) I {
+  vstart = blank + 4
+  ndpos = sans_find_substr(body, blen, delim, dlen, vstart)
+  vend := if ndpos < 0 { blen } else { ndpos }
+  // Trim trailing \r\n
+  if vend > vstart && vend >= 2 && load8(body + vend - 1) == 10 && load8(body + vend - 2) == 13 {
+    vend = vend - 2
+  }
+  sans_copy_str(body + vstart, vend - vstart)
+}
+
+// Find \r\n\r\n in body starting from pos
+sans_find_blank_line(body:I blen:I pos:I) I {
+  i := pos
+  found := -1
+  while i + 3 < blen {
+    if load8(body + i) == 13 && load8(body + i + 1) == 10 && load8(body + i + 2) == 13 && load8(body + i + 3) == 10 {
+      found = i
+      i = blen
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found
+}
+
+// Find substring in body
+sans_find_substr(body:I blen:I needle:I nlen:I pos:I) I {
+  i := pos
+  found := -1
+  while i + nlen <= blen {
+    if mcmp(body + i, needle, nlen) == 0 {
+      found = i
+      i = blen
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found
+}
+
+// Extract name="value" from Content-Disposition header
+sans_extract_disposition_name(body:I start:I end:I) I {
+  // Search for: name="
+  i := start
+  found := -1
+  while i + 6 <= end {
+    if load8(body + i) == 110 && load8(body + i + 1) == 97 && load8(body + i + 2) == 109 && load8(body + i + 3) == 101 && load8(body + i + 4) == 61 && load8(body + i + 5) == 34 {
+      found = i + 6
+      i = end
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  if found < 0 { sans_empty_str() } else { sans_extract_quoted(body, found, end) }
+}
+
+// Extract text until closing quote
+sans_extract_quoted(body:I start:I limit:I) I {
+  i := start
+  while i < limit {
+    if load8(body + i) == 34 {
+      return sans_copy_str(body + start, i - start)
+    }
+    i += 1
+    0
+  }
+  sans_empty_str()
+}
+
+// Check if Content-Disposition has filename=
+sans_has_filename(body:I start:I end:I) I {
+  // Search for "filename="
+  i := start
+  found := 0
+  while i + 9 <= end {
+    if load8(body+i)==102 && load8(body+i+1)==105 && load8(body+i+2)==108 && load8(body+i+3)==101 && load8(body+i+4)==110 && load8(body+i+5)==97 && load8(body+i+6)==109 && load8(body+i+7)==101 && load8(body+i+8)==61 {
+      found = 1
+      i = end
+      0
+    } else {
+      i += 1
+      0
+    }
+    0
+  }
+  found
+}
+
+// ------ Query Parameter Parsing ------------------------------------------------------------------------------------------------------------
+
+sans_http_request_path_only(req:I) I {
+  path = load64(req + 16)
+  plen = slen(path)
+  qpos = sans_find_char_in(path, plen, 0, 63)
+  if qpos < 0 { path } else { sans_copy_str(path, qpos) }
+}
+
+sans_find_char_in(buf:I len:I start:I ch:I) I {
+  i := start
+  found := -1
+  while i < len {
+    if load8(buf + i) == ch {
+      found = i
+      i = len
+      0
+    } else {
+      i += 1
+      0
+    }
+  }
+  found
+}
+
+sans_http_request_query(req:I name:I) I {
+  path = load64(req + 16)
+  plen = slen(path)
+  qpos = sans_find_char_in(path, plen, 0, 63)
+  if qpos < 0 { sans_empty_str() } else { sans_query_find(path + qpos + 1, plen - qpos - 1, name) }
+}
+
+sans_query_find(qs:I qlen:I name:I) I {
+  nlen = slen(name)
+  pos := 0
+  result := 0
+  done := 0
+  while done == 0 {
+    if pos >= qlen {
+      done = 1
+      0
+    } else {
+      // Check if name matches at pos
+      if sans_query_name_match(qs, qlen, pos, name, nlen) == 1 {
+        result = sans_query_extract_val(qs, qlen, pos + nlen + 1)
+        done = 1
+        0
+      } else {
+        // Skip to next &
+        nxt = sans_find_char_in(qs, qlen, pos, 38)
+        pos = if nxt < 0 { qlen } else { nxt + 1 }
+        0
+      }
+    }
+  }
+  if result == 0 { sans_empty_str() } else { result }
+}
+
+sans_query_name_match(qs:I qlen:I pos:I name:I nlen:I) I {
+  if pos + nlen >= qlen { return 0 }
+  if load8(qs + pos + nlen) != 61 { return 0 }
+  if mcmp(qs + pos, name, nlen) == 0 { 1 } else { 0 }
+}
+
+sans_query_extract_val(qs:I qlen:I vstart:I) I {
+  vend = sans_find_char_in(qs, qlen, vstart, 38)
+  vend = if vend < 0 { qlen } else { vend }
+  sans_copy_str(qs + vstart, vend - vstart)
+}
+
+// ------ URL Decoding ---------------------------------------------------------------------------------------------------------------------------------------------
+
+sans_url_decode(s:I) I {
+  len = slen(s)
+  buf = alloc(len + 1)
+  si := 0
+  di := 0
+  while si < len {
+    ch = load8(s + si)
+    if ch == 43 {
+      // '+' -> space
+      store8(buf + di, 32)
+      si += 1
+      di += 1
+      0
+    } else {
+      if ch == 37 && si + 2 < len {
+        h1 = sans_hex_val(load8(s + si + 1))
+        h2 = sans_hex_val(load8(s + si + 2))
+        if h1 >= 0 && h2 >= 0 {
+          store8(buf + di, h1 * 16 + h2)
+          si += 3
+          di += 1
+          0
+        } else {
+          store8(buf + di, ch)
+          si += 1
+          di += 1
+          0
+        }
+      } else {
+        store8(buf + di, ch)
+        si += 1
+        di += 1
+        0
+      }
+    }
+    0
+  }
+  store8(buf + di, 0)
+  buf
+}
+
+sans_hex_val(ch:I) I {
+  if ch >= 48 && ch <= 57 { return ch - 48 }
+  if ch >= 65 && ch <= 70 { return ch - 55 }
+  if ch >= 97 && ch <= 102 { return ch - 87 }
+  -1
+}
+
+// ------ Path Segment Extraction ------------------------------------------------------------------------------------------------------------
+
+sans_path_segment(path:I index:I) I {
+  len = slen(path)
+  // Strip query string
+  qpos = sans_find_char_in(path, len, 0, 63)
+  plen = if qpos < 0 { len } else { qpos }
+  // Skip leading /
+  pos := 0
+  if pos < plen && load8(path + pos) == 47 {
+    pos += 1
+  }
+  seg := 0
+  done := 0
+  result := 0
+  while done == 0 {
+    if pos >= plen {
+      done = 1
+      0
+    } else {
+      // Find end of segment (next / or end)
+      send = sans_find_char_in(path, plen, pos, 47)
+      send = if send < 0 { plen } else { send }
+      if seg == index {
+        result = sans_copy_str(path + pos, send - pos)
+        done = 1
+        0
+      } else {
+        seg += 1
+        pos = send + 1
+        0
+      }
+      0
+    }
+  }
+  if result == 0 { sans_empty_str() } else { result }
+}
+
+// ------ Static File Serving ------------------------------------------------------------------------------------------------------------------------
+
+sans_serve_file(req:I base_dir:I) I {
+  path = sans_http_request_path_only(req)
+  plen = slen(path)
+  blen = slen(base_dir)
+  full = alloc(blen + plen + 1)
+  if blen > 0 { mcpy(full, base_dir, blen) } else { 0 }
+  if plen > 0 { mcpy(full + blen, path, plen) } else { 0 }
+  store8(full + blen + plen, 0)
+  content = fread(full)
+  if slen(content) == 0 { 0 } else { sans_serve_file_respond(req, content, path, plen) }
+}
+
+sans_serve_file_respond(req:I content:I path:I plen:I) I {
+  ct = sans_detect_content_type(path, plen)
+  sans_http_respond(req, 200, content, ct)
+}
+
+sans_detect_content_type(path:I plen:I) I {
+  // Find last dot
+  dot := -1
+  i := plen - 1
+  while i >= 0 {
+    if load8(path + i) == 46 {
+      dot = i
+      i = -1
+      0
+    } else {
+      i -= 1
+      0
+    }
+    0
+  }
+  if dot < 0 { "application/octet-stream" } else { sans_ext_to_ct(path + dot, plen - dot) }
+}
+
+sans_ext_to_ct(ext:I len:I) I {
+  // .html
+  if len == 5 && load8(ext+1)==104 && load8(ext+2)==116 && load8(ext+3)==109 && load8(ext+4)==108 { return "text/html" }
+  // .css
+  if len == 4 && load8(ext+1)==99 && load8(ext+2)==115 && load8(ext+3)==115 { return "text/css" }
+  // .js
+  if len == 3 && load8(ext+1)==106 && load8(ext+2)==115 { return "application/javascript" }
+  // .json
+  if len == 5 && load8(ext+1)==106 && load8(ext+2)==115 && load8(ext+3)==111 && load8(ext+4)==110 { return "application/json" }
+  // .png
+  if len == 4 && load8(ext+1)==112 && load8(ext+2)==110 && load8(ext+3)==103 { return "image/png" }
+  // .jpg
+  if len == 4 && load8(ext+1)==106 && load8(ext+2)==112 && load8(ext+3)==103 { return "image/jpeg" }
+  // .jpeg
+  if len == 5 && load8(ext+1)==106 && load8(ext+2)==112 && load8(ext+3)==101 && load8(ext+4)==103 { return "image/jpeg" }
+  // .svg
+  if len == 4 && load8(ext+1)==115 && load8(ext+2)==118 && load8(ext+3)==103 { return "image/svg+xml" }
+  // .txt
+  if len == 4 && load8(ext+1)==116 && load8(ext+2)==120 && load8(ext+3)==116 { return "text/plain" }
+  "application/octet-stream"
+}
+
+// ------ Content-Length ------------------------------------------------------------------------------------------------------------------------------------------
+
+sans_http_request_content_length(req:I) I {
+  val = sans_http_request_header(req, "content-length")
+  if slen(val) == 0 { 0 } else { sans_parse_int(val) }
+}
+
+sans_parse_int(s:I) I {
+  len = slen(s)
+  result := 0
+  i := 0
+  while i < len {
+    ch = load8(s + i)
+    if ch >= 48 && ch <= 57 {
+      result = result * 10 + (ch - 48)
+    }
+    i += 1
+    0
+  }
+  result
+}
+
+// ------ JSON Response Helper ---------------------------------------------------------------------------------------------------------------------
+
+sans_http_respond_json(req:I status:I body:I) I {
+  sans_http_respond(req, status, body, "application/json")
+}
+
+// ------ Keep-alive literal ---------------------------------------------------------------------------------------------------------------------------
+
+sans_lit_conn_keepalive() I {
+  // "\r\nConnection: keep-alive\r\n\r\n" = 28 bytes
+  buf = alloc(29)
+  store8(buf, 13)
+  store8(buf + 1, 10)
+  store8(buf + 2, 67)   // C
+  store8(buf + 3, 111)  // o
+  store8(buf + 4, 110)  // n
+  store8(buf + 5, 110)  // n
+  store8(buf + 6, 101)  // e
+  store8(buf + 7, 99)   // c
+  store8(buf + 8, 116)  // t
+  store8(buf + 9, 105)  // i
+  store8(buf + 10, 111) // o
+  store8(buf + 11, 110) // n
+  store8(buf + 12, 58)  // : store8(buf + 13, 32)  //
+  store8(buf + 14, 107) // k
+  store8(buf + 15, 101) // e
+  store8(buf + 16, 101) // e
+  store8(buf + 17, 112) // p
+  store8(buf + 18, 45)  // -
+  store8(buf + 19, 97)  // a
+  store8(buf + 20, 108) // l
+  store8(buf + 21, 105) // i
+  store8(buf + 22, 118) // v
+  store8(buf + 23, 101) // e
+  store8(buf + 24, 13)
+  store8(buf + 25, 10)
+  store8(buf + 26, 13)
+  store8(buf + 27, 10)
+  store8(buf + 28, 0)
+  buf
+}
+
+// ------ Check if client sent Connection: close ---------------------------------------------------------------
+
+sans_check_close(req:I) I {
+  hdr = sans_http_request_header(req, "connection")
+  if slen(hdr) == 0 { 0 } else { sans_str_eq_close(hdr) }
+}
+
+sans_str_eq_close(s:I) I {
+  ls = sans_lowercase_string(s)
+  len = slen(ls)
+  if len != 5 { 0 } else { if load8(ls) == 99 && load8(ls+1) == 108 && load8(ls+2) == 111 && load8(ls+3) == 115 && load8(ls+4) == 101 { 1 } else { 0 } }
+}
+
+// ------ Production Server: serve() with auto-threading + keep-alive ---
+
+sans_serve(port:I handler:I) I {
+  signal_handler(2)
+  signal_handler(15)
+  fd = sock(2, 1, 0)
+  if fd < 0 { 0 } else { sans_serve_bind(fd, port, handler) }
+}
+
+sans_serve_bind(fd:I port:I handler:I) I {
+  addr = alloc(16)
+  store8(addr, 16)
+  store8(addr + 1, 2)
+  store16(addr + 2, bswap16(port))
+  store32(addr + 4, 0)
+  store64(addr + 8, 0)
+  opt = alloc(4)
+  store32(opt, 1)
+  rsetsockopt(fd, 65535, 4, opt, 4)
+  r = rbind(fd, addr, 16)
+  if r < 0 { 0 } else { sans_serve_listen(fd, port, handler) }
+}
+
+sans_serve_listen(fd:I port:I handler:I) I {
+  lr = slisten(fd, 128)
+  if lr < 0 { 0 } else { sans_serve_accept_loop(fd, handler) }
+}
+
+sans_serve_accept_loop(sfd:I handler:I) I {
+  while signal_check() == 0 {
+    ready = spoll(sfd, 1000)
+    if ready > 0 {
+      cfd = saccept(sfd)
+      if cfd >= 0 {
+        req = sans_http_accept_read(cfd)
+        rfd = load64(req)
+        if rfd >= 0 {
+          targ = alloc(16)
+          store64(targ, handler)
+          store64(targ + 8, req)
+          spawn sans_serve_worker(targ)
+        }
+      }
+    }
+    0
+  }
+  p("Shutting down...")
+  sclose(sfd)
+  0
+}
+
+sans_serve_worker(targ:I) I {
+  handler = load64(targ)
+  req = load64(targ + 8)
+  // Set keep_alive flag
+  store64(req + 56, 1)
+  sans_serve_worker_loop(handler, req)
+}
+
+sans_serve_worker_loop(handler:I req:I) I {
+  done := 0
+  cur := req
+  while done == 0 {
+    // Reset response headers for this request
+    store64(cur + 40, 0)
+    fcall(handler, cur)
+    // Check if we should close
+    if sans_check_close(cur) == 1 {
+      done = 1
+      0
+    } else {
+      // Try to read next request on same connection (plain HTTP only)
+      fd = load64(cur)
+      ssl = load64(cur + 48)
+      // SSL connections: no keep-alive re-read (ssl_read not available here)
+      if ssl != 0 {
+        done = 1
+        0
+      } else {
+        nxt = sans_read_next_request_plain(fd)
+        nfd = load64(nxt)
+        if nfd < 0 {
+          done = 1
+          0
+        } else {
+          cur = nxt
+          store64(cur + 56, 1)
+          0
+        }
+      }
+    }
+    0
+  }
+  // Close connection
+  cfd = load64(cur)
+  if cfd >= 0 { sclose(cfd) } else { 0 }
+  store64(cur, -1)
+  0
+}
+
+sans_read_next_request_plain(fd:I) I {
+  buf = alloc(65536)
+  n = srecv(fd, buf, 65535)
+  if n <= 0 { sans_make_empty_request() } else { sans_parse_next_request(fd, 0, buf, n) }
+}
+
+sans_parse_next_request(fd:I ssl:I buf:I n:I) I {
+  store8(buf + n, 0)
+  mend = sans_find_space(buf, n, 0)
+  mlen = mend
+  pstart = if mend < n { mend + 1 } else { mend }
+  pend = sans_find_space(buf, n, pstart)
+  plen = pend - pstart
+  method = alloc(mlen + 1)
+  if mlen > 0 { mcpy(method, buf, mlen) } else { 0 }
+  store8(method + mlen, 0)
+  path = alloc(plen + 1)
+  if plen > 0 { mcpy(path, buf + pstart, plen) } else { 0 }
+  store8(path + plen, 0)
+  bstart = sans_find_body(buf, n)
+  body = sans_extract_body(buf, n, bstart)
+  req = alloc(64)
+  store64(req, fd)
+  store64(req + 8, method)
+  store64(req + 16, path)
+  store64(req + 24, body)
+  store64(req + 32, 0)
+  store64(req + 40, 0)
+  store64(req + 48, ssl)
+  store64(req + 56, 0)
+  sans_parse_headers(req, buf, n)
+  req
+}
+
+// ------ Chunked Streaming ------------------------------------------------------------------------------------------------------------------------------
+
+sans_int_to_hex(n:I) I {
+  if n == 0 { sans_hex_zero() } else { sans_int_to_hex_pos(n) }
+}
+
+sans_hex_zero() I {
+  buf = alloc(2)
+  store8(buf, 48)
+  store8(buf + 1, 0)
+  buf
+}
+
+sans_int_to_hex_pos(n:I) I {
+  // Count hex digits
+  digits := 0
+  tmp := n
+  while tmp > 0 {
+    digits += 1
+    tmp = tmp / 16
+  }
+  buf = alloc(digits + 1)
+  store8(buf + digits, 0)
+  i := digits - 1
+  tmp = n
+  while tmp > 0 {
+    rem = tmp % 16
+    ch = if rem < 10 { 48 + rem } else { 97 + rem - 10 }
+    store8(buf + i, ch)
+    tmp = tmp / 16
+    i -= 1
+  }
+  buf
+}
+
+// respond_stream(req, status) --- send chunked headers, return writer struct
+// Writer struct (24 bytes): [fd, ssl, req]
+sans_respond_stream(req:I status:I) I {
+  fd = load64(req)
+  ssl = load64(req + 48)
+  ka = load64(req + 56)
+
+  status_str = sans_int_to_buf(status)
+  status_str_len = slen(status_str)
+  st = sans_status_text(status)
+  st_len = slen(st)
+
+  custom_hdrs = sans_build_resp_headers(req)
+  custom_len = slen(custom_hdrs)
+
+  // "Transfer-Encoding: chunked" header
+  te = sans_lit_te_chunked()
+  te_len = slen(te)
+  conn_hdr = if ka == 1 { sans_lit_conn_keepalive() } else { sans_lit_conn_close() }
+  conn_len = slen(conn_hdr)
+
+  header_len = 9 + status_str_len + 1 + st_len + te_len + custom_len + conn_len
+  buf = alloc(header_len + 1)
+  pos := 0
+  pos = sans_buf_write(buf, pos, sans_lit_http11(), 9)
+  pos = sans_buf_write(buf, pos, status_str, status_str_len)
+  pos = sans_buf_write(buf, pos, sans_lit_space(), 1)
+  pos = sans_buf_write(buf, pos, st, st_len)
+  pos = sans_buf_write(buf, pos, te, te_len)
+  if custom_len > 0 {
+    pos = sans_buf_write(buf, pos, custom_hdrs, custom_len)
+  }
+  pos = sans_buf_write(buf, pos, conn_hdr, conn_len)
+  store8(buf + pos, 0)
+
+  // Send headers (plain HTTP path --- SSL uses respond path)
+  sans_send_all(fd, buf, pos)
+
+  // Build writer struct
+  w = alloc(24)
+  store64(w, fd)
+  store64(w + 8, ssl)
+  store64(w + 16, req)
+  w
+}
+
+// "\r\nTransfer-Encoding: chunked" = 28 bytes
+sans_lit_te_chunked() I {
+  buf = alloc(29)
+  store8(buf, 13)       // \r
+  store8(buf + 1, 10)   // \n
+  store8(buf + 2, 84)   // T
+  store8(buf + 3, 114)  // r
+  store8(buf + 4, 97)   // a
+  store8(buf + 5, 110)  // n
+  store8(buf + 6, 115)  // s
+  store8(buf + 7, 102)  // f
+  store8(buf + 8, 101)  // e
+  store8(buf + 9, 114)  // r
+  store8(buf + 10, 45)  // -
+  store8(buf + 11, 69)  // E
+  store8(buf + 12, 110) // n
+  store8(buf + 13, 99)  // c
+  store8(buf + 14, 111) // o
+  store8(buf + 15, 100) // d
+  store8(buf + 16, 105) // i
+  store8(buf + 17, 110) // n
+  store8(buf + 18, 103) // g
+  store8(buf + 19, 58)  // : store8(buf + 20, 32)  //
+  store8(buf + 21, 99)  // c
+  store8(buf + 22, 104) // h
+  store8(buf + 23, 117) // u
+  store8(buf + 24, 110) // n
+  store8(buf + 25, 107) // k
+  store8(buf + 26, 101) // e
+  store8(buf + 27, 100) // d
+  store8(buf + 28, 0)
+  buf
+}
+
+// stream_write(w, data) --- send one chunk: "{hex_len}\r\n{data}\r\n"
+sans_stream_write(w:I data:I) I {
+  fd = load64(w)
+  ssl = load64(w + 8)
+  dlen = slen(data)
+  if dlen == 0 { 0 } else { sans_stream_write_inner(fd, ssl, data, dlen) }
+}
+
+sans_stream_write_inner(fd:I ssl:I data:I dlen:I) I {
+  hex = sans_int_to_hex(dlen)
+  hlen = slen(hex)
+  // Build chunk: hex + \r\n + data + \r\n
+  total = hlen + 2 + dlen + 2
+  buf = alloc(total)
+  pos := 0
+  if hlen > 0 { mcpy(buf, hex, hlen) } else { 0 }
+  pos = hlen
+  store8(buf + pos, 13)
+  store8(buf + pos + 1, 10)
+  pos = pos + 2
+  if dlen > 0 { mcpy(buf + pos, data, dlen) } else { 0 }
+  pos = pos + dlen
+  store8(buf + pos, 13)
+  store8(buf + pos + 1, 10)
+  sans_send_all(fd, buf, total)
+}
+
+// stream_end(w) --- send final chunk "0\r\n\r\n"
+sans_stream_end(w:I) I {
+  fd = load64(w)
+  buf = alloc(5)
+  store8(buf, 48)    // 0
+  store8(buf + 1, 13) // \r
+  store8(buf + 2, 10) // \n
+  store8(buf + 3, 13) // \r
+  store8(buf + 4, 10) // \n
+  sans_send_all(fd, buf, 5)
+}
+
+// ------ WebSocket Support ---------------------------------------------------------------------------------------------------------------------------------
+// WebSocket struct layout (32 bytes):
+//   offset  0: fd (I)
+//   offset  8: ssl (I) --- 0 for plain WS
+//   offset 16: open (I) --- 1 if open
+//   offset 24: req (I) --- back-pointer to HttpRequest
+
+// ------ Bitwise arithmetic helpers (Sans has no &|^<< operators) ------------
+// All values assumed non-negative for these helpers.
+
+// x % 256 = mask to 8 bits (equivalent to x & 0xFF)
+sans_mask8(x:I) I = x % 256
+
+// x % 4294967296 = mask to 32 bits (equivalent to x & 0xFFFFFFFF)
+sans_mask32(x:I) I = x % 4294967296
+
+// Left shift: x * 2^n
+sans_shl(x:I n:I) I {
+  r := x
+  i := 0
+  while i < n { r = r * 2 i += 1 }
+  r
+}
+
+// Right shift (logical for non-negative): x / 2^n
+sans_shr(x:I n:I) I {
+  r := x
+  i := 0
+  while i < n { r = r / 2 i += 1 }
+  r
+}
+
+// Bitwise AND for 8-bit values (bit by bit)
+sans_band8(a:I b:I) I {
+  r := 0
+  i := 0
+  av := sans_mask8(a)
+  bv := sans_mask8(b)
+  while i < 8 {
+    ab = av % 2
+    bb = bv % 2
+    if ab == 1 && bb == 1 { r += sans_shl(1, i) }
+    av = av / 2
+    bv = bv / 2
+    i += 1
+  }
+  r
+}
+
+// Bitwise OR for 8-bit values
+sans_bor8(a:I b:I) I {
+  r := 0
+  i := 0
+  av := sans_mask8(a)
+  bv := sans_mask8(b)
+  while i < 8 {
+    ab = av % 2
+    bb = bv % 2
+    if ab == 1 || bb == 1 { r += sans_shl(1, i) }
+    av = av / 2
+    bv = bv / 2
+    i += 1
+  }
+  r
+}
+
+// Bitwise XOR for 8-bit values
+sans_bxor8(a:I b:I) I {
+  r := 0
+  i := 0
+  av := sans_mask8(a)
+  bv := sans_mask8(b)
+  while i < 8 {
+    ab = av % 2
+    bb = bv % 2
+    if ab != bb { r += sans_shl(1, i) }
+    av = av / 2
+    bv = bv / 2
+    i += 1
+  }
+  r
+}
+
+// Bitwise NOT for 8-bit value
+sans_bnot8(a:I) I = 255 - sans_mask8(a)
+
+// 32-bit bitwise AND (byte by byte)
+sans_band32(a:I b:I) I {
+  a0 = sans_mask8(a)
+  a1 = sans_mask8(sans_shr(a, 8))
+  a2 = sans_mask8(sans_shr(a, 16))
+  a3 = sans_mask8(sans_shr(a, 24))
+  b0 = sans_mask8(b)
+  b1 = sans_mask8(sans_shr(b, 8))
+  b2 = sans_mask8(sans_shr(b, 16))
+  b3 = sans_mask8(sans_shr(b, 24))
+  sans_band8(a0, b0) + sans_shl(sans_band8(a1, b1), 8) + sans_shl(sans_band8(a2, b2), 16) + sans_shl(sans_band8(a3, b3), 24)
+}
+
+// 32-bit bitwise OR (byte by byte)
+sans_bor32(a:I b:I) I {
+  a0 = sans_mask8(a)
+  a1 = sans_mask8(sans_shr(a, 8))
+  a2 = sans_mask8(sans_shr(a, 16))
+  a3 = sans_mask8(sans_shr(a, 24))
+  b0 = sans_mask8(b)
+  b1 = sans_mask8(sans_shr(b, 8))
+  b2 = sans_mask8(sans_shr(b, 16))
+  b3 = sans_mask8(sans_shr(b, 24))
+  sans_bor8(a0, b0) + sans_shl(sans_bor8(a1, b1), 8) + sans_shl(sans_bor8(a2, b2), 16) + sans_shl(sans_bor8(a3, b3), 24)
+}
+
+// 32-bit bitwise XOR (byte by byte)
+sans_bxor32(a:I b:I) I {
+  a0 = sans_mask8(a)
+  a1 = sans_mask8(sans_shr(a, 8))
+  a2 = sans_mask8(sans_shr(a, 16))
+  a3 = sans_mask8(sans_shr(a, 24))
+  b0 = sans_mask8(b)
+  b1 = sans_mask8(sans_shr(b, 8))
+  b2 = sans_mask8(sans_shr(b, 16))
+  b3 = sans_mask8(sans_shr(b, 24))
+  sans_bxor8(a0, b0) + sans_shl(sans_bxor8(a1, b1), 8) + sans_shl(sans_bxor8(a2, b2), 16) + sans_shl(sans_bxor8(a3, b3), 24)
+}
+
+// 32-bit bitwise NOT
+sans_bnot32(a:I) I {
+  sans_mask32(4294967295 - sans_mask32(a))
+}
+
+// ------ Helper: send/recv bytes ------------------------------------------------------------------------------------------------------------------
+// Note: SSL WS (wss://) would need codegen-level branching like HTTP respond.
+// For now, WS uses plain socket ops (works for ws://).
+sans_ws_send_bytes(fd:I ssl:I data:I len:I) I {
+  sans_send_all(fd, data, len)
+}
+
+sans_ws_recv_bytes(fd:I ssl:I buf:I len:I) I {
+  srecv(fd, buf, len)
+}
+
+// ------ Read exact n bytes ------------------------------------------------------------------------------------------------------------------------------
+sans_ws_read_exact(fd:I ssl:I buf:I n:I) I {
+  total := 0
+  while total < n {
+    r = sans_ws_recv_bytes(fd, ssl, buf + total, n - total)
+    if r <= 0 {
+      return total
+    }
+    total += r
+    0
+  }
+  total
+}
+
+// ------ SHA-1 (pure Sans, RFC 3174) ---------------------------------------------------------------------------------------------------
+sans_sha1_rotl(x:I n:I) I {
+  sans_mask32(sans_bor32(sans_shl(sans_mask32(x), n), sans_shr(sans_mask32(x), 32 - n)))
+}
+
+sans_sha1(input:I input_len:I) I {
+  // Pad message
+  bit_len = input_len * 8
+  // pad to 56 mod 64
+  pad_len := 64 - ((input_len + 9) % 64)
+  if pad_len == 64 { pad_len = 0 }
+  total = input_len + 1 + pad_len + 8
+  msg = alloc(total)
+  if input_len > 0 { mcpy(msg, input, input_len) } else { 0 }
+  store8(msg + input_len, 128)
+  // Zero padding
+  zi := input_len + 1
+  while zi < total - 8 {
+    store8(msg + zi, 0)
+    zi += 1
+  }
+  // Big-endian 64-bit bit length
+  store8(msg + total - 8, sans_mask8(sans_shr(bit_len, 56)))
+  store8(msg + total - 7, sans_mask8(sans_shr(bit_len, 48)))
+  store8(msg + total - 6, sans_mask8(sans_shr(bit_len, 40)))
+  store8(msg + total - 5, sans_mask8(sans_shr(bit_len, 32)))
+  store8(msg + total - 4, sans_mask8(sans_shr(bit_len, 24)))
+  store8(msg + total - 3, sans_mask8(sans_shr(bit_len, 16)))
+  store8(msg + total - 2, sans_mask8(sans_shr(bit_len, 8)))
+  store8(msg + total - 1, sans_mask8(bit_len))
+
+  h0 := 1732584193
+  h1 := 4023233417
+  h2 := 2562383102
+  h3 := 271733878
+  h4 := 3285377520
+
+  nblocks = total / 64
+  bi := 0
+  w = alloc(80 * 8)
+  while bi < nblocks {
+    off = bi * 64
+    // Load 16 big-endian 32-bit words
+    wi := 0
+    while wi < 16 {
+      b0 = sans_mask8(load8(msg + off + wi * 4))
+      b1 = sans_mask8(load8(msg + off + wi * 4 + 1))
+      b2 = sans_mask8(load8(msg + off + wi * 4 + 2))
+      b3 = sans_mask8(load8(msg + off + wi * 4 + 3))
+      store64(w + wi * 8, sans_shl(b0, 24) + sans_shl(b1, 16) + sans_shl(b2, 8) + b3)
+      wi += 1
+    }
+    // Extend to 80 words
+    wi = 16
+    while wi < 80 {
+      xv = sans_bxor32(sans_bxor32(load64(w + (wi - 3) * 8), load64(w + (wi - 8) * 8)), sans_bxor32(load64(w + (wi - 14) * 8), load64(w + (wi - 16) * 8)))
+      store64(w + wi * 8, sans_sha1_rotl(xv, 1))
+      wi += 1
+    }
+
+    a := h0
+    b := h1
+    c := h2
+    d := h3
+    e := h4
+
+    ri := 0
+    while ri < 80 {
+      wval = load64(w + ri * 8)
+      f := 0
+      k := 0
+      if ri < 20 {
+        f = sans_bor32(sans_band32(b, c), sans_band32(sans_bnot32(b), d))
+        k = 1518500249
+      }
+      if ri >= 20 && ri < 40 {
+        f = sans_bxor32(sans_bxor32(b, c), d)
+        k = 1859775393
+      }
+      if ri >= 40 && ri < 60 {
+        f = sans_bor32(sans_bor32(sans_band32(b, c), sans_band32(b, d)), sans_band32(c, d))
+        k = 2400959708
+      }
+      if ri >= 60 {
+        f = sans_bxor32(sans_bxor32(b, c), d)
+        k = 3395469782
+      }
+      temp = sans_mask32(sans_sha1_rotl(a, 5) + f + e + k + wval)
+      e = d
+      d = c
+      c = sans_sha1_rotl(b, 30)
+      b = a
+      a = temp
+      ri += 1
+    }
+
+    h0 = sans_mask32(h0 + a)
+    h1 = sans_mask32(h1 + b)
+    h2 = sans_mask32(h2 + c)
+    h3 = sans_mask32(h3 + d)
+    h4 = sans_mask32(h4 + e)
+    bi += 1
+  }
+
+  // Output 20 bytes big-endian
+  out = alloc(20)
+  sans_sha1_write32(out, 0, h0)
+  sans_sha1_write32(out, 4, h1)
+  sans_sha1_write32(out, 8, h2)
+  sans_sha1_write32(out, 12, h3)
+  sans_sha1_write32(out, 16, h4)
+  out
+}
+
+sans_sha1_write32(buf:I off:I val:I) I {
+  store8(buf + off, sans_mask8(sans_shr(val, 24)))
+  store8(buf + off + 1, sans_mask8(sans_shr(val, 16)))
+  store8(buf + off + 2, sans_mask8(sans_shr(val, 8)))
+  store8(buf + off + 3, sans_mask8(val))
+}
+
+// ------ Base64 Encode ---------------------------------------------------------------------------------------------------------------------------------------------
+sans_base64_encode(data:I len:I) I {
+  tbl = alloc(64)
+  i := 0
+  while i < 26 { store8(tbl + i, 65 + i) i += 1 }
+  while i < 52 { store8(tbl + i, 97 + i - 26) i += 1 }
+  while i < 62 { store8(tbl + i, 48 + i - 52) i += 1 }
+  store8(tbl + 62, 43)
+  store8(tbl + 63, 47)
+
+  out_len = ((len + 2) / 3) * 4
+  out = alloc(out_len + 1)
+  si := 0
+  di := 0
+  while si < len {
+    b0 = sans_mask8(load8(data + si))
+    b1 = if si + 1 < len { sans_mask8(load8(data + si + 1)) } else { 0 }
+    b2 = if si + 2 < len { sans_mask8(load8(data + si + 2)) } else { 0 }
+    triple = sans_shl(b0, 16) + sans_shl(b1, 8) + b2
+    store8(out + di, load8(tbl + (sans_shr(triple, 18) % 64)))
+    store8(out + di + 1, load8(tbl + (sans_shr(triple, 12) % 64)))
+    store8(out + di + 2, if si + 1 < len { load8(tbl + (sans_shr(triple, 6) % 64)) } else { 61 })
+    store8(out + di + 3, if si + 2 < len { load8(tbl + (triple % 64)) } else { 61 })
+    si += 3
+    di += 4
+  }
+  store8(out + out_len, 0)
+  out
+}
+
+// ------ WebSocket: is_ws_upgrade ------------------------------------------------------------------------------------------------------------
+sans_ws_is_upgrade(req:I) I {
+  upgrade_hdr = sans_http_request_header(req, sans_ws_lit_upgrade())
+  ulen = slen(upgrade_hdr)
+  if ulen == 0 { 0 } else { sans_ws_check_upgrade_val(upgrade_hdr) }
+}
+
+sans_ws_check_upgrade_val(val:I) I {
+  lv = sans_lowercase_string(val)
+  if slen(lv) == 9 && mcmp(lv, sans_ws_lit_websocket(), 9) == 0 { 1 } else { 0 }
+}
+
+// String literals for WebSocket
+sans_ws_lit_upgrade() I {
+  s = alloc(8)
+  store8(s, 117) store8(s + 1, 112) store8(s + 2, 103)
+  store8(s + 3, 114) store8(s + 4, 97) store8(s + 5, 100)
+  store8(s + 6, 101) store8(s + 7, 0)
+  s
+}
+
+sans_ws_lit_websocket() I {
+  s = alloc(10)
+  store8(s, 119) store8(s + 1, 101) store8(s + 2, 98)
+  store8(s + 3, 115) store8(s + 4, 111) store8(s + 5, 99)
+  store8(s + 6, 107) store8(s + 7, 101) store8(s + 8, 116)
+  store8(s + 9, 0)
+  s
+}
+
+sans_ws_lit_sec_websocket_key() I {
+  s = alloc(22)
+  store8(s, 115) store8(s + 1, 101) store8(s + 2, 99)
+  store8(s + 3, 45) store8(s + 4, 119) store8(s + 5, 101)
+  store8(s + 6, 98) store8(s + 7, 115) store8(s + 8, 111)
+  store8(s + 9, 99) store8(s + 10, 107) store8(s + 11, 101)
+  store8(s + 12, 116) store8(s + 13, 45) store8(s + 14, 107)
+  store8(s + 15, 101) store8(s + 16, 121) store8(s + 17, 0)
+  s
+}
+
+sans_ws_magic_guid() I {
+  s = alloc(37)
+  store8(s, 50) store8(s + 1, 53) store8(s + 2, 56)
+  store8(s + 3, 69) store8(s + 4, 65) store8(s + 5, 70)
+  store8(s + 6, 65) store8(s + 7, 53) store8(s + 8, 45)
+  store8(s + 9, 69) store8(s + 10, 57) store8(s + 11, 49)
+  store8(s + 12, 52) store8(s + 13, 45) store8(s + 14, 52)
+  store8(s + 15, 55) store8(s + 16, 68) store8(s + 17, 65)
+  store8(s + 18, 45) store8(s + 19, 57) store8(s + 20, 53)
+  store8(s + 21, 67) store8(s + 22, 65) store8(s + 23, 45)
+  store8(s + 24, 67) store8(s + 25, 53) store8(s + 26, 65)
+  store8(s + 27, 66) store8(s + 28, 48) store8(s + 29, 68)
+  store8(s + 30, 67) store8(s + 31, 56) store8(s + 32, 53)
+  store8(s + 33, 66) store8(s + 34, 49) store8(s + 35, 49)
+  store8(s + 36, 0)
+  s
+}
+
+// ------ WebSocket: upgrade ------------------------------------------------------------------------------------------------------------------------------
+sans_ws_upgrade(req:I) I {
+  fd = load64(req)
+  ssl = load64(req + 48)
+  key = sans_http_request_header(req, sans_ws_lit_sec_websocket_key())
+  key_len = slen(key)
+  guid = sans_ws_magic_guid()
+  guid_len = slen(guid)
+
+  concat_len = key_len + guid_len
+  concat = alloc(concat_len + 1)
+  if key_len > 0 { mcpy(concat, key, key_len) } else { 0 }
+  if guid_len > 0 { mcpy(concat + key_len, guid, guid_len) } else { 0 }
+  store8(concat + concat_len, 0)
+
+  hash = sans_sha1(concat, concat_len)
+  accept = sans_base64_encode(hash, 20)
+  accept_len = slen(accept)
+
+  prefix = sans_ws_101_prefix()
+  prefix_len = slen(prefix)
+  resp_len = prefix_len + accept_len + 4
+  resp = alloc(resp_len + 1)
+  mcpy(resp, prefix, prefix_len)
+  if accept_len > 0 { mcpy(resp + prefix_len, accept, accept_len) } else { 0 }
+  pos = prefix_len + accept_len
+  store8(resp + pos, 13) store8(resp + pos + 1, 10)
+  store8(resp + pos + 2, 13) store8(resp + pos + 3, 10)
+
+  sans_ws_send_bytes(fd, ssl, resp, resp_len)
+
+  ws = alloc(32)
+  store64(ws, fd)
+  store64(ws + 8, ssl)
+  store64(ws + 16, 1)
+  store64(ws + 24, req)
+  ws
+}
+
+sans_ws_101_prefix() I {
+  s = alloc(98)
+  store8(s, 72) store8(s + 1, 84) store8(s + 2, 84) store8(s + 3, 80)
+  store8(s + 4, 47) store8(s + 5, 49) store8(s + 6, 46) store8(s + 7, 49)
+  store8(s + 8, 32) store8(s + 9, 49) store8(s + 10, 48) store8(s + 11, 49)
+  store8(s + 12, 32)
+  store8(s + 13, 83) store8(s + 14, 119) store8(s + 15, 105) store8(s + 16, 116)
+  store8(s + 17, 99) store8(s + 18, 104) store8(s + 19, 105) store8(s + 20, 110)
+  store8(s + 21, 103) store8(s + 22, 32) store8(s + 23, 80) store8(s + 24, 114)
+  store8(s + 25, 111) store8(s + 26, 116) store8(s + 27, 111) store8(s + 28, 99)
+  store8(s + 29, 111) store8(s + 30, 108) store8(s + 31, 115)
+  store8(s + 32, 13) store8(s + 33, 10)
+  store8(s + 34, 85) store8(s + 35, 112) store8(s + 36, 103) store8(s + 37, 114)
+  store8(s + 38, 97) store8(s + 39, 100) store8(s + 40, 101) store8(s + 41, 58)
+  store8(s + 42, 32) store8(s + 43, 119) store8(s + 44, 101) store8(s + 45, 98)
+  store8(s + 46, 115) store8(s + 47, 111) store8(s + 48, 99) store8(s + 49, 107)
+  store8(s + 50, 101) store8(s + 51, 116)
+  store8(s + 52, 13) store8(s + 53, 10)
+  store8(s + 54, 67) store8(s + 55, 111) store8(s + 56, 110) store8(s + 57, 110)
+  store8(s + 58, 101) store8(s + 59, 99) store8(s + 60, 116) store8(s + 61, 105)
+  store8(s + 62, 111) store8(s + 63, 110) store8(s + 64, 58) store8(s + 65, 32)
+  store8(s + 66, 85) store8(s + 67, 112) store8(s + 68, 103) store8(s + 69, 114)
+  store8(s + 70, 97) store8(s + 71, 100) store8(s + 72, 101)
+  store8(s + 73, 13) store8(s + 74, 10)
+  store8(s + 75, 83) store8(s + 76, 101) store8(s + 77, 99) store8(s + 78, 45)
+  store8(s + 79, 87) store8(s + 80, 101) store8(s + 81, 98) store8(s + 82, 83)
+  store8(s + 83, 111) store8(s + 84, 99) store8(s + 85, 107) store8(s + 86, 101)
+  store8(s + 87, 116) store8(s + 88, 45) store8(s + 89, 65) store8(s + 90, 99)
+  store8(s + 91, 99) store8(s + 92, 101) store8(s + 93, 112) store8(s + 94, 116)
+  store8(s + 95, 58) store8(s + 96, 32)
+  store8(s + 97, 0)
+  s
+}
+
+// ------ WebSocket: send text frame ------------------------------------------------------------------------------------------------------
+sans_ws_send(ws:I msg:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  msg_len = slen(msg)
+  hdr_len = if msg_len <= 125 { 2 } else { if msg_len <= 65535 { 4 } else { 10 } }
+  frame_len = hdr_len + msg_len
+  frame = alloc(frame_len)
+  store8(frame, 129)
+  if msg_len <= 125 {
+    store8(frame + 1, msg_len)
+    0
+  } else { if msg_len <= 65535 {
+    store8(frame + 1, 126)
+    store8(frame + 2, sans_mask8(msg_len / 256))
+    store8(frame + 3, sans_mask8(msg_len))
+    0
+  } else {
+    store8(frame + 1, 127)
+    store8(frame + 2, sans_mask8(sans_shr(msg_len, 56)))
+    store8(frame + 3, sans_mask8(sans_shr(msg_len, 48)))
+    store8(frame + 4, sans_mask8(sans_shr(msg_len, 40)))
+    store8(frame + 5, sans_mask8(sans_shr(msg_len, 32)))
+    store8(frame + 6, sans_mask8(sans_shr(msg_len, 24)))
+    store8(frame + 7, sans_mask8(sans_shr(msg_len, 16)))
+    store8(frame + 8, sans_mask8(sans_shr(msg_len, 8)))
+    store8(frame + 9, sans_mask8(msg_len))
+    0
+  } }
+  if msg_len > 0 { mcpy(frame + hdr_len, msg, msg_len) } else { 0 }
+  sans_ws_send_bytes(fd, ssl, frame, frame_len)
+}
+
+// ------ WebSocket: send raw frame (for pong/close) ---------------------------------------------------
+sans_ws_send_frame(fd:I ssl:I opcode:I payload:I plen:I) I {
+  hdr_len = if plen <= 125 { 2 } else { if plen <= 65535 { 4 } else { 10 } }
+  frame_len = hdr_len + plen
+  frame = alloc(frame_len)
+  store8(frame, 128 + opcode)
+  if plen <= 125 {
+    store8(frame + 1, plen)
+    0
+  } else { if plen <= 65535 {
+    store8(frame + 1, 126)
+    store8(frame + 2, sans_mask8(plen / 256))
+    store8(frame + 3, sans_mask8(plen))
+    0
+  } else {
+    store8(frame + 1, 127)
+    store8(frame + 2, 0) store8(frame + 3, 0)
+    store8(frame + 4, 0) store8(frame + 5, 0)
+    store8(frame + 6, sans_mask8(sans_shr(plen, 24)))
+    store8(frame + 7, sans_mask8(sans_shr(plen, 16)))
+    store8(frame + 8, sans_mask8(sans_shr(plen, 8)))
+    store8(frame + 9, sans_mask8(plen))
+    0
+  } }
+  if plen > 0 { mcpy(frame + hdr_len, payload, plen) } else { 0 }
+  sans_ws_send_bytes(fd, ssl, frame, frame_len)
+}
+
+// ------ WebSocket: recv frame ---------------------------------------------------------------------------------------------------------------------
+sans_ws_recv(ws:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  open = load64(ws + 16)
+  if open == 0 { sans_empty_str() } else { sans_ws_recv_loop(ws, fd, ssl) }
+}
+
+sans_ws_recv_loop(ws:I fd:I ssl:I) I {
+  hdr = alloc(2)
+  n = sans_ws_read_exact(fd, ssl, hdr, 2)
+  if n < 2 { sans_ws_recv_fail(ws) } else { sans_ws_recv_parse(ws, fd, ssl, hdr) }
+}
+
+sans_ws_recv_fail(ws:I) I {
+  store64(ws + 16, 0)
+  sans_empty_str()
+}
+
+sans_ws_recv_parse(ws:I fd:I ssl:I hdr:I) I {
+  b0 = sans_mask8(load8(hdr))
+  b1 = sans_mask8(load8(hdr + 1))
+  opcode = b0 % 16
+  masked = b1 / 128
+  plen := b1 % 128
+
+  if plen == 126 {
+    ext = alloc(2)
+    sans_ws_read_exact(fd, ssl, ext, 2)
+    plen = sans_mask8(load8(ext)) * 256 + sans_mask8(load8(ext + 1))
+  }
+  if plen == 127 {
+    ext = alloc(8)
+    sans_ws_read_exact(fd, ssl, ext, 8)
+    plen = sans_shl(sans_mask8(load8(ext)), 56) + sans_shl(sans_mask8(load8(ext + 1)), 48) + sans_shl(sans_mask8(load8(ext + 2)), 40) + sans_shl(sans_mask8(load8(ext + 3)), 32) + sans_shl(sans_mask8(load8(ext + 4)), 24) + sans_shl(sans_mask8(load8(ext + 5)), 16) + sans_shl(sans_mask8(load8(ext + 6)), 8) + sans_mask8(load8(ext + 7))
+  }
+
+  mask_key = alloc(4)
+  if masked == 1 {
+    sans_ws_read_exact(fd, ssl, mask_key, 4)
+  }
+
+  payload = alloc(plen + 1)
+  if plen > 0 { sans_ws_read_exact(fd, ssl, payload, plen) } else { 0 }
+
+  if masked == 1 {
+    mi := 0
+    while mi < plen {
+      ob = sans_mask8(load8(payload + mi))
+      mk = sans_mask8(load8(mask_key + (mi % 4)))
+      store8(payload + mi, sans_bxor8(ob, mk))
+      mi += 1
+    }
+  }
+
+  if opcode == 1 { sans_ws_recv_text(payload, plen) } else { if opcode == 8 { sans_ws_recv_close(ws, fd, ssl, payload, plen) } else { if opcode == 9 { sans_ws_recv_ping(ws, fd, ssl, payload, plen) } else { if opcode == 10 { sans_ws_recv_loop(ws, fd, ssl) } else { sans_ws_recv_loop(ws, fd, ssl) } } } }
+}
+
+sans_ws_recv_text(payload:I plen:I) I {
+  store8(payload + plen, 0)
+  payload
+}
+
+sans_ws_recv_close(ws:I fd:I ssl:I payload:I plen:I) I {
+  sans_ws_send_frame(fd, ssl, 8, payload, if plen <= 2 { plen } else { 2 })
+  store64(ws + 16, 0)
+  sans_empty_str()
+}
+
+sans_ws_recv_ping(ws:I fd:I ssl:I payload:I plen:I) I {
+  sans_ws_send_frame(fd, ssl, 10, payload, plen)
+  sans_ws_recv_loop(ws, fd, ssl)
+}
+
+// ------ WebSocket: close ------------------------------------------------------------------------------------------------------------------------------------
+sans_ws_close(ws:I) I {
+  open = load64(ws + 16)
+  if open == 0 { 0 } else { sans_ws_close_inner(ws) }
+}
+
+sans_ws_close_inner(ws:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  close_frame = alloc(2)
+  store8(close_frame, 136)
+  store8(close_frame + 1, 0)
+  sans_ws_send_bytes(fd, ssl, close_frame, 2)
+  store64(ws + 16, 0)
+  sclose(fd)
 }

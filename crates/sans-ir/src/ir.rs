@@ -182,6 +182,7 @@ pub enum Instruction {
     // JSON serialization
     JsonStringify { dest: Reg, value: Reg },
     // HTTP Server
+    Serve { dest: Reg, port: Reg, handler: Reg },
     HttpListen { dest: Reg, port: Reg },
     HttpAccept { dest: Reg, server: Reg },
     HttpRequestPath { dest: Reg, request: Reg },
@@ -254,7 +255,9 @@ pub enum Instruction {
     Load64 { dest: Reg, ptr: Reg },
     Store64 { dest: Reg, ptr: Reg, val: Reg },
     Strstr { dest: Reg, haystack: Reg, needle: Reg },
+    GzipCompress { dest: Reg, data: Reg, len: Reg },
     Exit { dest: Reg, code: Reg },
+    System { dest: Reg, command: Reg },
     GetLogLevel { dest: Reg },
     SetLogLevel { dest: Reg, level: Reg },
     // HTTP operations
@@ -295,6 +298,12 @@ pub enum Instruction {
     ArenaEnd { dest: Reg },
     // Command-line args
     Args { dest: Reg },
+    // Form data parsing
+    HttpRequestForm { dest: Reg, req: Reg, name: Reg },
+    // Signal handling / poll
+    SignalHandler { dest: Reg, signum: Reg },
+    SignalCheck { dest: Reg },
+    Spoll { dest: Reg, fd: Reg, timeout: Reg },
 }
 
 #[derive(Debug, Clone, Copy)]

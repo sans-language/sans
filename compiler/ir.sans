@@ -1,0 +1,3479 @@
+import "constants"
+import "parser"
+
+// ------ IrType constants ------------------------------------------------------------------------------------------------------------------------------------
+g IRTY_INT = 0
+g IRTY_FLOAT = 1
+g IRTY_BOOL = 2
+g IRTY_STR = 3
+g IRTY_STRUCT = 4
+g IRTY_ENUM = 5
+g IRTY_SENDER = 6
+g IRTY_RECEIVER = 7
+g IRTY_JOIN_HANDLE = 8
+g IRTY_MUTEX = 9
+g IRTY_ARRAY = 10
+g IRTY_JSON = 11
+g IRTY_HTTP_RESP = 12
+g IRTY_RESULT = 13
+g IRTY_HTTP_SERVER = 14
+g IRTY_HTTP_REQ = 15
+g IRTY_TUPLE = 16
+g IRTY_MAP = 17
+
+// ------ IrBinOp constants ------------------------------------------------------------------------------------------------------------------------------
+g IROP_ADD = 0
+g IROP_SUB = 1
+g IROP_MUL = 2
+g IROP_DIV = 3
+g IROP_MOD = 4
+
+// ------ IrCmpOp constants ------------------------------------------------------------------------------------------------------------------------------
+g IRCMP_EQ = 0
+g IRCMP_NEQ = 1
+g IRCMP_LT = 2
+g IRCMP_GT = 3
+g IRCMP_LTEQ = 4
+g IRCMP_GTEQ = 5
+
+// ------ Instruction accessors ------------------------------------------------------------------------------------------------------------------
+ir_op(inst:I) I = load64(inst)
+ir_dest(inst:I) I = load64(inst + 8)
+ir_field(inst:I offset:I) I = load64(inst + offset)
+
+// ------ Generic instruction constructors ---------------------------------------------------------------------------------
+// These allocate heap memory: [opcode, dest, ...operands]
+
+ir_inst0(opcode:I dest:I) I {
+  n = alloc(16)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  n
+}
+
+ir_inst1(opcode:I dest:I a:I) I {
+  n = alloc(24)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  n
+}
+
+ir_inst2(opcode:I dest:I a:I b:I) I {
+  n = alloc(32)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  n
+}
+
+ir_inst3(opcode:I dest:I a:I b:I c:I) I {
+  n = alloc(40)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  store64(n + 32, c)
+  n
+}
+
+ir_inst4(opcode:I dest:I a:I b:I c:I d:I) I {
+  n = alloc(48)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  store64(n + 32, c)
+  store64(n + 40, d)
+  n
+}
+
+ir_inst5(opcode:I dest:I a:I b:I c:I d:I e:I) I {
+  n = alloc(56)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  store64(n + 32, c)
+  store64(n + 40, d)
+  store64(n + 48, e)
+  n
+}
+
+// ------ Named instruction constructors ---------------------------------------------------------------------------------------
+// Constants: [op, dest, value] 24 bytes
+ir_const(dest:I value:I) I = ir_inst1(IR_CONST, dest, value)
+ir_float_const(dest:I value:I) I = ir_inst1(IR_FLOAT_CONST, dest, value)
+ir_bool_const(dest:I value:I) I = ir_inst1(IR_BOOL_CONST, dest, value)
+ir_string_const(dest:I value:I) I = ir_inst1(IR_STRING_CONST, dest, value)
+
+// Print: [op, value] 16 bytes (value in dest slot)
+ir_print_int(value:I) I = ir_inst0(IR_PRINT_INT, value)
+ir_print_float(value:I) I = ir_inst0(IR_PRINT_FLOAT, value)
+ir_print_string(value:I) I = ir_inst0(IR_PRINT_STRING, value)
+ir_print_bool(value:I) I = ir_inst0(IR_PRINT_BOOL, value)
+
+// Arithmetic: [op, dest, binop, left, right] 40 bytes
+ir_binop(dest:I op:I left:I right:I) I = ir_inst3(IR_BINOP, dest, op, left, right)
+ir_float_binop(dest:I op:I left:I right:I) I = ir_inst3(IR_FLOAT_BINOP, dest, op, left, right)
+ir_cmpop(dest:I op:I left:I right:I) I = ir_inst3(IR_CMPOP, dest, op, left, right)
+ir_float_cmpop(dest:I op:I left:I right:I) I = ir_inst3(IR_FLOAT_CMPOP, dest, op, left, right)
+ir_string_cmpop(dest:I op:I left:I right:I) I = ir_inst3(IR_STRING_CMPOP, dest, op, left, right)
+
+// Unary: [op, dest, src] 24 bytes
+ir_not(dest:I src:I) I = ir_inst1(IR_NOT, dest, src)
+ir_neg(dest:I src:I) I = ir_inst1(IR_NEG, dest, src)
+ir_copy(dest:I src:I) I = ir_inst1(IR_COPY, dest, src)
+
+// Control flow
+ir_label(name:I) I = ir_inst0(IR_LABEL, name)
+ir_jump(target:I) I = ir_inst0(IR_JUMP, target)
+ir_branch(cond:I then_l:I else_l:I) I = ir_inst2(IR_BRANCH, cond, then_l, else_l)
+ir_phi(dest:I a_val:I a_label:I b_val:I b_label:I) I = ir_inst4(IR_PHI, dest, a_val, a_label, b_val, b_label)
+
+// Functions
+ir_call(dest:I fname:I args:I) I = ir_inst2(IR_CALL, dest, fname, args)
+ir_ret(value:I) I = ir_inst0(IR_RET, value)
+
+// String concat: [op, dest, left, right] 32 bytes
+ir_string_concat(dest:I left:I right:I) I = ir_inst2(IR_STRING_CONCAT, dest, left, right)
+
+// Function reference: [op, dest, name] 24 bytes
+ir_fn_ref(dest:I name:I) I = ir_inst1(IR_FN_REF, dest, name)
+
+// Memory
+ir_alloca(dest:I) I = ir_inst0(IR_ALLOCA, dest)
+ir_store(ptr:I value:I) I = ir_inst1(IR_STORE, ptr, value)
+ir_load(dest:I ptr:I) I = ir_inst1(IR_LOAD, dest, ptr)
+ir_global_load(dest:I name:I) I = ir_inst1(IR_GLOBAL_LOAD, dest, name)
+ir_global_store(name:I value:I) I = ir_inst1(IR_GLOBAL_STORE, name, value)
+ir_alloc(dest:I size:I) I = ir_inst1(IR_ALLOC, dest, size)
+ir_dealloc(dest:I ptr:I) I = ir_inst1(IR_DEALLOC, dest, ptr)
+ir_ralloc(dest:I ptr:I size:I) I = ir_inst2(IR_RALLOC, dest, ptr, size)
+
+// Structs
+ir_struct_alloc(dest:I num_fields:I) I = ir_inst1(IR_STRUCT_ALLOC, dest, num_fields)
+ir_field_store(ptr:I field_idx:I value:I) I = ir_inst2(IR_FIELD_STORE, ptr, field_idx, value)
+ir_field_load(dest:I ptr:I field_idx:I num_fields:I) I = ir_inst3(IR_FIELD_LOAD, dest, ptr, field_idx, num_fields)
+
+// Enums
+ir_enum_alloc(dest:I tag:I num_data:I) I = ir_inst2(IR_ENUM_ALLOC, dest, tag, num_data)
+ir_enum_tag(dest:I ptr:I) I = ir_inst1(IR_ENUM_TAG, dest, ptr)
+ir_enum_data(dest:I ptr:I field_idx:I) I = ir_inst2(IR_ENUM_DATA, dest, ptr, field_idx)
+
+// Thread operations
+ir_thread_spawn(dest:I func:I args:I) I = ir_inst2(IR_THREAD_SPAWN, dest, func, args)
+ir_thread_join(handle:I) I = ir_inst0(IR_THREAD_JOIN, handle)
+
+// Channel operations
+ir_channel_create(tx_dest:I rx_dest:I) I = ir_inst1(IR_CHANNEL_CREATE, tx_dest, rx_dest)
+ir_channel_create_bounded(tx_dest:I rx_dest:I cap:I) I = ir_inst2(IR_CHANNEL_CREATE_BOUNDED, tx_dest, rx_dest, cap)
+ir_channel_send(tx:I value:I) I = ir_inst1(IR_CHANNEL_SEND, tx, value)
+ir_channel_recv(dest:I rx:I) I = ir_inst1(IR_CHANNEL_RECV, dest, rx)
+
+// Mutex operations
+ir_mutex_create(dest:I value:I) I = ir_inst1(IR_MUTEX_CREATE, dest, value)
+ir_mutex_lock(dest:I mtx:I) I = ir_inst1(IR_MUTEX_LOCK, dest, mtx)
+ir_mutex_unlock(mtx:I value:I) I = ir_inst1(IR_MUTEX_UNLOCK, mtx, value)
+
+// ------ IrFunction (40 bytes) ------------------------------------------------------------------------------------------------------------------
+// offset 0:  name (I) --- function name string
+// offset 8:  params (I) --- Array of param name strings
+// offset 16: instructions (I) --- Array of instruction pointers
+// offset 24: return_type (I) --- IrType tag
+// offset 32: param_struct_sizes (I) --- Array of Ints (0=scalar, >0=struct fields)
+
+make_ir_function(name:I params:I instrs:I ret_type:I param_sizes:I) I {
+  f = alloc(40)
+  store64(f, name)
+  store64(f + 8, params)
+  store64(f + 16, instrs)
+  store64(f + 24, ret_type)
+  store64(f + 32, param_sizes)
+  f
+}
+
+irf_name(f:I) I = load64(f)
+irf_params(f:I) I = load64(f + 8)
+irf_instrs(f:I) I = load64(f + 16)
+irf_ret_type(f:I) I = load64(f + 24)
+irf_param_sizes(f:I) I = load64(f + 32)
+
+// ------ IrModule (24 bytes) ------------------------------------------------------------------------------------------------------------------------
+// offset 0:  functions (I) --- Array of IrFunction pointers
+// offset 8:  globals (I) --- Array of global name strings
+// offset 16: struct_defs (I) --- Map: name -> field names array
+
+make_ir_module(funcs:I globals:I struct_defs:I) I {
+  m = alloc(32)
+  store64(m, funcs)
+  store64(m + 8, globals)
+  store64(m + 16, struct_defs)
+  store64(m + 24, M())  // global_init_values map (name -> i64)
+  m
+}
+
+irm_functions(m:I) I = load64(m)
+irm_globals(m:I) I = load64(m + 8)
+irm_struct_defs(m:I) I = load64(m + 16)
+irm_global_inits(m:I) I = load64(m + 24)
+
+// ------ Lowering Context (112 bytes) ---------------------------------------------------------------------------------------------
+// offset 0:  instructions (I) --- Array of instruction pointers
+// offset 8:  reg_counter (I) --- next register number
+// offset 16: label_counter (I) --- next label number
+// offset 24: locals (I) --- Map: var name -> register (positive=value, negative=alloca ptr)
+// offset 32: reg_types (I) --- Map: register name -> IrType tag
+// offset 40: struct_defs (I) --- Map: struct name -> field names array
+// offset 48: enum_defs (I) --- Map: enum name -> variants info
+// offset 56: fn_ret_types (I) --- Map: func name -> IrType tag
+// offset 64: break_label (I) --- current loop break label (or 0)
+// offset 72: global_names (I) --- Map: global name -> IrType tag
+// offset 80: continue_label (I) --- current loop continue label (or 0)
+// offset 88: reg_struct_names (I) --- Map: register name -> struct name (for struct field access)
+// offset 96: variant_tag_map (I) --- Map: variant_name -> tag_index
+// offset 104: variant_fields_map (I) --- Map: variant_name -> array of field type name strings
+// offset 136: fn_ret_struct_names (I) --- Map: func name -> struct name (for struct-returning fns)
+// offset 144: module_name (I) --- current module name string (or 0)
+// offset 152: local_fn_set (I) --- Map: local function names defined in current module
+// offset 160: imported_fn_names (I) --- Map: bare name -> mangled name for imported functions
+
+make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
+  ctx = alloc(168)
+  store64(ctx, ptr(array<I>()))       // instructions array
+  store64(ctx + 8, 0)            // reg_counter
+  store64(ctx + 16, 0)           // label_counter
+  store64(ctx + 24, ptr(M()))    // locals map
+  store64(ctx + 32, ptr(M()))    // reg_types map
+  store64(ctx + 40, struct_defs)
+  store64(ctx + 48, enum_defs)
+  store64(ctx + 56, fn_ret_types)
+  store64(ctx + 64, 0)           // break_label
+  store64(ctx + 72, global_names)
+  store64(ctx + 80, 0)           // continue_label
+  store64(ctx + 88, ptr(M()))    // reg_struct_names map
+  store64(ctx + 96, 0)           // variant_tag_map (set later)
+  store64(ctx + 104, 0)          // variant_fields_map (set later)
+  store64(ctx + 112, ptr(array<I>()))  // lifted_fns array (for lambdas)
+  store64(ctx + 120, 0)          // lambda_counter
+  store64(ctx + 128, ptr(M()))   // closure_info: reg -> [lambda_name, cap0, cap1, ...] or 0 for non-capturing
+  store64(ctx + 136, ptr(M()))   // fn_ret_struct_names: func name -> struct name
+  ctx
+}
+
+// Context field accessors
+ctx_instrs(ctx:I) I = load64(ctx)
+ctx_reg_counter(ctx:I) I = load64(ctx + 8)
+ctx_label_counter(ctx:I) I = load64(ctx + 16)
+ctx_locals(ctx:I) I = load64(ctx + 24)
+ctx_reg_types(ctx:I) I = load64(ctx + 32)
+ctx_struct_defs(ctx:I) I = load64(ctx + 40)
+ctx_enum_defs(ctx:I) I = load64(ctx + 48)
+ctx_fn_ret_types(ctx:I) I = load64(ctx + 56)
+ctx_break_label(ctx:I) I = load64(ctx + 64)
+ctx_set_break_label(ctx:I v:I) I { store64(ctx + 64, v)
+  0 }
+ctx_global_names(ctx:I) I = load64(ctx + 72)
+ctx_continue_label(ctx:I) I = load64(ctx + 80)
+ctx_set_continue_label(ctx:I v:I) I { store64(ctx + 80, v)
+  0 }
+ctx_reg_struct_names(ctx:I) I = load64(ctx + 88)
+ctx_set_struct_name(ctx:I reg:I name:I) I {
+  m = load64(ctx + 88)
+  mset(m, reg, name)
+  0
+}
+ctx_get_struct_name(ctx:I reg:I) I {
+  m = load64(ctx + 88)
+  mget(m, reg)
+}
+ctx_lifted_fns(ctx:I) I = load64(ctx + 112)
+ctx_lambda_counter(ctx:I) I = load64(ctx + 120)
+ctx_closure_info(ctx:I) I = load64(ctx + 128)
+ctx_fn_ret_struct_names(ctx:I) I = load64(ctx + 136)
+ctx_module_name(ctx:I) I = load64(ctx + 144)
+ctx_set_module_name(ctx:I v:I) I { store64(ctx + 144, v)
+  0 }
+ctx_local_fn_set(ctx:I) I = load64(ctx + 152)
+ctx_set_local_fn_set(ctx:I v:I) I { store64(ctx + 152, v)
+  0 }
+ctx_imported_fn_names(ctx:I) I = load64(ctx + 160)
+ctx_set_imported_fn_names(ctx:I v:I) I { store64(ctx + 160, v)
+  0 }
+ctx_set_lambda_counter(ctx:I v:I) I { store64(ctx + 120, v)
+  0 }
+ctx_fresh_lambda_id(ctx:I) I {
+  n := load64(ctx + 120)
+  store64(ctx + 120, n + 1)
+  n
+}
+
+// Emit: push instruction onto the instructions array
+ctx_emit(ctx:I inst:I) I {
+  arr := load64(ctx)
+  arr.push(inst)
+  0
+}
+
+// Fresh register: increment counter, return "rN" string
+ctx_fresh_reg(ctx:I) I {
+  n := load64(ctx + 8)
+  store64(ctx + 8, n + 1)
+  "r" + itos(n)
+}
+
+// Fresh label: increment counter, return "L_N" string
+ctx_fresh_label(ctx:I) I {
+  n := load64(ctx + 16)
+  store64(ctx + 16, n + 1)
+  "L_" + itos(n)
+}
+
+// Local variable management
+ctx_set_local(ctx:I name:I reg:I) I {
+  m := load64(ctx + 24)
+  mset(m, name, reg)
+  0
+}
+
+ctx_get_local(ctx:I name:I) I {
+  m := load64(ctx + 24)
+  mget(m, name)
+}
+
+// Register type tracking
+ctx_set_reg_type(ctx:I reg:I irtype:I) I {
+  m = load64(ctx + 32)
+  mset(m, reg, irtype)
+  0
+}
+
+ctx_get_reg_type(ctx:I reg:I) I {
+  m = load64(ctx + 32)
+  mget(m, reg)
+}
+
+// Reset context for a new function
+ctx_reset(ctx:I) I {
+  store64(ctx, ptr(array<I>()))       // fresh instructions
+  store64(ctx + 8, 0)            // reg_counter
+  store64(ctx + 16, 0)           // label_counter
+  store64(ctx + 24, ptr(M()))    // fresh locals
+  store64(ctx + 32, ptr(M()))    // fresh reg_types
+  store64(ctx + 64, 0)           // break_label
+  store64(ctx + 80, 0)           // continue_label
+  store64(ctx + 88, ptr(M()))    // reg_struct_names map
+  0
+}
+
+// ------ TY -> IRTY mapping ---------------------------------------------------------------------------------------------------------------------------
+ty_to_irty(ty:I) I {
+  if ty == TY_INT { IRTY_INT }
+  else if ty == TY_FLOAT { IRTY_FLOAT }
+  else if ty == TY_BOOL { IRTY_BOOL }
+  else if ty == TY_STRING { IRTY_STR }
+  else if ty == TY_STRUCT { IRTY_STRUCT }
+  else if ty == TY_ENUM { IRTY_ENUM }
+  else if ty == TY_SENDER { IRTY_SENDER }
+  else if ty == TY_RECEIVER { IRTY_RECEIVER }
+  else if ty == TY_JOIN_HANDLE { IRTY_JOIN_HANDLE }
+  else if ty == TY_MUTEX { IRTY_MUTEX }
+  else if ty == TY_ARRAY { IRTY_ARRAY }
+  else if ty == TY_JSON { IRTY_JSON }
+  else if ty == TY_HTTP_RESP { IRTY_HTTP_RESP }
+  else if ty == TY_RESULT { IRTY_RESULT }
+  else if ty == TY_RESULT_ERR { IRTY_RESULT }
+  else if ty == TY_HTTP_SERVER { IRTY_HTTP_SERVER }
+  else if ty == TY_HTTP_REQ { IRTY_HTTP_REQ }
+  else if ty == TY_TUPLE { IRTY_TUPLE }
+  else if ty == TY_MAP { IRTY_MAP }
+  else { IRTY_INT }
+}
+
+// ------ BinOp -> IR op mapping ---------------------------------------------------------------------------------------------------------------
+binop_to_irbinop(op:I) I {
+  if op == OP_ADD { IROP_ADD }
+  else if op == OP_SUB { IROP_SUB }
+  else if op == OP_MUL { IROP_MUL }
+  else if op == OP_DIV { IROP_DIV }
+  else if op == OP_MOD { IROP_MOD }
+  else { 0 - 1 }  // not a binop
+}
+
+binop_to_ircmpop(op:I) I {
+  if op == OP_EQ { IRCMP_EQ }
+  else if op == OP_NEQ { IRCMP_NEQ }
+  else if op == OP_LT { IRCMP_LT }
+  else if op == OP_GT { IRCMP_GT }
+  else if op == OP_LTEQ { IRCMP_LTEQ }
+  else if op == OP_GTEQ { IRCMP_GTEQ }
+  else { 0 - 1 }  // not a cmpop
+}
+
+is_cmp_op(op:I) I {
+  if op >= OP_EQ { if op <= OP_GTEQ { 1 } else { 0 } } else { 0 }
+}
+
+is_arith_op(op:I) I {
+  if op >= OP_ADD { if op <= OP_MOD { 1 } else { 0 } } else { 0 }
+}
+
+// ------ lower_binop_normal ------------------------------------------------------------------------------------------------------------------------------
+// Handle non-short-circuit binary operators after both sides evaluated.
+lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I {
+  // String + String --- StringConcat (if either side is string)
+  eff_type = if left_type == IRTY_STR || right_type == IRTY_STR { IRTY_STR } else { if left_type == IRTY_FLOAT || right_type == IRTY_FLOAT { IRTY_FLOAT } else { left_type } }
+  if op == OP_ADD {
+    if eff_type == IRTY_STR {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_string_concat(dest, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
+  }
+  // Arithmetic operators (SUB, MUL, DIV, MOD --- ADD handled above)
+  else if is_arith_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
+  // Comparison operators
+  else if is_cmp_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
+  else {
+    // Fallback --- should not reach for valid programs
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+}
+
+// Dispatch arithmetic or comparison based on op value
+lower_binop_arith_or_cmp(ctx:I op:I left_reg:I right_reg:I left_type:I) I {
+  if is_arith_op(op) == 1 {
+    dest = ctx_fresh_reg(ctx)
+    irop = binop_to_irbinop(op)
+    if left_type == IRTY_FLOAT {
+      ctx_emit(ctx, ir_float_binop(dest, irop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+      dest
+    } else {
+      ctx_emit(ctx, ir_binop(dest, irop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    }
+  } else {
+    dest = ctx_fresh_reg(ctx)
+    cmpop = binop_to_ircmpop(op)
+    if left_type == IRTY_FLOAT {
+      ctx_emit(ctx, ir_float_cmpop(dest, cmpop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else { if left_type == IRTY_STR {
+      ctx_emit(ctx, ir_string_cmpop(dest, cmpop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else {
+      ctx_emit(ctx, ir_cmpop(dest, cmpop, left_reg, right_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } }
+  }
+}
+
+// ------ Helper: look up function return type ------------------------------------------------------------------------
+ctx_get_fn_ret_type(ctx:I name:I) I {
+  m := load64(ctx + 56)
+  mget(m, name)
+}
+
+// ------ lower_call ------------------------------------------------------------------------------------------------------------------------------------------------------
+// Lower a function call expression. Dispatches built-in functions to
+// specific IR instructions, falls through to user-defined IR_CALL.
+// User-defined functions take precedence over builtins of the same name.
+lower_call(ctx:I name:I args:I) I {
+  // User-defined functions take precedence over builtins
+  lfn_set = ctx_local_fn_set(ctx)
+  imp_fns = ctx_imported_fn_names(ctx)
+  is_user_fn = mhas(lfn_set, name) == 1
+  is_imported = if imp_fns != 0 { mhas(imp_fns, name) == 1 } else { 0 }
+  if is_user_fn == 1 || is_imported == 1 { lower_call_user(ctx, name, args) }
+
+  // ------ print / p ------
+  else if name == "print" { lower_call_print(ctx, args) }
+  else if name == "p" { lower_call_print(ctx, args) }
+
+  // ------ I/O ------
+  else if name == "file_read" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "read_file" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "fread" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "fr" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
+  else if name == "file_write" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "write_file" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "fwrite" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "fw" { lower_call_2(ctx, args, IR_FILE_WRITE, IRTY_INT) }
+  else if name == "file_append" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "append_file" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "fappend" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "fa" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "file_exists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
+  else if name == "fexists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
+  else if name == "fe" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
+
+  // ------ Conversion ------
+  else if name == "str" { lower_call_str(ctx, args) }
+  else if name == "int_to_string" { lower_call_str(ctx, args) }
+  else if name == "itos" { lower_call_str(ctx, args) }
+  else if name == "stoi" { lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) }
+  else if name == "string_to_int" { lower_call_1(ctx, args, IR_STRING_TO_INT, IRTY_INT) }
+  else if name == "itof" { lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) }
+  else if name == "int_to_float" { lower_call_1(ctx, args, IR_INT_TO_FLOAT, IRTY_FLOAT) }
+  else if name == "ftoi" { lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) }
+  else if name == "float_to_int" { lower_call_1(ctx, args, IR_FLOAT_TO_INT, IRTY_INT) }
+  else if name == "ftos" { lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) }
+  else if name == "float_to_string" { lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) }
+
+  // ------ JSON ------
+  else if name == "json_parse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
+  else if name == "jparse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
+  else if name == "jp" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
+  else if name == "json_object" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
+  else if name == "jobj" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
+  else if name == "jo" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
+  else if name == "json_array" { lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) }
+  else if name == "jarr" { lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) }
+  else if name == "ja" { lower_call_0(ctx, IR_JSON_ARRAY, IRTY_JSON) }
+  else if name == "json_string" { lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) }
+  else if name == "jstr" { lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) }
+  else if name == "js" { lower_call_1(ctx, args, IR_JSON_STRING, IRTY_JSON) }
+  else if name == "json_int" { lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) }
+  else if name == "ji" { lower_call_1(ctx, args, IR_JSON_INT, IRTY_JSON) }
+  else if name == "json_bool" { lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) }
+  else if name == "jb" { lower_call_1(ctx, args, IR_JSON_BOOL, IRTY_JSON) }
+  else if name == "json_null" { lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) }
+  else if name == "jn" { lower_call_0(ctx, IR_JSON_NULL, IRTY_JSON) }
+  else if name == "json_stringify" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
+  else if name == "jstringify" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
+  else if name == "jfy" { lower_call_1(ctx, args, IR_JSON_STRINGIFY, IRTY_STR) }
+
+  // ------ HTTP ------
+  else if name == "http_get" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
+  else if name == "hget" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
+  else if name == "hg" { lower_call_1(ctx, args, IR_HTTP_GET, IRTY_HTTP_RESP) }
+  else if name == "http_post" { lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) }
+  else if name == "hpost" { lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) }
+  else if name == "hp" { lower_call_3(ctx, args, IR_HTTP_POST, IRTY_HTTP_RESP) }
+  else if name == "http_listen" { lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "listen" { lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "hl" { lower_call_1(ctx, args, IR_HTTP_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "https_listen" { lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "hl_s" { lower_call_3(ctx, args, IR_HTTPS_LISTEN, IRTY_HTTP_SERVER) }
+  else if name == "mget" { lower_call_2(ctx, args, IR_MAP_GET, IRTY_INT) }
+  else if name == "mset" { lower_call_3(ctx, args, IR_MAP_SET, IRTY_INT) }
+  else if name == "mhas" { lower_call_2(ctx, args, IR_MAP_HAS, IRTY_INT) }
+  else if name == "cors" { lower_call_2(ctx, args, IR_CORS, IRTY_INT) }
+  else if name == "cors_all" { lower_call_1(ctx, args, IR_CORS_ALL, IRTY_INT) }
+  else if name == "url_decode" { lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) }
+  else if name == "path_segment" { lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) }
+  else if name == "serve_file" { lower_call_2(ctx, args, IR_SERVE_FILE, IRTY_INT) }
+  else if name == "ws_send" { lower_call_2(ctx, args, IR_WS_SEND, IRTY_INT) }
+  else if name == "ws_recv" { lower_call_1(ctx, args, IR_WS_RECV, IRTY_STR) }
+  else if name == "ws_close" { lower_call_1(ctx, args, IR_WS_CLOSE, IRTY_INT) }
+  else if name == "serve" { lower_call_2(ctx, args, IR_SERVE, IRTY_INT) }
+  else if name == "serve_tls" { lower_call_4(ctx, args, IR_SERVE_TLS, IRTY_INT) }
+  else if name == "stream_write" { lower_call_2(ctx, args, IR_STREAM_WRITE, IRTY_INT) }
+  else if name == "stream_end" { lower_call_1(ctx, args, IR_STREAM_END, IRTY_INT) }
+
+  // ------ SSL low-level ------
+  else if name == "ssl_method" { lower_call_0(ctx, IR_SSL_METHOD, IRTY_INT) }
+  else if name == "ssl_ctx_new" { lower_call_1(ctx, args, IR_SSL_CTX_NEW, IRTY_INT) }
+  else if name == "ssl_ctx_cert" { lower_call_3(ctx, args, IR_SSL_CTX_CERT, IRTY_INT) }
+  else if name == "ssl_ctx_key" { lower_call_3(ctx, args, IR_SSL_CTX_KEY, IRTY_INT) }
+  else if name == "ssl_new" { lower_call_1(ctx, args, IR_SSL_NEW, IRTY_INT) }
+  else if name == "ssl_set_fd" { lower_call_2(ctx, args, IR_SSL_SET_FD, IRTY_INT) }
+  else if name == "ssl_do_accept" { lower_call_1(ctx, args, IR_SSL_DO_ACCEPT, IRTY_INT) }
+  else if name == "ssl_read" { lower_call_3(ctx, args, IR_SSL_READ, IRTY_INT) }
+  else if name == "ssl_write" { lower_call_3(ctx, args, IR_SSL_WRITE, IRTY_INT) }
+  else if name == "ssl_shutdown" { lower_call_1(ctx, args, IR_SSL_SHUTDOWN, IRTY_INT) }
+  else if name == "ssl_free" { lower_call_1(ctx, args, IR_SSL_FREE, IRTY_INT) }
+
+  // ------ Logging ------
+  else if name == "log_debug" { lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) }
+  else if name == "ld" { lower_call_1(ctx, args, IR_LOG_DEBUG, IRTY_INT) }
+  else if name == "log_info" { lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) }
+  else if name == "li" { lower_call_1(ctx, args, IR_LOG_INFO, IRTY_INT) }
+  else if name == "log_warn" { lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) }
+  else if name == "lw" { lower_call_1(ctx, args, IR_LOG_WARN, IRTY_INT) }
+  else if name == "log_error" { lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) }
+  else if name == "le" { lower_call_1(ctx, args, IR_LOG_ERROR, IRTY_INT) }
+  else if name == "log_set_level" { lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) }
+  else if name == "ll" { lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) }
+  else if name == "get_log_level" { lower_call_0(ctx, IR_GET_LOG_LEVEL, IRTY_INT) }
+  else if name == "set_log_level" { lower_call_1(ctx, args, IR_SET_LOG_LEVEL, IRTY_INT) }
+  else if name == "print_err" { lower_call_1(ctx, args, IR_PRINT_ERR, IRTY_INT) }
+
+  // ------ Memory ------
+  else if name == "alloc" { lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) }
+  else if name == "dealloc" { lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) }
+  else if name == "ralloc" { lower_call_2(ctx, args, IR_RALLOC, IRTY_INT) }
+  else if name == "mcpy" { lower_call_3(ctx, args, IR_MCPY, IRTY_INT) }
+  else if name == "mzero" { lower_call_2(ctx, args, IR_MZERO, IRTY_INT) }
+  else if name == "mcmp" { lower_call_3(ctx, args, IR_MCMP, IRTY_INT) }
+  else if name == "slen" { lower_call_1(ctx, args, IR_SLEN, IRTY_INT) }
+
+  // ------ Load/Store ------
+  else if name == "load8" { lower_call_1(ctx, args, IR_LOAD8, IRTY_INT) }
+  else if name == "store8" { lower_call_2(ctx, args, IR_STORE8, IRTY_INT) }
+  else if name == "load16" { lower_call_1(ctx, args, IR_LOAD16, IRTY_INT) }
+  else if name == "store16" { lower_call_2(ctx, args, IR_STORE16, IRTY_INT) }
+  else if name == "load32" { lower_call_1(ctx, args, IR_LOAD32, IRTY_INT) }
+  else if name == "store32" { lower_call_2(ctx, args, IR_STORE32, IRTY_INT) }
+  else if name == "load64" { lower_call_1(ctx, args, IR_LOAD64, IRTY_INT) }
+  else if name == "store64" { lower_call_2(ctx, args, IR_STORE64, IRTY_INT) }
+  else if name == "bswap16" { lower_call_1(ctx, args, IR_BSWAP16, IRTY_INT) }
+  else if name == "char_at" { lower_call_char_at(ctx, args) }
+
+  // ------ Arena ------
+  else if name == "arena_begin" { lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) }
+  else if name == "arena_alloc" { lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) }
+  else if name == "arena_end" { lower_call_0(ctx, IR_ARENA_END, IRTY_INT) }
+
+  // ------ Function pointers ------
+  else if name == "fptr" { lower_call_fptr(ctx, args) }
+  else if name == "fcall" { lower_call_2(ctx, args, IR_FCALL, IRTY_INT) }
+  else if name == "fcall2" { lower_call_3(ctx, args, IR_FCALL2, IRTY_INT) }
+  else if name == "fcall3" { lower_call_4(ctx, args, IR_FCALL3, IRTY_INT) }
+  else if name == "ptr" { lower_call_ptr(ctx, args) }
+  else if name == "wfd" { lower_call_2(ctx, args, IR_WRITE_FD, IRTY_INT) }
+
+  // ------ Sockets ------
+  else if name == "sock" { lower_call_3(ctx, args, IR_SOCK, IRTY_INT) }
+  else if name == "sbind" { lower_call_2(ctx, args, IR_SBIND, IRTY_INT) }
+  else if name == "slisten" { lower_call_2(ctx, args, IR_SLISTEN, IRTY_INT) }
+  else if name == "saccept" { lower_call_1(ctx, args, IR_SACCEPT, IRTY_INT) }
+  else if name == "srecv" { lower_call_3(ctx, args, IR_SRECV, IRTY_INT) }
+  else if name == "ssend" { lower_call_3(ctx, args, IR_SSEND, IRTY_INT) }
+  else if name == "sclose" { lower_call_1(ctx, args, IR_SCLOSE, IRTY_INT) }
+  else if name == "rbind" { lower_call_3(ctx, args, IR_RBIND, IRTY_INT) }
+  else if name == "rsetsockopt" { lower_call_5(ctx, args, IR_RSETSOCKOPT, IRTY_INT) }
+  else if name == "strstr" { lower_call_2(ctx, args, IR_STRSTR, IRTY_INT) }
+  else if name == "gzip_compress" { lower_call_2(ctx, args, IR_GZIP_COMPRESS, IRTY_INT) }
+
+  // ------ Curl ------
+  else if name == "cinit" { lower_call_0(ctx, IR_CINIT, IRTY_INT) }
+  else if name == "csets" { lower_call_3(ctx, args, IR_CSETS, IRTY_INT) }
+  else if name == "cseti" { lower_call_3(ctx, args, IR_CSETI, IRTY_INT) }
+  else if name == "cperf" { lower_call_1(ctx, args, IR_CPERF, IRTY_INT) }
+  else if name == "cclean" { lower_call_1(ctx, args, IR_CCLEAN, IRTY_INT) }
+  else if name == "cinfo" { lower_call_3(ctx, args, IR_CINFO, IRTY_INT) }
+  else if name == "curl_slist_append" { lower_call_2(ctx, args, IR_CURL_SLIST_APPEND, IRTY_INT) }
+  else if name == "curl_slist_free" { lower_call_1(ctx, args, IR_CURL_SLIST_FREE, IRTY_INT) }
+
+  // ------ Result ------
+  else if name == "ok" { lower_call_1(ctx, args, IR_RESULT_OK, IRTY_RESULT) }
+  else if name == "err" { lower_call_1(ctx, args, IR_RESULT_ERR, IRTY_RESULT) }
+
+  // ------ Map ------
+  else if name == "M" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
+  else if name == "map" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
+
+  // ------ Signal / Poll ------
+  else if name == "signal_handler" { lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) }
+  else if name == "signal_check" { lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) }
+  else if name == "spoll" { lower_call_2(ctx, args, IR_SPOLL, IRTY_INT) }
+
+  // ------ Misc ------
+  else if name == "args" { lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) }
+  else if name == "exit" { lower_call_1(ctx, args, IR_EXIT, IRTY_INT) }
+  else if name == "system" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
+  else if name == "sys" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
+
+  // ------ User-defined function call (fallthrough) ------
+  else { lower_call_user(ctx, name, args) }
+}
+
+// ------ lower_call helpers by arity ---------------------------------------------------------------------------------------------------
+// 0-arg built-in: emit ir_inst0
+lower_call_0(ctx:I opcode:I irtype:I) I {
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(opcode, dest))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 1-arg built-in: emit ir_inst1
+lower_call_1(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(opcode, dest, a0))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 2-arg built-in: emit ir_inst2
+lower_call_2(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst2(opcode, dest, a0, a1))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 3-arg built-in: emit ir_inst3
+lower_call_3(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  a2 = lower_expr(ctx, args.get(2))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst3(opcode, dest, a0, a1, a2))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 4-arg built-in: emit ir_inst4
+lower_call_4(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  a2 = lower_expr(ctx, args.get(2))
+  a3 = lower_expr(ctx, args.get(3))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst4(opcode, dest, a0, a1, a2, a3))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 5-arg built-in: emit ir_inst5
+lower_call_5(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  a2 = lower_expr(ctx, args.get(2))
+  a3 = lower_expr(ctx, args.get(3))
+  a4 = lower_expr(ctx, args.get(4))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst5(opcode, dest, a0, a1, a2, a3, a4))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// ------ print: dispatch by argument type ------------------------------------------------------------------------------------
+lower_call_print(ctx:I args:I) I {
+  arg_reg = lower_expr(ctx, args.get(0))
+  ty = ctx_get_reg_type(ctx, arg_reg)
+  if ty == IRTY_STR { ctx_emit(ctx, ir_print_string(arg_reg)) }
+  else if ty == IRTY_BOOL { ctx_emit(ctx, ir_print_bool(arg_reg)) }
+  else if ty == IRTY_FLOAT { ctx_emit(ctx, ir_print_float(arg_reg)) }
+  else { ctx_emit(ctx, ir_print_int(arg_reg)) }
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(dest, 0))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ------ str/itos: if arg is already a string, pass through ------------------------------
+lower_call_str(ctx:I args:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  if ctx_get_reg_type(ctx, a0) == IRTY_STR { a0 }
+  else {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_INT_TO_STRING, dest, a0))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+}
+
+// ------ char_at: desugar to copy + add + load8 ------------------------------------------------------------------
+lower_call_char_at(ctx:I args:I) I {
+  str_reg = lower_expr(ctx, args.get(0))
+  idx_reg = lower_expr(ctx, args.get(1))
+  ptr_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_copy(ptr_reg, str_reg))
+  ctx_set_reg_type(ctx, ptr_reg, IRTY_INT)
+  addr_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_binop(addr_reg, IROP_ADD, ptr_reg, idx_reg))
+  ctx_set_reg_type(ctx, addr_reg, IRTY_INT)
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(IR_LOAD8, dest, addr_reg))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ------ fptr: arg must be a string literal (function name) ------------------------------
+lower_call_fptr(ctx:I args:I) I {
+  // The arg is an EX_STRING_LIT node; extract the string pointer
+  arg_expr = args.get(0)
+  fname = load64(arg_expr + 8)
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(IR_FPTR_NAMED, dest, fname))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ------ ptr: return arg register as Int (it's already an i64) ---------------------
+lower_call_ptr(ctx:I args:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_copy(dest, a0))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ------ User-defined function call ------------------------------------------------------------------------------------------------------
+lower_call_user(ctx:I name:I args:I) I {
+  // Check if the name is a local variable holding a lambda/fn ref
+  local_reg = ctx_get_local(ctx, name)
+  if local_reg != 0 {
+    ci_map = ctx_closure_info(ctx)
+    cinfo = mget(ci_map, local_reg)
+    if cinfo != 0 {
+      // This is a lambda call --- emit direct Call to lifted function with captures prepended
+      lambda_fn_name = cinfo.get(0)
+      all_args = array<I>()
+      // Prepend capture values
+      cai := 1
+      while cai < cinfo.len() {
+        cap_name = cinfo.get(cai)
+        cap_reg = ctx_get_local(ctx, cap_name)
+        all_args.push(cap_reg)
+        cai = cai + 1
+        0
+      }
+      // Append explicit args
+      eai := 0
+      while eai < args.len() {
+        all_args.push(lower_expr(ctx, args.get(eai)))
+        eai = eai + 1
+        0
+      }
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_call(dest, lambda_fn_name, all_args))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else {
+      // Local variable holding a non-lambda fn ref --- use fcall
+      // Lower the explicit args
+      arg_regs = array<I>()
+      fai := 0
+      while fai < args.len() {
+        arg_regs.push(lower_expr(ctx, args.get(fai)))
+        fai = fai + 1
+        0
+      }
+      if args.len() == 1 {
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst2(IR_FCALL, dest, local_reg, arg_regs.get(0)))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      } else { if args.len() == 2 {
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst3(IR_FCALL2, dest, local_reg, arg_regs.get(0), arg_regs.get(1)))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      } else { if args.len() == 3 {
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst4(IR_FCALL3, dest, local_reg, arg_regs.get(0), arg_regs.get(1), arg_regs.get(2)))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      } else {
+        // 0 args --- just call it as fcall with dummy
+        dest = ctx_fresh_reg(ctx)
+        zero_reg = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_const(zero_reg, 0))
+        ctx_emit(ctx, ir_inst2(IR_FCALL, dest, local_reg, zero_reg))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      } } }
+    }
+  } else {
+    // Regular user-defined function call
+    arg_regs = array<I>()
+    i := 0
+    while i < args.len() {
+      arg_regs.push(lower_expr(ctx, args.get(i)))
+      i = i + 1
+      0
+    }
+    dest = ctx_fresh_reg(ctx)
+    // Mangle intra-module calls: if we're in a module and this is a local function, prefix with module__
+    // Also check imported_fn_names for cross-module calls
+    mod_name = ctx_module_name(ctx)
+    lfn_set = ctx_local_fn_set(ctx)
+    imp_fns = ctx_imported_fn_names(ctx)
+    call_name = if mod_name != 0 && mhas(lfn_set, name) == 1 {
+      mod_name + "__" + name
+    } else { if imp_fns != 0 && mhas(imp_fns, name) == 1 {
+      mget(imp_fns, name)
+    } else { name } }
+    ctx_emit(ctx, ir_call(dest, call_name, arg_regs))
+    rt_raw = ctx_get_fn_ret_type(ctx, call_name)
+    rt = if rt_raw == 0 { ctx_get_fn_ret_type(ctx, name) } else { rt_raw }
+    ctx_set_reg_type(ctx, dest, if rt != 0 { rt } else { IRTY_INT })
+    // If return type is struct, propagate struct name for field access
+    if rt == IRTY_STRUCT {
+      sn_map = ctx_fn_ret_struct_names(ctx)
+      sn = mget(sn_map, name)
+      if sn != 0 { ctx_set_struct_name(ctx, dest, sn) }
+    }
+    dest
+  }
+}
+
+// ------ lower_expr ------------------------------------------------------------------------------------------------------------------------------------------------------
+// Lower an AST Expr node to IR instructions, return dest register name.
+// Handles: literals, identifiers, binary/unary ops, short-circuit logic.
+// Other expr types are stubbed for tasks 5c/5d.
+
+lower_expr(ctx:I expr:I) I {
+  tag = load64(expr)
+
+  // ------ EX_INT_LIT ------
+  if tag == EX_INT_LIT {
+    value = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    inst = ir_const(dest, value)
+    ctx_emit(ctx, inst)
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+
+  // ------ EX_FLOAT_LIT ------
+  else if tag == EX_FLOAT_LIT {
+    value = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_float_const(dest, value))
+    ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+    dest
+  }
+
+  // ------ EX_BOOL_LIT ------
+  else if tag == EX_BOOL_LIT {
+    value = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_bool_const(dest, value))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+
+  // ------ EX_STRING_LIT ------
+  else if tag == EX_STRING_LIT {
+    str_ptr = load64(expr + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_string_const(dest, str_ptr))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+
+  // ------ EX_IDENT ------
+  else if tag == EX_IDENT {
+    name = load64(expr + 8)
+    local = ctx_get_local(ctx, name)
+    if local != 0 {
+      // Check for mutable variable marker "!" prefix
+      if char_at(local, 0) == 33 {
+        // Mutable --- stored reg is "!rN", strip prefix to get alloca ptr
+        ptr_reg = local.substring(1, slen(local))
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_load(dest, ptr_reg))
+        // Copy type from the alloca pointer's tracked type
+        pty = ctx_get_reg_type(ctx, ptr_reg)
+        if pty != 0 { ctx_set_reg_type(ctx, dest, pty) }
+        // Copy struct name for struct field access
+        psn = ctx_get_struct_name(ctx, ptr_reg)
+        if psn != 0 { ctx_set_struct_name(ctx, dest, psn) }
+        dest
+      } else {
+        // Immutable --- register used directly
+        local
+      }
+    } else {
+      // Not a local --- check globals
+      gmap = ctx_global_names(ctx)
+      if mhas(gmap, name) == 1 {
+        // Global variable --- emit GlobalLoad
+        gtype = mget(gmap, name)
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_global_load(dest, name))
+        ctx_set_reg_type(ctx, dest, gtype)
+        dest
+      } else {
+        // Function reference
+        dest = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_fn_ref(dest, name))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      }
+    }
+  }
+
+  // ------ EX_BINOP ------
+  else if tag == EX_BINOP {
+    op = load64(expr + 8)
+    left = load64(expr + 16)
+    right = load64(expr + 24)
+
+    // Short-circuit: AND
+    if op == OP_AND {
+      left_reg = lower_expr(ctx, left)
+      rhs_label = ctx_fresh_label(ctx)
+      false_label = ctx_fresh_label(ctx)
+      merge_label = ctx_fresh_label(ctx)
+
+      ctx_emit(ctx, ir_branch(left_reg, rhs_label, false_label))
+
+      // rhs block --- evaluate right side
+      ctx_emit(ctx, ir_label(rhs_label))
+      right_reg = lower_expr(ctx, right)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // false block --- produce false constant
+      ctx_emit(ctx, ir_label(false_label))
+      false_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_bool_const(false_reg, 0))
+      ctx_set_reg_type(ctx, false_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // merge block --- phi
+      ctx_emit(ctx, ir_label(merge_label))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_phi(dest, right_reg, rhs_label, false_reg, false_label))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    }
+
+    // Short-circuit: OR
+    else if op == OP_OR {
+      left_reg = lower_expr(ctx, left)
+      true_label = ctx_fresh_label(ctx)
+      rhs_label = ctx_fresh_label(ctx)
+      merge_label = ctx_fresh_label(ctx)
+
+      ctx_emit(ctx, ir_branch(left_reg, true_label, rhs_label))
+
+      // true block --- produce true constant
+      ctx_emit(ctx, ir_label(true_label))
+      true_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_bool_const(true_reg, 1))
+      ctx_set_reg_type(ctx, true_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // rhs block --- evaluate right side
+      ctx_emit(ctx, ir_label(rhs_label))
+      right_reg = lower_expr(ctx, right)
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      // merge block --- phi
+      ctx_emit(ctx, ir_label(merge_label))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_phi(dest, true_reg, true_label, right_reg, rhs_label))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else {
+      // Non-short-circuit: evaluate both sides
+      left_reg = lower_expr(ctx, left)
+      right_reg = lower_expr(ctx, right)
+      left_type = ctx_get_reg_type(ctx, left_reg)
+      right_type = ctx_get_reg_type(ctx, right_reg)
+      lower_binop_normal(ctx, op, left_reg, right_reg, left_type, right_type)
+    }
+  }
+
+  // ------ EX_UNARYOP ------
+  else if tag == EX_UNARYOP {
+    op = load64(expr + 8)
+    operand = load64(expr + 16)
+    src_reg = lower_expr(ctx, operand)
+    src_type = ctx_get_reg_type(ctx, src_reg)
+    dest = ctx_fresh_reg(ctx)
+    if op == UOP_NOT {
+      ctx_emit(ctx, ir_not(dest, src_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else {
+      // UOP_NEG --- for floats, emit 0.0 - x
+      if src_type == IRTY_FLOAT {
+        zero_reg = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_float_const(zero_reg, 0))
+        ctx_set_reg_type(ctx, zero_reg, IRTY_FLOAT)
+        ctx_emit(ctx, ir_float_binop(dest, IROP_SUB, zero_reg, src_reg))
+        ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+        dest
+      } else {
+        ctx_emit(ctx, ir_neg(dest, src_reg))
+        ctx_set_reg_type(ctx, dest, IRTY_INT)
+        dest
+      }
+    }
+  }
+
+  // ------ EX_CALL ------
+  else if tag == EX_CALL {
+    name = load64(expr + 8)
+    args := load64(expr + 16)
+    lower_call(ctx, name, args)
+  }
+
+  // ------ EX_METHOD_CALL ------
+  else if tag == EX_METHOD_CALL {
+    lower_method_call(ctx, expr)
+  }
+
+  // ------ EX_FIELD_ACCESS ------
+  else if tag == EX_FIELD_ACCESS {
+    lower_field_access(ctx, expr)
+  }
+
+  // ------ EX_IF ------
+  else if tag == EX_IF {
+    lower_if_expr(ctx, expr)
+  }
+
+  // ------ EX_LAMBDA ------
+  else if tag == EX_LAMBDA {
+    lower_lambda(ctx, expr)
+  }
+
+  // ------ EX_ARRAY_LIT ------
+  else if tag == EX_ARRAY_LIT {
+    lower_array_lit(ctx, expr)
+  }
+
+  // ------ EX_STRUCT_LIT ------
+  else if tag == EX_STRUCT_LIT {
+    lower_struct_lit(ctx, expr)
+  }
+
+  // ------ EX_TUPLE_LIT ------
+  else if tag == EX_TUPLE_LIT {
+    lower_tuple_lit(ctx, expr)
+  }
+
+  // ------ EX_MATCH ------
+  else if tag == EX_MATCH {
+    lower_match(ctx, expr)
+  }
+
+  // ------ EX_SPAWN ------
+  else if tag == EX_SPAWN {
+    lower_spawn(ctx, expr)
+  }
+
+  // ------ EX_CHANNEL ------
+  else if tag == EX_CHANNEL {
+    // Channel should only appear inside LetDestructure (handled in lower_stmt)
+    // If it appears standalone, emit zeros for tx
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_SENDER)
+    dest
+  }
+
+  // ------ EX_MUTEX ------
+  else if tag == EX_MUTEX {
+    lower_mutex(ctx, expr)
+  }
+
+  // ------ EX_ENUM_VARIANT ------
+  else if tag == EX_ENUM_VARIANT {
+    lower_enum_variant(ctx, expr)
+  }
+
+  // ------ EX_ARRAY_CREATE ------
+  else if tag == EX_ARRAY_CREATE {
+    lower_array_create(ctx, expr)
+  }
+
+  // Unknown tag --- fallback
+  else {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+}
+
+// ------ lower_stmts ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Iterate an array of statements and lower each one.
+// Stub for now --- will be fully implemented in 5e.
+lower_stmts(ctx:I stmts:I) I {
+  // stmts is an array pointer
+  i := 0
+  while i < stmts.len() {
+    lower_stmt(ctx, stmts.get(i))
+    i = i + 1
+    0
+  }
+  0
+}
+
+// ------ lower_stmt (stub for 5e) ------------------------------------------------------------------------------------------------------------
+// Minimal stub --- enough for if-expr body lowering.
+lower_stmt(ctx:I stmt:I) I {
+  tag = load64(stmt)
+
+  // ST_EXPR --- lower the expression, discard result
+  if tag == ST_EXPR {
+    expr = load64(stmt + 8)
+    lower_expr(ctx, expr)
+    0
+  }
+
+  // ST_LET --- lower value, bind to local
+  else if tag == ST_LET {
+    name = load64(stmt + 8)
+    is_mut = load64(stmt + 16)
+    value_expr = load64(stmt + 32)
+    val_reg = lower_expr(ctx, value_expr)
+    if is_mut == 1 {
+      // Mutable: alloca + store, prefix reg with "!"
+      ptr_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_alloca(ptr_reg))
+      ctx_emit(ctx, ir_store(ptr_reg, val_reg))
+      vt = ctx_get_reg_type(ctx, val_reg)
+      if vt != 0 { ctx_set_reg_type(ctx, ptr_reg, vt) }
+      // Propagate struct name for mutable struct variables
+      vsn = ctx_get_struct_name(ctx, val_reg)
+      if vsn != 0 { ctx_set_struct_name(ctx, ptr_reg, vsn) }
+      ctx_set_local(ctx, name, "!" + ptr_reg)
+    } else {
+      ctx_set_local(ctx, name, val_reg)
+    }
+    0
+  }
+
+  // ST_ASSIGN --- store to mutable local or global
+  else if tag == ST_ASSIGN {
+    name = load64(stmt + 8)
+    value_expr = load64(stmt + 16)
+    val_reg = lower_expr(ctx, value_expr)
+    local = ctx_get_local(ctx, name)
+    if local != 0 {
+      if char_at(local, 0) == 33 {
+        // Mutable: strip "!" prefix, store
+        ptr_reg = local.substring(1, slen(local))
+        ctx_emit(ctx, ir_store(ptr_reg, val_reg))
+        // Update struct name on ptr_reg when reassigning struct value
+        asn = ctx_get_struct_name(ctx, val_reg)
+        if asn != 0 { ctx_set_struct_name(ctx, ptr_reg, asn) }
+      } else {
+        // Immutable reassignment --- treat as new binding
+        ctx_set_local(ctx, name, val_reg)
+      }
+    } else {
+      // Check if it's a global variable
+      gmap = ctx_global_names(ctx)
+      if mhas(gmap, name) == 1 {
+        // Global variable --- emit GlobalStore
+        ctx_emit(ctx, ir_global_store(name, val_reg))
+      } else {
+        // New local binding (bare assignment: x = 10)
+        ctx_set_local(ctx, name, val_reg)
+      }
+    }
+    0
+  }
+
+  // ST_RETURN
+  else if tag == ST_RETURN {
+    value_expr = load64(stmt + 8)
+    val_reg = lower_expr(ctx, value_expr)
+    ctx_emit(ctx, ir_ret(val_reg))
+    0
+  }
+
+  // ST_WHILE
+  else if tag == ST_WHILE {
+    cond_expr = load64(stmt + 8)
+    body_stmts = load64(stmt + 16)
+    cond_label = ctx_fresh_label(ctx)
+    body_label = ctx_fresh_label(ctx)
+    end_label = ctx_fresh_label(ctx)
+
+    // Save old break/continue labels
+    old_break = ctx_break_label(ctx)
+    old_continue = ctx_continue_label(ctx)
+    ctx_set_break_label(ctx, end_label)
+    ctx_set_continue_label(ctx, cond_label)
+
+    ctx_emit(ctx, ir_jump(cond_label))
+    ctx_emit(ctx, ir_label(cond_label))
+    cond_reg = lower_expr(ctx, cond_expr)
+    ctx_emit(ctx, ir_branch(cond_reg, body_label, end_label))
+    ctx_emit(ctx, ir_label(body_label))
+    lower_stmts(ctx, body_stmts)
+    ctx_emit(ctx, ir_jump(cond_label))
+    ctx_emit(ctx, ir_label(end_label))
+
+    // Restore old break/continue labels
+    ctx_set_break_label(ctx, old_break)
+    ctx_set_continue_label(ctx, old_continue)
+    0
+  }
+
+  // ST_IF (statement if --- no value)
+  else if tag == ST_IF {
+    cond_expr = load64(stmt + 8)
+    then_stmts = load64(stmt + 16)
+    else_stmts = load64(stmt + 24)
+    then_l = ctx_fresh_label(ctx)
+    else_l = ctx_fresh_label(ctx)
+    end_l = ctx_fresh_label(ctx)
+    cond_reg = lower_expr(ctx, cond_expr)
+    ctx_emit(ctx, ir_branch(cond_reg, then_l, else_l))
+    ctx_emit(ctx, ir_label(then_l))
+    lower_stmts(ctx, then_stmts)
+    ctx_emit(ctx, ir_jump(end_l))
+    ctx_emit(ctx, ir_label(else_l))
+    if else_stmts != 0 { lower_stmts(ctx, else_stmts) }
+    ctx_emit(ctx, ir_jump(end_l))
+    ctx_emit(ctx, ir_label(end_l))
+    0
+  }
+
+  // ST_BREAK
+  else if tag == ST_BREAK {
+    bl = ctx_break_label(ctx)
+    if bl != 0 { ctx_emit(ctx, ir_jump(bl)) }
+    0
+  }
+
+  // ST_CONTINUE --- jump back to loop condition
+  else if tag == ST_CONTINUE {
+    cl = ctx_continue_label(ctx)
+    if cl != 0 { ctx_emit(ctx, ir_jump(cl)) }
+    0
+  }
+
+  // ST_LET_DESTR --- destructuring let (e.g., for channels)
+  else if tag == ST_LET_DESTR {
+    lower_let_destructure(ctx, stmt)
+  }
+
+  // ST_FOR_IN --- desugar to while loop
+  else if tag == ST_FOR_IN {
+    lower_for_in(ctx, stmt)
+  }
+
+  // Unknown statement --- skip
+  else { 0 }
+}
+
+// ------ lower_let_destructure ---------------------------------------------------------------------------------------------------------------------
+lower_let_destructure(ctx:I stmt:I) I {
+  // Layout: [tag, names_array, value_expr]
+  names = load64(stmt + 8)
+  value_expr = load64(stmt + 16)
+
+  // Check if value is a channel create
+  vtag = load64(value_expr)
+  if vtag == EX_CHANNEL {
+    elem_type = load64(value_expr + 8)
+    cap_expr = load64(value_expr + 16)
+    tx_dest = ctx_fresh_reg(ctx)
+    rx_dest = ctx_fresh_reg(ctx)
+    if cap_expr != 0 {
+      cap_reg = lower_expr(ctx, cap_expr)
+      ctx_emit(ctx, ir_channel_create_bounded(tx_dest, rx_dest, cap_reg))
+    } else {
+      ctx_emit(ctx, ir_channel_create(tx_dest, rx_dest))
+    }
+    ctx_set_reg_type(ctx, tx_dest, IRTY_SENDER)
+    ctx_set_reg_type(ctx, rx_dest, IRTY_RECEIVER)
+    // Bind first name to tx, second to rx
+    if names.len() >= 1 { ctx_set_local(ctx, names.get(0), tx_dest) }
+    if names.len() >= 2 { ctx_set_local(ctx, names.get(1), rx_dest) }
+    0
+  } else {
+    // Non-channel destructure: lower value and treat as tuple field loads
+    val_reg = lower_expr(ctx, value_expr)
+    i := 0
+    while i < names.len() {
+      field_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_field_load(field_reg, val_reg, i, names.len()))
+      ctx_set_reg_type(ctx, field_reg, IRTY_INT)
+      ctx_set_local(ctx, names.get(i), field_reg)
+      i = i + 1
+      0
+    }
+    0
+  }
+}
+
+// ------ lower_for_in (stub) ---------------------------------------------------------------------------------------------------------------------------
+lower_for_in(ctx:I stmt:I) I {
+  // Layout: [tag, var_name, iterable_expr, body_stmts]
+  var_name = load64(stmt + 8)
+  iterable = load64(stmt + 16)
+  body_stmts = load64(stmt + 24)
+
+  // Lower iterable
+  arr_reg = lower_expr(ctx, iterable)
+
+  // Get length
+  len_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, len_reg, arr_reg))
+  ctx_set_reg_type(ctx, len_reg, IRTY_INT)
+
+  // Index variable (mutable)
+  idx_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(idx_ptr))
+  zero_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(zero_reg, 0))
+  ctx_set_reg_type(ctx, zero_reg, IRTY_INT)
+  ctx_emit(ctx, ir_store(idx_ptr, zero_reg))
+
+  cond_label = ctx_fresh_label(ctx)
+  body_label = ctx_fresh_label(ctx)
+  end_label = ctx_fresh_label(ctx)
+
+  old_break = ctx_break_label(ctx)
+  old_continue = ctx_continue_label(ctx)
+  ctx_set_break_label(ctx, end_label)
+  ctx_set_continue_label(ctx, cond_label)
+
+  ctx_emit(ctx, ir_jump(cond_label))
+  ctx_emit(ctx, ir_label(cond_label))
+
+  // Load index, compare to length
+  idx_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg, IRTY_INT)
+  cmp_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_LT, idx_reg, len_reg))
+  ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+  ctx_emit(ctx, ir_branch(cmp_reg, body_label, end_label))
+
+  ctx_emit(ctx, ir_label(body_label))
+
+  // Get element at index
+  elem_reg = ctx_fresh_reg(ctx)
+  idx_reg2 = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg2, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg2, IRTY_INT)
+  ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, elem_reg, arr_reg, idx_reg2))
+  ctx_set_reg_type(ctx, elem_reg, IRTY_INT)
+  ctx_set_local(ctx, var_name, elem_reg)
+
+  // Lower body
+  lower_stmts(ctx, body_stmts)
+
+  // Increment index
+  idx_reg3 = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg3, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg3, IRTY_INT)
+  one_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(one_reg, 1))
+  ctx_set_reg_type(ctx, one_reg, IRTY_INT)
+  new_idx = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_binop(new_idx, IROP_ADD, idx_reg3, one_reg))
+  ctx_set_reg_type(ctx, new_idx, IRTY_INT)
+  ctx_emit(ctx, ir_store(idx_ptr, new_idx))
+  ctx_emit(ctx, ir_jump(cond_label))
+  ctx_emit(ctx, ir_label(end_label))
+  ctx_set_break_label(ctx, old_break)
+  ctx_set_continue_label(ctx, old_continue)
+  0
+}
+
+// ------ lower_method_call ---------------------------------------------------------------------------------------------------------------------------------
+lower_method_call(ctx:I expr:I) I {
+  object = load64(expr + 8)
+  method = load64(expr + 16)
+  args = load64(expr + 24)
+
+  // Lower the object
+  obj_reg = lower_expr(ctx, object)
+  obj_type = ctx_get_reg_type(ctx, obj_reg)
+
+  // ------ Sender methods ------
+  if obj_type == IRTY_SENDER {
+    if method == "send" {
+      val_reg = lower_expr(ctx, args.get(0))
+      ctx_emit(ctx, ir_channel_send(obj_reg, val_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+
+  // ------ Receiver methods ------
+  else if obj_type == IRTY_RECEIVER {
+    if method == "recv" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_channel_recv(dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+
+  // ------ JoinHandle methods ------
+  else if obj_type == IRTY_JOIN_HANDLE {
+    if method == "join" {
+      ctx_emit(ctx, ir_thread_join(obj_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+
+  // ------ Mutex methods ------
+  else if obj_type == IRTY_MUTEX {
+    if method == "lock" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_mutex_lock(dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    }
+    else if method == "unlock" {
+      val_reg = lower_expr(ctx, args.get(0))
+      ctx_emit(ctx, ir_mutex_unlock(obj_reg, val_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+
+  // ------ Array methods ------
+  else if obj_type == IRTY_ARRAY {
+    lower_array_method(ctx, obj_reg, method, args)
+  }
+
+  // ------ String methods ------
+  else if obj_type == IRTY_STR {
+    lower_string_method(ctx, obj_reg, method, args)
+  }
+
+  // ------ Map methods ------
+  else if obj_type == IRTY_MAP {
+    lower_map_method(ctx, obj_reg, method, args)
+  }
+
+  // ------ JSON methods ------
+  else if obj_type == IRTY_JSON {
+    lower_json_method(ctx, obj_reg, method, args)
+  }
+
+  // ------ HTTP Response methods ------
+  else if obj_type == IRTY_HTTP_RESP {
+    lower_http_resp_method(ctx, obj_reg, method, args)
+  }
+
+  // ------ HTTP Server methods ------
+  else if obj_type == IRTY_HTTP_SERVER {
+    if method == "accept" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_HTTP_ACCEPT, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_HTTP_REQ)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+
+  // ------ HTTP Request methods ------
+  else if obj_type == IRTY_HTTP_REQ {
+    lower_http_req_method(ctx, obj_reg, method, args)
+  }
+
+  // ------ Result methods ------
+  else if obj_type == IRTY_RESULT {
+    lower_result_method(ctx, obj_reg, method, args)
+  }
+
+  // ------ Int methods (opaque pointers --- arrays, maps, strings stored as i64) ------
+  else if obj_type == IRTY_INT {
+    // Dispatch common methods for Int-typed values
+    if method == "len" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "get" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "push" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, obj_reg, arg_reg))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "pop" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_POP, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "set" {
+      arg0 = lower_expr(ctx, args.get(0))
+      arg1 = lower_expr(ctx, args.get(1))
+      ctx_emit(ctx, ir_inst3(IR_ARRAY_SET, 0, obj_reg, arg0, arg1))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(dest, 0))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "remove" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_REMOVE, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "keys" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_MAP_KEYS, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "vals" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_MAP_VALS, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "has" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_MAP_HAS, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "substring" {
+      a0 = lower_expr(ctx, args.get(0))
+      a1 = lower_expr(ctx, args.get(1))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst3(IR_STRING_SUBSTRING, dest, obj_reg, a0, a1))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "sw" || method == "starts_with" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "ew" || method == "ends_with" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "contains" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_CONTAINS, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "trim" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_STRING_TRIM, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "split" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_SPLIT, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "replace" {
+      a0 = lower_expr(ctx, args.get(0))
+      a1 = lower_expr(ctx, args.get(1))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst3(IR_STRING_REPLACE, dest, obj_reg, a0, a1))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "add" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_CONCAT, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "map" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_MAP, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "filter" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_FILTER, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "any" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_ANY, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "find" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_FIND, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "enumerate" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_ARRAY_ENUMERATE, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "zip" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ARRAY_ZIP, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      dest
+    } else if method == "unwrap" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_UNWRAP, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else if method == "is_ok" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_IS_OK, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "is_err" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_IS_ERR, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+      dest
+    } else if method == "error" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_ERROR, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_STR)
+      dest
+    } else if method == "unwrap_or" {
+      arg_reg = lower_expr(ctx, args.get(0))
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_RESULT_UNWRAP_OR, dest, obj_reg, arg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+
+  // ------ Struct/Enum user-defined methods (fallback) ------
+  else { lower_method_fallback(ctx, obj_reg, method, args) }
+}
+
+// ------ lower_method_fallback (user-defined struct/enum methods) ------------
+lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
+  // Mangle name as "Type_method" or "module__Type__method" for module context
+  type_name = ctx_get_struct_name(ctx, obj_reg)
+  base_mangled = if type_name != 0 { type_name + "_" + method } else { method }
+  mod_name = ctx_module_name(ctx)
+  lfn_set = ctx_local_fn_set(ctx)
+  // For impl methods, local_fn_set stores "Type__method" keys
+  impl_key = if type_name != 0 { type_name + "__" + method } else { "" }
+  imp_fns = ctx_imported_fn_names(ctx)
+  mangled = if mod_name != 0 && impl_key != "" && mhas(lfn_set, impl_key) == 1 {
+    mod_name + "__" + type_name + "__" + method
+  } else { if imp_fns != 0 && mhas(imp_fns, base_mangled) == 1 {
+    mget(imp_fns, base_mangled)
+  } else { base_mangled } }
+  arg_regs = array<I>()
+  arg_regs.push(obj_reg)
+  i := 0
+  while i < args.len() {
+    arg_regs.push(lower_expr(ctx, args.get(i)))
+    i = i + 1
+    0
+  }
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_call(dest, mangled, arg_regs))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
+}
+
+// ------ lower_array_method ------------------------------------------------------------------------------------------------------------------------------
+lower_array_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "len" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "push" {
+    val_reg = lower_expr(ctx, args.get(0))
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, obj_reg, val_reg))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "get" {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "set" {
+    idx_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    n = alloc(40)
+    store64(n, IR_ARRAY_SET)
+    store64(n + 8, obj_reg)
+    store64(n + 16, idx_reg)
+    store64(n + 24, val_reg)
+    store64(n + 32, 0)
+    ctx_emit(ctx, n)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, 0))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "map" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_MAP, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "filter" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_FILTER, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "any" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_ANY, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "find" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_FIND, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "enumerate" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_ENUMERATE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "zip" {
+    other_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_ZIP, dest, obj_reg, other_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "pop" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_POP, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "contains" {
+    val_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_CONTAINS, dest, obj_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "remove" {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ARRAY_REMOVE, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_string_method ---------------------------------------------------------------------------------------------------------------------------
+lower_string_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "len" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_STRING_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "trim" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_STRING_TRIM, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "split" {
+    delim_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_SPLIT, dest, obj_reg, delim_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "replace" {
+    old_reg = lower_expr(ctx, args.get(0))
+    new_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_STRING_REPLACE, dest, obj_reg, old_reg, new_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "starts_with" {
+    pfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, pfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "sw" {
+    pfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, dest, obj_reg, pfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "ends_with" {
+    sfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, sfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "ew" {
+    sfx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_ENDS_WITH, dest, obj_reg, sfx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "contains" {
+    needle_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_CONTAINS, dest, obj_reg, needle_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "substring" {
+    start_reg = lower_expr(ctx, args.get(0))
+    end_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_STRING_SUBSTRING, dest, obj_reg, start_reg, end_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "add" {
+    other_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_string_concat(dest, obj_reg, other_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_map_method ------------------------------------------------------------------------------------------------------------------------------------
+lower_map_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "get" {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_GET, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "set" {
+    key_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_MAP_SET, dest, obj_reg, key_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "has" {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_HAS, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "len" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "keys" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_KEYS, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "vals" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_VALS, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_json_method ---------------------------------------------------------------------------------------------------------------------------------
+lower_json_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "get" {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_JSON_GET, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_JSON)
+    dest
+  }
+  else if method == "get_index" {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_JSON_GET_INDEX, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_JSON)
+    dest
+  }
+  else if method == "get_string" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_GET_STRING, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "get_int" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_GET_INT, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "get_bool" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_GET_BOOL, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "set" {
+    key_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_JSON_SET, dest, obj_reg, key_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "push" {
+    val_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_JSON_PUSH, dest, obj_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "len" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "type_of" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_TYPE_OF, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "stringify" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_JSON_STRINGIFY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_http_resp_method ------------------------------------------------------------------------------------------------------------------
+lower_http_resp_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "status" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_STATUS, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "body" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_BODY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "header" {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_HEADER, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "ok" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_OK, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_http_req_method ---------------------------------------------------------------------------------------------------------------------
+lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "path" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_PATH, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "method" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_METHOD, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "body" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_BODY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "respond" {
+    status_reg = lower_expr(ctx, args.get(0))
+    body_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    if args.len() == 3 {
+      ct_reg = lower_expr(ctx, args.get(2))
+      ctx_emit(ctx, ir_inst4(IR_HTTP_RESPOND_CT, dest, obj_reg, status_reg, body_reg, ct_reg))
+    } else {
+      ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND, dest, obj_reg, status_reg, body_reg))
+    }
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "header" {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_HEADER, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "set_header" {
+    name_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_HTTP_REQUEST_SET_HEADER, dest, obj_reg, name_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "cookie" {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_COOKIE, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "query" {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_QUERY, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "path_only" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_PATH_ONLY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "content_length" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_CONTENT_LENGTH, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "respond_stream" {
+    status_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_RESPOND_STREAM, dest, obj_reg, status_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "respond_json" {
+    status_reg = lower_expr(ctx, args.get(0))
+    body_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_HTTP_RESPOND_JSON, dest, obj_reg, status_reg, body_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "form" {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_FORM, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "is_ws_upgrade" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_WS_IS_UPGRADE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "upgrade_ws" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_WS_UPGRADE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_result_method ---------------------------------------------------------------------------------------------------------------------------
+lower_result_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "is_ok" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_IS_OK, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "is_err" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_IS_ERR, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "unwrap" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_UNWRAP, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "unwrap_or" {
+    default_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_RESULT_UNWRAP_OR, dest, obj_reg, default_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "error" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_ERROR, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_field_access ------------------------------------------------------------------------------------------------------------------------------
+lower_field_access(ctx:I expr:I) I {
+  object = load64(expr + 8)
+  field = load64(expr + 16)
+
+  obj_reg = lower_expr(ctx, object)
+  obj_type = ctx_get_reg_type(ctx, obj_reg)
+
+  // Struct field access
+  if obj_type == IRTY_STRUCT {
+    // Look up field index from struct_defs using tracked struct name
+    sd = ctx_struct_defs(ctx)
+    struct_name = ctx_get_struct_name(ctx, obj_reg)
+    struct_fields = if struct_name != 0 { mget(sd, struct_name) } else { 0 }
+    num_fields = if struct_fields != 0 { struct_fields.len() } else { 1 }
+
+    // Find field index using map with proper string comparison
+    field_idx := 0
+    if struct_fields != 0 {
+      fi_map = M()
+      k := 0
+      while k < struct_fields.len() {
+        mset(fi_map, struct_fields.get(k), k + 1)
+        k = k + 1
+        0
+      }
+      looked = mget(fi_map, field)
+      if looked != 0 { field_idx = looked - 1
+        0 }
+      0
+    }
+
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, num_fields))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+
+  // Tuple field access (field is a numeric string like "0", "1")
+  else if obj_type == IRTY_TUPLE {
+    field_idx = stoi(field)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, 2))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+
+  // If type is INT but field is numeric (e.g. "0", "1"), treat as tuple field access
+  // This handles cases where tuple type info was lost (e.g. from array.get())
+  else if char_at(field, 0) >= 48 && char_at(field, 0) <= 57 {
+    field_idx = stoi(field)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, 2))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+
+  // Non-struct/tuple: treat as no-arg method call
+  else {
+    // Synthesize method call with 0 args
+    empty_args = array<I>()
+    lower_method_call_direct(ctx, obj_reg, field, empty_args)
+  }
+}
+
+// ------ lower_method_call_direct (helper for synthetic method calls) ---
+lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
+  obj_type = ctx_get_reg_type(ctx, obj_reg)
+
+  // Dispatch based on type
+  if obj_type == IRTY_ARRAY { lower_array_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_STR { lower_string_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_MAP { lower_map_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_JSON { lower_json_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_HTTP_RESP { lower_http_resp_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_HTTP_SERVER {
+    if method == "accept" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_HTTP_ACCEPT, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_HTTP_REQ)
+      dest
+    } else { lower_method_fallback(ctx, obj_reg, method, args) }
+  }
+  else if obj_type == IRTY_HTTP_REQ { lower_http_req_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_RESULT { lower_result_method(ctx, obj_reg, method, args) }
+  else { lower_method_fallback(ctx, obj_reg, method, args) }
+}
+
+// ------ lower_if_expr ---------------------------------------------------------------------------------------------------------------------------------------------
+lower_if_expr(ctx:I expr:I) I {
+  cond = load64(expr + 8)
+  then_stmts = load64(expr + 16)
+  then_expr = load64(expr + 24)
+  else_stmts = load64(expr + 32)
+  else_expr = load64(expr + 40)
+
+  cond_reg = lower_expr(ctx, cond)
+  then_label = ctx_fresh_label(ctx)
+  else_label = ctx_fresh_label(ctx)
+  merge_label = ctx_fresh_label(ctx)
+
+  // Alloca for the result (avoids PHI predecessor tracking issues)
+  result_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(result_ptr))
+
+  ctx_emit(ctx, ir_branch(cond_reg, then_label, else_label))
+
+  // Then branch
+  ctx_emit(ctx, ir_label(then_label))
+  lower_stmts(ctx, then_stmts)
+  then_reg = lower_expr(ctx, then_expr)
+  ctx_emit(ctx, ir_store(result_ptr, then_reg))
+  ctx_emit(ctx, ir_jump(merge_label))
+
+  // Else branch
+  ctx_emit(ctx, ir_label(else_label))
+  lower_stmts(ctx, else_stmts)
+  else_reg = lower_expr(ctx, else_expr)
+  ctx_emit(ctx, ir_store(result_ptr, else_reg))
+  ctx_emit(ctx, ir_jump(merge_label))
+
+  // Merge: load from alloca instead of PHI
+  ctx_emit(ctx, ir_label(merge_label))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(dest, result_ptr))
+  // Take type from then branch
+  tty = ctx_get_reg_type(ctx, then_reg)
+  ctx_set_reg_type(ctx, dest, if tty != 0 { tty } else { IRTY_INT })
+  dest
+}
+
+// ------ lower_match ---------------------------------------------------------------------------------------------------------------------------------------------------
+lower_match(ctx:I expr:I) I {
+  scrutinee = load64(expr + 8)
+  arms = load64(expr + 16)
+
+  scrutinee_reg = lower_expr(ctx, scrutinee)
+
+  // Get enum tag
+  tag_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_enum_tag(tag_reg, scrutinee_reg))
+  ctx_set_reg_type(ctx, tag_reg, IRTY_INT)
+
+  // Alloca for the result
+  result_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(result_ptr))
+
+  merge_label = ctx_fresh_label(ctx)
+  num_arms = arms.len()
+
+  i := 0
+  while i < num_arms {
+    arm = arms.get(i)
+    // arm layout: [pattern, body_expr, 0]
+    pattern = load64(arm)
+    body_expr = load64(arm + 8)
+
+    // pattern layout: [enum_name, variant_name, bindings_array, 0]
+    variant_name = load64(pattern + 8)
+    bindings = load64(pattern + 16)
+
+    // Look up variant tag from enum_defs
+    tag_val = lower_match_lookup_tag(ctx, scrutinee_reg, variant_name)
+
+    arm_label = ctx_fresh_label(ctx)
+
+    if i < num_arms - 1 {
+      next_label = ctx_fresh_label(ctx)
+      // Compare tag
+      tag_const = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(tag_const, tag_val))
+      ctx_set_reg_type(ctx, tag_const, IRTY_INT)
+      cmp_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_EQ, tag_reg, tag_const))
+      ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_branch(cmp_reg, arm_label, next_label))
+
+      ctx_emit(ctx, ir_label(arm_label))
+
+      // Bind data fields
+      lower_match_bindings(ctx, scrutinee_reg, bindings, variant_name)
+
+      // Lower body
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+
+      ctx_emit(ctx, ir_label(next_label))
+      0
+    } else {
+      // Last arm --- always taken
+      ctx_emit(ctx, ir_jump(arm_label))
+      ctx_emit(ctx, ir_label(arm_label))
+
+      // Bind data fields
+      lower_match_bindings(ctx, scrutinee_reg, bindings, variant_name)
+
+      // Lower body
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+      0
+    }
+
+    i = i + 1
+    0
+  }
+
+  ctx_emit(ctx, ir_label(merge_label))
+  result_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(result_reg, result_ptr))
+  ctx_set_reg_type(ctx, result_reg, IRTY_INT)
+  result_reg
+}
+
+// ------ lower_match_lookup_tag ------------------------------------------------------------------------------------------------------------------
+// Look up the tag index for a variant name from enum_defs.
+// enum_defs is Map: enum_name -> variants_array
+// Each variant entry array: [tag_index, num_data, field_type1, ...]
+// Variants are stored in order, so tag = position index.
+// We search by comparing variant_name against enum_name from the pattern.
+lower_match_lookup_tag(ctx:I scrutinee_reg:I variant_name:I) I {
+  // We use the enum_defs to find which tag index a variant has.
+  // Since enum_defs stores variants in order, tag = array index.
+  // But we need to match by variant name, which isn't stored in vinfo_arr.
+  // Instead, we look at the parser's enum AST to find the tag.
+  // Workaround: search the enum_defs for the variant by name.
+  // The enum variants from the parser are stored as [name@0, fields@8] pointers.
+  // In the IR lower step, we built vinfo_arr from these, in order.
+  // So the tag index IS the position in the vinfo_arr.
+  // Since we don't store variant names in vinfo_arr, we need another approach.
+  // We'll store a separate map: "EnumName::VariantName" -> tag_index
+  // For now, use the enum_variant_tags map stored in the context.
+
+  // Search the variant_tags map at ctx offset 88... but that's reg_struct_names.
+  // Actually, let's use a simpler approach: search all enums' variant name arrays.
+  // The enum_defs format after our change stores [tag_index, num_data, ...].
+  // We need variant names too. Let's store them differently.
+
+  // Simplest fix: iterate and use the variant index as the tag.
+  // The variant_name comes from the match pattern. We need to find which
+  // enum contains it and what its position is.
+  // The tag is just the position within the enum definition.
+
+  // Use the enum_variant_tag_map that we'll build in the lowering init
+  tmap = load64(ctx + 96)  // variant_tag_map: "variant_name" -> tag_index
+  if tmap != 0 && mhas(tmap, variant_name) { mget(tmap, variant_name) } else { 0 }
+}
+
+// ------ lower_match_bindings ------------------------------------------------------------------------------------------------------------------------
+lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
+  // Look up field types from variant_fields_map
+  vfmap = load64(ctx + 104)
+  field_types = if vfmap != 0 && mhas(vfmap, variant_name) { mget(vfmap, variant_name) } else { 0 }
+  i := 0
+  while i < bindings.len() {
+    binding_name = bindings.get(i)
+    data_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_enum_data(data_reg, scrutinee_reg, i))
+    // Determine the IR type from the field type name
+    irty := IRTY_INT
+    if field_types != 0 && i < field_types.len() {
+      ft_name = field_types.get(i)
+      irty = ir_type_for_return(ft_name, ctx_struct_defs(ctx), ctx_enum_defs(ctx))
+    }
+    ctx_set_reg_type(ctx, data_reg, irty)
+    ctx_set_local(ctx, binding_name, data_reg)
+    i = i + 1
+    0
+  }
+  0
+}
+
+// ------ lower_lambda ------------------------------------------------------------------------------------------------------------------------------------------------
+// Compile lambda body as a lifted function and emit FnRef.
+// Handles both non-capturing and capturing lambdas.
+lower_lambda(ctx:I expr:I) I {
+  params = load64(expr + 8)
+  ret_type = load64(expr + 16)
+  body_stmts = load64(expr + 24)
+
+  // Generate unique lambda name using lambda counter
+  lambda_id = ctx_fresh_lambda_id(ctx)
+  lambda_name = "__lambda_" + itos(lambda_id)
+
+  // Find captured variables: variables referenced in body that are defined
+  // in the enclosing scope (in ctx locals) but not in lambda params
+  param_name_set = M()
+  pi := 0
+  while pi < params.len() {
+    p = params.get(pi)
+    mset(param_name_set, load64(p), 1)
+    pi = pi + 1
+    0
+  }
+  captures = find_captures_in_stmts(body_stmts, param_name_set, ctx)
+
+  // Create a new lowering context for the lambda body
+  lctx = make_lower_ctx(ctx_struct_defs(ctx), ctx_enum_defs(ctx), ctx_fn_ret_types(ctx), ctx_global_names(ctx))
+  store64(lctx + 96, load64(ctx + 96))   // variant_tag_map
+  store64(lctx + 104, load64(ctx + 104)) // variant_fields_map
+  store64(lctx + 136, load64(ctx + 136)) // fn_ret_struct_names
+  // Share lambda counter to avoid collisions with nested lambdas
+  store64(lctx + 120, load64(ctx + 120))
+
+  // Add capture params first (they come before the actual params)
+  lifted_param_names = array<I>()
+  lifted_param_sizes = array<I>()
+  ci := 0
+  while ci < captures.len() {
+    cap_name = captures.get(ci)
+    arg_reg = "arg" + itos(ci)
+    ctx_set_local(lctx, cap_name, arg_reg)
+    // Copy type from enclosing scope
+    enc_reg = ctx_get_local(ctx, cap_name)
+    if enc_reg != 0 {
+      ety = ctx_get_reg_type(ctx, enc_reg)
+      ctx_set_reg_type(lctx, arg_reg, ety)
+      // Copy struct name if applicable
+      esn = ctx_get_struct_name(ctx, enc_reg)
+      if esn != 0 { ctx_set_struct_name(lctx, arg_reg, esn) }
+    }
+    lifted_param_names.push(arg_reg)
+    lifted_param_sizes.push(0)
+    ci = ci + 1
+    0
+  }
+
+  // Add actual lambda params
+  li := 0
+  while li < params.len() {
+    p = params.get(li)
+    pname = load64(p)
+    ptype = load64(p + 8)
+    arg_reg = "arg" + itos(captures.len() + li)
+    ctx_set_local(lctx, pname, arg_reg)
+    // Set type
+    if ptype == "I" { ctx_set_reg_type(lctx, arg_reg, IRTY_INT) }
+    else if ptype == "Int" { ctx_set_reg_type(lctx, arg_reg, IRTY_INT) }
+    else if ptype == "F" { ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "Float" { ctx_set_reg_type(lctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "B" { ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "Bool" { ctx_set_reg_type(lctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "S" { ctx_set_reg_type(lctx, arg_reg, IRTY_STR) }
+    else if ptype == "String" { ctx_set_reg_type(lctx, arg_reg, IRTY_STR) }
+    else { ctx_set_reg_type(lctx, arg_reg, IRTY_INT) }
+    lifted_param_names.push(arg_reg)
+    lifted_param_sizes.push(0)
+    li = li + 1
+    0
+  }
+
+  // Lower body statements --- last statement is return value
+  bj := 0
+  while bj < body_stmts.len() {
+    is_last = bj == body_stmts.len() - 1
+    stmt = body_stmts.get(bj)
+    if is_last == 1 {
+      stag = load64(stmt)
+      if stag == ST_EXPR {
+        bexpr = load64(stmt + 8)
+        reg = lower_expr(lctx, bexpr)
+        ctx_emit(lctx, ir_ret(reg))
+      } else { if stag == ST_RETURN {
+        val_expr = load64(stmt + 8)
+        reg = lower_expr(lctx, val_expr)
+        ctx_emit(lctx, ir_ret(reg))
+      } else {
+        lower_stmt(lctx, stmt)
+      } }
+    } else {
+      lower_stmt(lctx, stmt)
+    }
+    bj = bj + 1
+    0
+  }
+
+  // Sync lambda counter back from nested context
+  store64(ctx + 120, load64(lctx + 120))
+
+  // Create IrFunction for the lifted lambda
+  lifted_fn = make_ir_function(lambda_name, lifted_param_names, ctx_instrs(lctx), IRTY_INT, lifted_param_sizes)
+
+  // Add to lifted functions list (parent ctx)
+  lifted = ctx_lifted_fns(ctx)
+  lifted.push(lifted_fn)
+  // Also add any nested lifted fns from the lambda's context
+  nested_lifted = ctx_lifted_fns(lctx)
+  nli := 0
+  while nli < nested_lifted.len() {
+    lifted.push(nested_lifted.get(nli))
+    nli = nli + 1
+    0
+  }
+
+  // Store closure info so call sites can emit direct calls with captures prepended
+  // closure_info maps: lambda_name -> [lambda_name, cap0_name, cap1_name, ...]
+  cinfo = array<I>()
+  cinfo.push(lambda_name)
+  cci := 0
+  while cci < captures.len() {
+    cinfo.push(captures.get(cci))
+    cci = cci + 1
+    0
+  }
+
+  // Emit FnRef for the lambda (needed when passed as argument to other functions)
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_fn_ref(dest, lambda_name))
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+
+  // Store closure info keyed by the dest register name
+  ci_map = ctx_closure_info(ctx)
+  mset(ci_map, dest, cinfo)
+
+  dest
+}
+
+// Find captured variables in a list of statements
+// Returns array of variable names that are in enclosing scope but not in param_set
+find_captures_in_stmts(stmts:I param_set:I ctx:I) I {
+  result = array<I>()
+  seen = M()
+  find_captures_stmts(stmts, param_set, ctx, result, seen, M())
+  result
+}
+
+find_captures_stmts(stmts:I param_set:I ctx:I result:I seen:I local_set:I) I {
+  i := 0
+  while i < stmts.len() {
+    find_captures_stmt(stmts.get(i), param_set, ctx, result, seen, local_set)
+    i = i + 1
+    0
+  }
+  0
+}
+
+find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
+  stag = load64(stmt)
+  if stag == ST_EXPR { find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  else if stag == ST_LET {
+    val = load64(stmt + 16)
+    find_captures_expr(val, param_set, ctx, result, seen, local_set)
+    // Add the let-bound name to local_set so it's not treated as a capture
+    mset(local_set, load64(stmt + 8), 1)
+  }
+  else if stag == ST_ASSIGN {
+    find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    // The assigned name might itself be a capture
+    aname = load64(stmt + 8)
+    if mget(param_set, aname) == 0 && mget(local_set, aname) == 0 && mget(seen, aname) == 0 && ctx_get_local(ctx, aname) != 0 {
+      mset(seen, aname, 1)
+      result.push(aname)
+    }
+  }
+  else if stag == ST_RETURN { find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  else if stag == ST_IF {
+    find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
+    find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    else_stmts = load64(stmt + 24)
+    if else_stmts != 0 { find_captures_stmts(else_stmts, param_set, ctx, result, seen, local_set) }
+  }
+  else if stag == ST_WHILE {
+    find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
+    find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+  } else { 0 }
+}
+
+find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
+  if expr == 0 { return 0 }
+  etag = load64(expr)
+  if etag == EX_IDENT {
+    name = load64(expr + 8)
+    // It's a capture if: not a param, not locally defined, not already seen, and exists in enclosing ctx
+    if mget(param_set, name) == 0 && mget(local_set, name) == 0 && mget(seen, name) == 0 && ctx_get_local(ctx, name) != 0 {
+      mset(seen, name, 1)
+      result.push(name)
+    }
+  }
+  else if etag == EX_CALL {
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    args = load64(expr + 16)
+    ai := 0
+    while ai < args.len() {
+      find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  }
+  else if etag == EX_BINOP {
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+  }
+  else if etag == EX_UNARYOP {
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+  }
+  else if etag == EX_METHOD_CALL {
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    args = load64(expr + 24)
+    ai := 0
+    while ai < args.len() {
+      find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  }
+  else if etag == EX_FIELD_ACCESS {
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+  }
+  else if etag == EX_IF {
+    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+  }
+  else if etag == EX_ARRAY_LIT {
+    elems = load64(expr + 8)
+    ai := 0
+    while ai < elems.len() {
+      find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  }
+  else if etag == EX_TUPLE_LIT {
+    elems = load64(expr + 8)
+    ai := 0
+    while ai < elems.len() {
+      find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  }
+  0
+}
+
+// ------ lower_array_lit ---------------------------------------------------------------------------------------------------------------------------------------
+lower_array_lit(ctx:I expr:I) I {
+  elements = load64(expr + 8)
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
+
+  i := 0
+  while i < elements.len() {
+    val_reg = lower_expr(ctx, elements.get(i))
+    // Track element type from first element
+    if i == 0 { ctx_set_reg_type(ctx, dest, IRTY_ARRAY) }
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, dest, val_reg))
+    i = i + 1
+    0
+  }
+  ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+  dest
+}
+
+// ------ lower_struct_lit ------------------------------------------------------------------------------------------------------------------------------------
+lower_struct_lit(ctx:I expr:I) I {
+  name = load64(expr + 8)
+  field_names = load64(expr + 16)
+  field_values = load64(expr + 24)
+
+  // Look up struct definition to get field order
+  sd = ctx_struct_defs(ctx)
+  struct_fields = mget(sd, name)
+  num_fields = if struct_fields != 0 { struct_fields.len() } else { field_names.len() }
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_struct_alloc(dest, num_fields))
+  ctx_set_reg_type(ctx, dest, IRTY_STRUCT)
+  ctx_set_struct_name(ctx, dest, name)
+
+  // Build map from field name -> (index + 1) for O(1) lookup with proper string comparison
+  // Store index+1 so that index 0 is distinguishable from "not found" (mget returns 0)
+  field_index_map = M()
+  if struct_fields != 0 {
+    j := 0
+    while j < struct_fields.len() {
+      mset(field_index_map, struct_fields.get(j), j + 1)
+      j = j + 1
+      0
+    }
+    0
+  }
+
+  i := 0
+  while i < field_names.len() {
+    fname = field_names.get(i)
+    val_reg = lower_expr(ctx, field_values.get(i))
+
+    // Find field index in struct definition
+    field_idx := i
+    if struct_fields != 0 {
+      looked_up = mget(field_index_map, fname)
+      if looked_up != 0 { field_idx = looked_up - 1
+        0 }
+      0
+    }
+
+    ctx_emit(ctx, ir_field_store(dest, field_idx, val_reg))
+    i = i + 1
+    0
+  }
+  dest
+}
+
+// ------ lower_tuple_lit ---------------------------------------------------------------------------------------------------------------------------------------
+lower_tuple_lit(ctx:I expr:I) I {
+  elements = load64(expr + 8)
+  num_fields = elements.len()
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_struct_alloc(dest, num_fields))
+  ctx_set_reg_type(ctx, dest, IRTY_TUPLE)
+
+  i := 0
+  while i < num_fields {
+    val_reg = lower_expr(ctx, elements.get(i))
+    ctx_emit(ctx, ir_field_store(dest, i, val_reg))
+    i = i + 1
+    0
+  }
+  dest
+}
+
+// ------ lower_enum_variant ------------------------------------------------------------------------------------------------------------------------------
+lower_enum_variant(ctx:I expr:I) I {
+  enum_name = load64(expr + 8)
+  variant_name = load64(expr + 16)
+  args = load64(expr + 24)
+
+  // Look up tag from variant_tag_map
+  tmap = load64(ctx + 96)
+  tag_idx = if tmap != 0 && mhas(tmap, variant_name) { mget(tmap, variant_name) } else { 0 }
+
+  // Compute max_data from all variants in this enum
+  ed = ctx_enum_defs(ctx)
+  variants = mget(ed, enum_name)
+  max_data := 0
+  if variants != 0 {
+    i := 0
+    while i < variants.len() {
+      v = variants.get(i)
+      // entry array: [tag_index, num_data, ...]; access element at index 1
+      vnum = v.get(1)
+      if vnum > max_data { max_data = vnum
+        0 }
+      i = i + 1
+      0
+    }
+    0
+  }
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_enum_alloc(dest, tag_idx, max_data))
+  ctx_set_reg_type(ctx, dest, IRTY_ENUM)
+
+  // Store each arg as data field (offset by 1 for tag at index 0)
+  i := 0
+  while i < args.len() {
+    arg_reg = lower_expr(ctx, args.get(i))
+    ctx_emit(ctx, ir_field_store(dest, i + 1, arg_reg))
+    i = i + 1
+    0
+  }
+  dest
+}
+
+// ------ lower_spawn ---------------------------------------------------------------------------------------------------------------------------------------------------
+lower_spawn(ctx:I expr:I) I {
+  func_name = load64(expr + 8)
+  args = load64(expr + 16)
+
+  arg_regs = array<I>()
+  i := 0
+  while i < args.len() {
+    arg_regs.push(lower_expr(ctx, args.get(i)))
+    i = i + 1
+    0
+  }
+
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_thread_spawn(dest, func_name, arg_regs))
+  ctx_set_reg_type(ctx, dest, IRTY_JOIN_HANDLE)
+  dest
+}
+
+// ------ lower_mutex ---------------------------------------------------------------------------------------------------------------------------------------------------
+lower_mutex(ctx:I expr:I) I {
+  value_expr = load64(expr + 8)
+  val_reg = lower_expr(ctx, value_expr)
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_mutex_create(dest, val_reg))
+  ctx_set_reg_type(ctx, dest, IRTY_MUTEX)
+  dest
+}
+
+// ------ lower_array_create ------------------------------------------------------------------------------------------------------------------------------
+lower_array_create(ctx:I expr:I) I {
+  // elem_type_ptr = load64(expr + 8) --- used only for type tracking
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
+  ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+  dest
+}
+
+// ------ ir_type_for_return ------------------------------------------------------------------------------------------------------------------------------
+// Convert a type name string to an IrType tag for return type tracking.
+ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
+  if type_name == 0 { IRTY_INT }
+  else if type_name == "I" { IRTY_INT }
+  else if type_name == "Int" { IRTY_INT }
+  else if type_name == "F" { IRTY_FLOAT }
+  else if type_name == "Float" { IRTY_FLOAT }
+  else if type_name == "B" { IRTY_BOOL }
+  else if type_name == "Bool" { IRTY_BOOL }
+  else if type_name == "S" { IRTY_STR }
+  else if type_name == "String" { IRTY_STR }
+  else if type_name == "M" { IRTY_MAP }
+  else if type_name == "Map" { IRTY_MAP }
+  else if type_name == "JsonValue" { IRTY_JSON }
+  else if type_name == "HttpResponse" { IRTY_HTTP_RESP }
+  else if type_name == "HttpRequest" { IRTY_HTTP_REQ }
+  else if type_name == "HR" { IRTY_HTTP_REQ }
+  else if type_name == "HttpServer" { IRTY_HTTP_SERVER }
+  else if type_name == "HS" { IRTY_HTTP_SERVER }
+  else if type_name == "JoinHandle" { IRTY_JOIN_HANDLE }
+  // Starts with checks for generic types
+  else if type_name.sw("Array<") { IRTY_ARRAY }
+  else if type_name.sw("[") { IRTY_ARRAY }
+  else if type_name.sw("Sender") { IRTY_SENDER }
+  else if type_name.sw("Receiver") { IRTY_RECEIVER }
+  else if type_name.sw("Mutex") { IRTY_MUTEX }
+  else if type_name.sw("Result<") { IRTY_RESULT }
+  else if type_name.sw("R<") { IRTY_RESULT }
+  else if type_name.sw("(") { IRTY_TUPLE }
+  // Check struct/enum defs
+  else if mhas(struct_defs, type_name) == 1 { IRTY_STRUCT }
+  else if mhas(enum_defs, type_name) == 1 { IRTY_ENUM }
+  else { IRTY_INT }
+}
+
+// ------ map_has helper ------------------------------------------------------------------------------------------------------------------------------------------
+// Check if a Map contains a key (returns 1 or 0)
+map_has(m:I key:I) I {
+  v = mget(m, key)
+  if v != 0 { 1 } else { 0 }
+}
+
+// ------ struct_size_for_param ---------------------------------------------------------------------------------------------------------------------
+// Returns number of fields if type is a struct, tag+max_data if enum,
+// element count if tuple, 0 for scalars.
+struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
+  // Check struct
+  if map_has(struct_defs, type_name) == 1 {
+    fields = mget(struct_defs, type_name)
+    fields.len()
+  }
+  // Check enum --- return 1 + max data fields across variants
+  else if map_has(enum_defs, type_name) == 1 {
+    variants = mget(enum_defs, type_name)
+    max_data := 0
+    i := 0
+    while i < variants.len() {
+      vinfo = variants.get(i)
+      // vinfo is [tag_index, num_data_fields]
+      nd = vinfo.get(1)
+      if nd > max_data { max_data = nd }
+      i = i + 1
+      0
+    }
+    1 + max_data
+  }
+  // Check tuple --- count elements from "(I I I)"
+  else if type_name.sw("(") {
+    // Count spaces + 1 for number of tuple elements
+    inner_len = slen(type_name) - 2
+    if inner_len <= 0 { 0 }
+    else {
+      count := 1
+      i := 1
+      end = slen(type_name) - 1
+      while i < end {
+        if char_at(type_name, i) == 32 { count = count + 1 }
+        i = i + 1
+        0
+      }
+      count
+    }
+  }
+  else { 0 }
+}
+
+// ------ lower_function_body ---------------------------------------------------------------------------------------------------------------------------
+// Lower a single function's body, handling last-statement-as-return.
+// Returns an IrFunction pointer.
+lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I vtag_map:I vfields_map:I fn_ret_snames:I module_name:I local_fn_set:I imported_fn_names:I) I {
+  // Create fresh context
+  ctx = make_lower_ctx(struct_defs, enum_defs, fn_ret_types, global_names)
+  store64(ctx + 96, vtag_map)
+  store64(ctx + 104, vfields_map)
+  store64(ctx + 136, fn_ret_snames)
+  store64(ctx + 144, module_name)
+  store64(ctx + 152, local_fn_set)
+  store64(ctx + 160, imported_fn_names)
+
+  // Set up params
+  params_ast = load64(func + 8)   // Array of Param pointers [name@0, type@8]
+  nparams = params_ast.len()
+  param_names = array<I>()
+  param_sizes = array<I>()
+
+  i := 0
+  while i < params_ast.len() {
+    p = params_ast.get(i)
+    pname = load64(p)
+    ptype = load64(p + 8)
+    arg_reg = "arg" + itos(i)
+
+    // Set local binding
+    ctx_set_local(ctx, pname, arg_reg)
+
+    // Set param type in reg_types
+    if ptype == "I" { ctx_set_reg_type(ctx, arg_reg, IRTY_INT) }
+    else if ptype == "Int" { ctx_set_reg_type(ctx, arg_reg, IRTY_INT) }
+    else if ptype == "F" { ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "Float" { ctx_set_reg_type(ctx, arg_reg, IRTY_FLOAT) }
+    else if ptype == "B" { ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "Bool" { ctx_set_reg_type(ctx, arg_reg, IRTY_BOOL) }
+    else if ptype == "S" { ctx_set_reg_type(ctx, arg_reg, IRTY_STR) }
+    else if ptype == "String" { ctx_set_reg_type(ctx, arg_reg, IRTY_STR) }
+    else if ptype == "M" { ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) }
+    else if ptype == "Map" { ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) }
+    else if ptype == "JsonValue" { ctx_set_reg_type(ctx, arg_reg, IRTY_JSON) }
+    else if ptype == "HttpResponse" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_RESP) }
+    else if ptype == "HttpRequest" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) }
+    else if ptype == "HR" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) }
+    else if ptype == "HttpServer" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) }
+    else if ptype == "HS" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) }
+    else if mhas(struct_defs, ptype) == 1 { ctx_set_reg_type(ctx, arg_reg, IRTY_STRUCT)
+      ctx_set_struct_name(ctx, arg_reg, ptype) }
+    else if mhas(enum_defs, ptype) == 1 { ctx_set_reg_type(ctx, arg_reg, IRTY_ENUM) }
+    else if ptype.sw("Array") { ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) }
+    else if ptype.sw("[") { ctx_set_reg_type(ctx, arg_reg, IRTY_ARRAY) }
+    else if ptype.sw("Result") { ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) }
+    else if ptype.sw("R<") { ctx_set_reg_type(ctx, arg_reg, IRTY_RESULT) }
+    else if ptype.sw("(") { ctx_set_reg_type(ctx, arg_reg, IRTY_TUPLE) }
+    else if ptype.sw("Sender") { ctx_set_reg_type(ctx, arg_reg, IRTY_SENDER) }
+    else if ptype.sw("Receiver") { ctx_set_reg_type(ctx, arg_reg, IRTY_RECEIVER) }
+    else if ptype.sw("Mutex") { ctx_set_reg_type(ctx, arg_reg, IRTY_MUTEX) }
+    else { ctx_set_reg_type(ctx, arg_reg, IRTY_INT) }
+
+    param_names.push(arg_reg)
+    param_sizes.push(struct_size_for_param(ptype, struct_defs, enum_defs))
+
+    i = i + 1
+    0
+  }
+
+  // Lower body statements --- last statement is treated as return value
+  body = load64(func + 24)  // Array of Stmt pointers
+  j := 0
+  while j < body.len() {
+    is_last = j == body.len() - 1
+    stmt = body.get(j)
+    if is_last == 1 {
+      stag = load64(stmt)
+      // If last stmt is an expression or return, emit Ret
+      if stag == ST_EXPR {
+        expr = load64(stmt + 8)
+        reg = lower_expr(ctx, expr)
+        ctx_emit(ctx, ir_ret(reg))
+      } else { if stag == ST_RETURN {
+        val_expr = load64(stmt + 8)
+        reg = lower_expr(ctx, val_expr)
+        ctx_emit(ctx, ir_ret(reg))
+      } else {
+        lower_stmt(ctx, stmt)
+      } }
+    } else {
+      lower_stmt(ctx, stmt)
+    }
+    j = j + 1
+    0
+  }
+
+  // Determine return type
+  ret_type_name = load64(func + 16)
+  ret_type = if ret_type_name != 0 { ir_type_for_return(ret_type_name, struct_defs, enum_defs) } else { IRTY_INT }
+
+  ir_fn = make_ir_function(func_name, param_names, ctx_instrs(ctx), ret_type, param_sizes)
+
+  // Collect lifted functions (lambdas) from this function's context
+  // We return them by storing in a temporary global-like mechanism:
+  // The caller (lower_with_extra_structs) will read ctx_lifted_fns after this call
+  // Store lifted fns in the function object temporarily at a known location
+  // Actually, use a simpler approach: return an array [ir_fn, lifted0, lifted1, ...]
+  result_arr = array<I>()
+  result_arr.push(ir_fn)
+  lfns = ctx_lifted_fns(ctx)
+  lfi := 0
+  while lfi < lfns.len() {
+    result_arr.push(lfns.get(lfi))
+    lfi = lfi + 1
+    0
+  }
+  result_arr
+}
+
+// ------ lower ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Top-level entry point: lower a parsed Program to an IrModule.
+lower(program:I module_name:I module_fn_ret_types:I) I {
+  lower_with_extra_structs(program, module_name, module_fn_ret_types, 0)
+}
+
+lower_with_globals(program:I module_name:I module_fn_ret_types:I extra_globals:I) I {
+  lower_full(program, module_name, module_fn_ret_types, 0, extra_globals)
+}
+
+// ------ lower_with_extra_structs ------------------------------------------------------------------------------------------------------------
+lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I) I {
+  lower_full(program, module_name, module_fn_ret_types, extra_struct_defs, 0)
+}
+
+lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I extra_globals:I) I {
+  // 1. Collect struct definitions: name -> field names array
+  struct_defs = M()
+  // Merge extra_struct_defs first
+  if extra_struct_defs != 0 {
+    keys = extra_struct_defs.keys()
+    ki := 0
+    while ki < keys.len() {
+      k = keys.get(ki)
+      mset(struct_defs, k, mget(extra_struct_defs, k))
+      ki = ki + 1
+      0
+    }
+    0
+  }
+
+  // Collect from program's structs
+  prog_structs = load64(program + 24)  // Array of StructDef pointers
+  si := 0
+  while si < prog_structs.len() {
+    sdef = prog_structs.get(si)
+    sname = load64(sdef)           // name
+    sfields = load64(sdef + 8)     // flat array [name0, type0, name1, type1, ...]
+    // Build array of just field names
+    field_names = array<I>()
+    fi := 0
+    while fi < sfields.len() {
+      field_names.push(sfields.get(fi))  // name at even indices
+      fi = fi + 2                         // skip type
+      0
+    }
+    mset(struct_defs, sname, field_names)
+    si = si + 1
+    0
+  }
+
+  // 2. Collect enum definitions: name -> array of [variant_name, tag, num_data] arrays
+  enum_defs = M()
+  variant_tag_map = M()       // variant_name -> tag_index
+  variant_fields_map = M()    // variant_name -> array of field type name strings
+  prog_enums = load64(program + 32)  // Array of EnumDef pointers
+  ei := 0
+  while ei < prog_enums.len() {
+    edef = prog_enums.get(ei)
+    ename = load64(edef)              // name
+    evariants = load64(edef + 8)      // Array of EnumVariant pointers [name@0, fields@8]
+    vinfo_arr = array<I>()
+    vi := 0
+    while vi < evariants.len() {
+      variant = evariants.get(vi)
+      vname = load64(variant)
+      vfields = load64(variant + 8)
+      num_data = if vfields != 0 { vfields.len() } else { 0 }
+      // Store as [tag_index, num_data_fields, field_type_name1, field_type_name2, ...] array
+      entry = array<I>()
+      entry.push(vi)
+      entry.push(num_data)
+      vfi := 0
+      while vfi < num_data {
+        entry.push(vfields.get(vfi))
+        vfi = vfi + 1
+        0
+      }
+      vinfo_arr.push(entry)
+      // Store variant name -> tag index and field types
+      mset(variant_tag_map, vname, vi)
+      if num_data > 0 { mset(variant_fields_map, vname, vfields) }
+      vi = vi + 1
+      0
+    }
+    mset(enum_defs, ename, vinfo_arr)
+    ei = ei + 1
+    0
+  }
+
+  // 3. Build fn_ret_types from program functions
+  fn_ret_types = M()
+  fn_ret_struct_names = M()
+  prog_fns = load64(program + 16)  // Array of Function pointers
+  nfns = prog_fns.len()
+  fri := 0
+  while fri < nfns {
+    func = prog_fns.get(fri)
+    fname = load64(func)
+    ret_type_name = load64(func + 16)
+    if ret_type_name != 0 {
+      rt = ir_type_for_return(ret_type_name, struct_defs, enum_defs)
+      if IRTY_INT != rt {
+        mset(fn_ret_types, fname, rt)
+        // Also store with mangled name for intra-module call resolution
+        if module_name != 0 { mset(fn_ret_types, module_name + "__" + fname, rt) }
+      }
+      if rt == IRTY_STRUCT {
+        mset(fn_ret_struct_names, fname, ret_type_name)
+        if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ret_type_name) }
+      }
+    }
+    fri = fri + 1
+    0
+  }
+  // Merge module_fn_ret_types
+  if module_fn_ret_types != 0 {
+    mkeys = module_fn_ret_types.keys()
+    mki := 0
+    while mki < mkeys.len() {
+      mk = mkeys.get(mki)
+      mset(fn_ret_types, mk, mget(module_fn_ret_types, mk))
+      mki = mki + 1
+      0
+    }
+    0
+  }
+
+  // 3b. Register ALL local functions in fn_ret_types with mangled names
+  // This ensures lower_call_user can find intra-module calls
+  if module_name != 0 {
+    lfni := 0
+    while lfni < nfns {
+      lfn = prog_fns.get(lfni)
+      lfname = load64(lfn)
+      mangled_fn = module_name + "__" + lfname
+      // Always register with at least IRTY_INT so the name is findable
+      if mhas(fn_ret_types, mangled_fn) == 0 {
+        mset(fn_ret_types, mangled_fn, IRTY_INT)
+      }
+      lfni = lfni + 1
+      0
+    }
+    0
+  }
+
+  // 3c. Build local_fn_set: map of ALL user-defined function names in this compilation unit
+  // Always populated (not just for modules) so user functions take precedence over builtins
+  local_fn_set = M()
+  lfsi := 0
+  while lfsi < nfns {
+    lfsf = prog_fns.get(lfsi)
+    lfs_name = load64(lfsf)
+    mset(local_fn_set, lfs_name, 1)
+    lfsi = lfsi + 1
+    0
+  }
+  if module_name != 0 {
+    // Also add impl method names as Type__method
+    prog_impls_lfs = load64(program + 48)
+    lfs_ii := 0
+    while lfs_ii < prog_impls_lfs.len() {
+      lfs_impl = prog_impls_lfs.get(lfs_ii)
+      lfs_ttype = load64(lfs_impl + 8)
+      lfs_methods = load64(lfs_impl + 16)
+      lfs_mi := 0
+      while lfs_mi < lfs_methods.len() {
+        lfs_m = lfs_methods.get(lfs_mi)
+        lfs_mname = load64(lfs_m)
+        mset(local_fn_set, lfs_ttype + "__" + lfs_mname, 1)
+        lfs_mi = lfs_mi + 1
+        0
+      }
+      lfs_ii = lfs_ii + 1
+      0
+    }
+    0
+  }
+
+  // 3d. Build imported_fn_names: bare name -> mangled name for cross-module calls
+  imported_fn_names = M()
+  prog_imports = load64(program)  // offset 0 = imports array
+  if prog_imports.len() > 0 && module_fn_ret_types != 0 {
+    // For each key in module_fn_ret_types (format "mod__func"), check if mod is an import
+    mfrt_keys = module_fn_ret_types.keys()
+    imp_ii := 0
+    while imp_ii < prog_imports.len() {
+      imp_name = prog_imports.get(imp_ii)
+      imp_prefix = imp_name + "__"
+      imp_prefix_len = slen(imp_prefix)
+      mfrt_ki := 0
+      while mfrt_ki < mfrt_keys.len() {
+        mfrt_key = mfrt_keys.get(mfrt_ki)
+        if slen(mfrt_key) > imp_prefix_len {
+          if mfrt_key.sw(imp_prefix) {
+            bare_name = mfrt_key.substring(imp_prefix_len, slen(mfrt_key))
+            mset(imported_fn_names, bare_name, mfrt_key)
+          }
+        }
+        mfrt_ki = mfrt_ki + 1
+        0
+      }
+      imp_ii = imp_ii + 1
+      0
+    }
+    0
+  }
+
+  // 4. Collect global variable names, types, and init values
+  globals_arr = array<I>()
+  global_names = M()
+  global_init_vals = M()
+  prog_globals = load64(program + 8)  // Array of GlobalDef pointers
+  nglobals = prog_globals.len()
+  gi := 0
+  while gi < nglobals {
+    gdef = prog_globals.get(gi)
+    gname = load64(gdef)
+    gvalue = load64(gdef + 8)
+    globals_arr.push(gname)
+    // Determine type and extract init value from value expression
+    vtag = load64(gvalue)
+    if vtag == EX_INT_LIT {
+      mset(global_names, gname, IRTY_INT)
+      mset(global_init_vals, gname, load64(gvalue + 8))
+    }
+    if vtag == EX_FLOAT_LIT { mset(global_names, gname, IRTY_FLOAT) }
+    if vtag == EX_BOOL_LIT {
+      mset(global_names, gname, IRTY_BOOL)
+      bval = load64(gvalue + 8)
+      mset(global_init_vals, gname, bval)
+    }
+    if vtag == EX_STRING_LIT { mset(global_names, gname, IRTY_STR) }
+    if vtag != EX_INT_LIT && vtag != EX_FLOAT_LIT && vtag != EX_BOOL_LIT && vtag != EX_STRING_LIT { mset(global_names, gname, IRTY_INT) }
+    gi = gi + 1
+    0
+  }
+
+  // Merge extra globals from imported modules (so we can distinguish globals from functions)
+  if extra_globals != 0 {
+    eg_keys = extra_globals.keys()
+    egi := 0
+    while egi < eg_keys.len() {
+      egk = eg_keys.get(egi)
+      if mhas(global_names, egk) == 0 {
+        mset(global_names, egk, mget(extra_globals, egk))
+      }
+      egi = egi + 1
+      0
+    }
+  }
+
+  // 5. Lower each function
+  ir_functions = array<I>()
+
+  fi2 := 0
+  while fi2 < prog_fns.len() {
+    func = prog_fns.get(fi2)
+    fname = load64(func)
+    // Handle module name mangling
+    func_name = if module_name != 0 { module_name + "__" + fname } else { fname }
+    fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names)
+    // fn_result is [ir_fn, lifted0, lifted1, ...]
+    ir_functions.push(fn_result.get(0))
+    fri2 := 1
+    while fri2 < fn_result.len() {
+      ir_functions.push(fn_result.get(fri2))
+      fri2 = fri2 + 1
+      0
+    }
+    fi2 = fi2 + 1
+    0
+  }
+
+  // 6. Lower impl block methods
+  prog_impls = load64(program + 48)  // Array of ImplBlock pointers
+  ii := 0
+  while ii < prog_impls.len() {
+    impl_block = prog_impls.get(ii)
+    target_type = load64(impl_block + 8)
+    methods = load64(impl_block + 16)
+    mi := 0
+    while mi < methods.len() {
+      method = methods.get(mi)
+      mname = load64(method)
+      // Mangle: module__Type__method or Type_method
+      mangled = if module_name != 0 { module_name + "__" + target_type + "__" + mname } else { target_type + "_" + mname }
+      mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names)
+      ir_functions.push(mfn_result.get(0))
+      mfri := 1
+      while mfri < mfn_result.len() {
+        ir_functions.push(mfn_result.get(mfri))
+        mfri = mfri + 1
+        0
+      }
+      mi = mi + 1
+      0
+    }
+    ii = ii + 1
+    0
+  }
+
+  // 7. Build and return IrModule
+  mod = make_ir_module(ir_functions, globals_arr, struct_defs)
+  store64(mod + 24, global_init_vals)
+  mod
+}

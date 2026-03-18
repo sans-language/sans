@@ -42,7 +42,7 @@ enum LocalVar {
 
 /// Lower a parsed `Program` into an IR `Module`.
 pub fn lower(program: &Program, module_name: Option<&str>, module_fn_ret_types: &HashMap<(String, String), IrType>) -> Module {
-    lower_with_extra_structs(program, module_name, module_fn_ret_types, &HashMap::new())
+    lower_with_extra_structs(program, module_name, module_fn_ret_types, &HashMap::new(), &HashMap::new())
 }
 
 /// Like `lower`, but merges `extra_struct_defs` (from imported modules) into the struct
@@ -53,6 +53,7 @@ pub fn lower_with_extra_structs(
     module_name: Option<&str>,
     module_fn_ret_types: &HashMap<(String, String), IrType>,
     extra_struct_defs: &HashMap<String, Vec<String>>,
+    extra_globals: &HashMap<String, IrType>,
 ) -> Module {
     // Collect struct definitions: name -> field names (ordered)
     let mut struct_defs: HashMap<String, Vec<String>> = extra_struct_defs.clone();
@@ -141,7 +142,7 @@ pub fn lower_with_extra_structs(
 
     // Process global variable definitions
     let mut globals: Vec<(String, i64)> = Vec::new();
-    let mut global_names: HashMap<String, IrType> = HashMap::new();
+    let mut global_names: HashMap<String, IrType> = extra_globals.clone();
     for gdef in &program.globals {
         let init_value = match &gdef.value {
             Expr::IntLiteral { value, .. } => *value,
@@ -235,6 +236,23 @@ pub fn lower_with_extra_structs(
         local_fn_ret_types.insert(f.name.clone(), ir_type);
     }
 
+    // Collect local function names for intra-module call mangling
+    let local_fn_names: Vec<String> = program.functions.iter().map(|f| f.name.clone()).collect();
+    let current_module = module_name.map(|s| s.to_string());
+
+    // Build imported function name map: bare_name -> mangled_name
+    // for functions imported via `import "module"` that can be called without prefix
+    let mut imported_fn_names: HashMap<String, String> = HashMap::new();
+    for imp in &program.imports {
+        let mod_name = &imp.module_name;
+        for ((m, f), _) in module_fn_ret_types.iter() {
+            if m == mod_name {
+                let mangled = format!("{}__{}", m, f);
+                imported_fn_names.insert(f.clone(), mangled);
+            }
+        }
+    }
+
     let mut functions: Vec<IrFunction> = Vec::new();
     for f in &program.functions {
         let func_name = if let Some(mod_name) = module_name {
@@ -242,7 +260,7 @@ pub fn lower_with_extra_structs(
         } else {
             f.name.clone()
         };
-        let (main_fn, lifted) = lower_function_named(&f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types);
+        let (main_fn, lifted) = lower_function_named(&f, &func_name, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types, &current_module, &local_fn_names, &imported_fn_names);
         functions.push(main_fn);
         functions.extend(lifted);
     }
@@ -255,7 +273,7 @@ pub fn lower_with_extra_structs(
             } else {
                 format!("{}_{}", imp.target_type, method.name)
             };
-            let (main_fn, lifted) = lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types);
+            let (main_fn, lifted) = lower_function_named(method, &mangled, &struct_defs, &enum_defs, &module_names, module_fn_ret_types, &local_fn_ret_types, &global_names, &struct_field_types, &enum_field_types, &current_module, &local_fn_names, &imported_fn_names);
             functions.push(main_fn);
             functions.extend(lifted);
         }
@@ -264,8 +282,11 @@ pub fn lower_with_extra_structs(
     Module { globals, functions }
 }
 
-fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>, struct_field_types: &HashMap<String, Vec<(String, IrType)>>, enum_field_types: &HashMap<(String, String), Vec<IrType>>) -> (IrFunction, Vec<IrFunction>) {
+fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, struct_defs: &HashMap<String, Vec<String>>, enum_defs: &HashMap<String, Vec<(String, usize, usize)>>, module_names: &[String], module_fn_ret_types: &HashMap<(String, String), IrType>, local_fn_ret_types: &HashMap<String, IrType>, global_names: &HashMap<String, IrType>, struct_field_types: &HashMap<String, Vec<(String, IrType)>>, enum_field_types: &HashMap<(String, String), Vec<IrType>>, current_module: &Option<String>, local_fn_names: &[String], imported_fn_names: &HashMap<String, String>) -> (IrFunction, Vec<IrFunction>) {
     let mut builder = IrBuilder::new(struct_defs.clone(), enum_defs.clone(), module_names.to_vec(), module_fn_ret_types.clone(), local_fn_ret_types.clone(), global_names.clone(), struct_field_types.clone(), enum_field_types.clone());
+    builder.current_module = current_module.clone();
+    builder.local_fn_names = local_fn_names.to_vec();
+    builder.imported_fn_names = imported_fn_names.clone();
 
     // Map params to arg registers
     let params: Vec<Reg> = func
@@ -320,6 +341,13 @@ fn lower_function_named(func: &sans_parser::ast::Function, func_name: &str, stru
                                 })
                                 .collect();
                             builder.reg_types.insert(reg.clone(), IrType::Tuple(types));
+                        }
+                        // Sender<T> / Receiver<T>
+                        else if n.starts_with("Sender<") && n.ends_with('>') {
+                            builder.reg_types.insert(reg.clone(), IrType::Sender);
+                        }
+                        else if n.starts_with("Receiver<") && n.ends_with('>') {
+                            builder.reg_types.insert(reg.clone(), IrType::Receiver);
                         }
                         // Result<T> or R<T>
                         else if (n.starts_with("Result<") || n.starts_with("R<")) && n.ends_with('>') {
@@ -416,6 +444,12 @@ struct IrBuilder {
     struct_field_types: HashMap<String, Vec<(String, IrType)>>,
     /// Maps (enum_name, variant_name) to the variant's field IrTypes
     enum_field_types: HashMap<(String, String), Vec<IrType>>,
+    /// Current module name (if in a module context), used to mangle intra-module calls
+    current_module: Option<String>,
+    /// Set of function names defined in the current module (bare names)
+    local_fn_names: Vec<String>,
+    /// Maps bare function name -> mangled name for imported module functions
+    imported_fn_names: HashMap<String, String>,
 }
 
 impl IrBuilder {
@@ -439,6 +473,9 @@ impl IrBuilder {
             closure_info: HashMap::new(),
             struct_field_types,
             enum_field_types,
+            current_module: None,
+            local_fn_names: Vec::new(),
+            imported_fn_names: HashMap::new(),
         }
     }
 
@@ -613,9 +650,22 @@ impl IrBuilder {
                     self.reg_types.insert(dest.clone(), ir_type);
                     dest
                 } else {
-                    // Function reference — emit FnRef instruction
+                    // Function reference — emit FnRef instruction with mangling
+                    let mangled = if let Some(ref mod_name) = self.current_module {
+                        if self.local_fn_names.contains(name) {
+                            format!("{}__{}", mod_name, name)
+                        } else if let Some(m) = self.imported_fn_names.get(name) {
+                            m.clone()
+                        } else {
+                            name.clone()
+                        }
+                    } else if let Some(m) = self.imported_fn_names.get(name) {
+                        m.clone()
+                    } else {
+                        name.clone()
+                    };
                     let dest = self.fresh_reg();
-                    self.instructions.push(Instruction::FnRef { dest: dest.clone(), name: name.clone() });
+                    self.instructions.push(Instruction::FnRef { dest: dest.clone(), name: mangled });
                     self.reg_types.insert(dest.clone(), IrType::Int); // fn pointer as i64
                     dest
                 }
@@ -637,6 +687,9 @@ impl IrBuilder {
 
                         self.emit_label(rhs_label.clone());
                         let right_reg = self.lower_expr(right);
+                        // After lowering right, the current label may have changed
+                        // (e.g. if right contains nested && or || or if-else)
+                        let rhs_source_label = self.current_label.clone().unwrap_or_else(|| rhs_label.clone());
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                         self.emit_label(false_label.clone());
@@ -650,7 +703,7 @@ impl IrBuilder {
                         self.instructions.push(Instruction::Phi {
                             dest: dest.clone(),
                             a_val: right_reg,
-                            a_label: rhs_label,
+                            a_label: rhs_source_label,
                             b_val: false_reg,
                             b_label: false_label,
                         });
@@ -677,6 +730,9 @@ impl IrBuilder {
 
                         self.emit_label(rhs_label.clone());
                         let right_reg = self.lower_expr(right);
+                        // After lowering right, the current label may have changed
+                        // (e.g. if right contains nested && or || or if-else)
+                        let rhs_source_label = self.current_label.clone().unwrap_or_else(|| rhs_label.clone());
                         self.instructions.push(Instruction::Jump { target: merge_label.clone() });
 
                         self.emit_label(merge_label.clone());
@@ -686,7 +742,7 @@ impl IrBuilder {
                             a_val: true_reg,
                             a_label: true_label,
                             b_val: right_reg,
-                            b_label: rhs_label,
+                            b_label: rhs_source_label,
                         });
                         self.reg_types.insert(dest.clone(), IrType::Bool);
                         return dest;
@@ -698,8 +754,8 @@ impl IrBuilder {
                 let left_reg = self.lower_expr(left);
                 let right_reg = self.lower_expr(right);
 
-                // Check for String + String → StringConcat
-                if matches!(op, BinOp::Add) && self.reg_types.get(&left_reg) == Some(&IrType::Str) {
+                // Check for String + String → StringConcat (either side being Str triggers concat)
+                if matches!(op, BinOp::Add) && (self.reg_types.get(&left_reg) == Some(&IrType::Str) || self.reg_types.get(&right_reg) == Some(&IrType::Str)) {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::StringConcat {
                         dest: dest.clone(),
@@ -712,7 +768,8 @@ impl IrBuilder {
 
                 // Check operand types for dispatch
                 let is_float = self.reg_types.get(&left_reg) == Some(&IrType::Float);
-                let is_string = self.reg_types.get(&left_reg) == Some(&IrType::Str);
+                let is_string = self.reg_types.get(&left_reg) == Some(&IrType::Str)
+                    || self.reg_types.get(&right_reg) == Some(&IrType::Str);
 
                 match op {
                     BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Mod => {
@@ -879,6 +936,43 @@ impl IrBuilder {
                 dest
             }
             Expr::Call { function, args, .. } => {
+                // User-defined functions take precedence over builtins of the same name
+                let is_user_fn = self.local_fn_names.contains(function) || self.imported_fn_names.contains_key(function.as_str());
+                if is_user_fn {
+                    let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
+                    let dest = self.fresh_reg();
+                    let call_name = if let Some(ref mod_name) = self.current_module {
+                        if self.local_fn_names.contains(function) {
+                            format!("{}__{}", mod_name, function)
+                        } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                            mangled.clone()
+                        } else {
+                            function.clone()
+                        }
+                    } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                        mangled.clone()
+                    } else {
+                        function.clone()
+                    };
+                    self.instructions.push(Instruction::Call {
+                        dest: dest.clone(),
+                        function: call_name,
+                        args: arg_regs,
+                    });
+                    let ret_type = self.local_fn_ret_types.get(function).cloned()
+                        .or_else(|| {
+                            for ((_, f), t) in self.module_fn_ret_types.iter() {
+                                if f == function {
+                                    return Some(t.clone());
+                                }
+                            }
+                            None
+                        })
+                        .unwrap_or(IrType::Int);
+                    self.reg_types.insert(dest.clone(), ret_type);
+                    return dest;
+                }
+
                 if function == "print" || function == "p" {
                     let arg_reg = self.lower_expr(&args[0]);
                     let ty = self.reg_types.get(&arg_reg).cloned().unwrap_or(IrType::Int);
@@ -987,6 +1081,28 @@ impl IrBuilder {
                     self.instructions.push(Instruction::MapCreate { dest: dest.clone() });
                     self.reg_types.insert(dest.clone(), IrType::Map);
                     return dest;
+                } else if function == "mget" {
+                    let map_reg = self.lower_expr(&args[0]);
+                    let key_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::MapGet { dest: dest.clone(), map: map_reg, key: key_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "mset" {
+                    let map_reg = self.lower_expr(&args[0]);
+                    let key_reg = self.lower_expr(&args[1]);
+                    let val_reg = self.lower_expr(&args[2]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::MapSet { dest: dest.clone(), map: map_reg, key: key_reg, value: val_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "mhas" {
+                    let map_reg = self.lower_expr(&args[0]);
+                    let key_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::MapHas { dest: dest.clone(), map: map_reg, key: key_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "json_object" || function == "jobj" || function == "jo" {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::JsonObject { dest: dest.clone() });
@@ -1031,6 +1147,13 @@ impl IrBuilder {
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::HttpListen { dest: dest.clone(), port: port_reg });
                     self.reg_types.insert(dest.clone(), IrType::HttpServer);
+                    return dest;
+                } else if function == "serve" {
+                    let port_reg = self.lower_expr(&args[0]);
+                    let handler_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Serve { dest: dest.clone(), port: port_reg, handler: handler_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "int_to_float" || function == "itof" {
                     let val_reg = self.lower_expr(&args[0]);
@@ -1177,6 +1300,24 @@ impl IrBuilder {
                     self.instructions.push(Instruction::ArenaEnd { dest: dest.clone() });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "signal_handler" {
+                    let signum_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SignalHandler { dest: dest.clone(), signum: signum_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "signal_check" {
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::SignalCheck { dest: dest.clone() });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "spoll" {
+                    let fd_reg = self.lower_expr(&args[0]);
+                    let timeout_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::Spoll { dest: dest.clone(), fd: fd_reg, timeout: timeout_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "alloc" {
                     let size_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
@@ -1232,8 +1373,13 @@ impl IrBuilder {
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "store8" {
-                    let ptr_reg = self.lower_expr(&args[0]);
-                    let val_reg = self.lower_expr(&args[1]);
+                    // Accept 2 args (ptr, val) or 3 args (addrspace, ptr, val)
+                    let (ptr_reg, val_reg) = if args.len() == 3 {
+                        let _addrspace = self.lower_expr(&args[0]); // ignored
+                        (self.lower_expr(&args[1]), self.lower_expr(&args[2]))
+                    } else {
+                        (self.lower_expr(&args[0]), self.lower_expr(&args[1]))
+                    };
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Store8 { dest: dest.clone(), ptr: ptr_reg, val: val_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
@@ -1288,7 +1434,7 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Rsetsockopt { dest: dest.clone(), fd: fd_reg, level: level_reg, opt: opt_reg, val_ptr: val_ptr_reg, val_len: val_len_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
-                } else if function == "load64" {
+                } else if function == "load64" || function == "deref" {
                     let ptr_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Load64 { dest: dest.clone(), ptr: ptr_reg });
@@ -1308,10 +1454,23 @@ impl IrBuilder {
                     self.instructions.push(Instruction::Strstr { dest: dest.clone(), haystack: haystack_reg, needle: needle_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
+                } else if function == "gzip_compress" {
+                    let data_reg = self.lower_expr(&args[0]);
+                    let len_reg = self.lower_expr(&args[1]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::GzipCompress { dest: dest.clone(), data: data_reg, len: len_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
                 } else if function == "exit" {
                     let code_reg = self.lower_expr(&args[0]);
                     let dest = self.fresh_reg();
                     self.instructions.push(Instruction::Exit { dest: dest.clone(), code: code_reg });
+                    self.reg_types.insert(dest.clone(), IrType::Int);
+                    return dest;
+                } else if function == "system" || function == "sys" {
+                    let cmd_reg = self.lower_expr(&args[0]);
+                    let dest = self.fresh_reg();
+                    self.instructions.push(Instruction::System { dest: dest.clone(), command: cmd_reg });
                     self.reg_types.insert(dest.clone(), IrType::Int);
                     return dest;
                 } else if function == "sock" {
@@ -1500,13 +1659,37 @@ impl IrBuilder {
 
                 let arg_regs: Vec<Reg> = args.iter().map(|a| self.lower_expr(a)).collect();
                 let dest = self.fresh_reg();
+                // Mangle calls: intra-module (local) and cross-module (imported) functions
+                let call_name = if let Some(ref mod_name) = self.current_module {
+                    if self.local_fn_names.contains(function) {
+                        format!("{}__{}", mod_name, function)
+                    } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                        mangled.clone()
+                    } else {
+                        function.clone()
+                    }
+                } else if let Some(mangled) = self.imported_fn_names.get(function) {
+                    mangled.clone()
+                } else {
+                    function.clone()
+                };
                 self.instructions.push(Instruction::Call {
                     dest: dest.clone(),
-                    function: function.clone(),
+                    function: call_name,
                     args: arg_regs,
                 });
                 // Use tracked return type if available (for Result, struct, enum, etc.)
-                let ret_type = self.local_fn_ret_types.get(function).cloned().unwrap_or(IrType::Int);
+                let ret_type = self.local_fn_ret_types.get(function).cloned()
+                    .or_else(|| {
+                        // Check module_fn_ret_types for cross-module calls
+                        for ((_m, f), t) in self.module_fn_ret_types.iter() {
+                            if f == function {
+                                return Some(t.clone());
+                            }
+                        }
+                        None
+                    })
+                    .unwrap_or(IrType::Int);
                 self.reg_types.insert(dest.clone(), ret_type);
                 dest
             }
@@ -2021,6 +2204,13 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Int);
                         return dest;
                     }
+                    (Some(IrType::HttpRequest), "form") => {
+                        let name_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::HttpRequestForm { dest: dest.clone(), req: obj_reg, name: name_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
                     (Some(IrType::Result(ref inner)), "is_ok") => {
                         let _ = inner;
                         let dest = self.fresh_reg();
@@ -2057,6 +2247,226 @@ impl IrBuilder {
                         self.reg_types.insert(dest.clone(), IrType::Str);
                         return dest;
                     }
+                    // Relaxed: when type is Int (pointer), infer the correct dispatch
+                    // based on method name for self-hosted compiler compatibility
+                    (Some(IrType::Int), _) if method == "get" => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        // Default to ArrayGet — most .get() calls on Int are array access
+                        self.instructions.push(Instruction::ArrayGet { dest: dest.clone(), array: obj_reg, index: key_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "set" => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let val_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        // Default to ArraySet — most .set() calls on Int are array access
+                        self.instructions.push(Instruction::ArraySet { array: obj_reg, index: key_reg, value: val_reg });
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "has" => {
+                        let key_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapHas { dest: dest.clone(), map: obj_reg, key: key_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "push" => {
+                        let val_reg = self.lower_expr(&args[0]);
+                        self.instructions.push(Instruction::ArrayPush { array: obj_reg, value: val_reg });
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Const { dest: dest.clone(), value: 0 });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "pop" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayPop { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "len" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayLen { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "keys" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapKeys { dest: dest.clone(), map: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "vals" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::MapVals { dest: dest.clone(), map: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "remove" => {
+                        let idx_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayRemove { dest: dest.clone(), array: obj_reg, index: idx_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "sw" => {
+                        let prefix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringStartsWith { dest: dest.clone(), string: obj_reg, prefix: prefix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "ew" => {
+                        let suffix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringEndsWith { dest: dest.clone(), string: obj_reg, suffix: suffix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "contains" => {
+                        let arg_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        let arg_type = self.reg_types.get(&arg_reg).cloned().unwrap_or(IrType::Int);
+                        if arg_type == IrType::Str {
+                            self.instructions.push(Instruction::StringContains { dest: dest.clone(), string: obj_reg, needle: arg_reg });
+                        } else {
+                            self.instructions.push(Instruction::ArrayContains { dest: dest.clone(), array: obj_reg, value: arg_reg });
+                        }
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "map" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayMap { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "filter" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayFilter { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "any" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayAny { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "find" => {
+                        let fn_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayFind { dest: dest.clone(), array: obj_reg, fn_ptr: fn_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "enumerate" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayEnumerate { dest: dest.clone(), array: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "zip" => {
+                        let other_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ArrayZip { dest: dest.clone(), array: obj_reg, other: other_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Int)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "starts_with" || method == "sw" => {
+                        let prefix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringStartsWith { dest: dest.clone(), string: obj_reg, prefix: prefix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "ends_with" || method == "ew" => {
+                        let suffix_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringEndsWith { dest: dest.clone(), string: obj_reg, suffix: suffix_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "add" => {
+                        let other_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringConcat { dest: dest.clone(), left: obj_reg, right: other_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "unwrap" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultUnwrap { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "is_ok" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultIsOk { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "is_err" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultIsErr { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Bool);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "error" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultError { dest: dest.clone(), result: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "unwrap_or" => {
+                        let default_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::ResultUnwrapOr { dest: dest.clone(), result: obj_reg, default: default_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "stringify" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::JsonStringify { dest: dest.clone(), value: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "split" => {
+                        let delim_reg = self.lower_expr(&args[0]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringSplit { dest: dest.clone(), string: obj_reg, delimiter: delim_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Array(Box::new(IrType::Str)));
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "replace" => {
+                        let old_reg = self.lower_expr(&args[0]);
+                        let new_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringReplace { dest: dest.clone(), string: obj_reg, old: old_reg, new_str: new_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "trim" => {
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringTrim { dest: dest.clone(), string: obj_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
+                    (Some(IrType::Int), _) if method == "substring" => {
+                        let start_reg = self.lower_expr(&args[0]);
+                        let end_reg = self.lower_expr(&args[1]);
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::StringSubstring { dest: dest.clone(), string: obj_reg, start: start_reg, end: end_reg });
+                        self.reg_types.insert(dest.clone(), IrType::Str);
+                        return dest;
+                    }
                     _ => {} // fall through to struct/enum handling
                 }
 
@@ -2064,7 +2474,23 @@ impl IrBuilder {
                 let type_name = match self.reg_types.get(&obj_reg) {
                     Some(IrType::Struct(name)) => name.clone(),
                     Some(IrType::Enum(name)) => name.clone(),
-                    _ => panic!("method call on non-struct/enum"),
+                    Some(IrType::Int) => {
+                        // Relaxed: treat Int as a generic call (method as function with obj as first arg)
+                        let mangled = format!("{}", method);
+                        let mut arg_regs = vec![obj_reg];
+                        for arg in args {
+                            arg_regs.push(self.lower_expr(arg));
+                        }
+                        let dest = self.fresh_reg();
+                        self.instructions.push(Instruction::Call {
+                            dest: dest.clone(),
+                            function: mangled,
+                            args: arg_regs,
+                        });
+                        self.reg_types.insert(dest.clone(), IrType::Int);
+                        return dest;
+                    }
+                    _ => panic!("method call on non-struct/enum: {:?} method: {}", self.reg_types.get(&obj_reg), method),
                 };
                 let mangled = format!("{}_{}", type_name, method);
                 let mut arg_regs = vec![obj_reg];
@@ -2327,6 +2753,10 @@ impl IrBuilder {
                         "Float" | "F" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Float); }
                         "Bool" | "B" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Bool); }
                         "String" | "S" => { lifted_builder.reg_types.insert(reg.clone(), IrType::Str); }
+                        "HttpRequest" => { lifted_builder.reg_types.insert(reg.clone(), IrType::HttpRequest); }
+                        "HttpResponse" => { lifted_builder.reg_types.insert(reg.clone(), IrType::HttpResponse); }
+                        "HttpServer" | "HS" => { lifted_builder.reg_types.insert(reg.clone(), IrType::HttpServer); }
+                        "JsonValue" => { lifted_builder.reg_types.insert(reg.clone(), IrType::JsonValue); }
                         _ => { lifted_builder.reg_types.insert(reg.clone(), IrType::Int); }
                     }
                     lifted_builder.locals.insert(param.name.clone(), LocalVar::Value(reg));
@@ -2436,7 +2866,9 @@ impl IrBuilder {
                     if let LocalVar::Ptr(ptr) = local {
                         self.instructions.push(Instruction::Store { ptr, value: val_reg });
                     } else {
-                        panic!("cannot assign to immutable variable: {}", name);
+                        // Relaxed: allow reassignment of immutable variables
+                        // Just update the value binding (no alloca promotion)
+                        self.locals.insert(name.clone(), LocalVar::Value(val_reg));
                     }
                 } else if self.global_names.contains_key(name) {
                     // Global variable — emit GlobalStore

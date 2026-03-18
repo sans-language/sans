@@ -184,6 +184,117 @@ String comparison (`==`, `!=`) is supported.
 | Function | Alias | Signature |
 |----------|-------|-----------|
 | `http_listen(port)` | `listen` | `(Int) -> HttpServer` |
+| `https_listen(port, cert, key)` | `hl_s` | `(Int, String, String) -> HttpServer` |
+| `serve(port, handler)` | — | `(Int, Fn) -> Int` |
+| `serve_tls(port, cert, key, handler)` | — | `(Int, String, String, Fn) -> Int` |
+| `stream_write(writer, data)` | — | `(Int, String) -> Int` |
+| `stream_end(writer)` | — | `(Int) -> Int` |
+| `signal_handler(signum)` | — | `(Int) -> Int` |
+| `signal_check()` | — | `() -> Int` |
+| `spoll(fd, timeout_ms)` | — | `(Int, Int) -> Int` |
+| `ws_send(ws, msg)` | — | `(Int, String) -> Int` |
+| `ws_recv(ws)` | — | `(Int) -> String` |
+| `ws_close(ws)` | — | `(Int) -> Int` |
+| `serve_file(req, dir)` | — | `(HttpRequest, String) -> Int` |
+| `url_decode(s)` | — | `(String) -> String` |
+| `path_segment(path, idx)` | — | `(String, Int) -> String` |
+
+`serve_file(req, dir)` serves a static file from `dir` matching the request path. Handles content-type detection, 404 for missing files, and directory traversal protection.
+
+`url_decode(s)` decodes a URL-encoded string (e.g. `%20` to space, `+` to space).
+
+`path_segment(path, idx)` extracts the segment at index `idx` from a URL path. `path_segment("/api/users/42" 2)` returns `"42"`.
+
+`serve(port, handler)` starts a production HTTP server with auto-threading and HTTP/1.1 keep-alive. Each connection is handled in a new thread. The handler receives an `HttpRequest` and should call `respond` or `respond_stream`. The server automatically handles SIGINT and SIGTERM for graceful shutdown — in-flight requests complete before the server exits.
+
+`serve_tls(port, cert, key, handler)` is the HTTPS variant with the same graceful shutdown behavior.
+
+#### Automatic Gzip Compression
+
+`respond()` automatically gzip-compresses response bodies when all conditions are met:
+
+1. Client sent `Accept-Encoding` containing `gzip`
+2. Response body >= 1024 bytes
+3. No `X-No-Compress: 1` response header set by user
+4. Content-Type is compressible (`text/*`, `application/json`, `application/javascript`, `application/xml`, `image/svg+xml`)
+
+No code changes needed — compression is transparent:
+
+```sans
+req.respond(200 large_body)  // auto-gzipped if client supports it
+```
+
+Opt out for a specific response:
+
+```sans
+req.set_header("X-No-Compress" "1")
+req.respond(200 large_body)  // not compressed
+```
+
+#### Signal Handling
+
+`signal_handler(signum)` registers a signal handler that sets a global flag. `signal_check()` returns 1 if the signal was received, 0 otherwise. `spoll(fd, timeout_ms)` polls a file descriptor for readability with a timeout in milliseconds, returning 1 if ready, 0 otherwise. These are used internally by `serve()` and `serve_tls()` but are available for custom server loops.
+
+`req.respond_stream(status)` sends HTTP headers with `Transfer-Encoding: chunked` and returns a writer handle. Use `stream_write(w, data)` to send chunks and `stream_end(w)` to finalize.
+
+```sans
+handle(req:HR) I {
+  path = req.path()
+  path == "/" ? req.respond(200 "Hello!") : req.respond(404 "Not Found")
+}
+
+main() I {
+  serve(8080 fptr("handle"))
+}
+```
+
+#### WebSocket
+
+`req.is_ws_upgrade()` returns 1 if the request is a WebSocket upgrade request (has `Upgrade: websocket` header), 0 otherwise.
+
+`req.upgrade_ws()` performs the WebSocket handshake (SHA-1 + Base64 of the `Sec-WebSocket-Key` header concatenated with the magic GUID) and sends the 101 Switching Protocols response. Returns a WebSocket handle.
+
+`ws_send(ws, msg)` sends a text frame. `ws_recv(ws)` receives the next text frame (handles ping/pong automatically, returns `""` on close). `ws_close(ws)` sends a close frame and closes the socket.
+
+```sans
+handle(req:I) I {
+  req.is_ws_upgrade() ? {
+    ws = req.upgrade_ws()
+    msg := ws_recv(ws)
+    while slen(msg) > 0 {
+      ws_send(ws "echo: " + msg)
+      msg = ws_recv(ws)
+    }
+    ws_close(ws)
+  } : {
+    req.respond(200 "WebSocket server")
+  }
+}
+
+main() I {
+  serve(8080 fptr("handle"))
+}
+```
+
+### CORS
+
+| Function | Alias | Signature |
+|----------|-------|-----------|
+| `cors(req, origin)` | — | `(HttpRequest, String) -> Int` |
+| `cors_all(req)` | — | `(HttpRequest) -> Int` |
+
+`cors(req, origin)` sets `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers` on the response. Call before `respond`.
+
+`cors_all(req)` is shorthand for `cors(req, "*")`.
+
+```sans
+srv = listen(8080)
+while true {
+    req = srv.accept
+    cors_all(req)
+    req.respond(200 "ok")
+}
+```
 
 ### Logging
 
@@ -222,6 +333,8 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `strstr(haystack, needle)` | `(Int, Int) -> Int` | find substring, 0 if not found |
 | `bswap16(val)` | `(Int) -> Int` | byte-swap 16-bit (htons) |
 | `exit(code)` | `(Int) -> Int` | exit process |
+| `system(cmd)` / `sys(cmd)` | `(String) -> Int` | run shell command, return exit code |
+| `gzip_compress(data, len)` | `(Int, Int) -> Int` | gzip-compress data; returns ptr to `[compressed_ptr, compressed_len]` |
 
 #### Arena Allocator
 
@@ -245,6 +358,18 @@ arena_end()  // frees everything at once
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `wfd(fd, msg)` | `(Int, String) -> Int` | write string to file descriptor |
+
+#### SSL (Advanced)
+
+Low-level TLS/SSL bindings. For most use cases, prefer `https_listen`.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `ssl_ctx(cert, key)` | `(String, String) -> Int` | Create SSL context from cert/key file paths |
+| `ssl_accept(ctx, fd)` | `(Int, Int) -> Int` | Perform TLS handshake on accepted socket fd |
+| `ssl_read(ssl, buf, len)` | `(Int, Int, Int) -> Int` | Read bytes from TLS connection |
+| `ssl_write(ssl, buf, len)` | `(Int, Int, Int) -> Int` | Write bytes to TLS connection |
+| `ssl_close(ssl)` | `(Int) -> Int` | Shut down TLS connection and free SSL object |
 
 #### Sockets
 
@@ -288,6 +413,16 @@ arena_end()  // frees everything at once
 |----------|-----------|-------------|
 | `ptr(s)` | `(String\|Map\|Array) -> Int` | get raw i64 pointer of string, map, or array |
 | `char_at(s, i)` | `(String, Int) -> Int` | read byte at index i (shorthand for `load8(ptr(s) + i)`) |
+
+#### Map Operations
+
+Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64`) and method dispatch cannot determine the correct type.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `mget(map, key)` | `(Int, String) -> Int` | get value from Map by key (0 if not found) |
+| `mset(map, key, val)` | `(Int, String, Int) -> Int` | set key-value pair in Map |
+| `mhas(map, key)` | `(Int, String) -> Int` | check if Map contains key (1=yes, 0=no) |
 
 #### File I/O
 
@@ -370,13 +505,24 @@ arena_end()  // frees everything at once
 
 ### HttpRequest
 
-| Method | Signature |
-|--------|-----------|
-| `path` | `() -> String` |
-| `method` | `() -> String` |
-| `body` | `() -> String` |
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `path` | `() -> String` | |
+| `method` | `() -> String` | |
+| `body` | `() -> String` | |
+| `header(name)` | `(String) -> String` | Get request header value (case-insensitive) |
+| `set_header(name, value)` | `(String, String) -> Int` | Add custom response header (call before respond) |
+| `query(name)` | `(String) -> String` | Get query parameter value by name |
+| `path_only` | `() -> String` | Path without query string |
+| `content_length` | `() -> Int` | Get Content-Length as int |
+| `cookie(name)` | `(String) -> String` | Get cookie value from Cookie header |
+| `form(name)` | `(String) -> String` | Parse form field from POST body (URL-encoded or multipart) |
 | `respond(status, body)` | `(Int, String) -> Int` | Defaults to `text/html` content-type |
 | `respond(status, body, content_type)` | `(Int, String, String) -> Int` | Explicit content-type |
+| `respond_json(status, body)` | `(Int, String) -> Int` | JSON response (sets Content-Type: application/json) |
+| `respond_stream(status)` | `(Int) -> Int` | Chunked streaming response, returns writer handle |
+| `is_ws_upgrade` | `() -> Int` | Returns 1 if WebSocket upgrade request |
+| `upgrade_ws` | `() -> Int` | Perform WS handshake, return WebSocket handle |
 
 ### Result\<T\>
 
@@ -651,10 +797,40 @@ compute(x:I) R<I> {
 
 ---
 
+## Self-Hosting
+
+Sans is self-hosted: the compiler and runtime are both written in Sans.
+
+### Runtime (100% Sans, zero C)
+
+All built-in capabilities are implemented in Sans using its own low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, etc.):
+
+- `runtime/server.sans` — HTTP server, keep-alive, WebSocket, streaming
+- `runtime/json.sans` — JSON parser and serializer
+- `runtime/string_ext.sans` — String methods
+- `runtime/array_ext.sans` — Array methods
+- `runtime/map.sans` — Hash map
+- `runtime/ssl.sans` — TLS/SSL
+- `runtime/http.sans` — HTTP client
+- `runtime/curl.sans` — Curl bindings
+- `runtime/arena.sans` — Arena allocator
+- `runtime/result.sans` — Result type
+- `runtime/functional.sans` — Higher-order functions
+
+### Compiler (written in Sans)
+
+`compiler/` contains a full Sans compiler (~11,600 LOC across 7 modules): lexer, parser, typeck, IR, codegen, main. It compiles to LLVM IR via `llc`, then links with `clang`.
+
+Bootstrap stages: **stage 0** (Rust-compiled) → **stage 1** (self-compiled once) → **stage 2** (self-compiled twice) → **stage 3** (fixed point, output identical to stage 2).
+
+### Reserved Builtin Names
+
+User-defined functions take precedence over builtins of the same name. However, to avoid confusion, avoid redefining builtins unless intentional. The following names have builtin implementations: `p`, `print`, `str`, `stoi`, `itos`, `itof`, `ftoi`, `ftos`, `fr`, `fw`, `fa`, `fe`, `file_read`, `file_write`, `file_append`, `file_exists`, `listen`, `serve`, `serve_file`, `serve_tls`, `alloc`, `dealloc`, `load8`, `load16`, `load32`, `load64`, `store8`, `store16`, `store32`, `store64`, `mcpy`, `mcmp`, `slen`, `wfd`, `exit`, `system`, `sys`, `ok`, `err`, `map`, `M`, `jp`, `jparse`, `jfy`, `jo`, `ja`, `js`, `ji`, `jb`, `jn`, `hg`, `hp`, `sock`, `saccept`, `srecv`, `ssend`, `sclose`, `args`, `spawn`, `signal_handler`, `signal_check`, and all other documented built-in names.
+
+---
+
 ## Known Limitations
 
-- No garbage collector — all heap memory leaked until process exit
-- No array bounds checking — out-of-bounds is undefined behavior
-- Multiple opaque type method calls in complex expressions may crash
-- ~~String interpolation only supports identifiers, not expressions~~ — Expression interpolation now supported (v0.3.6)
-- ~~No lambda syntax with capture~~ — Lambdas with implicit capture now supported (v0.3.4)
+- No automatic garbage collector — all heap memory leaked until process exit. Use `arena_begin`/`arena_end` for phase-based bulk deallocation.
+- Type checker is relaxed for bootstrap compatibility — some type mismatches (e.g. if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time and may produce incorrect behavior at runtime
+- Capturing lambdas (closures with captured variables) passed across module boundaries return incorrect results — the capture context is not preserved. Non-capturing lambdas work correctly across modules.

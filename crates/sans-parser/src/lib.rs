@@ -780,24 +780,64 @@ impl Parser {
 
         // Check if this is an if/else expression or an if statement
         if self.peek_has_else_after_block() {
-            // if/else expression: parse body as block_body (stmts + final expr)
-            let (then_body, then_expr) = self.parse_block_body()?;
+            // if/else expression: try parse body as block_body (stmts + final expr)
+            let saved_pos = self.pos;
+            let then_result = self.parse_block_body();
+            let (then_body, then_expr) = if let Ok(r) = then_result {
+                r
+            } else {
+                // Fallback: parse as statement-only body
+                self.pos = saved_pos;
+                let body = self.parse_body()?;
+                let dummy = Expr::IntLiteral { value: 0, span: self.peek().span.clone() };
+                (body, dummy)
+            };
             self.expect(&TokenKind::RBrace)?;
 
             self.expect(&TokenKind::Else)?;
-            self.expect(&TokenKind::LBrace)?;
-            let (else_body, else_expr) = self.parse_block_body()?;
-            let rbrace = self.expect(&TokenKind::RBrace)?;
-            let end = rbrace.span.end;
+            // Handle `else if` by checking for If token
+            if self.peek().kind == TokenKind::If {
+                let else_stmt = self.parse_if_or_if_else()?;
+                let end = match &else_stmt {
+                    Stmt::If { span, .. } | Stmt::Expr(Expr::If { span, .. }) => span.end,
+                    _ => self.tokens[self.pos - 1].span.end,
+                };
+                let else_expr = match else_stmt {
+                    Stmt::Expr(e) => e,
+                    _ => Expr::IntLiteral { value: 0, span: start..end },
+                };
+                Ok(Stmt::Expr(Expr::If {
+                    condition: Box::new(condition),
+                    then_body,
+                    then_expr: Box::new(then_expr),
+                    else_body: vec![],
+                    else_expr: Box::new(else_expr),
+                    span: start..end,
+                }))
+            } else {
+                self.expect(&TokenKind::LBrace)?;
+                let saved_else_pos = self.pos;
+                let else_result = self.parse_block_body();
+                let (else_body, else_expr) = if let Ok(r) = else_result {
+                    r
+                } else {
+                    self.pos = saved_else_pos;
+                    let body = self.parse_body()?;
+                    let dummy = Expr::IntLiteral { value: 0, span: self.peek().span.clone() };
+                    (body, dummy)
+                };
+                let rbrace = self.expect(&TokenKind::RBrace)?;
+                let end = rbrace.span.end;
 
-            Ok(Stmt::Expr(Expr::If {
-                condition: Box::new(condition),
-                then_body,
-                then_expr: Box::new(then_expr),
-                else_body,
-                else_expr: Box::new(else_expr),
-                span: start..end,
-            }))
+                Ok(Stmt::Expr(Expr::If {
+                    condition: Box::new(condition),
+                    then_body,
+                    then_expr: Box::new(then_expr),
+                    else_body,
+                    else_expr: Box::new(else_expr),
+                    span: start..end,
+                }))
+            }
         } else {
             // if statement (no else): parse body as statements
             let body = self.parse_body()?;
@@ -971,19 +1011,55 @@ impl Parser {
             let save_pos = self.pos;
             self.pos += 1; // consume ?
 
-            // Try ternary: parse then_expr and look for :
-            let maybe_then = self.parse_expr(0);
+            // Try ternary: parse then branch (either block or expr) and look for :
+            let maybe_then = if self.peek().kind == TokenKind::LBrace {
+                // Block form: ? { stmts; expr } : ...
+                self.pos += 1; // consume {
+                // Try parse_block_body first (requires final expression)
+                let saved_block_pos = self.pos;
+                let result = self.parse_block_body();
+                if result.is_ok() {
+                    self.expect(&TokenKind::RBrace).ok();
+                    result.map(|(body, expr)| (body, expr))
+                } else {
+                    // Fallback: parse as statement-only body (for blocks ending in return/break)
+                    self.pos = saved_block_pos;
+                    let body = self.parse_body()?;
+                    self.expect(&TokenKind::RBrace)?;
+                    // Use 0 as dummy final expression
+                    Ok((body, Expr::IntLiteral { value: 0, span: self.tokens[self.pos - 1].span.clone() }))
+                }
+            } else {
+                self.parse_expr(0).map(|e| (vec![], e))
+            };
+
             if maybe_then.is_ok() && self.peek().kind == TokenKind::Colon {
                 // It's ternary
                 self.pos += 1; // consume :
-                let else_expr = self.parse_expr(0)?;
-                let then_expr = maybe_then.unwrap();
+                let (then_body, then_expr) = maybe_then.unwrap();
+                let (else_body, else_expr) = if self.peek().kind == TokenKind::LBrace {
+                    // Block form for else: : { stmts; expr }
+                    self.pos += 1; // consume {
+                    let saved_else_pos = self.pos;
+                    let result = self.parse_block_body();
+                    if result.is_ok() {
+                        self.expect(&TokenKind::RBrace)?;
+                        result?
+                    } else {
+                        self.pos = saved_else_pos;
+                        let body = self.parse_body()?;
+                        self.expect(&TokenKind::RBrace)?;
+                        (body, Expr::IntLiteral { value: 0, span: self.tokens[self.pos - 1].span.clone() })
+                    }
+                } else {
+                    (vec![], self.parse_expr(0)?)
+                };
                 let span = expr_span(&lhs).start..expr_span(&else_expr).end;
                 lhs = Expr::If {
                     condition: Box::new(lhs),
-                    then_body: vec![],
+                    then_body,
                     then_expr: Box::new(then_expr),
-                    else_body: vec![],
+                    else_body,
                     else_expr: Box::new(else_expr),
                     span,
                 };
@@ -1054,7 +1130,19 @@ impl Parser {
                         args,
                         span: name_span.start..rparen.span.end,
                     })
-                } else if self.peek().kind == TokenKind::LBrace && name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                } else if self.peek().kind == TokenKind::LBrace && name.chars().next().map_or(false, |c| c.is_uppercase()) && {
+                    // Lookahead: verify this is actually a struct literal (ident : value pattern)
+                    // If the token after { is not an identifier followed by :, it's not a struct literal
+                    let is_struct = if self.pos + 2 < self.tokens.len() {
+                        matches!(&self.tokens[self.pos + 1].kind, TokenKind::Identifier(_))
+                            && self.tokens[self.pos + 2].kind == TokenKind::Colon
+                    } else if self.pos + 1 < self.tokens.len() && self.tokens[self.pos + 1].kind == TokenKind::RBrace {
+                        true // empty struct literal: Name {}
+                    } else {
+                        false
+                    };
+                    is_struct
+                } {
                     // Struct literal: Name { field: value, ... }
                     self.pos += 1; // consume {
                     let mut fields = Vec::new();

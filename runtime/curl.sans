@@ -21,11 +21,11 @@ sans_write_cb(ptr:I size:I nmemb:I userdata:I) I {
   // grow if needed
   new_cap := buf_cap
   while buf_size + bytes + 1 > new_cap {
-    new_cap = new_cap == 0 ? 1024 : new_cap * 2
+    new_cap = if new_cap == 0 { 1024 } else { new_cap * 2 }
   }
-  new_data = new_cap != buf_cap ? ralloc(buf_data, new_cap) : buf_data
-  new_cap != buf_cap ? store64(userdata, new_data) : 0
-  new_cap != buf_cap ? store64(userdata + 16, new_cap) : 0
+  new_data = if new_cap != buf_cap { ralloc(buf_data, new_cap) } else { buf_data }
+  if new_cap != buf_cap { store64(userdata, new_data) } else { 0 }
+  if new_cap != buf_cap { store64(userdata + 16, new_cap) } else { 0 }
   // copy data
   mcpy(new_data + buf_size, ptr, bytes)
   store64(userdata + 8, buf_size + bytes)
@@ -38,7 +38,7 @@ sans_header_cb(buffer:I size:I nitems:I userdata:I) I {
   len = size * nitems
   // Find colon
   colon := sans_find_colon(buffer, len)
-  colon < 0 ? len : sans_header_cb_parse(buffer, len, colon, userdata)
+  if colon < 0 { len } else { sans_header_cb_parse(buffer, len, colon, userdata) }
 }
 
 sans_find_colon(buf:I len:I) I {
@@ -69,7 +69,7 @@ sans_header_cb_parse(buffer:I len:I colon:I resp:I) I {
   i := 0
   while i < colon {
     // lowercase: if 65 <= ch <= 90, add 32
-    store8(name + i, load8(buffer + i) >= 65 ? load8(buffer + i) <= 90 ? load8(buffer + i) + 32 : load8(buffer + i) : load8(buffer + i))
+    store8(name + i, if load8(buffer + i) >= 65 { if load8(buffer + i) <= 90 { load8(buffer + i) + 32 } else { load8(buffer + i) } } else { load8(buffer + i) })
     i = i + 1
   }
   store8(name + colon, 0)
@@ -105,7 +105,7 @@ sans_header_cb_parse(buffer:I len:I colon:I resp:I) I {
   }
   vlen = val_end - val_start
   val = alloc(vlen + 1)
-  vlen > 0 ? mcpy(val, buffer + val_start, vlen) : 0
+  if vlen > 0 { mcpy(val, buffer + val_start, vlen) } else { 0 }
   store8(val + vlen, 0)
 
   // Add to response headers
@@ -117,11 +117,11 @@ sans_add_header(resp:I name:I val:I) I {
   count = load64(resp + 32)
   cap = load64(resp + 40)
   if count >= cap {
-    new_cap = cap == 0 ? 16 : cap * 2
+    new_cap = if cap == 0 { 16 } else { cap * 2 }
     names = load64(resp + 16)
     vals = load64(resp + 24)
-    new_names = names == 0 ? alloc(new_cap * 8) : ralloc(names, new_cap * 8)
-    new_vals = vals == 0 ? alloc(new_cap * 8) : ralloc(vals, new_cap * 8)
+    new_names = if names == 0 { alloc(new_cap * 8) } else { ralloc(names, new_cap * 8) }
+    new_vals = if vals == 0 { alloc(new_cap * 8) } else { ralloc(vals, new_cap * 8) }
     store64(resp + 16, new_names)
     store64(resp + 24, new_vals)
     store64(resp + 40, new_cap)
@@ -153,7 +153,7 @@ sans_make_error_resp() I {
 
 sans_http_get(url:I) I {
   curl = cinit()
-  curl == 0 ? sans_make_error_resp() : sans_http_get_inner(curl, url)
+  if curl == 0 { sans_make_error_resp() } else { sans_http_get_inner(curl, url) }
 }
 
 sans_http_get_inner(curl:I url:I) I {
@@ -180,7 +180,7 @@ sans_http_get_inner(curl:I url:I) I {
   cseti(curl, CURLOPT_HEADERDATA, resp)
 
   res = cperf(curl)
-  res != 0 ? sans_http_get_fail(curl, wbuf, resp) : sans_http_get_ok(curl, wbuf, resp)
+  if res != 0 { sans_http_get_fail(curl, wbuf, resp) } else { sans_http_get_ok(curl, wbuf, resp) }
 }
 
 sans_http_get_fail(curl:I wbuf:I resp:I) I {
@@ -213,7 +213,7 @@ sans_http_get_ok(curl:I wbuf:I resp:I) I {
 
 sans_http_post(url:I body:I ct:I) I {
   curl = cinit()
-  curl == 0 ? sans_make_error_resp() : sans_http_post_inner(curl, url, body, ct)
+  if curl == 0 { sans_make_error_resp() } else { sans_http_post_inner(curl, url, body, ct) }
 }
 
 sans_http_post_inner(curl:I url:I body:I ct:I) I {
@@ -249,7 +249,7 @@ sans_http_post_inner(curl:I url:I body:I ct:I) I {
 
   res = cperf(curl)
   curl_slist_free(slist)
-  res != 0 ? sans_http_get_fail(curl, wbuf, resp) : sans_http_get_ok(curl, wbuf, resp)
+  if res != 0 { sans_http_get_fail(curl, wbuf, resp) } else { sans_http_get_ok(curl, wbuf, resp) }
 }
 
 sans_build_ct_header(ct:I) I {
@@ -287,7 +287,7 @@ sans_http_header(resp:I name:I) I {
   lower = alloc(name_len + 1)
   i := 0
   while i < name_len {
-    store8(lower + i, load8(name + i) >= 65 ? load8(name + i) <= 90 ? load8(name + i) + 32 : load8(name + i) : load8(name + i))
+    store8(lower + i, if load8(name + i) >= 65 { if load8(name + i) <= 90 { load8(name + i) + 32 } else { load8(name + i) } } else { load8(name + i) })
     i = i + 1
   }
   store8(lower + name_len, 0)
@@ -312,7 +312,7 @@ sans_header_search(names:I vals:I count:I lower:I name_len:I) I {
     } else { 0 }
     i = i + 1
   }
-  found == 0 ? sans_empty_header() : result
+  if found == 0 { sans_empty_header() } else { result }
 }
 
 sans_empty_header() I {

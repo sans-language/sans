@@ -1,0 +1,4 @@
+fn main() I {
+  r = system("true")
+  r
+}

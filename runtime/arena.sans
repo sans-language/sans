@@ -43,7 +43,7 @@ sans_arena_alloc(size:I) I {
 
     if offset + aligned > cap {
       chunk = load64(arena)
-      new_cap = aligned > cap ? aligned : cap
+      new_cap = if aligned > cap { aligned } else { cap }
       new_chunk = alloc(8 + new_cap)
       store64(new_chunk, chunk)
       store64(arena, new_chunk)
