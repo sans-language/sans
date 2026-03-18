@@ -529,6 +529,9 @@ footer a:hover {
     max-height: none;
     margin-top: 0;
     margin-bottom: 24px;
+    background: none;
+    border: none;
+    padding: 0;
   }
 
   /* Collapsible TOC on tablet/mobile */
@@ -544,7 +547,6 @@ footer a:hover {
     color: var(--text);
     cursor: pointer;
     text-align: left;
-    margin-bottom: 8px;
   }
 
   .toc-toggle:hover {
@@ -553,10 +555,19 @@ footer a:hover {
 
   .toc-content {
     display: none;
+    background: var(--mantle);
+    border: 1px solid var(--surface0);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 8px;
   }
 
   .toc-content.open {
     display: block;
+  }
+
+  .toc-content h3 {
+    display: none;
   }
 }
 
@@ -566,7 +577,6 @@ footer a:hover {
 @media (max-width: 768px) {
   .container, .container-wide { padding: 0 16px; }
   .docs-layout { padding: 0 16px; gap: 16px; }
-  .comparison { padding: 32px 0; }
   body { overflow-x: hidden; }
 
   .hero { padding: 48px 0 40px; }
@@ -585,7 +595,7 @@ footer a:hover {
   .feature-card h3 { font-size: 16px; }
   .feature-card p { font-size: 14px; }
 
-  .comparison { padding: 32px 0; }
+  .comparison { padding-top: 32px; padding-bottom: 32px; }
 
   .tab-bar { flex-wrap: wrap; gap: 4px; }
   .tab-label { font-size: 12px; padding: 6px 8px; gap: 3px; }
@@ -604,6 +614,9 @@ footer a:hover {
   .docs h3 { font-size: 16px; }
 
   .install-block { padding: 12px 48px 12px 14px; font-size: 12px; }
+
+  .docs ul { padding-left: 20px; }
+  .docs table { font-size: 13px; }
 
   footer { padding: 24px 16px; }
 }
