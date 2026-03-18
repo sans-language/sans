@@ -19,29 +19,26 @@
     <div class="toc">
       <h3>Contents</h3>
       <ul>
+        <li><a href="#getting-started">Getting Started</a></li>
         <li><a href="#types">Types</a></li>
         <li><a href="#variables">Variables</a></li>
         <li><a href="#globals">Globals</a></li>
         <li><a href="#functions">Functions</a></li>
         <li><a href="#control-flow">Control Flow</a></li>
-        <li><a href="#operators">Operators</a></li>
-        <li><a href="#builtins">Built-ins</a></li>
-        <li><a href="#lowlevel">Low-Level</a></li>
-        <li><a href="#methods">Methods</a></li>
-        <li><a href="#tuples">Tuples</a></li>
-        <li><a href="#lambdas">Lambdas</a></li>
         <li><a href="#iterators">Iterators</a></li>
+        <li><a href="#operators">Operators</a></li>
         <li><a href="#maps">Maps</a></li>
+        <li><a href="#strings">Strings</a></li>
+        <li><a href="#tuples">Tuples</a></li>
         <li><a href="#structs">Structs</a></li>
         <li><a href="#enums">Enums</a></li>
         <li><a href="#traits">Traits</a></li>
+        <li><a href="#lambdas">Lambdas</a></li>
+        <li><a href="#errors">Error Handling</a></li>
         <li><a href="#modules">Modules</a></li>
         <li><a href="#concurrency">Concurrency</a></li>
-        <li><a href="#strings">Strings</a></li>
-        <li><a href="#errors">Errors</a></li>
-        <li><a href="#arena">Arena GC</a></li>
-        <li><a href="#fileio">File I/O</a></li>
-        <li><a href="#https">HTTPS &amp; CORS</a></li>
+        <li><a href="#builtins">Built-ins</a></li>
+        <li><a href="#methods">Methods</a></li>
         <li><a href="#self-hosting">Self-Hosting</a></li>
       </ul>
     </div>
@@ -49,6 +46,10 @@
   <div class="docs">
     <h1>Sans Language Reference</h1>
     <p>Sans is a compiled programming language optimized for AI code generation. It compiles to native code via LLVM with performance comparable to C, Rust, and Go.</p>
+
+    <h2 id="getting-started">Getting Started</h2>
+    <pre><code>sans build hello.sans && ./hello</code></pre>
+    <p>Sans compiles to native binaries via LLVM. Write a <code>.sans</code> file, build it, and run.</p>
 
     <h2 id="types">Types</h2>
     <table>
@@ -131,6 +132,16 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
     EnumName::Variant2(x) => x + <span class="num">1</span>,
 }</code></pre>
 
+    <h2 id="iterators">Iterator Chains</h2>
+    <p>Array methods return arrays, so they chain without <code>.collect()</code>:</p>
+    <pre><code>a.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> }).<span class="fn">filter</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })
+
+<span class="comment">// New methods</span>
+a.<span class="fn">any</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })      <span class="comment">// B — true if any match</span>
+a.<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })     <span class="comment">// first match or 0</span>
+a.<span class="fn">enumerate</span>()                   <span class="comment">// [(I I)] index-value tuples</span>
+a.<span class="fn">zip</span>(b)                        <span class="comment">// [(I I)] paired tuples</span></code></pre>
+
     <h2 id="operators">Operators</h2>
     <table>
       <thead><tr><th>Category</th><th>Operators</th></tr></thead>
@@ -142,6 +153,160 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
         <tr><td>Special</td><td><code>?:</code> (ternary), <code>?</code> (try/propagate), <code>!</code> (postfix unwrap), <code>[]</code> (index)</td></tr>
       </tbody>
     </table>
+
+    <h2 id="maps">Maps</h2>
+    <p>Hash map with string keys. Constructor: <code>M()</code> or <code>map()</code>.</p>
+    <pre><code>m = <span class="fn">M</span>()
+m.<span class="fn">set</span>(<span class="str">"x"</span> <span class="num">10</span>)
+m.<span class="fn">set</span>(<span class="str">"y"</span> <span class="num">20</span>)
+m.<span class="fn">get</span>(<span class="str">"x"</span>)       <span class="comment">// 10</span>
+m.<span class="fn">has</span>(<span class="str">"z"</span>)       <span class="comment">// false</span>
+m.<span class="fn">len</span>()           <span class="comment">// 2</span>
+m.<span class="fn">keys</span>()          <span class="comment">// ["x" "y"]</span></code></pre>
+
+    <h3>Map Methods</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>set(key, val)</code></td><td><code>(S, I) -&gt; I</code></td><td>Set key-value pair</td></tr>
+        <tr><td><code>get(key)</code></td><td><code>(S) -&gt; I</code></td><td>Get value, 0 if missing</td></tr>
+        <tr><td><code>has(key)</code></td><td><code>(S) -&gt; B</code></td><td>Check if key exists</td></tr>
+        <tr><td><code>len()</code></td><td><code>() -&gt; I</code></td><td>Number of entries</td></tr>
+        <tr><td><code>keys()</code></td><td><code>() -&gt; [S]</code></td><td>Array of all keys</td></tr>
+        <tr><td><code>vals()</code></td><td><code>() -&gt; [I]</code></td><td>Array of all values</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="strings">String Interpolation &amp; Slicing</h2>
+    <pre><code>name = <span class="str">"Sans"</span>
+msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hello Sans!"</span></code></pre>
+
+    <h3>Expression Interpolation</h3>
+    <p>Full expressions are supported inside <code>{}</code>:</p>
+    <pre><code>x = <span class="num">10</span>
+<span class="str">"result is {x + 1}"</span>     <span class="comment">// "result is 11"</span>
+<span class="str">"len is {a.len()}"</span>      <span class="comment">// method calls</span>
+<span class="str">"sum is {x * 2 + 3}"</span>    <span class="comment">// arithmetic</span></code></pre>
+
+    <h3>String Slicing</h3>
+    <p>Slice strings with <code>[start:end]</code> syntax (desugars to <code>.substring()</code>):</p>
+    <pre><code>s = <span class="str">"hello world"</span>
+s[<span class="num">0</span>:<span class="num">5</span>]    <span class="comment">// "hello"</span>
+s[<span class="num">6</span>:]     <span class="comment">// "world" (to end)</span>
+s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)</span></code></pre>
+
+    <h2 id="tuples">Tuples</h2>
+    <p>Tuples are fixed-size, ordered collections of values that can have different types. No commas &mdash; space-separated like arrays.</p>
+    <pre><code><span class="comment">// Tuple literal (no commas)</span>
+t = (<span class="num">1</span> <span class="str">"hello"</span> <span class="kw">true</span>)
+
+<span class="comment">// Access by index</span>
+t.<span class="num">0</span>   <span class="comment">// 1</span>
+t.<span class="num">1</span>   <span class="comment">// "hello"</span>
+t.<span class="num">2</span>   <span class="comment">// true</span>
+
+<span class="comment">// Tuple type annotation</span>
+<span class="fn">pair</span>(a:<span class="type">I</span> b:<span class="type">I</span>) (<span class="type">I</span> <span class="type">I</span>) = (a b)
+
+<span class="comment">// Multi-return via tuples</span>
+p = <span class="fn">pair</span>(<span class="num">10</span> <span class="num">20</span>)
+p.<span class="num">0</span> + p.<span class="num">1</span>  <span class="comment">// 30</span></code></pre>
+    <p>Single expressions in parens are grouping, not tuples: <code>(1 + 2)</code> evaluates to <code>3</code>, not a 1-tuple.</p>
+
+    <h2 id="structs">Structs</h2>
+    <pre><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
+
+<span class="fn">make_point</span>(x:<span class="type">I</span> y:<span class="type">I</span>) <span class="type">Point</span> = <span class="type">Point</span> { x: x, y: y }
+
+<span class="fn">main</span>() {
+    pt = <span class="type">Point</span> { x: <span class="num">10</span>, y: <span class="num">20</span> }
+    <span class="fn">p</span>(<span class="fn">str</span>(pt.x + pt.y))
+    <span class="num">0</span>
+}</code></pre>
+
+    <h2 id="enums">Enums</h2>
+    <pre><code><span class="kw">enum</span> <span class="type">Shape</span> {
+    Circle(<span class="type">I</span>),
+    Rect(<span class="type">I</span>, <span class="type">I</span>),
+}
+
+<span class="fn">area</span>(s <span class="type">Shape</span>) <span class="type">I</span> = <span class="kw">match</span> s {
+    <span class="type">Shape</span>::Circle(r) => r * r * <span class="num">3</span>,
+    <span class="type">Shape</span>::Rect(w h) => w * h,
+}</code></pre>
+
+    <h2 id="traits">Traits &amp; Generics</h2>
+    <pre><code><span class="kw">trait</span> <span class="type">Describable</span> {
+    <span class="kw">fn</span> <span class="fn">describe</span>(self) <span class="type">I</span>
+}
+
+<span class="kw">impl</span> <span class="type">Describable</span> <span class="kw">for</span> <span class="type">Point</span> {
+    <span class="kw">fn</span> <span class="fn">describe</span>(self) <span class="type">I</span> { self.x + self.y }
+}
+
+<span class="fn">identity</span>&lt;T&gt;(x <span class="type">T</span>) <span class="type">T</span> = x</code></pre>
+
+    <h2 id="lambdas">Lambdas &amp; Closures</h2>
+    <p>Lambda expressions are anonymous functions. They implicitly capture variables from their enclosing scope.</p>
+    <pre><code><span class="comment">// Non-capturing lambda</span>
+f = |x:<span class="type">I</span>| <span class="type">I</span> { x + <span class="num">10</span> }
+<span class="fn">f</span>(<span class="num">5</span>)  <span class="comment">// 15</span>
+
+<span class="comment">// Multiple parameters</span>
+add = |a:<span class="type">I</span> b:<span class="type">I</span>| <span class="type">I</span> { a + b }
+
+<span class="comment">// Used with map</span>
+nums = [<span class="num">1</span> <span class="num">2</span> <span class="num">3</span> <span class="num">4</span> <span class="num">5</span>]
+doubled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> })
+
+<span class="comment">// Implicit capture from enclosing scope</span>
+multiplier = <span class="num">3</span>
+scaled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * multiplier })</code></pre>
+
+    <h2 id="errors">Error Handling</h2>
+    <pre><code><span class="fn">divide</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; = b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div/0"</span>) : <span class="fn">ok</span>(a / b)
+
+<span class="fn">main</span>() {
+    r = <span class="fn">divide</span>(<span class="num">10</span> <span class="num">3</span>)
+    r.is_ok ? r! : <span class="num">0</span>
+}</code></pre>
+
+    <h3>Error Propagation (<code>?</code> operator)</h3>
+    <p>The <code>?</code> operator unwraps a <code>Result&lt;T&gt;</code> or early-returns the error:</p>
+    <pre><code><span class="fn">safe_div</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; {
+  b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div by zero"</span>) : <span class="fn">ok</span>(a / b)
+}
+
+<span class="fn">compute</span>(x:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; {
+  r = <span class="fn">safe_div</span>(x <span class="num">2</span>)?    <span class="comment">// unwraps ok(5), or returns err early</span>
+  <span class="fn">ok</span>(r + <span class="num">1</span>)
+}</code></pre>
+    <p><code>x?</code> desugars to: <code>if x.is_err() { return x }</code> followed by <code>x!</code> (unwrap).</p>
+
+    <h2 id="modules">Modules</h2>
+    <pre><code><span class="comment">// math.sans</span>
+<span class="fn">add</span>(a:<span class="type">I</span> b:<span class="type">I</span>) = a + b
+
+<span class="comment">// main.sans</span>
+<span class="kw">import</span> <span class="str">"math"</span>
+
+<span class="fn">main</span>() {
+    result = math.<span class="fn">add</span>(<span class="num">3</span> <span class="num">4</span>)
+    result
+}</code></pre>
+
+    <h2 id="concurrency">Concurrency</h2>
+    <pre><code><span class="fn">worker</span>(tx <span class="type">Sender</span>&lt;<span class="type">Int</span>&gt;) <span class="type">I</span> {
+    tx.<span class="fn">send</span>(<span class="num">42</span>)
+    <span class="num">0</span>
+}
+
+<span class="fn">main</span>() {
+    <span class="kw">let</span> (tx rx) = channel&lt;<span class="type">I</span>&gt;()
+    <span class="kw">spawn</span> <span class="fn">worker</span>(tx)
+    val = rx.recv
+    val
+}</code></pre>
 
     <h2 id="builtins">Built-in Functions</h2>
 
@@ -535,170 +700,6 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
         <tr><td>JoinHandle</td><td><code>join</code></td><td><code>() -&gt; Int</code></td></tr>
       </tbody>
     </table>
-
-    <h2 id="tuples">Tuples</h2>
-    <p>Tuples are fixed-size, ordered collections of values that can have different types. No commas &mdash; space-separated like arrays.</p>
-    <pre><code><span class="comment">// Tuple literal (no commas)</span>
-t = (<span class="num">1</span> <span class="str">"hello"</span> <span class="kw">true</span>)
-
-<span class="comment">// Access by index</span>
-t.<span class="num">0</span>   <span class="comment">// 1</span>
-t.<span class="num">1</span>   <span class="comment">// "hello"</span>
-t.<span class="num">2</span>   <span class="comment">// true</span>
-
-<span class="comment">// Tuple type annotation</span>
-<span class="fn">pair</span>(a:<span class="type">I</span> b:<span class="type">I</span>) (<span class="type">I</span> <span class="type">I</span>) = (a b)
-
-<span class="comment">// Multi-return via tuples</span>
-p = <span class="fn">pair</span>(<span class="num">10</span> <span class="num">20</span>)
-p.<span class="num">0</span> + p.<span class="num">1</span>  <span class="comment">// 30</span></code></pre>
-    <p>Single expressions in parens are grouping, not tuples: <code>(1 + 2)</code> evaluates to <code>3</code>, not a 1-tuple.</p>
-
-    <h2 id="lambdas">Lambdas &amp; Closures</h2>
-    <p>Lambda expressions are anonymous functions. They implicitly capture variables from their enclosing scope.</p>
-    <pre><code><span class="comment">// Non-capturing lambda</span>
-f = |x:<span class="type">I</span>| <span class="type">I</span> { x + <span class="num">10</span> }
-<span class="fn">f</span>(<span class="num">5</span>)  <span class="comment">// 15</span>
-
-<span class="comment">// Multiple parameters</span>
-add = |a:<span class="type">I</span> b:<span class="type">I</span>| <span class="type">I</span> { a + b }
-
-<span class="comment">// Used with map</span>
-nums = [<span class="num">1</span> <span class="num">2</span> <span class="num">3</span> <span class="num">4</span> <span class="num">5</span>]
-doubled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> })
-
-<span class="comment">// Implicit capture from enclosing scope</span>
-multiplier = <span class="num">3</span>
-scaled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * multiplier })</code></pre>
-
-    <h2 id="iterators">Iterator Chains</h2>
-    <p>Array methods return arrays, so they chain without <code>.collect()</code>:</p>
-    <pre><code>a.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> }).<span class="fn">filter</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })
-
-<span class="comment">// New methods</span>
-a.<span class="fn">any</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })      <span class="comment">// B — true if any match</span>
-a.<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })     <span class="comment">// first match or 0</span>
-a.<span class="fn">enumerate</span>()                   <span class="comment">// [(I I)] index-value tuples</span>
-a.<span class="fn">zip</span>(b)                        <span class="comment">// [(I I)] paired tuples</span></code></pre>
-
-    <h2 id="maps">Maps</h2>
-    <p>Hash map with string keys. Constructor: <code>M()</code> or <code>map()</code>.</p>
-    <pre><code>m = <span class="fn">M</span>()
-m.<span class="fn">set</span>(<span class="str">"x"</span> <span class="num">10</span>)
-m.<span class="fn">set</span>(<span class="str">"y"</span> <span class="num">20</span>)
-m.<span class="fn">get</span>(<span class="str">"x"</span>)       <span class="comment">// 10</span>
-m.<span class="fn">has</span>(<span class="str">"z"</span>)       <span class="comment">// false</span>
-m.<span class="fn">len</span>()           <span class="comment">// 2</span>
-m.<span class="fn">keys</span>()          <span class="comment">// ["x" "y"]</span></code></pre>
-
-    <h3>Map Methods</h3>
-    <table>
-      <thead><tr><th>Method</th><th>Signature</th><th>Description</th></tr></thead>
-      <tbody>
-        <tr><td><code>set(key, val)</code></td><td><code>(S, I) -&gt; I</code></td><td>Set key-value pair</td></tr>
-        <tr><td><code>get(key)</code></td><td><code>(S) -&gt; I</code></td><td>Get value, 0 if missing</td></tr>
-        <tr><td><code>has(key)</code></td><td><code>(S) -&gt; B</code></td><td>Check if key exists</td></tr>
-        <tr><td><code>len()</code></td><td><code>() -&gt; I</code></td><td>Number of entries</td></tr>
-        <tr><td><code>keys()</code></td><td><code>() -&gt; [S]</code></td><td>Array of all keys</td></tr>
-        <tr><td><code>vals()</code></td><td><code>() -&gt; [I]</code></td><td>Array of all values</td></tr>
-      </tbody>
-    </table>
-
-    <h2 id="structs">Structs</h2>
-    <pre><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
-
-<span class="fn">make_point</span>(x:<span class="type">I</span> y:<span class="type">I</span>) <span class="type">Point</span> = <span class="type">Point</span> { x: x, y: y }
-
-<span class="fn">main</span>() {
-    pt = <span class="type">Point</span> { x: <span class="num">10</span>, y: <span class="num">20</span> }
-    <span class="fn">p</span>(<span class="fn">str</span>(pt.x + pt.y))
-    <span class="num">0</span>
-}</code></pre>
-
-    <h2 id="enums">Enums</h2>
-    <pre><code><span class="kw">enum</span> <span class="type">Shape</span> {
-    Circle(<span class="type">I</span>),
-    Rect(<span class="type">I</span>, <span class="type">I</span>),
-}
-
-<span class="fn">area</span>(s <span class="type">Shape</span>) <span class="type">I</span> = <span class="kw">match</span> s {
-    <span class="type">Shape</span>::Circle(r) => r * r * <span class="num">3</span>,
-    <span class="type">Shape</span>::Rect(w h) => w * h,
-}</code></pre>
-
-    <h2 id="traits">Traits &amp; Generics</h2>
-    <pre><code><span class="kw">trait</span> <span class="type">Describable</span> {
-    <span class="kw">fn</span> <span class="fn">describe</span>(self) <span class="type">I</span>
-}
-
-<span class="kw">impl</span> <span class="type">Describable</span> <span class="kw">for</span> <span class="type">Point</span> {
-    <span class="kw">fn</span> <span class="fn">describe</span>(self) <span class="type">I</span> { self.x + self.y }
-}
-
-<span class="fn">identity</span>&lt;T&gt;(x <span class="type">T</span>) <span class="type">T</span> = x</code></pre>
-
-    <h2 id="modules">Modules</h2>
-    <pre><code><span class="comment">// math.sans</span>
-<span class="fn">add</span>(a:<span class="type">I</span> b:<span class="type">I</span>) = a + b
-
-<span class="comment">// main.sans</span>
-<span class="kw">import</span> <span class="str">"math"</span>
-
-<span class="fn">main</span>() {
-    result = math.<span class="fn">add</span>(<span class="num">3</span> <span class="num">4</span>)
-    result
-}</code></pre>
-
-    <h2 id="concurrency">Concurrency</h2>
-    <pre><code><span class="fn">worker</span>(tx <span class="type">Sender</span>&lt;<span class="type">Int</span>&gt;) <span class="type">I</span> {
-    tx.<span class="fn">send</span>(<span class="num">42</span>)
-    <span class="num">0</span>
-}
-
-<span class="fn">main</span>() {
-    <span class="kw">let</span> (tx rx) = channel&lt;<span class="type">I</span>&gt;()
-    <span class="kw">spawn</span> <span class="fn">worker</span>(tx)
-    val = rx.recv
-    val
-}</code></pre>
-
-    <h2 id="strings">String Interpolation &amp; Slicing</h2>
-    <pre><code>name = <span class="str">"Sans"</span>
-msg = <span class="str">"Hello {name}!"</span>    <span class="comment">// "Hello Sans!"</span></code></pre>
-
-    <h3>Expression Interpolation</h3>
-    <p>Full expressions are supported inside <code>{}</code>:</p>
-    <pre><code>x = <span class="num">10</span>
-<span class="str">"result is {x + 1}"</span>     <span class="comment">// "result is 11"</span>
-<span class="str">"len is {a.len()}"</span>      <span class="comment">// method calls</span>
-<span class="str">"sum is {x * 2 + 3}"</span>    <span class="comment">// arithmetic</span></code></pre>
-
-    <h3>String Slicing</h3>
-    <p>Slice strings with <code>[start:end]</code> syntax (desugars to <code>.substring()</code>):</p>
-    <pre><code>s = <span class="str">"hello world"</span>
-s[<span class="num">0</span>:<span class="num">5</span>]    <span class="comment">// "hello"</span>
-s[<span class="num">6</span>:]     <span class="comment">// "world" (to end)</span>
-s[:<span class="num">5</span>]     <span class="comment">// "hello" (from start)</span></code></pre>
-
-    <h2 id="errors">Error Handling</h2>
-    <pre><code><span class="fn">divide</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; = b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div/0"</span>) : <span class="fn">ok</span>(a / b)
-
-<span class="fn">main</span>() {
-    r = <span class="fn">divide</span>(<span class="num">10</span> <span class="num">3</span>)
-    r.is_ok ? r! : <span class="num">0</span>
-}</code></pre>
-
-    <h3>Error Propagation (<code>?</code> operator)</h3>
-    <p>The <code>?</code> operator unwraps a <code>Result&lt;T&gt;</code> or early-returns the error:</p>
-    <pre><code><span class="fn">safe_div</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; {
-  b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div by zero"</span>) : <span class="fn">ok</span>(a / b)
-}
-
-<span class="fn">compute</span>(x:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; {
-  r = <span class="fn">safe_div</span>(x <span class="num">2</span>)?    <span class="comment">// unwraps ok(5), or returns err early</span>
-  <span class="fn">ok</span>(r + <span class="num">1</span>)
-}</code></pre>
-    <p><code>x?</code> desugars to: <code>if x.is_err() { return x }</code> followed by <code>x!</code> (unwrap).</p>
 
     <h2 id="self-hosting">Self-Hosting</h2>
     <p>Sans is self-hosted: the compiler and runtime are both written in Sans.</p>
