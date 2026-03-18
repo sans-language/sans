@@ -1,46 +1,68 @@
 // Reference Counting Runtime
-//
-// Memory layout for RC-managed allocations:
-//   [refcount: 8 bytes][user data: N bytes]
-//   ^                   ^
-//   base (from malloc)  user pointer (returned to caller)
-//
-// The user pointer is always base + 8. Refcount is at user_ptr - 8.
-// Initial refcount is 1.
 
-// Allocate N bytes with a ref count header. Returns pointer to user data.
-// Refcount starts at 1.
 sans_rc_alloc(size:I) I {
   base = alloc(size + 8)
-  store64(base, 1)        // refcount = 1
-  base + 8               // return user pointer
+  store64(base, 1)
+  base + 8
 }
 
-// Increment the reference count. Safe to call with 0 (no-op).
 sans_rc_retain(ptr:I) I {
   if ptr != 0 {
-    rc_ptr = ptr - 8
-    count = load64(rc_ptr)
-    store64(rc_ptr, count + 1)
+    store64(ptr - 8, load64(ptr - 8) + 1)
   }
   0
 }
 
-// Decrement the reference count. Frees memory when count reaches 0.
-// Safe to call with 0 (no-op).
 sans_rc_release(ptr:I) I {
   if ptr != 0 {
-    rc_ptr = ptr - 8
-    count = load64(rc_ptr) - 1
-    store64(rc_ptr, count)
-    if count == 0 {
-      dealloc(rc_ptr)
+    count = load64(ptr - 8) - 1
+    store64(ptr - 8, count)
+    if count == 0 { dealloc(ptr - 8) }
+  }
+  0
+}
+
+sans_rc_count(ptr:I) I {
+  if ptr == 0 { 0 } else { load64(ptr - 8) }
+}
+
+// Scope-based memory management
+g rc_alloc_head = 0
+g rc_scope_head = 0
+
+sans_scope_track(ptr:I) I {
+  node = alloc(16)
+  store64(node, ptr)
+  store64(node + 8, rc_alloc_head)
+  rc_alloc_head = node
+  ptr
+}
+
+sans_scope_enter() I {
+  frame = alloc(16)
+  store64(frame, rc_alloc_head)
+  store64(frame + 8, rc_scope_head)
+  rc_scope_head = frame
+  0
+}
+
+sans_scope_exit(keep:I) I {
+  if rc_scope_head != 0 {
+    watermark = load64(rc_scope_head)
+    old_frame = rc_scope_head
+    rc_scope_head = load64(rc_scope_head + 8)
+    dealloc(old_frame)
+
+    while rc_alloc_head != watermark {
+      node = rc_alloc_head
+      ptr = load64(node)
+      next = load64(node + 8)
+      if ptr != keep {
+        if ptr != 0 { dealloc(ptr) }
+      }
+      dealloc(node)
+      rc_alloc_head = next
     }
   }
   0
-}
-
-// Get the current reference count (for debugging).
-sans_rc_count(ptr:I) I {
-  if ptr == 0 { 0 } else { load64(ptr - 8) }
 }
