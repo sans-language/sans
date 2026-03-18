@@ -32,8 +32,11 @@
     <pre><code>sans --version</code></pre>
 
     <h3>Prerequisites</h3>
+    <pre><code>xcode-select --install
+brew install llvm@17</code></pre>
     <ul>
-      <li><strong>Xcode Command Line Tools</strong> &mdash; required for the system linker (<code>cc</code>). Install with: <code>xcode-select --install</code></li>
+      <li><strong>Xcode Command Line Tools</strong> &mdash; required for the system linker (<code>cc</code>)</li>
+      <li><strong>LLVM 17</strong> &mdash; Sans uses <code>llc</code> at runtime to compile programs. The <code>sans</code> binary finds it automatically from Homebrew.</li>
     </ul>
 
     <h3>Gatekeeper note</h3>
@@ -47,8 +50,13 @@
       <button class="copy-btn" onclick="copyInstallLinux()">Copy</button>
     </div>
 
-    <p>x86_64 only. Requires <code>gcc</code> or <code>clang</code> for the system linker, plus <code>libcurl</code> and <code>libssl</code>:</p>
-    <pre><code>sudo apt install build-essential libcurl4-openssl-dev libssl-dev</code></pre>
+    <h3>Prerequisites</h3>
+    <pre><code>sudo apt install build-essential llvm-17 libcurl4-openssl-dev libssl-dev</code></pre>
+    <ul>
+      <li><strong>GCC or Clang</strong> &mdash; system linker</li>
+      <li><strong>LLVM 17</strong> &mdash; Sans uses <code>llc</code> at runtime to compile programs</li>
+      <li><strong>libcurl + libssl</strong> &mdash; for HTTP and TLS support</li>
+    </ul>
 
     <h2>Manual download</h2>
     <table>

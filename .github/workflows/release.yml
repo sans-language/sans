@@ -69,39 +69,32 @@ jobs:
         with:
           ref: main
 
-      - name: Install LLVM 17 and zstd
-        run: brew install llvm@17 zstd
+      - name: Install dependencies
+        run: brew install llvm@17
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-arm64-cargo-
+      - name: Install Rust toolchain
+        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-      - name: Build
-        env:
-          LLVM_SYS_170_STATIC: "1"
+      - name: Build Rust compiler (bootstrap)
         run: |
-          # Remove dynamic zstd lib so linker can only find static
-          ZSTD_PREFIX=$(brew --prefix zstd)
-          sudo rm -f "$ZSTD_PREFIX/lib/libzstd"*.dylib
-          LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) \
-          RUSTFLAGS="-L $ZSTD_PREFIX/lib" \
-          cargo build --release
+          source "$HOME/.cargo/env"
+          LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
 
-      - name: Verify no Homebrew dependencies
+      - name: Build self-hosted compiler
         run: |
-          otool -L target/release/sans
-          # Fail if any non-system dylib is linked
-          if otool -L target/release/sans | grep -q /opt/homebrew; then
-            echo "ERROR: Binary links against Homebrew libraries"
-            exit 1
-          fi
+          # Use the Rust-built sans to compile the self-hosted compiler
+          ./target/release/sans build compiler/main.sans
+          mv compiler/main sans
+          strip sans
+
+      - name: Verify binary
+        run: |
+          ./sans --version
+          file sans
+          otool -L sans
+
+      - name: Package
+        run: |
           tar czf sans-macos-arm64.tar.gz sans
           rm sans
 
@@ -121,12 +114,12 @@ jobs:
         with:
           ref: main
 
-      - name: Install LLVM 17
+      - name: Install dependencies
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
           sudo apt-get update
-          sudo apt-get install -y llvm-17-dev libpolly-17-dev libcurl4-openssl-dev libssl-dev libzstd-dev pkg-config
+          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev libcurl4-openssl-dev libssl-dev pkg-config
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -139,16 +132,27 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-x64-cargo-
 
-      - name: Build
+      - name: Build Rust compiler (bootstrap)
         env:
           LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
           LLVM_SYS_170_STATIC: "1"
         run: cargo build --release
 
+      - name: Build self-hosted compiler
+        run: |
+          export PATH="/usr/lib/llvm-17/bin:$PATH"
+          ./target/release/sans build compiler/main.sans
+          mv compiler/main sans
+          strip sans
+
+      - name: Verify binary
+        run: |
+          ./sans --version
+          file sans
+          ldd sans
+
       - name: Package
         run: |
-          cp target/release/sans sans
-          strip sans
           tar czf sans-linux-x86_64.tar.gz sans
           rm sans
 

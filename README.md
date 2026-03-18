@@ -10,7 +10,12 @@ A fast, compiled programming language designed for backend and API development. 
 curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz | tar xz && sudo mv sans /usr/local/bin/
 ```
 
-Works on Apple Silicon and Intel (via Rosetta). Requires Xcode CLT (`xcode-select --install`). If macOS blocks the binary: `xattr -d com.apple.quarantine /usr/local/bin/sans`.
+Works on Apple Silicon and Intel (via Rosetta). Requires Xcode CLT and LLVM 17:
+
+```sh
+xcode-select --install
+brew install llvm@17
+```
 
 ### Install (Linux x86_64)
 
@@ -18,7 +23,11 @@ Works on Apple Silicon and Intel (via Rosetta). Requires Xcode CLT (`xcode-selec
 curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz | tar xz && sudo mv sans /usr/local/bin/
 ```
 
-Requires `gcc`/`clang`, `libcurl`, `libssl` (`sudo apt install build-essential libcurl4-openssl-dev libssl-dev`).
+Requires LLVM 17, gcc/clang, libcurl, libssl:
+
+```sh
+sudo apt install llvm-17 build-essential libcurl4-openssl-dev libssl-dev
+```
 
 See the [download page](https://sans-language.github.io/sans/download/) for more options.
 
