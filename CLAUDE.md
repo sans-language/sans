@@ -1,38 +1,37 @@
 # Sans Compiler - Project Rules
 
 ## Build
-- `LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build`
-- `cargo test` to run all tests
+- `sans build compiler/main.sans` to build the compiler
+- `bash tests/run_tests.sh` to run all E2E tests
+- Requires: LLVM 17 (`brew install llvm@17` on macOS)
 
 ## Architecture
-- 6 Rust crates under `crates/`: sans-lexer, sans-parser, sans-typeck, sans-ir, sans-codegen, sans-driver
+- Self-hosted compiler in `compiler/`: lexer.sans, parser.sans, typeck.sans, constants.sans, ir.sans, codegen.sans, main.sans (~11,600 LOC)
 - 13 Sans runtime modules under `runtime/`: arena.sans, array_ext.sans, curl.sans, functional.sans, http.sans, json.sans, log.sans, map.sans, result.sans, server.sans, sock.sans, ssl.sans, string_ext.sans
-- Tests: unit tests in each crate, E2E tests in `crates/sans-driver/tests/e2e.rs`
-- Test fixtures in `tests/fixtures/` (.sans files and directories for multi-module)
+- Tests: E2E tests via `tests/run_tests.sh`, fixtures in `tests/fixtures/`
+- The compiler is fully self-hosted — it compiles itself. No Rust code.
 
 ## Adding a New Built-in Function
-Pipeline: typeck (type check) -> IR (instruction + lowering) -> codegen (LLVM compilation) -> driver (link)
-1. Add type checking in `crates/sans-typeck/src/lib.rs` (in the `Expr::Call` match)
-2. Add IR instruction in `crates/sans-ir/src/ir.rs`
-3. Add IR lowering in `crates/sans-ir/src/lib.rs`
-4. Add codegen in `crates/sans-codegen/src/lib.rs` (declare external fn + compile instruction)
+Pipeline: typeck (type check) -> IR (instruction + lowering) -> codegen (LLVM compilation) -> link
+1. Add type checking in `compiler/typeck.sans`
+2. Add IR instruction constant in `compiler/constants.sans`
+3. Add IR lowering in `compiler/ir.sans`
+4. Add codegen in `compiler/codegen.sans`
 5. If backed by runtime: add function to appropriate `runtime/*.sans` file
-6. Add tests in each crate
+6. Add test fixture in `tests/fixtures/`
 7. **Update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist))
 
 ## Adding a New Method on a Type
-Same pipeline but use `Expr::MethodCall` match in typeck and method dispatch in IR lowering.
+Same pipeline but use method dispatch in typeck and IR lowering.
 After implementation + tests, **update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist)).
 
 ## Adding a New Type
-1. Add variant to `Type` enum in `crates/sans-typeck/src/types.rs`
-2. Add `Display` impl
-3. Add to `resolve_type()` in `typeck/lib.rs` if it has a name (like "Float")
-4. Add `IrType` variant in `crates/sans-ir/src/lib.rs`
-5. Add `ir_type_for_return` mapping
-6. Add print guard in IR lowering
-7. If opaque: add Sans runtime backing in `runtime/*.sans`
-8. **Update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist))
+1. Add type resolution in `compiler/typeck.sans`
+2. Add IR type handling in `compiler/ir.sans`
+3. Add codegen support in `compiler/codegen.sans`
+4. If opaque: add Sans runtime backing in `runtime/*.sans`
+5. Add test fixture in `tests/fixtures/`
+6. **Update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist))
 
 ## AI-Optimized Syntax (MANDATORY)
 Sans is designed for AI generation, not human readability. All new features, syntax additions, and examples MUST use the fewest tokens possible.
@@ -59,7 +58,7 @@ Sans is designed for AI generation, not human readability. All new features, syn
 
 1. **`docs/reference.md`** — Add/update the human-readable reference with full explanation and examples
 2. **`docs/ai-reference.md`** — Add/update the compact AI reference (short-form syntax)
-3. **`website/static/docs.html`** — Add/update the website documentation to match `docs/reference.md`. Every section in reference.md MUST have a corresponding section in docs.html.
+3. **`website/docs/index.html`** — Add/update the website documentation to match `docs/reference.md`
 4. **`editors/vscode-sans/src/extension.ts`** — Add hover documentation entry to `HOVER_DATA` for any new keyword, function, method, or alias
 5. **`editors/vscode-sans/syntaxes/sans.tmLanguage.json`** — Add syntax highlighting patterns for new keywords, builtins, or operators
 6. **`tests/fixtures/`** — Add at least one E2E test fixture (`.sans` file) demonstrating the feature
@@ -76,26 +75,26 @@ All version numbers follow semver (`x.y.z`) and are managed automatically by CI.
 **Do NOT manually bump version numbers.** Version is set by pushing a git tag:
 
 ```sh
-git tag v0.3.45
-git push origin v0.3.45
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 The release workflow (`.github/workflows/release.yml`) automatically:
-1. Updates all version files (Cargo.toml, package.json, website footers, CLAUDE.md, compiler/main.sans)
+1. Updates all version files (package.json, website meta tags, CLAUDE.md, compiler/main.sans)
 2. Commits and pushes to main
-3. Builds macOS binaries and creates a GitHub release
+3. Downloads the previous release binary as a bootstrap compiler
+4. Builds the self-hosted compiler and creates a GitHub release
 
 **Files managed by CI (do not edit versions manually):**
-- `crates/*/Cargo.toml` (all 6 crates)
 - `editors/vscode-sans/package.json`
-- `website/static/index.html` (footer)
-- `website/static/docs.html` (footer)
-- `website/static/benchmarks.html` (footer)
-- `website/static/download.html` (footer)
+- `website/index.html` (meta tag)
+- `website/docs/index.html` (meta tag)
+- `website/benchmarks/index.html` (meta tag)
+- `website/download/index.html` (meta tag)
 - `CLAUDE.md` (this file, "Current version" below)
 - `compiler/main.sans` (self-hosted compiler version string)
 
-The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
+The CLI `sans --version` reads the hardcoded version string in `compiler/main.sans`.
 
 **Current version: `0.4.0`**
 
@@ -103,18 +102,15 @@ The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_
 - **NEVER commit compiled binaries** (.o files, executables, Mach-O binaries). Use .gitignore to prevent this.
 - **All new syntax/features must be AI-optimized** — use the fewest tokens possible.
 - **All new features must include documentation updates** — see [Documentation Update Checklist](#documentation-update-checklist).
-- **Version numbers must stay in sync** — see [Versioning](#versioning). Always increment patch (`x.x.+1`) minimum.
 
 ## Conventions
 - All values are stored as i64 in the IR/codegen register map
 - Pointers (strings, opaque types) stored in both regs (as i64 via ptr_to_int) and ptrs (as PointerValue)
 - Opaque types (JsonValue, HttpResponse, Result, etc.) backed by Sans runtime with `sans_` prefix
-- Type checker uses `types_compatible()` for return type checks (allows ResultErr to match Result<T>)
-- E2E test helpers use unique temp filenames per fixture to prevent parallel test races
+- E2E test fixtures must use unique temp filenames to prevent parallel test races
 
 ## Known Limitations
 - IR type tracking is per-function: opaque types lose type info when passed cross-function as i64
 - No GC - all heap allocations leaked (arena allocator available for phase-based deallocation)
 - Float stored as i64 via bitcast in register map
-- Typeck is relaxed for bootstrap: 12 unit tests fail for type error detection (if/else branch mismatch, wrong arg types not caught)
-- User-defined functions now take precedence over builtins of the same name (fixed v0.3.43, compiler/ir.sans)
+- Typeck is relaxed for bootstrap

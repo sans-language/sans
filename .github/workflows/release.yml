@@ -26,11 +26,6 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          # Cargo.toml files (all 6 crates)
-          for toml in crates/*/Cargo.toml; do
-            sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" "$toml"
-          done
-
           # VS Code extension
           sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" editors/vscode-sans/package.json
 
@@ -44,9 +39,6 @@ jobs:
 
           # Self-hosted compiler version string
           sed -i "s/p(\"sans [0-9]*\.[0-9]*\.[0-9]*\")/p(\"sans ${VERSION}\")/" compiler/main.sans
-
-      - name: Update Cargo.lock
-        run: cargo update --workspace
 
       - name: Commit version bump
         env:
@@ -69,32 +61,30 @@ jobs:
         with:
           ref: main
 
-      - name: Install dependencies
+      - name: Install LLVM 17
         run: brew install llvm@17
 
-      - name: Install Rust toolchain
-        run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-
-      - name: Build Rust compiler (bootstrap)
+      - name: Download bootstrap compiler
         run: |
-          source "$HOME/.cargo/env"
-          LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
+          curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz | tar xz
+          chmod +x sans
+          ./sans --version
 
       - name: Build self-hosted compiler
         run: |
-          # Use the Rust-built sans to compile the self-hosted compiler
-          ./target/release/sans build compiler/main.sans
-          mv compiler/main sans
-          strip sans
+          ./sans build compiler/main.sans
+          mv compiler/main sans-new
+          strip sans-new
 
       - name: Verify binary
         run: |
-          ./sans --version
-          file sans
-          otool -L sans
+          ./sans-new --version
+          file sans-new
+          otool -L sans-new
 
       - name: Package
         run: |
+          mv sans-new sans
           tar czf sans-macos-arm64.tar.gz sans
           rm sans
 
@@ -114,45 +104,36 @@ jobs:
         with:
           ref: main
 
-      - name: Install dependencies
+      - name: Install LLVM 17
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
           sudo apt-get update
-          sudo apt-get install -y llvm-17 llvm-17-dev libpolly-17-dev libcurl4-openssl-dev libssl-dev pkg-config
+          sudo apt-get install -y llvm-17 libcurl4-openssl-dev libssl-dev pkg-config
 
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-x64-cargo-
-
-      - name: Build Rust compiler (bootstrap)
-        env:
-          LLVM_SYS_170_PREFIX: /usr/lib/llvm-17
-          LLVM_SYS_170_STATIC: "1"
-        run: cargo build --release
+      - name: Download bootstrap compiler
+        run: |
+          curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz | tar xz
+          chmod +x sans
+          export PATH="/usr/lib/llvm-17/bin:$PATH"
+          ./sans --version
 
       - name: Build self-hosted compiler
         run: |
           export PATH="/usr/lib/llvm-17/bin:$PATH"
-          ./target/release/sans build compiler/main.sans
-          mv compiler/main sans
-          strip sans
+          ./sans build compiler/main.sans
+          mv compiler/main sans-new
+          strip sans-new
 
       - name: Verify binary
         run: |
-          ./sans --version
-          file sans
-          ldd sans
+          ./sans-new --version
+          file sans-new
+          ldd sans-new
 
       - name: Package
         run: |
+          mv sans-new sans
           tar czf sans-linux-x86_64.tar.gz sans
           rm sans
 
