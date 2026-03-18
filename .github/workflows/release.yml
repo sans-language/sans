@@ -69,8 +69,8 @@ jobs:
         with:
           ref: main
 
-      - name: Install LLVM 17
-        run: brew install llvm@17
+      - name: Install LLVM 17 and zstd
+        run: brew install llvm@17 zstd
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -88,12 +88,15 @@ jobs:
           LLVM_SYS_170_STATIC: "1"
         run: |
           LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) \
+          RUSTFLAGS="-L $(brew --prefix zstd)/lib" \
           cargo build --release
 
       - name: Package
         run: |
           cp target/release/sans sans
           strip sans
+          # Verify no dynamic homebrew dependencies leak through
+          otool -L sans | grep -v /usr/lib | grep -v /System | grep -v sans || true
           tar czf sans-macos-arm64.tar.gz sans
           rm sans
 
@@ -118,7 +121,7 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
           sudo apt-get update
-          sudo apt-get install -y llvm-17-dev libpolly-17-dev libcurl4-openssl-dev libssl-dev pkg-config
+          sudo apt-get install -y llvm-17-dev libpolly-17-dev libcurl4-openssl-dev libssl-dev libzstd-dev pkg-config
 
       - name: Cache cargo
         uses: actions/cache@v4
