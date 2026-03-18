@@ -124,6 +124,10 @@ The `compiler/` directory contains a **self-hosted Sans compiler** (~11,600 LOC 
 
 The runtime is **100% self-hosted** -- written entirely in Sans, with zero C files remaining. Built-in capabilities (strings, arrays, maps, JSON, HTTP, file I/O, logging, error handling) are implemented using Sans's low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, curl bindings, etc.).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up the development environment, add features, and submit pull requests. AI agents: read [CLAUDE.md](CLAUDE.md) for the complete rule set.
+
 ## Known Limitations
 
 - No garbage collector -- use `arena_begin()`/`arena_alloc(n)`/`arena_end()` for phase-based bulk deallocation.
