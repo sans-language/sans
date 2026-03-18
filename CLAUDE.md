@@ -6,7 +6,7 @@
 
 ## Architecture
 - 6 Rust crates under `crates/`: sans-lexer, sans-parser, sans-typeck, sans-ir, sans-codegen, sans-driver
-- 8 C runtime files under `runtime/`: json.c, http.c, log.c, result.c, string_ext.c, array_ext.c, functional.c, server.c
+- 13 Sans runtime modules under `runtime/`: arena.sans, array_ext.sans, curl.sans, functional.sans, http.sans, json.sans, log.sans, map.sans, result.sans, server.sans, sock.sans, ssl.sans, string_ext.sans
 - Tests: unit tests in each crate, E2E tests in `crates/sans-driver/tests/e2e.rs`
 - Test fixtures in `tests/fixtures/` (.sans files and directories for multi-module)
 
@@ -16,7 +16,7 @@ Pipeline: typeck (type check) -> IR (instruction + lowering) -> codegen (LLVM co
 2. Add IR instruction in `crates/sans-ir/src/ir.rs`
 3. Add IR lowering in `crates/sans-ir/src/lib.rs`
 4. Add codegen in `crates/sans-codegen/src/lib.rs` (declare external fn + compile instruction)
-5. If backed by C: add function to appropriate `runtime/*.c` file
+5. If backed by runtime: add function to appropriate `runtime/*.sans` file
 6. Add tests in each crate
 7. **Update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist))
 
@@ -31,7 +31,7 @@ After implementation + tests, **update docs & tooling** (see [Documentation Upda
 4. Add `IrType` variant in `crates/sans-ir/src/lib.rs`
 5. Add `ir_type_for_return` mapping
 6. Add print guard in IR lowering
-7. If opaque: add C runtime backing
+7. If opaque: add Sans runtime backing in `runtime/*.sans`
 8. **Update docs & tooling** (see [Documentation Update Checklist](#documentation-update-checklist))
 
 ## AI-Optimized Syntax (MANDATORY)
@@ -108,7 +108,7 @@ The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_
 ## Conventions
 - All values are stored as i64 in the IR/codegen register map
 - Pointers (strings, opaque types) stored in both regs (as i64 via ptr_to_int) and ptrs (as PointerValue)
-- Opaque types (JsonValue, HttpResponse, Result, etc.) backed by C runtime with `cy_` prefix
+- Opaque types (JsonValue, HttpResponse, Result, etc.) backed by Sans runtime with `sans_` prefix
 - Type checker uses `types_compatible()` for return type checks (allows ResultErr to match Result<T>)
 - E2E test helpers use unique temp filenames per fixture to prevent parallel test races
 
