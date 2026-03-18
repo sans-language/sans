@@ -336,6 +336,21 @@ td.highlight {
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 32px;
+  overflow: hidden;
+}
+
+.docs {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.docs pre, .docs table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.toc-toggle {
+  display: none;
 }
 
 .toc {
@@ -570,9 +585,6 @@ footer a:hover {
     display: none;
   }
 }
-
-/* Show TOC toggle only on tablet/mobile */
-.toc-toggle { display: none; }
 
 @media (max-width: 768px) {
   .container, .container-wide { padding: 0 16px; }
