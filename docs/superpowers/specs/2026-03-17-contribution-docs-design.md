@@ -59,13 +59,13 @@ Human-friendly guide with eight sections:
 
 **1.6 Pull Request Process**
 - Workflow: fork -> branch -> implement -> self-review -> PR.
-- Mandatory in every PR: version bump (patch minimum), documentation updates (all 8 items per CLAUDE.md Documentation Update Checklist), tests, no compiled binaries.
-- Version bump and docs must ship in the same commit as the feature — not separate commits.
+- Mandatory in every PR: documentation updates (all 8 items per CLAUDE.md Documentation Update Checklist), tests, no compiled binaries.
+- Do not manually bump version numbers — version is managed by CI when the maintainer pushes a release tag.
 - Links to CLAUDE.md "Versioning" and "Documentation Update Checklist" sections.
 - Notes: the PR template checklist will remind you of all mandatory steps.
 
 **1.7 Common Gotchas**
-- Version bump is mandatory — every code change, every time, across all 6+ files. The most common mistake.
+- Do not manually bump version numbers — CI handles this on tag push. The most common mistake was forgetting files; automation eliminates it.
 - Documentation updates span 8 places — missing any one will be caught in review.
 - `!` is bitwise NOT, not logical NOT. Use `== 0` for logical negation.
 - No GC — heap allocations are leaked. Use `arena_begin()`/`arena_alloc(n)`/`arena_end()` for bulk deallocation.

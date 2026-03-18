@@ -70,29 +70,34 @@ Sans is designed for AI generation, not human readability. All new features, syn
 
 **Rule: A feature is not done until docs, website docs, hover docs, syntax highlighting, and examples are updated.** Do not split docs into a separate PR — ship them with the feature.
 
-## Versioning (MANDATORY — DO NOT SKIP)
-All version numbers must stay in sync and follow semver (`x.y.z`).
+## Versioning
+All version numbers follow semver (`x.y.z`) and are managed automatically by CI.
 
-**CRITICAL: Every commit that adds a feature, fixes a bug, or changes behavior MUST include a version bump.** This is not optional. Increment **patch** minimum (`x.x.+1`). Include the version bump in the SAME commit as the change — not a separate commit later.
+**Do NOT manually bump version numbers.** Version is set by pushing a git tag:
 
-**Before every `git commit`:** check if the version needs bumping. If the commit adds/changes/fixes anything beyond docs-only changes, bump the version. When in doubt, bump.
+```sh
+git tag v0.3.45
+git push origin v0.3.45
+```
 
-**Files that must ALL be updated together:**
-- `crates/sans-driver/Cargo.toml` (and all other `crates/*/Cargo.toml`)
+The release workflow (`.github/workflows/release.yml`) automatically:
+1. Updates all version files (Cargo.toml, package.json, website footers, CLAUDE.md, compiler/main.sans)
+2. Commits and pushes to main
+3. Builds macOS binaries and creates a GitHub release
+
+**Files managed by CI (do not edit versions manually):**
+- `crates/*/Cargo.toml` (all 6 crates)
 - `editors/vscode-sans/package.json`
 - `website/static/index.html` (footer)
 - `website/static/docs.html` (footer)
 - `website/static/benchmarks.html` (footer)
+- `website/static/download.html` (footer)
 - `CLAUDE.md` (this file, "Current version" below)
+- `compiler/main.sans` (self-hosted compiler version string)
 
 The CLI `sans --version` reads from `Cargo.toml` automatically via `env!("CARGO_PKG_VERSION")`.
 
 **Current version: `0.3.44`**
-
-**Checklist before committing:**
-1. Does this commit change code? → Bump version
-2. Did I update ALL version files? → Check each one
-3. Did I update `Current version` in this file? → Update it
 
 ## Rules
 - **NEVER commit compiled binaries** (.o files, executables, Mach-O binaries). Use .gitignore to prevent this.

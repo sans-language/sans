@@ -9,8 +9,59 @@ permissions:
   contents: write
 
 jobs:
+  version-bump:
+    name: Bump version files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in all files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Cargo.toml files (all 6 crates)
+          for toml in crates/*/Cargo.toml; do
+            sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" "$toml"
+          done
+
+          # VS Code extension
+          sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" editors/vscode-sans/package.json
+
+          # Website footers
+          for html in website/static/index.html website/static/docs.html website/static/benchmarks.html website/static/download.html; do
+            sed -i "s/Sans v[0-9]*\.[0-9]*\.[0-9]*/Sans v${VERSION}/g" "$html"
+          done
+
+          # CLAUDE.md current version
+          sed -i "s/\*\*Current version: \`[0-9]*\.[0-9]*\.[0-9]*\`\*\*/\*\*Current version: \`${VERSION}\`\*\*/" CLAUDE.md
+
+          # Self-hosted compiler version string
+          sed -i "s/p(\"sans [0-9]*\.[0-9]*\.[0-9]*\")/p(\"sans ${VERSION}\")/" compiler/main.sans
+
+      - name: Update Cargo.lock
+        run: cargo update --workspace
+
+      - name: Commit version bump
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: bump version to ${VERSION}"
+          git push origin main
+
   build-macos:
     name: Build macOS ${{ matrix.arch }}
+    needs: version-bump
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -22,6 +73,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Install LLVM 17
         run: brew install llvm@17

@@ -107,10 +107,10 @@ Write `.github/PULL_REQUEST_TEMPLATE.md` with this exact content:
 
 ## Checklist
 - [ ] Tests pass (`LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test`)
-- [ ] Version bumped in all required files (see CLAUDE.md Versioning)
 - [ ] Docs updated per CLAUDE.md Documentation Update Checklist (reference.md, ai-reference.md, docs.html, HOVER_DATA, syntax highlighting, test fixtures, examples, README)
 - [ ] Code self-reviewed (AI contributors: use superpowers:requesting-code-review)
 - [ ] No compiled binaries committed
+- [ ] No manual version bumps (version is managed by CI on tag push)
 
 ## Test plan
 <!-- How did you verify this works? -->
@@ -325,16 +325,14 @@ If you are an AI agent (or a human directing one):
 4. **Open a PR** — the template checklist will remind you of all mandatory steps.
 
 **Mandatory in every PR:**
-- Version bump (patch minimum, e.g., `0.3.44` -> `0.3.45`) across all required files — see [CLAUDE.md Versioning](CLAUDE.md#versioning-mandatory--do-not-skip).
 - Documentation updates in all 8 targets — see [CLAUDE.md Documentation Update Checklist](CLAUDE.md#documentation-update-checklist).
 - Tests pass.
 - No compiled binaries (.o files, executables) committed.
-
-Version bump and documentation updates must ship **in the same commit** as the feature — not as separate follow-up commits.
+- **Do not manually bump version numbers.** Version is managed by CI when the maintainer pushes a release tag. See [CLAUDE.md Versioning](CLAUDE.md#versioning).
 
 ## Common Gotchas
 
-- **Version bump is mandatory** on every code change, every time, across 6+ files. This is the most common mistake.
+- **Do not manually bump version numbers.** Version is managed by CI when the maintainer pushes a release tag (`git tag v0.3.45 && git push origin v0.3.45`). The workflow updates all version files automatically.
 - **Documentation updates span 8 places** (reference.md, ai-reference.md, docs.html, HOVER_DATA, syntax highlighting, test fixtures, examples, README). Miss any one and the PR will be rejected.
 - **`!` is bitwise NOT**, not logical NOT. `!1` is `-2` (truthy). Use `== 0` for logical negation.
 - **No garbage collector** — heap allocations are leaked. Use `arena_begin()`/`arena_alloc(n)`/`arena_end()` for phase-based bulk deallocation.
