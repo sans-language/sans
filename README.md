@@ -4,28 +4,33 @@ A fast, compiled programming language designed for backend and API development. 
 
 ## Quick Start
 
-### Prerequisites
-
-- [Rust](https://rustup.rs/) (stable toolchain)
-- LLVM 17: `brew install llvm@17`
-- libcurl (included with macOS)
-
-### Build
+### Install (macOS)
 
 ```sh
-LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
+curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-$(uname -m).tar.gz | tar xz && sudo mv sans /usr/local/bin/
 ```
 
-### Install
+Requires Xcode Command Line Tools (`xcode-select --install`) for the system linker. If macOS blocks the binary, run `xattr -d com.apple.quarantine /usr/local/bin/sans`.
 
-```sh
-ln -sf $(pwd)/target/release/sans ~/.local/bin/sans
-```
+See the [download page](https://sans-language.org/download) for manual downloads and build-from-source instructions.
 
 ### Usage
 
 ```sh
-sans build myfile.sans && ./myfile
+sans build myfile.sans   # compile to ./myfile
+sans run myfile.sans     # compile + run, no output file
+sans --version
+```
+
+### Build from source
+
+Requires: Rust (stable), LLVM 17.
+
+```sh
+brew install llvm@17
+git clone https://github.com/sans-language/sans && cd sans
+LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
+sudo cp target/release/sans /usr/local/bin/
 ```
 
 ## Hello World
@@ -97,6 +102,8 @@ Production-ready: auto-threading, HTTP/1.1 keep-alive, gzip compression, gracefu
 ```sh
 LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test
 ```
+
+E2E tests live in `crates/sans-driver/tests/e2e.rs` with fixtures in `tests/fixtures/`. Each fixture is a `.sans` file with an expected output comment at the top.
 
 ## Architecture
 
