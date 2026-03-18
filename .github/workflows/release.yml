@@ -34,9 +34,9 @@ jobs:
           # VS Code extension
           sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" editors/vscode-sans/package.json
 
-          # Website footers
-          for html in website/static/index.html website/static/docs.html website/static/benchmarks.html website/static/download.html; do
-            sed -i "s/Sans v[0-9]*\.[0-9]*\.[0-9]*/Sans v${VERSION}/g" "$html"
+          # Website version meta tags
+          for html in website/index.html website/docs/index.html website/benchmarks/index.html website/download/index.html; do
+            sed -i "s/content=\"[0-9]*\.[0-9]*\.[0-9]*\"/content=\"${VERSION}\"/" "$html"
           done
 
           # CLAUDE.md current version

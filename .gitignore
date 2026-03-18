@@ -13,3 +13,4 @@ examples/hello
 compiler/main
 compiler/test_build
 compiler/test_const_import
+.superpowers/
