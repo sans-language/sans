@@ -303,7 +303,8 @@ td.highlight {
 /* 11. DOCS LAYOUT
    ------------------------------------------------------------ */
 .docs {
-  padding: 32px 0;
+  padding-top: 32px;
+  padding-bottom: 32px;
 }
 
 .docs h1 {
@@ -336,7 +337,6 @@ td.highlight {
   max-width: 1440px;
   margin: 0 auto;
   padding: 0 32px;
-  overflow: hidden;
 }
 
 .docs {
