@@ -465,7 +465,7 @@ main() I {
   argc = argv.len()
 
   if argc < 2 {
-    p("usage: sans2 <build|run> <file.sans>")
+    p("usage: sans <build|run> <file.sans>")
     exit(1)
   }
 
@@ -477,7 +477,7 @@ main() I {
   }
 
   if argc < 3 {
-    p("usage: sans2 <build|run> <file.sans>")
+    p("usage: sans <build|run> <file.sans>")
     exit(1)
   }
 
