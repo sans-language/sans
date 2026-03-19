@@ -580,9 +580,9 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "mset" { lower_call_3(ctx, args, IR_MAP_SET, IRTY_INT) }
   else if name == "mhas" { lower_call_2(ctx, args, IR_MAP_HAS, IRTY_INT) }
   else if name == "cors" { lower_call_2(ctx, args, IR_CORS, IRTY_INT) }
-  else if name == "cors_all" { lower_call_1(ctx, args, IR_CORS_ALL, IRTY_INT) }
-  else if name == "url_decode" { lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) }
-  else if name == "path_segment" { lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) }
+  else if name == "cors_all" || name == "ca" { lower_call_1(ctx, args, IR_CORS_ALL, IRTY_INT) }
+  else if name == "url_decode" || name == "ud" { lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) }
+  else if name == "path_segment" || name == "ps" { lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) }
   else if name == "serve_file" { lower_call_2(ctx, args, IR_SERVE_FILE, IRTY_INT) }
   else if name == "ws_send" { lower_call_2(ctx, args, IR_WS_SEND, IRTY_INT) }
   else if name == "ws_recv" { lower_call_1(ctx, args, IR_WS_RECV, IRTY_STR) }
@@ -668,9 +668,9 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "char_at" { lower_call_char_at(ctx, args) }
 
   // ------ Arena ------
-  else if name == "arena_begin" { lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) }
-  else if name == "arena_alloc" { lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) }
-  else if name == "arena_end" { lower_call_0(ctx, IR_ARENA_END, IRTY_INT) }
+  else if name == "arena_begin" || name == "ab" { lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) }
+  else if name == "arena_alloc" || name == "aa" { lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) }
+  else if name == "arena_end" || name == "ae" { lower_call_0(ctx, IR_ARENA_END, IRTY_INT) }
 
   // ------ Function pointers ------
   else if name == "fptr" { lower_call_fptr(ctx, args) }
@@ -691,7 +691,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "rbind" { lower_call_3(ctx, args, IR_RBIND, IRTY_INT) }
   else if name == "rsetsockopt" { lower_call_5(ctx, args, IR_RSETSOCKOPT, IRTY_INT) }
   else if name == "strstr" { lower_call_2(ctx, args, IR_STRSTR, IRTY_INT) }
-  else if name == "gzip_compress" { lower_call_2(ctx, args, IR_GZIP_COMPRESS, IRTY_INT) }
+  else if name == "gzip_compress" || name == "gz" { lower_call_2(ctx, args, IR_GZIP_COMPRESS, IRTY_INT) }
 
   // ------ Curl ------
   else if name == "cinit" { lower_call_0(ctx, IR_CINIT, IRTY_INT) }
@@ -724,8 +724,8 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "map" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
 
   // ------ Signal / Poll ------
-  else if name == "signal_handler" { lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) }
-  else if name == "signal_check" { lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) }
+  else if name == "signal_handler" || name == "sigh" { lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) }
+  else if name == "signal_check" || name == "sigc" { lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) }
   else if name == "spoll" { lower_call_2(ctx, args, IR_SPOLL, IRTY_INT) }
 
   // ------ Misc ------
@@ -2132,7 +2132,7 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
-  else if method == "flat_map" {
+  else if method == "flat_map" || method == "fm" {
     fn_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_FLAT_MAP, dest, obj_reg, fn_reg))
@@ -2260,7 +2260,7 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   }
-  else if method == "index_of" {
+  else if method == "index_of" || method == "idx" {
     needle_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_INDEX_OF, dest, obj_reg, needle_reg))
@@ -2281,13 +2281,13 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   }
-  else if method == "to_int" {
+  else if method == "to_int" || method == "ti" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_STRING_TO_INT, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
-  else if method == "pad_left" {
+  else if method == "pad_left" || method == "pl" {
     width_reg = lower_expr(ctx, args.get(0))
     fill_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
@@ -2295,7 +2295,7 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   }
-  else if method == "pad_right" {
+  else if method == "pad_right" || method == "pr" {
     width_reg = lower_expr(ctx, args.get(0))
     fill_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
@@ -2393,26 +2393,26 @@ lower_json_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_JSON)
     dest
   }
-  else if method == "get_index" {
+  else if method == "get_index" || method == "gidx" {
     idx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_JSON_GET_INDEX, dest, obj_reg, idx_reg))
     ctx_set_reg_type(ctx, dest, IRTY_JSON)
     dest
   }
-  else if method == "get_string" {
+  else if method == "get_string" || method == "gs" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_GET_STRING, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   }
-  else if method == "get_int" {
+  else if method == "get_int" || method == "geti" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_GET_INT, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
-  else if method == "get_bool" {
+  else if method == "get_bool" || method == "gb" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_GET_BOOL, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
@@ -2439,7 +2439,7 @@ lower_json_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
-  else if method == "type_of" {
+  else if method == "type_of" || method == "typeof" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_JSON_TYPE_OF, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
@@ -2526,7 +2526,7 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   }
-  else if method == "set_header" {
+  else if method == "set_header" || method == "sh" {
     name_reg = lower_expr(ctx, args.get(0))
     val_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
@@ -2554,7 +2554,7 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   }
-  else if method == "content_length" {
+  else if method == "content_length" || method == "cl" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_CONTENT_LENGTH, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
@@ -2567,7 +2567,7 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
-  else if method == "respond_json" {
+  else if method == "respond_json" || method == "rj" {
     status_reg = lower_expr(ctx, args.get(0))
     body_reg = lower_expr(ctx, args.get(1))
     dest = ctx_fresh_reg(ctx)
