@@ -135,16 +135,16 @@ jobs:
           echo "=== .ll files ==="
           ls -la ll-output/
           # Compile main .ll to object
-          llc -filetype=obj -O2 -o main.o ll-output/main.ll
+          llc -filetype=obj -O2 --relocation-model=pic -o main.o ll-output/main.ll
           # Compile each runtime .ll to object
           RUNTIME_OBJS=""
           for ll in ll-output/sans_*_runtime.ll; do
             base=$(basename "$ll" .ll)
-            llc -filetype=obj -O2 -o "/tmp/${base}.o" "$ll"
+            llc -filetype=obj -O2 --relocation-model=pic -o "/tmp/${base}.o" "$ll"
             RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
           done
           # Link
-          cc main.o $RUNTIME_OBJS \
+          cc -no-pie main.o $RUNTIME_OBJS \
             -lcurl -lz $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') \
             -o sans
           strip sans
