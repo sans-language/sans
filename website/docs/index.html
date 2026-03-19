@@ -143,7 +143,22 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
 a.<span class="fn">any</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })      <span class="comment">// B — true if any match</span>
 a.<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })     <span class="comment">// first match or 0</span>
 a.<span class="fn">enumerate</span>()                   <span class="comment">// [(I I)] index-value tuples</span>
-a.<span class="fn">zip</span>(b)                        <span class="comment">// [(I I)] paired tuples</span></code></pre>
+a.<span class="fn">zip</span>(b)                        <span class="comment">// [(I I)] paired tuples</span>
+a.<span class="fn">sort</span>()                        <span class="comment">// in-place sort (integers)</span>
+a.<span class="fn">reverse</span>()                     <span class="comment">// in-place reverse</span>
+a.<span class="fn">join</span>(<span class="str">","</span>)                    <span class="comment">// "1,2,3" — join to string</span>
+a.<span class="fn">slice</span>(<span class="num">1</span>, <span class="num">3</span>)                  <span class="comment">// sub-array [start..end)</span>
+
+<span class="comment">// String methods</span>
+s.<span class="fn">upper</span>()  s.<span class="fn">lower</span>()            <span class="comment">// case conversion</span>
+s.<span class="fn">index_of</span>(<span class="str">"sub"</span>)               <span class="comment">// position or -1</span>
+s.<span class="fn">char_at</span>(<span class="num">0</span>)  s.<span class="fn">get</span>(<span class="num">0</span>)         <span class="comment">// single character as string</span>
+s.<span class="fn">repeat</span>(<span class="num">3</span>)                     <span class="comment">// "abcabcabc"</span>
+
+<span class="comment">// Math &amp; range</span>
+<span class="fn">abs</span>(<span class="num">-5</span>)  <span class="fn">min</span>(<span class="num">3</span>, <span class="num">7</span>)  <span class="fn">max</span>(<span class="num">3</span>, <span class="num">7</span>)
+<span class="fn">range</span>(<span class="num">5</span>)                          <span class="comment">// [0 1 2 3 4]</span>
+<span class="fn">range</span>(<span class="num">2</span>, <span class="num">5</span>)                       <span class="comment">// [2 3 4]</span></code></pre>
 
     <h2 id="operators">Operators</h2>
     <table>
