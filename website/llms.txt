@@ -35,8 +35,17 @@ import "mod"               // module import
 struct S { x I, y I }      // struct
 enum E { A, B(I) }         // enum
 match v { E::A => 0, E::B(x) => x }
+match x { n if n > 0 => 1, _ => 0 }   // match guard + binding pattern
 trait T { fn m(self) I }   // trait
 impl T for S { fn m(self) I { self.x } }
+struct Pair<A B> { a:A b:B }           // generic struct
+impl Box<T> { get(self:Box<T>) I = self.value }  // generic method
+Pair<I S>{a:1 b:"hi"}                 // generic struct literal
+Box<Pair<I I>>{value:inner}           // nested generics
+f(x:I y:I=0) = x+y        // default params (literals + negatives)
+err(404 "msg")             // error code on Result
+r.code()                   // get error code
+for (k v) in m.entries()   // destructure for-loop (N elements)
 spawn func(args)           // thread
 let (tx rx) = channel<I>() // channel
 mutex(val)                 // mutex
@@ -82,16 +91,16 @@ serve_tls(port cert key handler)        I S S Fn -> I (production HTTPS server)
 stream_write(w data)                    I S -> I (send chunked data)
 stream_end(w)                           I -> I (end chunked stream)
 cors(req origin)                        HttpRequest S -> I (set CORS headers)
-cors_all(req)                           HttpRequest -> I (set CORS headers wildcard)
-signal_handler(signum)                  I -> I (register signal handler)
-signal_check()                          -> I (1 if signal received)
+cors_all(req) / ca(req)                 HttpRequest -> I (set CORS headers wildcard)
+signal_handler(signum) / sigh(s)        I -> I (register signal handler)
+signal_check() / sigc()                 -> I (1 if signal received)
 spoll(fd timeout_ms)                    I I -> I (poll fd, 1=ready 0=timeout)
 ws_send(ws msg)                         I S -> I (send WS text frame)
 ws_recv(ws)                             I -> S (recv WS frame, "" on close)
 ws_close(ws)                            I -> I (send close frame, close socket)
 serve_file(req dir)                     HttpRequest S -> I (serve static file from dir)
-url_decode(s)                           S -> S (URL-decode string)
-path_segment(path idx)                  S I -> S (extract URL path segment by index)
+url_decode(s) / ud(s)                   S -> S (URL-decode string)
+path_segment(path idx) / ps(p i)        S I -> S (extract URL path segment by index)
 ld(msg)           log_debug(msg)        S -> I
 li(msg)           log_info(msg)         S -> I
 lw(msg)           log_warn(msg)         S -> I
@@ -99,6 +108,7 @@ le(msg)           log_error(msg)        S -> I
 ll(level)         log_set_level(n)      I -> I
 ok(v)                                   T -> R<T>
 err(msg)                                S -> R<_>
+err(code msg)                           I S -> R<_> (with error code)
 
 // Low-level primitives (pointers as I)
 alloc(n)                                I -> I (malloc)
@@ -120,12 +130,12 @@ bswap16(v)                              I -> I (byte swap 16)
 exit(code)                              I -> I (exit process)
 system(cmd) / sys(cmd)                  S -> I (run shell cmd, return exit code)
 wfd(fd msg)                             I S -> I (write to fd)
-gzip_compress(data len)                 I I -> I (gzip compress, returns ptr to [ptr, len])
+gzip_compress(data len) / gz(d l)       I I -> I (gzip compress, returns ptr to [ptr, len])
 
 // Arena allocator (phase-based, stackable up to 8 deep)
-arena_begin()                           -> I (push new arena)
-arena_alloc(n)                          I -> I (bump alloc from arena)
-arena_end()                             -> I (free all arena memory)
+arena_begin() / ab()                    -> I (push new arena)
+arena_alloc(n) / aa(n)                  I -> I (bump alloc from arena)
+arena_end() / ae()                      -> I (free all arena memory)
 
 // SSL (advanced — prefer https_listen for most use cases)
 ssl_ctx(cert key)                       S S -> I (create SSL context)
@@ -178,15 +188,14 @@ args()                                  -> [S] (command-line args)
 
 ## Methods
 ```
-Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b)
-Map:       set(k v) get(k) has(k) len keys vals
-String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n)
-JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
+Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b) sort reverse join(sep) slice(s e) reduce(init f) each(f)/for_each(f) flat_map(f)/fm(f) sum min max flat
+Map:       set(k v) get(k) has(k) len keys vals delete(k) entries
+String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s)/idx(s) char_at(i)/get(i) repeat(n) to_int/ti pad_left(w f)/pl(w f) pad_right(w f)/pr(w f) bytes
+JsonValue: get(k) get_index(i)/gidx(i) get_string/gs get_int/geti get_bool/gb len type_of/typeof set(k v) push(v) stringify
 HttpResponse: status body header(n) ok
 HttpServer:   accept
-HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length cookie(name) form(name) respond(status body) respond(status body ct) respond_json(status body) respond_stream(status) is_ws_upgrade upgrade_ws
-              // respond auto-gzips when: body>=1024B + Accept-Encoding:gzip + compressible ct; opt-out: set_header("X-No-Compress" "1")
-Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
+HttpRequest:  path method body header(n) set_header(n v)/sh(n v) query(n) path_only content_length/cl cookie(n) form(n) respond(status body) respond(status body ct) respond_json(s b)/rj(s b) respond_stream(s) is_ws_upgrade upgrade_ws
+Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error code
 Sender<T>:    send(v)
 Receiver<T>:  recv
 Mutex<T>:     lock unlock(v)
@@ -234,5 +243,8 @@ a.zip(b)                         // [(I I)] — paired tuples
 ## Builtin Names (user-defined functions take precedence)
 User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check` and all others listed above.
 
-## Self-Hosting
-The Sans compiler and runtime are both written in Sans. The runtime (`runtime/*.sans`) uses low-level primitives with zero C. The compiler (`compiler/*.sans`, ~11,600 LOC) bootstraps via stage 0→1→2→3 (fixed point).
+## File I/O Aliases (all exist in compiler)
+fread/fr/file_read  fwrite/fw/file_write  fappend/fa/file_append  fexists/fe/file_exists
+itos/str/int_to_string  jparse/jp/json_parse  jobj/jo/json_object  jarr/ja/json_array
+jstr/js/json_string  jstringify/jfy/json_stringify  hget/hg/http_get  hpost/hp/http_post
+hl/listen/http_listen  HS=HttpServer  HR=HttpRequest

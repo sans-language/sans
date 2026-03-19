@@ -252,5 +252,13 @@ a.zip(b)                         // [(I I)] — paired tuples
 ## Builtin Names (user-defined functions take precedence)
 User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check` and all others listed above.
 
-## Self-Hosting
-The Sans compiler and runtime are both written in Sans. The runtime (`runtime/*.sans`) uses low-level primitives with zero C. The compiler (`compiler/*.sans`, ~11,600 LOC) bootstraps via stage 0→1→2→3 (fixed point).
+## All Aliases (short | medium | long)
+fread/fr/file_read  fwrite/fw/file_write  fappend/fa/file_append  fexists/fe/file_exists
+itos/str/int_to_string  jparse/jp/json_parse  jobj/jo/json_object  jarr/ja/json_array
+jstr/js/json_string  jstringify/jfy/json_stringify  hget/hg/http_get  hpost/hp/http_post
+hl/listen/http_listen  HS=HttpServer  HR=HttpRequest
+ab/arena_begin  aa/arena_alloc  ae/arena_end  gz/gzip_compress
+ca/cors_all  ud/url_decode  ps/path_segment  sigh/signal_handler  sigc/signal_check
+idx/index_of  pl/pad_left  pr/pad_right  ti/to_int  fm/flat_map
+gidx/get_index  gs/get_string  geti/get_int  gb/get_bool  typeof/type_of
+sh/set_header  cl/content_length  rj/respond_json
