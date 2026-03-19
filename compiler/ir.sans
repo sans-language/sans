@@ -2736,6 +2736,9 @@ lower_lambda(ctx:I expr:I) I {
   store64(lctx + 96, load64(ctx + 96))   // variant_tag_map
   store64(lctx + 104, load64(ctx + 104)) // variant_fields_map
   store64(lctx + 136, load64(ctx + 136)) // fn_ret_struct_names
+  store64(lctx + 144, load64(ctx + 144)) // module_name
+  store64(lctx + 152, load64(ctx + 152)) // local_fn_set
+  store64(lctx + 160, load64(ctx + 160)) // imported_fn_names
   // Share lambda counter to avoid collisions with nested lambdas
   store64(lctx + 120, load64(ctx + 120))
 
@@ -2875,7 +2878,8 @@ find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
   stag = load64(stmt)
   if stag == ST_EXPR { find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
   else if stag == ST_LET {
-    val = load64(stmt + 16)
+    // ST_LET layout: [tag, name, mutable, type_ptr, value_expr]
+    val = load64(stmt + 32)
     find_captures_expr(val, param_set, ctx, result, seen, local_set)
     // Add the let-bound name to local_set so it's not treated as a capture
     mset(local_set, load64(stmt + 8), 1)
@@ -2914,7 +2918,7 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
     }
   }
   else if etag == EX_CALL {
-    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    // EX_CALL: [tag, name_ptr(string), args_arr] — name is a string, not an expression
     args = load64(expr + 16)
     ai := 0
     while ai < args.len() {
