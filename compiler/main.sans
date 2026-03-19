@@ -472,7 +472,7 @@ main() I {
   cmd = argv.get(1)
 
   if cmd == "--version" || cmd == "-V" {
-    p("sans 0.5.3")
+    p("sans 0.5.4")
     exit(0)
   }
 
