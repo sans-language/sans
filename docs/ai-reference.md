@@ -66,6 +66,9 @@ min(a b)                                I I -> I
 max(a b)                                I I -> I
 range(n)                                I -> Array<I> [0..n)
 range(a b)                              I I -> Array<I> [a..b)
+sleep(ms)                               I -> I (pause ms)
+time()/now()                            -> I (unix timestamp)
+random(max)/rand(max)                   I -> I [0..max)
 fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I
@@ -183,9 +186,10 @@ args()                                  -> [S] (command-line args)
 
 ## Methods
 ```
-Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b) sort reverse join(sep) slice(s e)
+Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b) sort reverse join(sep) slice(s e) reduce(init f) each(f)/for_each(f) flat_map(f)
 Map:       set(k v) get(k) has(k) len keys vals delete(k)
-String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s) char_at(i)/get(i) repeat(n)
+String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s) char_at(i)/get(i) repeat(n) to_int
+Int:       to_str/to_string
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
 HttpResponse: status body header(n) ok
 HttpServer:   accept

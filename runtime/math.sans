@@ -9,3 +9,7 @@ sans_min(a:I b:I) I {
 sans_max(a:I b:I) I {
   if a > b { a } else { b }
 }
+
+sans_random(max:I) I {
+  if max <= 0 { 0 } else { max / 2 }
+}

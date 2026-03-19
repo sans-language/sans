@@ -174,6 +174,14 @@ String comparison (`==`, `!=`) is supported.
 | `range(n)` | `(Int) -> Array<Int>` | Returns `[0, 1, ..., n-1]` |
 | `range(a, b)` | `(Int, Int) -> Array<Int>` | Returns `[a, a+1, ..., b-1]` |
 
+### System
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `sleep(ms)` | `(Int) -> Int` | Pause execution for milliseconds |
+| `time()` / `now()` | `() -> Int` | Current Unix timestamp (seconds) |
+| `random(max)` / `rand(max)` | `(Int) -> Int` | Random integer in `[0, max)` |
+
 ### JSON
 
 | Function | Alias | Signature |
@@ -479,6 +487,9 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `reverse` | `() -> Array<T>` | In-place reverse |
 | `join(sep)` | `(String) -> String` | Join elements with separator |
 | `slice(start, end)` | `(Int, Int) -> Array<T>` | Sub-array `[start..end)` |
+| `reduce(init, fn)` | `(T, (T, T) -> T) -> T` | Fold to single value |
+| `each(fn)` / `for_each(fn)` | `((T) -> Int) -> Int` | Iterate with side effects |
+| `flat_map(fn)` | `((T) -> Array<U>) -> Array<U>` | Map + flatten |
 
 ### String
 
@@ -497,6 +508,14 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `index_of(sub)` | `(String) -> Int` |
 | `char_at(index)` or `get(index)` | `(Int) -> String` |
 | `repeat(n)` | `(Int) -> String` |
+| `to_int` | `() -> Int` |
+| `get(index)` | `(Int) -> String` |
+
+### Int
+
+| Method | Signature |
+|--------|-----------|
+| `to_str` / `to_string` | `() -> String` |
 
 ### Map
 

@@ -2,6 +2,36 @@
 
 All notable changes to Sans are documented here.
 
+## [0.4.6] - 2026-03-19
+
+### Added
+- `abs(n)`, `min(a,b)`, `max(a,b)` — math built-in functions
+- `s.char_at(i)` / `s.get(i)` — get single character as string
+- `s.repeat(n)` — repeat string n times
+- `a.slice(start, end)` — array slicing
+- `a.reduce(init, fn)` — fold/reduce array to single value
+- `a.each(fn)` / `a.for_each(fn)` — iterate with side effects
+- `a.flat_map(fn)` — map + flatten
+- `m.delete(key)` — remove key from map
+- `n.to_str()` / `n.to_string()` — method syntax for int-to-string
+- `s.to_int()` — method syntax for string-to-int
+- `sleep(ms)` — pause execution
+- `time()` / `now()` — current Unix timestamp
+- `random(max)` / `rand(max)` — random integer in `[0, max)`
+- Website custom domain sans.dev
+
+### Fixed
+- Removed hardcoded macOS ARM64 target triple — compiler now works cross-platform
+- Linux CI builds via cross-compiled LLVM IR from macOS
+
+## [0.4.5] - 2026-03-18
+
+### Added
+- `abs(n)`, `min(a,b)`, `max(a,b)` — math built-in functions
+- `s.char_at(i)` — get single character as string
+- `a.slice(start, end)` — array slicing
+- `m.delete(key)` — map key removal
+
 ## [0.4.4] - 2026-03-18
 
 ### Added

@@ -963,6 +963,20 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       return make_type(TY_INT)
     }
 
+    // ------ System ---------------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "sleep" {
+      if nargs != 1 { tc_error("sleep() takes exactly 1 argument (milliseconds)") }
+      return make_type(TY_INT)
+    }
+    if name == "time" || name == "now" {
+      if nargs != 0 { tc_error(name + "() takes no arguments") }
+      return make_type(TY_INT)
+    }
+    if name == "random" || name == "rand" {
+      if nargs != 1 { tc_error("random() takes exactly 1 argument (max)") }
+      return make_type(TY_INT)
+    }
+
     // ------ Memory ---------------------------------------------------------------------------------------------------------------------------------------------------------
     if name == "alloc" {
       if nargs != 1 { tc_error("alloc() takes exactly 1 argument (size)") }
@@ -1737,6 +1751,18 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         if mc_nargs != 2 { tc_error("slice() takes exactly 2 arguments (start, end)") }
         return obj_ty
       }
+      if mc_method == "reduce" {
+        if mc_nargs != 2 { tc_error("reduce() takes exactly 2 arguments (init, fn)") }
+        return make_type(TY_INT)
+      }
+      if mc_method == "each" || mc_method == "for_each" {
+        if mc_nargs != 1 { tc_error(mc_method + "() takes exactly 1 argument (fn)") }
+        return make_type(TY_INT)
+      }
+      if mc_method == "flat_map" {
+        if mc_nargs != 1 { tc_error("flat_map() takes exactly 1 argument (fn)") }
+        return obj_ty
+      }
       if mc_method == "sort" {
         if mc_nargs != 0 { tc_error("sort() takes no arguments") }
         return obj_ty
@@ -1830,6 +1856,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if mc_method == "get" {
         if mc_nargs != 1 { tc_error("get() takes exactly 1 argument (index)") }
         return make_type(TY_STRING)
+      }
+      if mc_method == "to_int" {
+        if mc_nargs != 0 { tc_error("to_int() takes no arguments") }
+        return make_type(TY_INT)
       }
       return tc_error("String has no method '" + mc_method + "'")
     }
