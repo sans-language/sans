@@ -2061,6 +2061,20 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_emit(ctx, ir_inst2(IR_STRING_INDEX_OF, dest, obj_reg, needle_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
+  }
+  else if method == "repeat" {
+    count_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_REPEAT, dest, obj_reg, count_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "get" {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_CHAR_AT, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
   } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }

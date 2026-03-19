@@ -528,6 +528,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_string_index_of(i64, i64)")
   emit(cg, "declare i64 @sans_string_char_at(i64, i64)")
   emit(cg, "declare i64 @sans_string_to_float(i64)")
+  emit(cg, "declare i64 @sans_string_repeat(i64, i64)")
 
   // ------ Sans runtime: Math ------
   emit(cg, "declare i64 @sans_abs(i64)")
@@ -3186,6 +3187,13 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_MAX {
     compile_rt2(cg, inst, "sans_max")
+    return 0
+  }
+
+  // ------ String repeat (230) ------
+  if op == IR_STRING_REPEAT {
+    compile_rt2(cg, inst, "sans_string_repeat")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 5)
     return 0
   }
 

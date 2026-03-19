@@ -1823,6 +1823,14 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         if mc_nargs != 1 { tc_error("index_of() takes exactly 1 argument") }
         return make_type(TY_INT)
       }
+      if mc_method == "repeat" {
+        if mc_nargs != 1 { tc_error("repeat() takes exactly 1 argument (count)") }
+        return make_type(TY_STRING)
+      }
+      if mc_method == "get" {
+        if mc_nargs != 1 { tc_error("get() takes exactly 1 argument (index)") }
+        return make_type(TY_STRING)
+      }
       return tc_error("String has no method '" + mc_method + "'")
     }
     // ------ Map methods ------------------------------------------------------------------------------------------------------------------------------------------
