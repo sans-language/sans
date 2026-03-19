@@ -26,18 +26,11 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          # VS Code extension
           sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" editors/vscode-sans/package.json
-
-          # Website version meta tags
           for html in website/index.html website/docs/index.html website/benchmarks/index.html website/download/index.html; do
             sed -i "s/content=\"[0-9]*\.[0-9]*\.[0-9]*\"/content=\"${VERSION}\"/" "$html"
           done
-
-          # CLAUDE.md current version
           sed -i "s/\*\*Current version: \`[0-9]*\.[0-9]*\.[0-9]*\`\*\*/\*\*Current version: \`${VERSION}\`\*\*/" CLAUDE.md
-
-          # Self-hosted compiler version string
           sed -i "s/p(\"sans [0-9]*\.[0-9]*\.[0-9]*\")/p(\"sans ${VERSION}\")/" compiler/main.sans
 
       - name: Commit version bump
@@ -82,6 +75,30 @@ jobs:
           file compiler/main
           otool -L compiler/main
 
+      - name: Generate .ll files for Linux cross-build
+        run: |
+          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          # Use the freshly built compiler (no hardcoded target triple)
+          # to compile itself again, but keep the .ll files
+          # Trick: replace llc/cc with no-ops so only .ll generation happens
+          mkdir -p /tmp/noop ll-output
+          printf '#!/bin/bash\nexit 0\n' > /tmp/noop/llc
+          printf '#!/bin/bash\nexit 0\n' > /tmp/noop/cc
+          chmod +x /tmp/noop/llc /tmp/noop/cc
+          PATH="/tmp/noop:$PATH" ./compiler/main build compiler/main.sans 2>&1 || true
+          # The compiler writes main.ll then runtime .ll files to /tmp
+          # Main .ll uses output_path.ll pattern
+          cp compiler/main.ll ll-output/ 2>/dev/null || true
+          cp /tmp/sans_*_runtime.ll ll-output/ 2>/dev/null || true
+          echo "Generated .ll files:"
+          ls -la ll-output/
+
+      - name: Upload .ll artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
+
       - name: Package
         run: |
           mv compiler/main sans
@@ -94,54 +111,9 @@ jobs:
           files: sans-macos-arm64.tar.gz
           generate_release_notes: true
 
-  build-ll:
-    name: Generate LLVM IR
-    needs: version-bump
-    runs-on: macos-15
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - name: Install LLVM 17
-        run: brew install llvm@17
-
-      - name: Download bootstrap compiler
-        run: |
-          curl -fsSL https://github.com/sans-language/sans/releases/download/v0.4.0/sans-macos-arm64.tar.gz | tar xz
-          chmod +x sans
-
-      - name: Generate .ll files
-        run: |
-          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
-          # Patch do_link to keep .ll files: compile but don't link
-          # Instead, manually run the compiler and capture .ll output
-          # The compiler writes .ll then calls llc then links — we just need the .ll
-          # Use a fake llc that just succeeds so compilation finishes and .ll is preserved
-          mkdir -p /tmp/fakebin
-          printf '#!/bin/bash\nexit 0\n' > /tmp/fakebin/llc
-          printf '#!/bin/bash\nexit 0\n' > /tmp/fakebin/cc
-          chmod +x /tmp/fakebin/llc /tmp/fakebin/cc
-          export PATH="/tmp/fakebin:$PATH"
-          ./sans build compiler/main.sans 2>&1 || true
-          # Collect all .ll files
-          mkdir -p ll-output
-          cp /tmp/sans_*_runtime.ll ll-output/ 2>/dev/null || true
-          cp compiler/main.ll ll-output/ 2>/dev/null || true
-          # Also try the default output path
-          find /tmp -name "*.ll" -newer /tmp/fakebin/llc -exec cp {} ll-output/ \; 2>/dev/null || true
-          ls -la ll-output/
-
-      - name: Upload .ll artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ll-files
-          path: ll-output/
-
   build-linux:
     name: Build Linux x86_64
-    needs: build-ll
+    needs: build-macos
     runs-on: ubuntu-latest
 
     steps:
@@ -149,7 +121,7 @@ jobs:
         with:
           ref: main
 
-      - name: Install LLVM 17
+      - name: Install LLVM 17 and dependencies
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
@@ -165,9 +137,10 @@ jobs:
       - name: Compile from LLVM IR
         run: |
           export PATH="/usr/lib/llvm-17/bin:$PATH"
+          echo "=== .ll files ==="
           ls -la ll-output/
           # Compile main .ll to object
-          llc -filetype=obj -O2 -o compiler/main.o ll-output/main.ll
+          llc -filetype=obj -O2 -o main.o ll-output/main.ll
           # Compile each runtime .ll to object
           RUNTIME_OBJS=""
           for ll in ll-output/sans_*_runtime.ll; do
@@ -176,21 +149,19 @@ jobs:
             RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
           done
           # Link
-          cc compiler/main.o $RUNTIME_OBJS \
+          cc main.o $RUNTIME_OBJS \
             -lcurl -lz $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') \
-            -Wl,-z,stacksize=268435456 \
-            -o compiler/main
-          strip compiler/main
+            -o sans
+          strip sans
 
       - name: Verify binary
         run: |
-          ./compiler/main --version
-          file compiler/main
-          ldd compiler/main
+          ./sans --version
+          file sans
+          ldd sans
 
       - name: Package
         run: |
-          mv compiler/main sans
           tar czf sans-linux-x86_64.tar.gz sans
           rm sans
 
