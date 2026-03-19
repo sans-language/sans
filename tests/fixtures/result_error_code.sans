@@ -1,0 +1,9 @@
+fetch(url:S) R<I> {
+  if url == "bad" { err(404 "not found") } else { ok(42) }
+}
+
+main() {
+  r = fetch("bad")
+  code = r.code()
+  if code == 404 { code - 404 + 10 } else { 0 }
+}

@@ -492,12 +492,13 @@ emit_externals(cg:I) I {
 
   // ------ Sans runtime: Result ------
   emit(cg, "declare i64 @sans_result_ok(i64)")
-  emit(cg, "declare i64 @sans_result_err(i64)")
+  emit(cg, "declare i64 @sans_result_err(i64, i64)")
   emit(cg, "declare i64 @sans_result_is_ok(i64)")
   emit(cg, "declare i64 @sans_result_is_err(i64)")
   emit(cg, "declare i64 @sans_result_unwrap(i64)")
   emit(cg, "declare i64 @sans_result_error(i64)")
   emit(cg, "declare i64 @sans_result_unwrap_or(i64, i64)")
+  emit(cg, "declare i64 @sans_result_code(i64)")
 
   // ------ Sans runtime: Logging ------
   emit(cg, "declare i64 @sans_log_debug(i64)")
@@ -2847,7 +2848,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
   if op == IR_RESULT_ERR {
-    compile_rt1(cg, inst, "sans_result_err")
+    compile_rt2(cg, inst, "sans_result_err")
     emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 4)
     return 0
   }
@@ -2856,6 +2857,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_RESULT_UNWRAP { return compile_rt1(cg, inst, "sans_result_unwrap") }
   if op == IR_RESULT_UNWRAP_OR { return compile_rt2(cg, inst, "sans_result_unwrap_or") }
   if op == IR_RESULT_ERROR { return compile_rt1(cg, inst, "sans_result_error") }
+  if op == IR_RESULT_CODE { return compile_rt1(cg, inst, "sans_result_code") }
 
   // ------ Logging (119-125) --- runtime calls ------
   if op == IR_LOG_DEBUG { return compile_rt1(cg, inst, "sans_log_debug") }

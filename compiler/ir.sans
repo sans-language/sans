@@ -702,7 +702,19 @@ lower_call(ctx:I name:I args:I) I {
 
   // ------ Result ------
   else if name == "ok" { lower_call_1(ctx, args, IR_RESULT_OK, IRTY_RESULT) }
-  else if name == "err" { lower_call_1(ctx, args, IR_RESULT_ERR, IRTY_RESULT) }
+  else if name == "err" {
+    if args.len() == 2 {
+      lower_call_2(ctx, args, IR_RESULT_ERR, IRTY_RESULT)
+    } else {
+      dest = ctx_fresh_reg(ctx)
+      zero_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(zero_reg, 0))
+      msg_reg = lower_expr(ctx, args.get(0))
+      ctx_emit(ctx, ir_inst2(IR_RESULT_ERR, dest, zero_reg, msg_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_RESULT)
+      dest
+    }
+  }
 
   // ------ Map ------
   else if name == "M" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
@@ -1821,6 +1833,11 @@ lower_method_call(ctx:I expr:I) I {
       ctx_emit(ctx, ir_inst1(IR_RESULT_ERROR, dest, obj_reg))
       ctx_set_reg_type(ctx, dest, IRTY_STR)
       dest
+    } else if method == "code" {
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_RESULT_CODE, dest, obj_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      dest
     } else if method == "unwrap_or" {
       arg_reg = lower_expr(ctx, args.get(0))
       dest = ctx_fresh_reg(ctx)
@@ -2511,6 +2528,12 @@ lower_result_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_RESULT_ERROR, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "code" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_RESULT_CODE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } else {
     lower_method_fallback(ctx, obj_reg, method, args)

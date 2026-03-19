@@ -1,19 +1,21 @@
 sans_result_ok(value:I) I {
-  r = alloc(24)
+  r = alloc(32)
   store64(r, 0)
   store64(r + 8, value)
   store64(r + 16, 0)
+  store64(r + 24, 0)
   r
 }
 
-sans_result_err(msg:I) I {
-  r = alloc(24)
+sans_result_err(code:I msg:I) I {
+  r = alloc(32)
   store64(r, 1)
   store64(r + 8, 0)
   len = slen(msg)
   buf = alloc(len + 1)
   mcpy(buf, msg, len + 1)
   store64(r + 16, buf)
+  store64(r + 24, code)
   r
 }
 
@@ -52,4 +54,8 @@ sans_result_error(r:I) I {
     store8(empty, 0)
     empty
   }
+}
+
+sans_result_code(r:I) I {
+  load64(r + 24)
 }
