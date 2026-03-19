@@ -167,6 +167,9 @@ run_test "default_params"            "$REPO_ROOT/tests/fixtures/default_params.s
 run_test "default_params_negative"   "$REPO_ROOT/tests/fixtures/default_params_negative.sans"   50
 run_test "for_destructure_map"       "$REPO_ROOT/tests/fixtures/for_destructure_map.sans"       6
 run_test "for_destructure_triple"    "$REPO_ROOT/tests/fixtures/for_destructure_triple.sans"    21
+run_test "ir_opaque_param"           "$REPO_ROOT/tests/fixtures/ir_opaque_param.sans"           42
+run_test "scope_global_escape"       "$REPO_ROOT/tests/fixtures/scope_global_escape.sans"       20
+run_test "scope_nested_array"        "$REPO_ROOT/tests/fixtures/scope_nested_array.sans"        10
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests

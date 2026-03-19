@@ -40,6 +40,27 @@ sans_scope_track(ptr:I tag:I) I {
   ptr
 }
 
+sans_scope_untrack(ptr:I) I {
+  prev := 0
+  node := rc_alloc_head
+  while node != 0 {
+    node_ptr = load64(node)
+    next = load64(node + 16)
+    if node_ptr == ptr {
+      if prev == 0 {
+        rc_alloc_head = next
+      } else {
+        store64(prev + 16, next)
+      }
+      dealloc(node)
+      return 0
+    }
+    prev = node
+    node = next
+  }
+  0
+}
+
 sans_scope_enter() I {
   frame = alloc(16)
   store64(frame, rc_alloc_head)
@@ -92,6 +113,30 @@ scope_free(ptr:I tag:I) I {
   0
 }
 
+scope_should_keep(ptr:I keep:I) I {
+  if ptr == keep { return 1 }
+  if keep == 0 { return 0 }
+  // Check if keep is an array (tag==1) and ptr is one of its elements
+  // Walk tracking list to find keep's tag
+  tn := rc_alloc_head
+  keep_tag := -1
+  while tn != 0 {
+    if load64(tn) == keep { keep_tag = load64(tn + 8) }
+    tn = load64(tn + 16)
+  }
+  if keep_tag == 1 {
+    arr_data = load64(keep)
+    arr_len = load64(keep + 8)
+    ei := 0
+    while ei < arr_len {
+      if load64(arr_data + ei * 8) == ptr { return 1 }
+      ei += 1
+      0
+    }
+  }
+  0
+}
+
 sans_scope_exit(keep:I) I {
   if rc_scope_head != 0 {
     watermark = load64(rc_scope_head)
@@ -99,14 +144,22 @@ sans_scope_exit(keep:I) I {
     rc_scope_head = load64(rc_scope_head + 8)
     dealloc(old_frame)
 
-    kept_node := 0
+    kept_head := 0
+    kept_tail := 0
     while rc_alloc_head != watermark {
       node = rc_alloc_head
       ptr = load64(node)
       tag = load64(node + 8)
       next = load64(node + 16)
-      if ptr == keep {
-        kept_node = node
+      if scope_should_keep(ptr, keep) == 1 {
+        store64(node + 16, 0)
+        if kept_head == 0 {
+          kept_head = node
+          kept_tail = node
+        } else {
+          store64(kept_tail + 16, node)
+          kept_tail = node
+        }
       } else {
         if ptr != 0 { scope_free(ptr, tag) }
         dealloc(node)
@@ -114,9 +167,9 @@ sans_scope_exit(keep:I) I {
       rc_alloc_head = next
     }
 
-    if kept_node != 0 {
-      store64(kept_node + 16, rc_alloc_head)
-      rc_alloc_head = kept_node
+    if kept_head != 0 {
+      store64(kept_tail + 16, rc_alloc_head)
+      rc_alloc_head = kept_head
     }
   }
   0

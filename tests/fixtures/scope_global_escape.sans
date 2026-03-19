@@ -1,0 +1,12 @@
+g result = 0
+
+store_global() I {
+  a = [10 20 30]
+  result = a
+  0
+}
+
+main() {
+  store_global()
+  result.get(1)
+}

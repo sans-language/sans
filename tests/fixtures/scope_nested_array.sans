@@ -1,0 +1,11 @@
+make_nested() [I] {
+  inner1 = [1 2 3]
+  inner2 = [4 5 6]
+  outer = [inner1 inner2]
+  outer
+}
+
+main() {
+  a = make_nested()
+  10
+}

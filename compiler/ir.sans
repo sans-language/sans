@@ -3623,6 +3623,7 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
     else if ptype == "HR" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) }
     else if ptype == "HttpServer" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) }
     else if ptype == "HS" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_SERVER) }
+    else if ptype == "JoinHandle" { ctx_set_reg_type(ctx, arg_reg, IRTY_JOIN_HANDLE) }
     else if mhas(struct_defs, ptype) == 1 { ctx_set_reg_type(ctx, arg_reg, IRTY_STRUCT)
       ctx_set_struct_name(ctx, arg_reg, ptype) }
     else if mhas(enum_defs, ptype) == 1 { ctx_set_reg_type(ctx, arg_reg, IRTY_ENUM) }

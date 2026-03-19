@@ -1,0 +1,8 @@
+check_result(r:R<I>) I {
+  if r.is_ok() { r! } else { 0 }
+}
+
+main() {
+  r = ok(42)
+  check_result(r)
+}
