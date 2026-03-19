@@ -42,7 +42,7 @@
         <li><a href="#concurrency">Concurrency</a></li>
         <li><a href="#builtins">Built-ins</a></li>
         <li><a href="#methods">Methods</a></li>
-        <li><a href="#self-hosting">Self-Hosting</a></li>
+        <li><a href="#internals">Internals</a></li>
       </ul>
       </div>
     </div>
@@ -783,15 +783,13 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
       </tbody>
     </table>
 
-    <h2 id="self-hosting">Self-Hosting</h2>
-    <p>Sans is self-hosted: the compiler and runtime are both written in Sans.</p>
+    <h2 id="internals">Internals</h2>
 
-    <h3>Runtime (100% Sans, zero C)</h3>
-    <p>All built-in capabilities are implemented in Sans using low-level primitives (<code>alloc</code>, <code>load8</code>/<code>store8</code>, <code>mcpy</code>, sockets, etc.). The <code>runtime/</code> directory contains: <code>server.sans</code>, <code>json.sans</code>, <code>string_ext.sans</code>, <code>array_ext.sans</code>, <code>map.sans</code>, <code>ssl.sans</code>, <code>http.sans</code>, <code>curl.sans</code>, <code>arena.sans</code>, <code>result.sans</code>, <code>functional.sans</code>.</p>
+    <h3>Runtime Modules</h3>
+    <p>The standard library is implemented across 13+ modules in <code>runtime/</code>: <code>server.sans</code> (HTTP server, WebSocket), <code>json.sans</code> (JSON), <code>string_ext.sans</code>, <code>array_ext.sans</code>, <code>map.sans</code>, <code>ssl.sans</code>, <code>http.sans</code> (HTTP client), <code>curl.sans</code>, <code>arena.sans</code>, <code>result.sans</code>, <code>functional.sans</code>, <code>rc.sans</code> (scope GC), <code>log.sans</code>, <code>sock.sans</code>.</p>
 
-    <h3>Compiler (written in Sans)</h3>
-    <p><code>compiler/</code> contains a full Sans compiler (~11,600 LOC across 7 modules): lexer, parser, typeck, IR, codegen, main. It compiles to LLVM IR via <code>llc</code>, then links with <code>clang</code>.</p>
-    <p>Bootstrap stages: <strong>stage 0</strong> (Rust-compiled) &rarr; <strong>stage 1</strong> (self-compiled once) &rarr; <strong>stage 2</strong> (self-compiled twice) &rarr; <strong>stage 3</strong> (fixed point).</p>
+    <h3>Compiler Modules</h3>
+    <p>The compiler is 7 modules in <code>compiler/</code> (~11,600 LOC): lexer, parser, typeck, constants, IR, codegen, main. Compiles to LLVM IR via <code>llc</code>, links with <code>clang</code>.</p>
 
     <h3>Builtin Names</h3>
     <p>The compiler has builtin mappings for a large set of names. <strong>User-defined functions take precedence over builtins of the same name.</strong> Builtin names include:</p>

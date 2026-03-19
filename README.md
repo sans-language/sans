@@ -1,6 +1,6 @@
 # Sans
 
-A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies. **Sans is self-hosted** -- the compiler's runtime is written entirely in Sans itself.
+A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
 
 ## Quick Start
 
@@ -124,25 +124,7 @@ E2E tests live in `tests/fixtures/`. Each fixture is a `.sans` file with an expe
 
 ## Architecture
 
-Sans is **fully self-hosted** -- both compiler and runtime are written in Sans.
-
-### Compiler (~11,600 LOC)
-
-The `compiler/` directory contains the self-hosted compiler in 7 modules:
-
-1. **lexer.sans** -- tokenization
-2. **parser.sans** -- AST construction
-3. **typeck.sans** -- type checking and inference
-4. **constants.sans** -- IR instruction constants
-5. **ir.sans** -- intermediate representation and lowering
-6. **codegen.sans** -- LLVM IR generation
-7. **main.sans** -- CLI, linking, and orchestration
-
-Bootstrap: stage 0 (previous release binary) -> stage 1 (self-compiled once) -> stage 2 (self-compiled twice, fixed point).
-
-### Self-Hosted Runtime
-
-The runtime is **100% self-hosted** -- written entirely in Sans, with zero C files. 13 modules under `runtime/`: server, JSON, strings, arrays, maps, SSL, HTTP, curl, arena allocator, result, functional, logging, sockets. All built using Sans's low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, curl bindings, etc.).
+The compiler pipeline: **lexer → parser → typeck → IR → codegen → LLVM**. Seven modules in `compiler/`, 13+ runtime modules in `runtime/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full architecture overview.
 
 ## Contributing
 

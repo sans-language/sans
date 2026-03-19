@@ -998,31 +998,17 @@ The tuple elements are bound as local variables in the loop body.
 
 ---
 
-## Self-Hosting
+## Internals
 
-Sans is self-hosted: the compiler and runtime are both written in Sans.
+### Runtime Modules
 
-### Runtime (100% Sans, zero C)
+The standard library is implemented across 13+ modules in `runtime/`:
 
-All built-in capabilities are implemented in Sans using its own low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, etc.):
+`server.sans` (HTTP server, WebSocket, streaming), `json.sans` (JSON parser/serializer), `string_ext.sans` (string methods), `array_ext.sans` (array methods), `map.sans` (hash map), `ssl.sans` (TLS/SSL), `http.sans` (HTTP client), `curl.sans` (curl bindings), `arena.sans` (arena allocator), `result.sans` (Result type), `functional.sans` (higher-order functions), `rc.sans` (scope GC), `log.sans` (logging), `sock.sans` (raw sockets).
 
-- `runtime/server.sans` — HTTP server, keep-alive, WebSocket, streaming
-- `runtime/json.sans` — JSON parser and serializer
-- `runtime/string_ext.sans` — String methods
-- `runtime/array_ext.sans` — Array methods
-- `runtime/map.sans` — Hash map
-- `runtime/ssl.sans` — TLS/SSL
-- `runtime/http.sans` — HTTP client
-- `runtime/curl.sans` — Curl bindings
-- `runtime/arena.sans` — Arena allocator
-- `runtime/result.sans` — Result type
-- `runtime/functional.sans` — Higher-order functions
+### Compiler Modules
 
-### Compiler (written in Sans)
-
-`compiler/` contains a full Sans compiler (~11,600 LOC across 7 modules): lexer, parser, typeck, IR, codegen, main. It compiles to LLVM IR via `llc`, then links with `clang`.
-
-Bootstrap stages: **stage 0** (Rust-compiled) → **stage 1** (self-compiled once) → **stage 2** (self-compiled twice) → **stage 3** (fixed point, output identical to stage 2).
+The compiler is 7 modules in `compiler/` (~11,600 LOC): lexer, parser, typeck, constants, IR, codegen, main. Compiles to LLVM IR via `llc`, links with `clang`.
 
 ### Reserved Builtin Names
 
