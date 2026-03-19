@@ -2553,6 +2553,8 @@ lower_field_access(ctx:I expr:I) I {
     // Look up field index from struct_defs using tracked struct name
     sd = ctx_struct_defs(ctx)
     struct_name = ctx_get_struct_name(ctx, obj_reg)
+    // Try generic instantiation before lookup (idempotent, registers if needed)
+    if struct_name != 0 { resolve_generic_struct_fields(sd, struct_name) }
     struct_fields = if struct_name != 0 { mget(sd, struct_name) } else { 0 }
     num_fields = if struct_fields != 0 { struct_fields.len() } else { 1 }
 
@@ -3213,14 +3215,40 @@ lower_array_lit(ctx:I expr:I) I {
   dest
 }
 
+// ------ resolve_generic_struct_fields: look up mangled generic name in struct_defs ------------------------------------------
+// Returns field names array or 0 if not a generic struct
+resolve_generic_struct_fields(sd:I name:I) I {
+  // Find "$$" in name
+  sname_len = slen(name)
+  dp := 0 - 1
+  di := 0
+  while di < sname_len - 1 {
+    if char_at(name, di) == 36 && char_at(name, di + 1) == 36 {
+      dp = di
+      di = sname_len
+    }
+    di += 1
+    0
+  }
+  if dp < 0 { return 0 }
+  base = name.substring(0, dp)
+  gt = mget(sd, "$$generic_templates$$")
+  if gt == 0 { return 0 }
+  tmpl_fields = mget(gt, base)
+  if tmpl_fields == 0 { return 0 }
+  mset(sd, name, tmpl_fields)
+  tmpl_fields
+}
+
 // ------ lower_struct_lit ------------------------------------------------------------------------------------------------------------------------------------
 lower_struct_lit(ctx:I expr:I) I {
   name = load64(expr + 8)
   field_names = load64(expr + 16)
   field_values = load64(expr + 24)
 
-  // Look up struct definition to get field order
+  // Look up struct definition to get field order; try generic instantiation first
   sd = ctx_struct_defs(ctx)
+  resolve_generic_struct_fields(sd, name)
   struct_fields = mget(sd, name)
   num_fields = if struct_fields != 0 { struct_fields.len() } else { field_names.len() }
 
@@ -3598,24 +3626,41 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
   }
 
   // Collect from program's structs
+  generic_struct_defs = M()
   prog_structs = load64(program + 24)  // Array of StructDef pointers
   si := 0
   while si < prog_structs.len() {
     sdef = prog_structs.get(si)
     sname = load64(sdef)           // name
-    sfields = load64(sdef + 8)     // flat array [name0, type0, name1, type1, ...]
-    // Build array of just field names
-    field_names = array<I>()
-    fi := 0
-    while fi < sfields.len() {
-      field_names.push(sfields.get(fi))  // name at even indices
-      fi = fi + 2                         // skip type
-      0
+    stp = load64(sdef + 16)       // type_params ptr (non-zero for generic)
+    if stp != 0 {
+      // Generic template — store field names for later instantiation
+      sfields = load64(sdef + 8)
+      gfield_names = array<I>()
+      gfi := 0
+      while gfi < sfields.len() {
+        gfield_names.push(sfields.get(gfi))
+        gfi = gfi + 2
+        0
+      }
+      mset(generic_struct_defs, sname, gfield_names)
+    } else {
+      sfields = load64(sdef + 8)     // flat array [name0, type0, name1, type1, ...]
+      // Build array of just field names
+      field_names = array<I>()
+      fi := 0
+      while fi < sfields.len() {
+        field_names.push(sfields.get(fi))  // name at even indices
+        fi = fi + 2                         // skip type
+        0
+      }
+      mset(struct_defs, sname, field_names)
     }
-    mset(struct_defs, sname, field_names)
     si = si + 1
     0
   }
+  // Store generic_struct_defs in struct_defs for access during lowering
+  mset(struct_defs, "$$generic_templates$$", generic_struct_defs)
 
   // 2. Collect enum definitions: name -> array of [variant_name, tag, num_data] arrays
   enum_defs = M()

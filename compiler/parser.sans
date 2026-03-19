@@ -1073,6 +1073,45 @@ parse_atom(p:I) I {
       return make_call(name, args)
     }
 
+    // Check for generic struct literal: Name<T1 T2>{field:value}
+    if p_at(p, TK_LT) == 1 && is_upper_start(name) == 1 && p_peek_kind_at(p, 1) == TK_IDENT {
+      // Lookahead: next token after < should be a type name (uppercase start)
+      next_val = tok_val(p_peek_at(p, 1))
+      if is_upper_start(next_val) == 1 {
+        p_advance(p)  // consume <
+        gen_type_args = array<I>()
+        while p_at(p, TK_GT) == 0 && p_at(p, TK_EOF) == 0 {
+          ta = parse_type_name(p)
+          gen_type_args.push(ta)
+          if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+        }
+        p_expect(p, TK_GT)
+        if p_at(p, TK_LBRACE) == 1 {
+          // Build mangled name: Pair$$I$$S
+          mangled := name
+          gtai := 0
+          while gtai < gen_type_args.len() {
+            mangled = mangled + "$$" + gen_type_args[gtai]
+            gtai += 1
+            0
+          }
+          p_advance(p)  // consume {
+          gfield_names = array<I>()
+          gfield_values = array<I>()
+          while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+            gfname = p_expect_ident(p)
+            p_expect(p, TK_COLON)
+            gfval = parse_expr(p, 0)
+            gfield_names.push(gfname)
+            gfield_values.push(gfval)
+            if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+          }
+          p_expect(p, TK_RBRACE)
+          return make_struct_lit(mangled, gfield_names, gfield_values)
+        }
+      }
+    }
+
     // Check for struct literal: Name { field: value, ... } (uppercase first char)
     // Must verify it's actually a struct literal by checking for "ident :" after the "{"
     // Otherwise "TY_INT { expr }" in an if-else would be misinterpreted
@@ -1548,12 +1587,27 @@ parse_method(p:I target_type:I) I {
 parse_struct_def(p:I) I {
   p_expect(p, TK_STRUCT)
   name = p_expect_ident(p)
+
+  // Parse optional type params: struct Pair<A B> { ... }
+  struct_type_params = array<I>()
+  if p_at(p, TK_LT) == 1 {
+    p_advance(p)
+    while p_at(p, TK_GT) == 0 && p_at(p, TK_EOF) == 0 {
+      tp = p_expect_ident(p)
+      struct_type_params.push(tp)
+      if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+    }
+    p_expect(p, TK_GT)
+  }
+
   p_expect(p, TK_LBRACE)
 
   // fields stored as flat array: name0, type0, name1, type1, ...
   fields = array<I>()
   while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
     field_name = p_expect_ident(p)
+    // Allow optional colon between field name and type
+    if p_at(p, TK_COLON) == 1 { p_advance(p) }
     type_name = parse_type_name(p)
     fields.push(field_name)
     fields.push(type_name)
@@ -1561,7 +1615,9 @@ parse_struct_def(p:I) I {
   }
   p_expect(p, TK_RBRACE)
 
-  make_struct_def(name, fields)
+  sdef = make_struct_def(name, fields)
+  if struct_type_params.len() > 0 { store64(sdef + 16, ptr(struct_type_params)) }
+  sdef
 }
 
 // ------ Enum definition ------------------------------------------------------------------------------------------------------------------------------------------

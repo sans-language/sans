@@ -77,6 +77,7 @@ echo "----------------------------------------"
 run_test "struct_basic"              "$REPO_ROOT/tests/fixtures/struct_basic.sans"              7
 run_test "struct_nested_access"      "$REPO_ROOT/tests/fixtures/struct_nested_access.sans"      30
 run_test "struct_return_repeated"    "$REPO_ROOT/tests/fixtures/struct_return_repeated.sans"    3
+run_test "generic_struct"            "$REPO_ROOT/tests/fixtures/generic_struct.sans"            20
 run_test "enum_match_method"         "$REPO_ROOT/tests/fixtures/enum_match_method.sans"         5
 run_test "enum_basic"                "$REPO_ROOT/tests/fixtures/enum_basic.sans"                2
 run_test "enum_data"                 "$REPO_ROOT/tests/fixtures/enum_data.sans"                 12

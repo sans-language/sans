@@ -582,6 +582,84 @@ check_stmts(stmts:I stmts_len:I locals:I fn_env:I ret_type:I structs:I enums:I m
   0
 }
 
+// ------ find_dollar_dollar: find position of "$$" in string, return -1 if not found -------
+find_dollar_dollar(s:I) I {
+  len = slen(s)
+  i := 0
+  while i < len - 1 {
+    if char_at(s, i) == 36 && char_at(s, i + 1) == 36 {
+      return i
+    }
+    i += 1
+    0
+  }
+  0 - 1
+}
+
+// ------ instantiate_generic_struct: monomorphize a generic struct by mangled name ---------
+// Returns 1 if successfully instantiated, 0 otherwise
+instantiate_generic_struct(sname:I structs:I enums:I mod_exports:I) I {
+  sname_s = as_str(sname)
+  dollar_pos = find_dollar_dollar(sname_s)
+  if dollar_pos < 0 { return 0 }
+  if mhas(structs, "$$generics$$") == 0 { return 0 }
+  gen_templates = mget(structs, "$$generics$$")
+  base_name = sname_s.substring(0, dollar_pos)
+  if mhas(gen_templates, base_name) == 0 { return 0 }
+  tmpl = mget(gen_templates, base_name)
+  // Extract type args from mangled name
+  tmpl_type_params_arr = load64(tmpl + 16)
+  tmpl_type_params_p = load64(tmpl_type_params_arr)
+  num_type_params = load64(tmpl_type_params_arr + 8)
+  // Parse type args by splitting rest by "$$"
+  sname_len = slen(sname_s)
+  rest := sname_s.substring(dollar_pos + 2, sname_len)
+  type_arg_strs = array<I>()
+  while slen(rest) > 0 {
+    next_dd = find_dollar_dollar(rest)
+    if next_dd >= 0 {
+      type_arg_strs.push(rest.substring(0, next_dd))
+      rest = rest.substring(next_dd + 2, slen(rest))
+    } else {
+      type_arg_strs.push(rest)
+      rest = ""
+    }
+    0
+  }
+  // Build type param -> concrete type map
+  tp_map = map()
+  tpi := 0
+  while tpi < num_type_params {
+    tp_name = load64(tmpl_type_params_p + tpi * 8)
+    tp_concrete = resolve_type(type_arg_strs[tpi], structs, enums, mod_exports)
+    mset(tp_map, tp_name, tp_concrete)
+    tpi += 1
+    0
+  }
+  // Resolve fields with substituted types
+  tmpl_fields_arr = load64(tmpl + 8)
+  tmpl_fields_p = load64(tmpl_fields_arr)
+  tmpl_num_flat = load64(tmpl_fields_arr + 8)
+  inst_fields = map()
+  tfi := 0
+  while tfi < tmpl_num_flat {
+    tf_name = load64(tmpl_fields_p + tfi * 8)
+    tf_type_name = load64(tmpl_fields_p + (tfi + 1) * 8)
+    tf_ty := 0
+    if mhas(tp_map, tf_type_name) == 1 {
+      tf_ty = mget(tp_map, tf_type_name)
+    } else {
+      tf_ty = resolve_type(tf_type_name, structs, enums, mod_exports)
+    }
+    mset(inst_fields, tf_name, tf_ty)
+    tfi += 2
+    0
+  }
+  // Cache the monomorphized struct
+  mset(structs, sname, inst_fields)
+  1
+}
+
 // ------ check_expr: type-check an expression, return Type ptr ---------------------------
 check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
   tag = load64(expr)
@@ -2259,8 +2337,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     field_names_p = load64(field_names_arr)
     field_values_arr = load64(expr + 24)
     field_values_p = load64(field_values_arr)
-    // Look up struct definition
-    if mhas(structs, sname) == 0 { return tc_error("undefined struct '" + sname + "'") }
+    // Look up struct definition; try generic instantiation if not found
+    if mhas(structs, sname) == 0 {
+      gen_ok = instantiate_generic_struct(sname, structs, enums, mod_exports)
+      if gen_ok == 0 { return tc_error("undefined struct '" + sname + "'") }
+    }
     expected_fields = mget(structs, sname)
     // expected_fields is a Map: field_name --- Type ptr
     exp_keys = expected_fields.keys()
@@ -2622,6 +2703,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   // ------ Pass 0a: collect struct definitions ---------------------------------------------------------------------------
+  generic_structs = map()
   structs_arr = load64(program + 24)
   structs_p = load64(structs_arr)
   num_structs = load64(structs_arr + 8)
@@ -2629,19 +2711,27 @@ check_inner(program:I mod_exports:I require_main:I) I {
   while si < num_structs {
     sdef = load64(structs_p + si * 8)
     sname = load64(sdef)
-    fields_flat_arr = load64(sdef + 8)   // array: name0, type0, name1, type1, ...
-    fields_flat = load64(fields_flat_arr)
-    num_flat = load64(fields_flat_arr + 8)
-    fields_m = map()
-    fi := 0
-    while fi < num_flat {
-      fname = load64(fields_flat + fi * 8)
-      ftype_name = load64(fields_flat + (fi + 1) * 8)
-      fty = resolve_type(ftype_name, structs_map, enums_map, mod_exports)
-      mset(fields_m, fname, fty)
-      fi += 2
+    type_params_ptr = load64(sdef + 16)
+
+    if type_params_ptr != 0 {
+      // Generic struct template — store for later instantiation
+      mset(generic_structs, sname, sdef)
+      mset(structs_map, "$$generics$$", generic_structs)
+    } else {
+      fields_flat_arr = load64(sdef + 8)   // array: name0, type0, name1, type1, ...
+      fields_flat = load64(fields_flat_arr)
+      num_flat = load64(fields_flat_arr + 8)
+      fields_m = map()
+      fi := 0
+      while fi < num_flat {
+        fname = load64(fields_flat + fi * 8)
+        ftype_name = load64(fields_flat + (fi + 1) * 8)
+        fty = resolve_type(ftype_name, structs_map, enums_map, mod_exports)
+        mset(fields_m, fname, fty)
+        fi += 2
+      }
+      mset(structs_map, sname, fields_m)
     }
-    mset(structs_map, sname, fields_m)
     si += 1
   }
 
