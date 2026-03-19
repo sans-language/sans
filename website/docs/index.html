@@ -33,6 +33,7 @@
         <li><a href="#strings">Strings</a></li>
         <li><a href="#tuples">Tuples</a></li>
         <li><a href="#structs">Structs</a></li>
+        <li><a href="#generic-structs">Generic Structs</a></li>
         <li><a href="#enums">Enums</a></li>
         <li><a href="#traits">Traits</a></li>
         <li><a href="#lambdas">Lambdas</a></li>
@@ -100,7 +101,12 @@ x := <span class="num">0</span>              <span class="comment">// mutable</s
 <span class="fn">add</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">I</span> = a + b
 
 <span class="comment">// Implicit return type (defaults to Int)</span>
-<span class="fn">main</span>() { <span class="num">0</span> }</code></pre>
+<span class="fn">main</span>() { <span class="num">0</span> }
+
+<span class="comment">// Default parameters (trailing params only)</span>
+<span class="fn">greet</span>(name:<span class="type">S</span> greeting:<span class="type">S</span>=<span class="str">"Hello"</span>) <span class="type">S</span> = <span class="str">"{greeting} {name}!"</span>
+<span class="fn">greet</span>(<span class="str">"Alice"</span>)            <span class="comment">// "Hello Alice!"</span>
+<span class="fn">greet</span>(<span class="str">"Bob"</span> <span class="str">"Hi"</span>)        <span class="comment">// "Hi Bob!"</span></code></pre>
 
     <h2 id="control-flow">Control Flow</h2>
     <pre><code><span class="comment">// Ternary</span>
@@ -133,6 +139,18 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
 <span class="kw">match</span> value {
     EnumName::Variant1 => expr1,
     EnumName::Variant2(x) => x + <span class="num">1</span>,
+}
+
+<span class="comment">// Match with guards</span>
+<span class="kw">match</span> x {
+    n <span class="kw">if</span> n &gt; <span class="num">0</span> => <span class="str">"positive"</span>,
+    n <span class="kw">if</span> n &lt; <span class="num">0</span> => <span class="str">"negative"</span>,
+    _ => <span class="str">"zero"</span>,
+}
+
+<span class="comment">// For-loop destructuring</span>
+<span class="kw">for</span> (k v) <span class="kw">in</span> m.<span class="fn">entries</span>() {
+    <span class="fn">p</span>(<span class="str">"{k} = {str(v)}"</span>)
 }</code></pre>
 
     <h2 id="iterators">Iterator Chains</h2>
@@ -265,6 +283,21 @@ p.<span class="num">0</span> + p.<span class="num">1</span>  <span class="commen
     <span class="num">0</span>
 }</code></pre>
 
+    <h2 id="generic-structs">Generic Structs</h2>
+    <p>Structs can have type parameters, enabling reusable data structures:</p>
+    <pre><code><span class="kw">struct</span> <span class="type">Pair</span>&lt;A B&gt; { first <span class="type">A</span>, second <span class="type">B</span> }
+
+<span class="fn">main</span>() {
+    p = <span class="type">Pair</span>&lt;<span class="type">I</span> <span class="type">S</span>&gt;{ first: <span class="num">1</span>, second: <span class="str">"hello"</span> }
+    <span class="fn">p</span>(<span class="fn">str</span>(p.first))     <span class="comment">// 1</span>
+    <span class="fn">p</span>(p.second)          <span class="comment">// "hello"</span>
+    <span class="num">0</span>
+}
+
+<span class="comment">// Multiple type params</span>
+<span class="kw">struct</span> <span class="type">Triple</span>&lt;A B C&gt; { a <span class="type">A</span>, b <span class="type">B</span>, c <span class="type">C</span> }
+t = <span class="type">Triple</span>&lt;<span class="type">I</span> <span class="type">S</span> <span class="type">B</span>&gt;{ a: <span class="num">42</span>, b: <span class="str">"hi"</span>, c: <span class="kw">true</span> }</code></pre>
+
     <h2 id="enums">Enums</h2>
     <pre><code><span class="kw">enum</span> <span class="type">Shape</span> {
     Circle(<span class="type">I</span>),
@@ -311,6 +344,12 @@ scaled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span 
     r = <span class="fn">divide</span>(<span class="num">10</span> <span class="num">3</span>)
     r.is_ok ? r! : <span class="num">0</span>
 }</code></pre>
+
+    <h3>Error Codes</h3>
+    <p><code>err()</code> accepts an optional integer error code as the first argument:</p>
+    <pre><code><span class="fn">err</span>(<span class="str">"not found"</span>)           <span class="comment">// error, code defaults to 0</span>
+<span class="fn">err</span>(<span class="num">404</span> <span class="str">"not found"</span>)       <span class="comment">// error with code 404</span>
+r.<span class="fn">code</span>()                    <span class="comment">// get error code (0 if not set)</span></code></pre>
 
     <h3>Error Propagation (<code>?</code> operator)</h3>
     <p>The <code>?</code> operator unwraps a <code>Result&lt;T&gt;</code> or early-returns the error:</p>
@@ -627,6 +666,7 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
       <tbody>
         <tr><td><code>ok(value)</code></td><td><code>(T) -&gt; Result&lt;T&gt;</code></td></tr>
         <tr><td><code>err(message)</code></td><td><code>(String) -&gt; Result&lt;_&gt;</code></td></tr>
+        <tr><td><code>err(code, message)</code></td><td><code>(Int, String) -&gt; Result&lt;_&gt;</code></td></tr>
       </tbody>
     </table>
 
@@ -726,7 +766,8 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
         <tr><td><code>is_err</code></td><td><code>() -&gt; Bool</code></td><td></td></tr>
         <tr><td><code>unwrap</code> or <code>!</code></td><td><code>() -&gt; T</code></td><td>Exits on error</td></tr>
         <tr><td><code>unwrap_or(default)</code></td><td><code>(T) -&gt; T</code></td><td></td></tr>
-        <tr><td><code>error</code></td><td><code>() -&gt; String</code></td><td></td></tr>
+        <tr><td><code>error</code></td><td><code>() -&gt; String</code></td><td>Error message</td></tr>
+        <tr><td><code>code</code></td><td><code>() -&gt; Int</code></td><td>Error code (0 if not set)</td></tr>
       </tbody>
     </table>
 
@@ -760,7 +801,7 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
     <ul>
       <li>Scope-based GC automatically frees heap allocations on function return. Nested heap values in containers (array of arrays) may not be recursively freed. Arenas available for hot paths.</li>
       <li>Type checker is relaxed for bootstrap compatibility &mdash; some type mismatches are not caught at compile time.</li>
-      <li>No user-defined generics &mdash; only built-in types support type parameters (Array&lt;T&gt;, Result&lt;T&gt;, etc.).</li>
+      <li>Generics on structs support concrete type params; generic functions use monomorphization for built-in types.</li>
     </ul>
   </div>
   </div>

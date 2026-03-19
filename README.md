@@ -41,13 +41,13 @@ sans --version
 
 ### Build from source
 
-Requires: Rust (stable), LLVM 17.
+Requires: LLVM 17 and a previous `sans` binary (for bootstrapping).
 
 ```sh
 brew install llvm@17
 git clone https://github.com/sans-language/sans && cd sans
-LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
-sudo cp target/release/sans /usr/local/bin/
+sans build compiler/main.sans
+sudo cp sans /usr/local/bin/
 ```
 
 ## Hello World
@@ -69,15 +69,15 @@ main() {
 |---|---|
 | **Types** | `I` (Int), `F` (Float), `B` (Bool), `S` (String), `M` (Map), `R<T>` (Result) |
 | **Variables** | `x = 42` (immutable) / `x := 0` (mutable) / `g x = 0` (global) |
-| **Functions** | `add(a:I b:I) I = a + b` (compact) or `fn add(a Int, b Int) Int { a + b }` |
+| **Functions** | `add(a:I b:I) I = a + b` (compact) or `fn add(a Int, b Int) Int { a + b }` — default params: `f(x:I y:I=0)` |
 | **Lambdas** | `\|x:I\| I { x * 2 }` with implicit capture from enclosing scope |
 | **If/Else** | `if x > 0 { ... } else { ... }` or ternary `cond ? a : b` |
-| **Loops** | `while cond { }`, `for item in arr { }`, `break`, `continue` |
-| **Match** | `match value { Enum::A => ..., Enum::B(x) => x }` |
-| **Structs** | `struct Point { x I, y I }` |
+| **Loops** | `while cond { }`, `for item in arr { }`, `for (k v) in m.entries()`, `break`, `continue` |
+| **Match** | `match value { Enum::A => ..., Enum::B(x) => x }` — guards: `n if n > 0 => ...` |
+| **Structs** | `struct Point { x I, y I }` — generic: `struct Pair<A B> { first A, second B }` |
 | **Enums** | `enum Color { Red, Green, Blue(I) }` |
 | **Traits** | `trait Display { fn show(self) I }` |
-| **Generics** | `identity<T>(x T) T = x` |
+| **Generics** | `identity<T>(x T) T = x` — generic structs: `Pair<I S>{first: 1, second: "hi"}` |
 | **Tuples** | `(1 "hello" true)` with `.0`, `.1` access |
 | **Arrays** | `[1 2 3]` with `map`, `filter`, `any`, `find`, `enumerate`, `zip` |
 | **Maps** | `M()` with `set`, `get`, `has`, `keys`, `vals` |
@@ -95,7 +95,7 @@ main() {
 | **Streaming** | `respond_stream(status)`, `stream_write`, `stream_end` |
 | **Static files** | `serve_file(req dir)` with content-type detection |
 | **Logging** | `log_debug`/`ld`, `log_info`/`li`, `log_warn`/`lw`, `log_error`/`le` |
-| **Error handling** | `Result<T>` with `ok`, `err`, `?` propagation, `!` unwrap |
+| **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()` |
 | **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator |
 
 ## HTTP Server Example
@@ -117,29 +117,32 @@ Production-ready: auto-threading, HTTP/1.1 keep-alive, gzip compression, gracefu
 ## Running Tests
 
 ```sh
-LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo test
+bash tests/run_tests.sh
 ```
 
-E2E tests live in `crates/sans-driver/tests/e2e.rs` with fixtures in `tests/fixtures/`. Each fixture is a `.sans` file with an expected output comment at the top.
+E2E tests live in `tests/fixtures/`. Each fixture is a `.sans` file with an expected output comment at the top.
 
 ## Architecture
 
-The compiler is split into 6 Rust crates forming a pipeline:
+Sans is **fully self-hosted** -- both compiler and runtime are written in Sans.
 
-1. **sans-lexer** -- tokenization
-2. **sans-parser** -- AST construction
-3. **sans-typeck** -- type checking and inference
-4. **sans-ir** -- intermediate representation and lowering
-5. **sans-codegen** -- LLVM IR generation
-6. **sans-driver** -- CLI, linking, and orchestration
+### Compiler (~11,600 LOC)
 
-### Self-Hosted Compiler
+The `compiler/` directory contains the self-hosted compiler in 7 modules:
 
-The `compiler/` directory contains a **self-hosted Sans compiler** (~11,600 LOC across 7 modules) that can compile Sans programs. This demonstrates Sans's expressiveness -- the compiler is written entirely in the language it compiles.
+1. **lexer.sans** -- tokenization
+2. **parser.sans** -- AST construction
+3. **typeck.sans** -- type checking and inference
+4. **constants.sans** -- IR instruction constants
+5. **ir.sans** -- intermediate representation and lowering
+6. **codegen.sans** -- LLVM IR generation
+7. **main.sans** -- CLI, linking, and orchestration
+
+Bootstrap: stage 0 (previous release binary) -> stage 1 (self-compiled once) -> stage 2 (self-compiled twice, fixed point).
 
 ### Self-Hosted Runtime
 
-The runtime is **100% self-hosted** -- written entirely in Sans, with zero C files remaining. Built-in capabilities (strings, arrays, maps, JSON, HTTP, file I/O, logging, error handling) are implemented using Sans's low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, curl bindings, etc.).
+The runtime is **100% self-hosted** -- written entirely in Sans, with zero C files. 13 modules under `runtime/`: server, JSON, strings, arrays, maps, SSL, HTTP, curl, arena allocator, result, functional, logging, sockets. All built using Sans's low-level primitives (`alloc`, `load8`/`store8`, `mcpy`, sockets, curl bindings, etc.).
 
 ## Contributing
 

@@ -12,6 +12,7 @@ Tuple: `(I S B)` — heterogeneous fixed-size collection
 ```
 f(x:I y:S) I { body }     // function (fn optional)
 f(x:I) = x*2              // expression function (no braces)
+f(x:I y:I=0) = x+y        // default params (trailing, literal values)
 main() { 0 }              // return type defaults to I
 x = 42                     // immutable (no let)
 x := 0                     // mutable (no let mut)
@@ -30,11 +31,14 @@ s[0:5]                     // string slice (= s.substring(0,5))
 s[6:]                      // slice to end
 s[:5]                      // slice from start
 match x { 1 => "a", 2 => "b", _ => "c" }  // value match (int/string)
+match x { n if n > 0 => n, _ => 0 }       // match guard (binding + condition)
 let (a, b) = (10 20)      // tuple destructuring
 """multi\nline"""           // multiline string
 -x                         // negation
 import "mod"               // module import
 struct S { x I, y I }      // struct
+struct Pair<A B> { a A, b B }             // generic struct
+Pair<I S>{ a: 1, b: "hi" }               // generic struct instantiation
 enum E { A, B(I) }         // enum
 match v { E::A => 0, E::B(x) => x }
 trait T { fn m(self) I }   // trait
@@ -43,6 +47,7 @@ spawn func(args)           // thread
 let (tx rx) = channel<I>() // channel
 mutex(val)                 // mutex
 for x in arr { }           // iteration
+for (k v) in m.entries() { }              // for-loop destructuring
 while cond { }             // loop
 break                      // exit loop
 continue                   // skip to next iteration
@@ -110,6 +115,7 @@ le(msg)           log_error(msg)        S -> I
 ll(level)         log_set_level(n)      I -> I
 ok(v)                                   T -> R<T>
 err(msg)                                S -> R<_>
+err(code msg)                           I S -> R<_> (error with code)
 
 // Low-level primitives (pointers as I)
 alloc(n)                                I -> I (malloc)
@@ -198,7 +204,7 @@ HttpResponse: status body header(n) ok
 HttpServer:   accept
 HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length cookie(name) form(name) respond(status body) respond(status body ct) respond_json(status body) respond_stream(status) is_ws_upgrade upgrade_ws
               // respond auto-gzips when: body>=1024B + Accept-Encoding:gzip + compressible ct; opt-out: set_header("X-No-Compress" "1")
-Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error
+Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error code
 Sender<T>:    send(v)
 Receiver<T>:  recv
 Mutex<T>:     lock unlock(v)

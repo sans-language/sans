@@ -82,6 +82,34 @@ add(a:I b:I) I = a + b
 main() { 0 }
 ```
 
+### Default Parameters
+
+Trailing parameters can have default values using `=literal`:
+
+```sans
+greet(name:S greeting:S="Hello") S = "{greeting} {name}!"
+
+main() {
+    p(greet("Alice"))            // "Hello Alice!"
+    p(greet("Bob" "Hi"))         // "Hi Bob!"
+    0
+}
+```
+
+Rules:
+- Only trailing parameters can have defaults
+- Defaults must be literals: integers, strings, `true`, `false`
+- Callers can omit defaulted arguments from the end
+
+```sans
+// Multiple defaults
+connect(host:S port:I=8080 tls:B=false) I { ... }
+
+connect("localhost")              // port=8080 tls=false
+connect("localhost" 443)          // tls=false
+connect("localhost" 443 true)     // all explicit
+```
+
 ## Control Flow
 
 ```sans
@@ -119,6 +147,18 @@ for x in arr {
 match value {
     EnumName::Variant1 => expr1,
     EnumName::Variant2(x) => x + 1,
+}
+
+// Match with guards
+match x {
+    n if n > 0 => "positive",
+    n if n < 0 => "negative",
+    _ => "zero",
+}
+
+// For-loop destructuring (tuples)
+for (k v) in m.entries() {
+    p("{k}: {str(v)}")
 }
 ```
 
@@ -462,6 +502,7 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 |----------|-----------|
 | `ok(value)` | `(T) -> Result<T>` |
 | `err(message)` | `(String) -> Result<_>` |
+| `err(code, message)` | `(Int, String) -> Result<_>` |
 
 ---
 
@@ -596,7 +637,8 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `is_err` | `() -> Bool` | |
 | `unwrap` or `!` | `() -> T` | Exits on error |
 | `unwrap_or(default)` | `(T) -> T` | |
-| `error` | `() -> String` | |
+| `error` | `() -> String` | Error message |
+| `code` | `() -> Int` | Error code (0 if not set) |
 
 ### Concurrency Types
 
@@ -741,6 +783,28 @@ main() {
 }
 ```
 
+### Generic Structs
+
+Structs can have type parameters:
+
+```sans
+struct Pair<A B> { first A, second B }
+
+main() {
+    p = Pair<I S>{ first: 1, second: "hello" }
+    p(str(p.first))     // 1
+    p(p.second)          // "hello"
+    0
+}
+```
+
+Multiple type parameters are space-separated in angle brackets. The type arguments are specified at construction time:
+
+```sans
+struct Triple<A B C> { a A, b B, c C }
+t = Triple<I S B>{ a: 42, b: "hi", c: true }
+```
+
 ## Enums
 
 ```sans
@@ -842,6 +906,27 @@ main() {
 }
 ```
 
+### Error Codes
+
+`err()` accepts an optional integer error code as the first argument:
+
+```sans
+fetch(url:S) R<S> {
+    resp = hg(url)
+    resp.ok() ? ok(resp.body()) : err(resp.status() "request failed")
+}
+
+main() {
+    r = fetch("https://example.com/missing")
+    r.is_err ? p("code: {str(r.code())} msg: {r.error()}") : 0
+}
+```
+
+- `err("message")` -- error with no code (code defaults to 0)
+- `err(404 "not found")` -- error with code 404
+- `r.code()` -- get the error code (returns 0 if none set)
+- Backwards compatible: existing `err("msg")` calls work unchanged
+
 ### Error Propagation (`?` operator)
 
 The `?` operator unwraps a `Result<T>` or early-returns the error:
@@ -858,6 +943,58 @@ compute(x:I) R<I> {
 ```
 
 `x?` desugars to: `if x.is_err() { return x }` followed by `x!` (unwrap).
+
+---
+
+## Pattern Match Guards
+
+Match arms can include `if` guards that add conditions to a pattern:
+
+```sans
+classify(n:I) S = match n {
+    x if x > 0 => "positive",
+    x if x < 0 => "negative",
+    _ => "zero",
+}
+```
+
+The binding variable (`x`) is bound to the matched value and available in the guard expression. Guards work with both integer and string match values:
+
+```sans
+describe(s:S) S = match s {
+    v if v.len() > 10 => "long",
+    v if v.len() > 0 => "short",
+    _ => "empty",
+}
+```
+
+Guards are checked after the pattern matches. If the guard is false, the next arm is tried.
+
+---
+
+## For-Loop Destructuring
+
+For-loops can destructure tuples from the iterable:
+
+```sans
+m = M()
+m.set("x" 10)
+m.set("y" 20)
+for (k v) in m.entries() {
+    p("{k} = {str(v)}")
+}
+```
+
+Works with any iterable that produces tuples, including `.enumerate()`:
+
+```sans
+names = ["Alice" "Bob" "Charlie"]
+for (i name) in names.enumerate() {
+    p("{str(i)}: {name}")
+}
+```
+
+The tuple elements are bound as local variables in the loop body.
 
 ---
 

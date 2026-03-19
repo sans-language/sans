@@ -2,6 +2,15 @@
 
 All notable changes to Sans are documented here.
 
+## [Unreleased]
+
+### Added
+- **Default function parameters** — trailing params can have `=literal` defaults: `f(x:I y:I=0) = x+y`
+- **Error codes on Result** — `err(404 "not found")` with `.code()` method to retrieve the code
+- **Pattern match guards** — `match x { n if n > 0 => "pos", _ => "other" }` with binding patterns
+- **User-defined generic structs** — `struct Pair<A B> { first A, second B }` with `Pair<I S>{...}` instantiation
+- **For-loop destructuring** — `for (k v) in m.entries() { ... }` to destructure tuples in iteration
+
 ## [0.5.1] - 2026-03-19
 
 ### Added

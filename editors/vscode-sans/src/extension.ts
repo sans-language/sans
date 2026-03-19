@@ -113,7 +113,8 @@ const HOVER_DATA: Record<string, string> = {
 
     // Result
     'ok': '**ok**(value: T) -> Result\\<T\\>\n\nWrap value in successful Result.',
-    'err': '**err**(message: String) -> Result\\<_\\>\n\nCreate error Result with message.',
+    'err': '**err**(message: String) -> Result\\<_\\>\n**err**(code: Int, message: String) -> Result\\<_\\>\n\nCreate error Result with message. Optionally include an integer error code.\n\nUsage: `err("not found")` or `err(404 "not found")`\n\nRetrieve code with `.code()` method.',
+    'code': '**code**() -> Int\n\nResult method. Get the error code from a Result. Returns 0 if no code was set.\n\nUsage: `r.code()  // 404`',
 
     // String methods
     'substring': '**substring**(start: Int, end: Int) -> String\n\nExtract substring. Slice syntax: `s[0:5]`, `s[6:]`, `s[:5]`\n\nUsage: `"hello world"[0:5]  // "hello"`',
@@ -206,6 +207,12 @@ const HOVER_DATA: Record<string, string> = {
     'B': '**Bool** — Boolean (true/false)',
     'S': '**String** — UTF-8 string',
     'R': '**Result\\<T\\>** — Success or error value',
+
+    // Default parameters
+    'default': '**Default Parameters**\n\nTrailing function parameters can have default values using `=literal`.\n\nUsage: `f(x:I y:I=0) = x + y`\n`f(5)  // 5`\n`f(5 3)  // 8`',
+
+    // Generic structs
+    'struct': '**struct** — Define a struct type\n\nUsage: `struct Point { x I, y I }`\n\nGeneric: `struct Pair<A B> { first A, second B }`\n`Pair<I S>{ first: 1, second: "hi" }`',
 };
 
 export function activate(context: vscode.ExtensionContext) {
