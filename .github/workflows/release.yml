@@ -125,7 +125,9 @@ jobs:
           printf '#!/bin/bash\nexec /usr/lib/llvm-17/bin/llc -mtriple=x86_64-pc-linux-gnu "$@"\n' > /tmp/bin/llc
           chmod +x /tmp/bin/llc
           export PATH="/tmp/bin:$PATH"
-          ./sans build compiler/main.sans
+          cat /tmp/bin/llc
+          which llc
+          ./sans build compiler/main.sans 2>&1 || { echo "BUILD FAILED"; cat /tmp/sans_*_runtime.ll 2>/dev/null | head -5; exit 1; }
           strip compiler/main
 
       - name: Verify binary
