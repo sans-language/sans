@@ -150,7 +150,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up the development environ
 
 ## Known Limitations
 
-- **Scope GC gaps**: Automatic scope-based memory management frees heap allocations on function return, but nested heap values in containers (array of arrays) are not recursively freed. Arenas available for hot paths.
-- Type checker is relaxed for bootstrap compatibility — some type mismatches not caught at compile time.
-- Capturing lambdas (closures) passed across module boundaries return incorrect results — non-capturing lambdas work fine.
-- Generics: no generic methods on generic structs, no nested generics (`Box<Pair<I S>>`).
+- **Scope GC**: Automatic scope-based memory management frees heap allocations on function return (including nested container contents). The compiler itself must be built from the bootstrap binary. Thread safety of scope globals is not guaranteed.

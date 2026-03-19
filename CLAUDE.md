@@ -110,11 +110,6 @@ The CLI `sans --version` reads the hardcoded version string in `compiler/main.sa
 - E2E test fixtures must use unique temp filenames to prevent parallel test races
 
 ## Known Limitations
-- IR type tracking is per-function: opaque types lose type info when passed cross-function as i64
-- **Scope GC**: User programs get automatic scope-based memory management (alloc/array/map/JSON/Result/string tracked per-function, freed on return, return values promoted to caller). Known gaps:
-  - Nested heap values in containers (array of arrays) — inner values not recursively freed
-  - Global pointer escape — heap pointers stored in globals outlive their creating scope
+- **Scope GC**: User programs get automatic scope-based memory management (alloc/array/map/JSON/Result/string tracked per-function, freed on return, return values promoted to caller including nested container contents). Known gaps:
   - The compiler itself must be built from the bootstrap binary (not self-hosted with scope GC) because compiler internals use deeply nested data structures that scope_exit destroys
   - Thread safety — `rc_alloc_head`/`rc_scope_head` globals are not thread-safe
-- Float stored as i64 via bitcast in register map
-- Typeck is relaxed for bootstrap

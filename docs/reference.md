@@ -1032,8 +1032,4 @@ User-defined functions take precedence over builtins of the same name. However, 
 
 ## Known Limitations
 
-- **Scope GC gaps**: Automatic scope-based memory management frees heap allocations on function return, but nested heap values in containers (array of arrays) are not recursively freed. Global pointer escape — heap pointers stored in globals outlive their creating scope. Arenas available for hot paths.
-- Type checker is relaxed for bootstrap compatibility — some type mismatches (e.g. if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time and may produce incorrect behavior at runtime.
-- Capturing lambdas (closures with captured variables) passed across module boundaries return incorrect results — the capture context is not preserved. Non-capturing lambdas work correctly across modules.
-- Generics: no generic methods on generic structs, no nested generics (`Box<Pair<I S>>`). Default params limited to literals only.
-- For-loop destructuring limited to 2-element tuples (map entries).
+- **Scope GC**: Automatic scope-based memory management frees heap allocations on function return, including nested container contents and global-escaped values. The compiler itself must be built from the bootstrap binary. Thread safety of scope globals (`rc_alloc_head`/`rc_scope_head`) is not guaranteed.

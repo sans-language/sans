@@ -2,6 +2,20 @@
 
 All notable changes to Sans are documented here.
 
+## [Unreleased]
+
+### Fixed
+- Recursive promotion of nested container contents in scope GC — array of arrays no longer leaks
+- Global pointer escape — heap values stored in globals no longer freed prematurely by scope_exit
+- IR type tracking for JoinHandle parameters across function boundaries
+- Cross-module capturing lambdas — heap-allocated closure objects preserve capture context
+- Generic methods on generic structs: `impl Box<T> { get(self) ... }`
+- Nested generics: `Box<Pair<I I>>` with recursive monomorphization
+
+### Improved
+- Default parameters now support negative literals: `f(x:I=-1)`
+- For-loop destructuring supports N-element tuples: `for (a b c) in arr`
+
 ## [0.5.2] - 2026-03-19
 
 ### Added
