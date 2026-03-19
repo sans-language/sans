@@ -1,0 +1,14 @@
+classify(x:I) I {
+  match x {
+    n if n > 0 => 1
+    n if n < 0 => 2
+    _ => 0
+  }
+}
+
+main() {
+  a = classify(5)
+  b = classify(-3)
+  c = classify(0)
+  a * 100 + b * 10 + c
+}

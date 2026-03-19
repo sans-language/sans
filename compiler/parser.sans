@@ -1313,9 +1313,15 @@ parse_match_expr(p:I) I {
 
 parse_match_arm(p:I) I {
   pattern = parse_pattern(p)
+  guard = if p_at(p, TK_IF) == 1 {
+    p_advance(p)
+    parse_expr(p, 0)
+  } else { 0 }
   p_expect(p, TK_FAT_ARROW)
   body = parse_expr(p, 0)
-  make_match_arm(pattern, body)
+  arm = make_match_arm(pattern, body)
+  store64(arm + 16, guard)
+  arm
 }
 
 parse_pattern(p:I) I {
@@ -1349,6 +1355,14 @@ parse_pattern(p:I) I {
       p_advance(p)
       pat = make_pattern(0, 0, array<I>())
       store64(pat + 24, 3)  // pat_type = 3 (wildcard)
+      return pat
+    }
+    // Binding pattern: bare lowercase identifier captures scrutinee (pat_type=4)
+    first_char = load8(name)
+    if first_char >= 97 && first_char <= 122 && name != "true" && name != "false" {
+      p_advance(p)
+      pat = make_pattern(0, name, array<I>())
+      store64(pat + 24, 4)
       return pat
     }
     // Check for enum pattern: Name::Variant

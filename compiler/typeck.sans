@@ -2343,7 +2343,24 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       while ai < num_arms {
         arm = load64(arms_p + ai * 8)
         arm_body = load64(arm + 8)
+        arm_pat = load64(arm)
+        arm_pat_type = load64(arm_pat + 24)
+        has_binding := 0
+        if arm_pat_type == 4 {
+          push_scope(locals)
+          bind_name = load64(arm_pat + 8)
+          inner = locals[locals.len() - 1]
+          mset(inner, bind_name, scrutinee_ty)
+          has_binding = 1
+        }
+        guard_expr = load64(arm + 16)
+        if guard_expr != 0 {
+          if has_binding == 0 { push_scope(locals) }
+          guard_ty = check_expr(guard_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          if has_binding == 0 { pop_scope(locals) }
+        }
         arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if has_binding == 1 { pop_scope(locals) }
         if result_ty == 0 { result_ty = arm_ty }
         ai += 1
       }
@@ -2386,6 +2403,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     btype = load64(variant_fields_p + bi * 8)
     mset(inner_scope, bname, btype)
     bi += 1
+    }
+    enum_guard_expr = load64(arm + 16)
+    if enum_guard_expr != 0 {
+      check_expr(enum_guard_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     }
     arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     pop_scope(locals)

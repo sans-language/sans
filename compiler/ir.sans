@@ -2779,13 +2779,30 @@ lower_match_value(ctx:I scrutinee_reg:I arms:I) I {
 
     arm_label = ctx_fresh_label(ctx)
 
-    if pat_type == 3 {  // wildcard
-      // Wildcard: always matches (must be last arm)
-      ctx_emit(ctx, ir_jump(arm_label))
-      ctx_emit(ctx, ir_label(arm_label))
-      body_reg = lower_expr(ctx, body_expr)
-      ctx_emit(ctx, ir_store(result_ptr, body_reg))
-      ctx_emit(ctx, ir_jump(merge_label))
+    guard_expr = load64(arm + 16)
+
+    if pat_type == 3 || pat_type == 4 {  // wildcard or binding
+      if pat_type == 4 {
+        bind_name = load64(pattern + 8)
+        ctx_set_local(ctx, bind_name, scrutinee_reg)
+      }
+      if guard_expr != 0 {
+        guard_reg = lower_expr(ctx, guard_expr)
+        next_guard_label = ctx_fresh_label(ctx)
+        body_label = ctx_fresh_label(ctx)
+        ctx_emit(ctx, ir_branch(guard_reg, body_label, next_guard_label))
+        ctx_emit(ctx, ir_label(body_label))
+        body_reg = lower_expr(ctx, body_expr)
+        ctx_emit(ctx, ir_store(result_ptr, body_reg))
+        ctx_emit(ctx, ir_jump(merge_label))
+        ctx_emit(ctx, ir_label(next_guard_label))
+      } else {
+        ctx_emit(ctx, ir_jump(arm_label))
+        ctx_emit(ctx, ir_label(arm_label))
+        body_reg = lower_expr(ctx, body_expr)
+        ctx_emit(ctx, ir_store(result_ptr, body_reg))
+        ctx_emit(ctx, ir_jump(merge_label))
+      }
     } else if pat_type == 1 {  // integer value
       // Integer value pattern
       next_label = ctx_fresh_label(ctx)

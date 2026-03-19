@@ -80,6 +80,7 @@ run_test "struct_return_repeated"    "$REPO_ROOT/tests/fixtures/struct_return_re
 run_test "enum_match_method"         "$REPO_ROOT/tests/fixtures/enum_match_method.sans"         5
 run_test "enum_basic"                "$REPO_ROOT/tests/fixtures/enum_basic.sans"                2
 run_test "enum_data"                 "$REPO_ROOT/tests/fixtures/enum_data.sans"                 12
+run_test "match_guard"               "$REPO_ROOT/tests/fixtures/match_guard.sans"               120
 run_test "method_basic"              "$REPO_ROOT/tests/fixtures/method_basic.sans"              7
 run_test "trait_impl"                "$REPO_ROOT/tests/fixtures/trait_impl.sans"                13
 run_test "generic_identity"          "$REPO_ROOT/tests/fixtures/generic_identity.sans"          42
