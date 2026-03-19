@@ -621,6 +621,11 @@ lower_call(ctx:I name:I args:I) I {
     }
   }
 
+  // ------ Math ------
+  else if name == "abs" { lower_call_1(ctx, args, IR_ABS, IRTY_INT) }
+  else if name == "min" { lower_call_2(ctx, args, IR_MIN, IRTY_INT) }
+  else if name == "max" { lower_call_2(ctx, args, IR_MAX, IRTY_INT) }
+
   // ------ Memory ------
   else if name == "alloc" { lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) }
   else if name == "dealloc" { lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) }
@@ -1921,6 +1926,14 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
+  else if method == "slice" {
+    start_reg = lower_expr(ctx, args.get(0))
+    end_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_ARRAY_SLICE, dest, obj_reg, start_reg, end_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
   else if method == "sort" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_ARRAY_SORT, dest, obj_reg))
@@ -2023,6 +2036,13 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
   }
+  else if method == "char_at" {
+    idx_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_STRING_CHAR_AT, dest, obj_reg, idx_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
   else if method == "upper" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_STRING_UPPER, dest, obj_reg))
@@ -2086,6 +2106,13 @@ lower_map_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_MAP_VALS, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "delete" {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_DELETE, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } else {
     lower_method_fallback(ctx, obj_reg, method, args)

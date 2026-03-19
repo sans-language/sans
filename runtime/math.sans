@@ -1,0 +1,11 @@
+sans_abs(n:I) I {
+  if n < 0 { 0 - n } else { n }
+}
+
+sans_min(a:I b:I) I {
+  if a < b { a } else { b }
+}
+
+sans_max(a:I b:I) I {
+  if a > b { a } else { b }
+}

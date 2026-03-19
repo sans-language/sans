@@ -148,3 +148,21 @@ sans_array_join(arr:I sep:I) I {
   store8(r + total, 0)
   r
 }
+
+sans_array_slice(arr:I start:I end:I) I {
+  data = load64(arr)
+  len = load64(arr + 8)
+  s := start
+  e := end
+  if s < 0 { s = 0 }
+  if e > len { e = len }
+  if s > e { s = e }
+  n = e - s
+  new_arr = alloc(24)
+  new_data = alloc(if n > 0 { n * 8 } else { 8 })
+  if n > 0 { mcpy(new_data, data + s * 8, n * 8) }
+  store64(new_arr, new_data)
+  store64(new_arr + 8, n)
+  store64(new_arr + 16, n)
+  new_arr
+}

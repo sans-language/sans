@@ -222,3 +222,19 @@ sans_string_index_of(s:I sub:I) I {
   r = strstr(s, sub)
   if r != 0 { r - s } else { 0 - 1 }
 }
+
+sans_string_char_at(s:I idx:I) I {
+  len = slen(s)
+  if idx < 0 || idx >= len {
+    r = alloc(1)
+    store8(r, 0)
+    r
+  } else {
+    r = alloc(2)
+    store8(r, load8(s + idx))
+    store8(r + 1, 0)
+    r
+  }
+}
+
+// stof not yet supported — requires float bitcast infrastructure
