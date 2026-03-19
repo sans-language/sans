@@ -159,6 +159,21 @@ String comparison (`==`, `!=`) is supported.
 | `float_to_int(f)` | `ftoi` | `(Float) -> Int` |
 | `float_to_string(f)` | `ftos` | `(Float) -> String` |
 
+### Math
+
+| Function | Signature |
+|----------|-----------|
+| `abs(n)` | `(Int) -> Int` |
+| `min(a, b)` | `(Int, Int) -> Int` |
+| `max(a, b)` | `(Int, Int) -> Int` |
+
+### Collections
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `range(n)` | `(Int) -> Array<Int>` | Returns `[0, 1, ..., n-1]` |
+| `range(a, b)` | `(Int, Int) -> Array<Int>` | Returns `[a, a+1, ..., b-1]` |
+
 ### JSON
 
 | Function | Alias | Signature |
@@ -460,6 +475,10 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `find(fn)` | `((T) -> Bool) -> T` | First match, or 0 |
 | `enumerate` | `() -> Array<(Int, T)>` | Index-value tuples |
 | `zip(other)` | `(Array<U>) -> Array<(T, U)>` | Paired tuples |
+| `sort` | `() -> Array<T>` | In-place sort (integers) |
+| `reverse` | `() -> Array<T>` | In-place reverse |
+| `join(sep)` | `(String) -> String` | Join elements with separator |
+| `slice(start, end)` | `(Int, Int) -> Array<T>` | Sub-array `[start..end)` |
 
 ### String
 
@@ -473,6 +492,23 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `contains(needle)` | `(String) -> Bool` |
 | `split(delimiter)` | `(String) -> Array<String>` |
 | `replace(old, new)` | `(String, String) -> String` |
+| `upper` | `() -> String` |
+| `lower` | `() -> String` |
+| `index_of(sub)` | `(String) -> Int` |
+| `char_at(index)` or `get(index)` | `(Int) -> String` |
+| `repeat(n)` | `(Int) -> String` |
+
+### Map
+
+| Method | Signature |
+|--------|-----------|
+| `get(key)` | `(String) -> Int` |
+| `set(key, value)` | `(String, Int) -> Int` |
+| `has(key)` | `(String) -> Bool` |
+| `len` | `() -> Int` |
+| `keys` | `() -> Array<String>` |
+| `vals` | `() -> Array<Int>` |
+| `delete(key)` | `(String) -> Int` |
 
 ### JsonValue
 
