@@ -171,6 +171,7 @@ run_test "ir_opaque_param"           "$REPO_ROOT/tests/fixtures/ir_opaque_param.
 run_test "scope_global_escape"       "$REPO_ROOT/tests/fixtures/scope_global_escape.sans"       20
 run_test "scope_nested_array"        "$REPO_ROOT/tests/fixtures/scope_nested_array.sans"        10
 run_test "generic_struct_method"     "$REPO_ROOT/tests/fixtures/generic_struct_method.sans"     42
+run_test "generic_nested"             "$REPO_ROOT/tests/fixtures/generic_nested.sans"             10
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests

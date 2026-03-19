@@ -1,0 +1,14 @@
+struct Box<T> {
+  value:T
+}
+
+struct Pair<A B> {
+  first:A
+  second:B
+}
+
+main() {
+  inner = Pair<I I>{first:3 second:7}
+  outer = Box<Pair<I I>>{value:inner}
+  outer.value.first + outer.value.second
+}

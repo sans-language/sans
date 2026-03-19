@@ -460,6 +460,24 @@ is_upper_start(s:I) I {
 // ------ Helper: get string from token value (cast ptr back to string)
 // tok_val returns a ptr (I) to a string; we use it directly as string pointer
 
+// ------ mangle_type_arg: convert angle-bracket type notation to $$ mangled form --------
+// e.g. "Pair<I I>" -> "Pair$$I$$I", "I" -> "I"
+mangle_type_arg(s:S) I {
+  result := ""
+  i := 0
+  len = slen(s)
+  while i < len {
+    c = char_at(s, i)
+    if c == 60 { result = result + "$$" }
+    else if c == 62 { 0 }
+    else if c == 32 { result = result + "$$" }
+    else { result = result + s.substring(i, i + 1) }
+    i += 1
+    0
+  }
+  ptr(result)
+}
+
 // ------ Type name parsing ------------------------------------------------------------------------------------------------------------------------------------
 parse_type_name(p:I) I {
   // Array type: [T]
@@ -494,10 +512,21 @@ parse_type_name(p:I) I {
   // Simple identifier type
   name = p_expect_ident(p)
 
-  // Check for parameterized type: Name<Inner>
+  // Check for parameterized type: Name<T1 T2 ...>
   if p_at(p, TK_LT) == 1 {
     p_advance(p)  // consume <
-    inner = parse_type_name(p)
+    inner := ""
+    first_ta := 1
+    while p_at(p, TK_GT) == 0 && p_at(p, TK_EOF) == 0 {
+      ta = parse_type_name(p)
+      if first_ta == 1 {
+        inner = ta
+        first_ta = 0
+      } else {
+        inner = inner + " " + ta
+      }
+      0
+    }
     p_expect(p, TK_GT)
     result = name + "<" + inner + ">"
     ptr(result)
@@ -1119,11 +1148,11 @@ parse_atom(p:I) I {
         }
         p_expect(p, TK_GT)
         if p_at(p, TK_LBRACE) == 1 {
-          // Build mangled name: Pair$$I$$S
+          // Build mangled name: Pair$$I$$S or Box$$Pair$$I$$I (nested)
           mangled := name
           gtai := 0
           while gtai < gen_type_args.len() {
-            mangled = mangled + "$$" + gen_type_args[gtai]
+            mangled = mangled + "$$" + mangle_type_arg(gen_type_args[gtai])
             gtai += 1
             0
           }

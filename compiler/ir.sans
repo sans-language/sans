@@ -1,6 +1,9 @@
 import "constants"
 import "parser"
 
+// ------ Helper: cast I to S for string operations ---
+ir_s(v:I) S = v
+
 // ------ IrType constants ------------------------------------------------------------------------------------------------------------------------------------
 g IRTY_INT = 0
 g IRTY_FLOAT = 1
@@ -2674,7 +2677,30 @@ lower_field_access(ctx:I expr:I) I {
 
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_field_load(dest, obj_reg, field_idx, num_fields))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    // Check if field type is a struct (for nested struct field access)
+    field_is_struct := 0
+    if struct_name != 0 {
+      ftmap = mget(sd, "$$field_types$$")
+      if ftmap != 0 {
+        ft_key = ir_s(struct_name) + "." + ir_s(field)
+        ft_val = mget(ftmap, ft_key)
+        if ft_val != 0 {
+          // Try resolving generic struct if needed
+          ft_str = ir_s(ft_val)
+          if ir_find_dd(ft_str) >= 0 { resolve_generic_struct_fields(sd, ft_str) }
+          if mhas(sd, ft_val) == 1 {
+            ctx_set_reg_type(ctx, dest, IRTY_STRUCT)
+            ctx_set_struct_name(ctx, dest, ft_val)
+            field_is_struct = 1
+            0
+          }
+          0
+        }
+        0
+      }
+      0
+    }
+    if field_is_struct == 0 { ctx_set_reg_type(ctx, dest, IRTY_INT) }
     dest
   }
 
@@ -3313,9 +3339,23 @@ lower_array_lit(ctx:I expr:I) I {
   dest
 }
 
+// ------ ir_find_dd: find first $$ in string, return index or -1 ---
+ir_find_dd(s:I) I {
+  len = slen(s)
+  i := 0
+  while i < len - 1 {
+    if char_at(s, i) == 36 && char_at(s, i + 1) == 36 { return i }
+    i += 1
+    0
+  }
+  0 - 1
+}
+
 // ------ resolve_generic_struct_fields: look up mangled generic name in struct_defs ------------------------------------------
 // Returns field names array or 0 if not a generic struct
 resolve_generic_struct_fields(sd:I name:I) I {
+  // Already resolved?
+  if mhas(sd, name) == 1 { return mget(sd, name) }
   // Find "$$" in name
   sname_len = slen(name)
   dp := 0 - 1
@@ -3335,6 +3375,114 @@ resolve_generic_struct_fields(sd:I name:I) I {
   tmpl_fields = mget(gt, base)
   if tmpl_fields == 0 { return 0 }
   mset(sd, name, tmpl_fields)
+  // Also resolve field types for nested struct access
+  gfull = mget(sd, "$$generic_full$$")
+  ftmap = mget(sd, "$$field_types$$")
+  if gfull != 0 && ftmap != 0 {
+    full_fields = mget(gfull, base)
+    if full_fields != 0 {
+      // Extract unique type param names from field types (in order of first appearance)
+      tparam_names = array<I>()
+      tparam_seen = M()
+      tpi_scan := 1
+      while tpi_scan < full_fields.len() {
+        ft = full_fields.get(tpi_scan)
+        ft_s = ir_s(ft)
+        ft_len = slen(ft_s)
+        // Type params are short identifiers (1-2 chars, all uppercase)
+        is_tp := 0
+        if ft_len >= 1 && ft_len <= 2 {
+          fc = char_at(ft_s, 0)
+          if fc >= 65 && fc <= 90 {
+            // Check it's not a known primitive type alias
+            if ft_s != "I" && ft_s != "S" && ft_s != "B" && ft_s != "F" && ft_s != "M" {
+              is_tp = 1
+              0
+            }
+            0
+          }
+          0
+        }
+        if is_tp == 1 && mhas(tparam_seen, ft) == 0 {
+          tparam_names.push(ft)
+          mset(tparam_seen, ft, 1)
+          0
+        }
+        tpi_scan += 2
+        0
+      }
+      // Build type param -> concrete type name map by parsing mangled name
+      num_tp = tparam_names.len()
+      if num_tp > 0 {
+        rest_str = name.substring(dp + 2, sname_len)
+        // Split rest by $$ into segments
+        tp_segments = array<I>()
+        rr := rest_str
+        while slen(rr) > 0 {
+          ndd = ir_find_dd(rr)
+          if ndd >= 0 {
+            tp_segments.push(rr.substring(0, ndd))
+            rr = rr.substring(ndd + 2, slen(rr))
+          } else {
+            tp_segments.push(rr)
+            rr = ""
+          }
+          0
+        }
+        // Distribute segments to type params (same logic as typeck)
+        tp_concrete_map = M()
+        nseg = tp_segments.len()
+        if nseg <= num_tp {
+          tci := 0
+          while tci < nseg {
+            mset(tp_concrete_map, tparam_names[tci], tp_segments[tci])
+            tci += 1
+            0
+          }
+          0
+        } else {
+          excess = nseg - num_tp
+          first_concrete := ir_s(tp_segments[0])
+          fci := 1
+          while fci <= excess {
+            first_concrete = first_concrete + "$$" + ir_s(tp_segments[fci])
+            fci += 1
+            0
+          }
+          mset(tp_concrete_map, tparam_names[0], ptr(first_concrete))
+          rci := excess + 1
+          tpi_idx := 1
+          while rci < nseg {
+            mset(tp_concrete_map, tparam_names[tpi_idx], tp_segments[rci])
+            rci += 1
+            tpi_idx += 1
+            0
+          }
+          0
+        }
+        // Now substitute field types
+        ffi := 0
+        while ffi < full_fields.len() {
+          ff_name = full_fields.get(ffi)
+          ff_type = full_fields.get(ffi + 1)
+          concrete_type = if mhas(tp_concrete_map, ff_type) == 1 { mget(tp_concrete_map, ff_type) } else { ff_type }
+          ft_key = ir_s(name) + "." + ir_s(ff_name)
+          mset(ftmap, ft_key, concrete_type)
+          // If the concrete type is itself a generic struct, resolve it too
+          ct_str = ir_s(concrete_type)
+          if ir_find_dd(ct_str) >= 0 && mhas(sd, ct_str) == 0 {
+            resolve_generic_struct_fields(sd, ct_str)
+            0
+          }
+          ffi += 2
+          0
+        }
+        0
+      }
+      0
+    }
+    0
+  }
   tmpl_fields
 }
 
@@ -3726,6 +3874,8 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
 
   // Collect from program's structs
   generic_struct_defs = M()
+  generic_struct_full = M()   // base_name -> [name, type, name, type, ...] (full field info)
+  struct_field_type_map = M()  // "StructName.fieldName" -> type_name (for nested struct field access)
   prog_structs = load64(program + 24)  // Array of StructDef pointers
   si := 0
   while si < prog_structs.len() {
@@ -3743,14 +3893,21 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
         0
       }
       mset(generic_struct_defs, sname, gfield_names)
+      // Also store full field info for nested generic resolution
+      mset(generic_struct_full, sname, sfields)
     } else {
       sfields = load64(sdef + 8)     // flat array [name0, type0, name1, type1, ...]
-      // Build array of just field names
+      // Build array of just field names and store field types
       field_names = array<I>()
       fi := 0
       while fi < sfields.len() {
-        field_names.push(sfields.get(fi))  // name at even indices
-        fi = fi + 2                         // skip type
+        fname = sfields.get(fi)
+        ftype = sfields.get(fi + 1)
+        field_names.push(fname)
+        // Store field type for struct field access type tracking
+        ft_key = ir_s(sname) + "." + ir_s(fname)
+        mset(struct_field_type_map, ft_key, ftype)
+        fi = fi + 2
         0
       }
       mset(struct_defs, sname, field_names)
@@ -3760,6 +3917,8 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
   }
   // Store generic_struct_defs in struct_defs for access during lowering
   mset(struct_defs, "$$generic_templates$$", generic_struct_defs)
+  mset(struct_defs, "$$generic_full$$", generic_struct_full)
+  mset(struct_defs, "$$field_types$$", struct_field_type_map)
 
   // 2. Collect enum definitions: name -> array of [variant_name, tag, num_data] arrays
   enum_defs = M()

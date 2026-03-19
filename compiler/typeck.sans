@@ -640,17 +640,54 @@ instantiate_generic_struct(sname:I structs:I enums:I mod_exports:I) I {
   tmpl_type_params_p = load64(tmpl_type_params_arr)
   num_type_params = load64(tmpl_type_params_arr + 8)
   // Parse type args by splitting rest by "$$"
+  // For nested generics: Box$$Pair$$I$$I has segments [Pair, I, I]
+  // but Box has 1 type param, so the entire "Pair$$I$$I" is one arg.
+  // Strategy: split into segments, then distribute based on param count.
+  // Last (N-1) segments are individual args; everything else joins as first arg.
   sname_len = slen(sname_s)
   rest := sname_s.substring(dollar_pos + 2, sname_len)
-  type_arg_strs = array<I>()
+  all_segments = array<I>()
   while slen(rest) > 0 {
     next_dd = find_dollar_dollar(rest)
     if next_dd >= 0 {
-      type_arg_strs.push(rest.substring(0, next_dd))
+      all_segments.push(rest.substring(0, next_dd))
       rest = rest.substring(next_dd + 2, slen(rest))
     } else {
-      type_arg_strs.push(rest)
+      all_segments.push(rest)
       rest = ""
+    }
+    0
+  }
+  // Distribute segments to type args based on param count
+  type_arg_strs = array<I>()
+  num_segments = all_segments.len()
+  if num_segments <= num_type_params {
+    // Simple case: each segment is one type arg
+    segi := 0
+    while segi < num_segments {
+      type_arg_strs.push(all_segments[segi])
+      segi += 1
+      0
+    }
+    0
+  } else {
+    // Nested case: first arg consumes excess segments joined by $$
+    // e.g. segments [Pair, I, I] with 1 param -> first arg = "Pair$$I$$I"
+    excess = num_segments - num_type_params
+    first_arg := all_segments[0]
+    fai := 1
+    while fai <= excess {
+      first_arg = first_arg + "$$" + all_segments[fai]
+      fai += 1
+      0
+    }
+    type_arg_strs.push(ptr(first_arg))
+    // Remaining segments are individual args
+    rai := excess + 1
+    while rai < num_segments {
+      type_arg_strs.push(all_segments[rai])
+      rai += 1
+      0
     }
     0
   }
@@ -659,6 +696,12 @@ instantiate_generic_struct(sname:I structs:I enums:I mod_exports:I) I {
   tpi := 0
   while tpi < num_type_params {
     tp_name = load64(tmpl_type_params_p + tpi * 8)
+    // For nested generic type args (e.g. "Pair$$I$$I"), ensure inner struct is instantiated first
+    ta_str = as_str(type_arg_strs[tpi])
+    if find_dollar_dollar(ta_str) >= 0 && mhas(structs, ta_str) == 0 {
+      instantiate_generic_struct(type_arg_strs[tpi], structs, enums, mod_exports)
+      0
+    }
     tp_concrete = resolve_type(type_arg_strs[tpi], structs, enums, mod_exports)
     mset(tp_map, tp_name, tp_concrete)
     tpi += 1
