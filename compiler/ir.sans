@@ -207,12 +207,13 @@ irf_param_sizes(f:I) I = load64(f + 32)
 // offset 32: fn_ret_types (I) --- Map: func name -> IrType tag
 
 make_ir_module(funcs:I globals:I struct_defs:I) I {
-  m = alloc(40)
+  m = alloc(48)
   store64(m, funcs)
   store64(m + 8, globals)
   store64(m + 16, struct_defs)
   store64(m + 24, M())  // global_init_values map (name -> i64)
-  store64(m + 32, M())
+  store64(m + 32, M())  // fn_ret_types
+  store64(m + 40, M())  // fn_ret_struct_names (for cross-module struct field access)
   m
 }
 
@@ -1524,6 +1525,12 @@ lower_method_call(ctx:I expr:I) I {
       mc_frt = ctx_fn_ret_types(ctx)
       mc_rt = if mc_frt != 0 { mget(mc_frt, mc_mangled) } else { 0 }
       ctx_set_reg_type(ctx, mc_dest, if mc_rt != 0 { mc_rt } else { IRTY_INT })
+      // Propagate struct name for field access
+      if mc_rt == IRTY_STRUCT {
+        sn_map = ctx_fn_ret_struct_names(ctx)
+        sn = if sn_map != 0 { mget(sn_map, mc_mangled) } else { 0 }
+        if sn != 0 { ctx_set_struct_name(ctx, mc_dest, sn) }
+      }
       return mc_dest
     }
   }
@@ -1939,6 +1946,30 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
+  else if method == "sum" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_SUM, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "min" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_MIN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "max" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_MAX, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "flat" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ARRAY_FLAT, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
   else if method == "slice" {
     start_reg = lower_expr(ctx, args.get(0))
     end_reg = lower_expr(ctx, args.get(1))
@@ -2116,6 +2147,28 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_emit(ctx, ir_inst1(IR_STRING_TO_INT, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
+  }
+  else if method == "pad_left" {
+    width_reg = lower_expr(ctx, args.get(0))
+    fill_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_STRING_PAD_LEFT, dest, obj_reg, width_reg, fill_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "pad_right" {
+    width_reg = lower_expr(ctx, args.get(0))
+    fill_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_STRING_PAD_RIGHT, dest, obj_reg, width_reg, fill_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_STR)
+    dest
+  }
+  else if method == "bytes" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_STRING_BYTES, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
   } else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
@@ -2180,6 +2233,12 @@ lower_map_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_MAP_DELETE, dest, obj_reg, key_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "entries" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_ENTRIES, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
     dest
   } else {
     lower_method_fallback(ctx, obj_reg, method, args)
@@ -3452,15 +3511,14 @@ lower(program:I module_name:I module_fn_ret_types:I) I {
 }
 
 lower_with_globals(program:I module_name:I module_fn_ret_types:I extra_globals:I) I {
-  lower_full(program, module_name, module_fn_ret_types, 0, extra_globals)
+  lower_full(program, module_name, module_fn_ret_types, 0, extra_globals, 0)
 }
 
-// ------ lower_with_extra_structs ------------------------------------------------------------------------------------------------------------
 lower_with_extra_structs(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I) I {
-  lower_full(program, module_name, module_fn_ret_types, extra_struct_defs, 0)
+  lower_full(program, module_name, module_fn_ret_types, extra_struct_defs, 0, 0)
 }
 
-lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I extra_globals:I) I {
+lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I extra_globals:I extra_snames:I) I {
   // 1. Collect struct definitions: name -> field names array
   struct_defs = M()
   // Merge extra_struct_defs first
@@ -3560,6 +3618,19 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     fri = fri + 1
     0
   }
+  // Merge cross-module fn_ret_struct_names
+  if extra_snames != 0 {
+    snkeys = extra_snames.keys()
+    snki := 0
+    while snki < snkeys.len() {
+      snk = snkeys.get(snki)
+      mset(fn_ret_struct_names, snk, mget(extra_snames, snk))
+      snki = snki + 1
+      0
+    }
+    0
+  }
+
   // Merge module_fn_ret_types
   if module_fn_ret_types != 0 {
     mkeys = module_fn_ret_types.keys()

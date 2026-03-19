@@ -2,6 +2,16 @@
 
 All notable changes to Sans are documented here.
 
+## [0.5.1] - 2026-03-19
+
+### Added
+- Array: `sum`, `min`, `max`, `flat`
+- String: `pad_left(width, fill)`, `pad_right(width, fill)`, `bytes`
+- Map: `entries` — returns array of (key, value) tuples
+
+### Fixed
+- Cross-module struct field access — field order preserved from AST, struct names propagated through fn_ret_struct_names
+
 ## [0.5.0] - 2026-03-19
 
 ### Added

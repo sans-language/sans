@@ -199,6 +199,7 @@ build_step4(modules:I program:I mod_exports:I output_path:I source_path:I) I {
 // Step 5: Build module_fn_ret_types map (one while loop with nested inner loop)
 build_step5(modules:I program:I mod_exports:I output_path:I source_path:I) I {
   module_fn_ret_types = M()
+  module_fn_ret_snames = M()
   i := 0
   while i < modules.len() {
     mod = modules.get(i)
@@ -206,15 +207,15 @@ build_step5(modules:I program:I mod_exports:I output_path:I source_path:I) I {
     exports = mget(mod_exports, mod_n)
     fn_env = load64(exports + 16)
     fn_keys = fn_env.keys()
-    build_step5_inner(fn_keys, fn_env, mod_n, module_fn_ret_types)
+    build_step5_inner(fn_keys, fn_env, mod_n, module_fn_ret_types, module_fn_ret_snames)
     i = i + 1
     wfd(2, ".")
   }
-  build_step6(modules, program, mod_exports, module_fn_ret_types, output_path, source_path)
+  build_step6(modules, program, mod_exports, module_fn_ret_types, module_fn_ret_snames, output_path, source_path)
 }
 
 // Step 5 inner: iterate fn_keys for one module (one while loop)
-build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I) I {
+build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I module_fn_ret_snames:I) I {
   ki := 0
   while ki < fn_keys.len() {
     fname = fn_keys.get(ki)
@@ -242,6 +243,10 @@ build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I) I {
            IRTY_INT } } } } } } } } } } } } } } } } } }
     mangled = mod_n + "__" + fname
     mset(module_fn_ret_types, mangled, irty)
+    if rt_tag == TY_STRUCT {
+      sname = type_data_s(ret_type)
+      mset(module_fn_ret_snames, mangled, sname)
+    }
     ki = ki + 1
     wfd(2, ".")
   }
@@ -249,38 +254,42 @@ build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I) I {
 }
 
 // Step 6: Build extra_struct_defs from module exports (one while loop with nested inner loop)
-build_step6(modules:I program:I mod_exports:I module_fn_ret_types:I output_path:I source_path:I) I {
+build_step6(modules:I program:I mod_exports:I module_fn_ret_types:I module_fn_ret_snames:I output_path:I source_path:I) I {
   extra_struct_defs = M()
   i := 0
   while i < modules.len() {
     mod = modules.get(i)
-    mod_n = rm_name(mod)
-    exports = mget(mod_exports, mod_n)
-    structs_m = load64(exports)
-    build_step6_inner(structs_m, extra_struct_defs)
+    mod_prog = rm_program(mod)
+    // Get struct defs from AST (preserves field order)
+    structs_arr = load64(mod_prog + 24)
+    structs_p = load64(structs_arr)
+    num_structs = load64(structs_arr + 8)
+    si := 0
+    while si < num_structs {
+      sdef = load64(structs_p + si * 8)
+      sname = load64(sdef)
+      fields_flat_arr = load64(sdef + 8)
+      fields_flat = load64(fields_flat_arr)
+      num_flat = load64(fields_flat_arr + 8)
+      field_names = array<I>()
+      fi := 0
+      while fi < num_flat {
+        field_names.push(load64(fields_flat + fi * 8))
+        fi += 2
+        0
+      }
+      mset(extra_struct_defs, sname, field_names)
+      si += 1
+      0
+    }
     i = i + 1
     wfd(2, ".")
   }
-  build_step7(modules, program, module_fn_ret_types, extra_struct_defs, output_path, source_path)
-}
-
-// Step 6 inner: iterate struct keys for one module (one while loop)
-build_step6_inner(structs_m:I extra_struct_defs:I) I {
-  skeys = structs_m.keys()
-  ski := 0
-  while ski < skeys.len() {
-    sname = skeys.get(ski)
-    fields_m = mget(structs_m, sname)
-    field_names = fields_m.keys()
-    mset(extra_struct_defs, sname, field_names)
-    ski = ski + 1
-    0
-  }
-  0
+  build_step7(modules, program, module_fn_ret_types, module_fn_ret_snames, extra_struct_defs, output_path, source_path)
 }
 
 // Step 7: IR lower each module (one while loop, inner loops extracted)
-build_step7(modules:I program:I module_fn_ret_types:I extra_struct_defs:I output_path:I source_path:I) I {
+build_step7(modules:I program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_defs:I output_path:I source_path:I) I {
   all_functions = array<I>()
   all_globals = array<I>()
   all_ginits = M()
@@ -318,7 +327,7 @@ build_step7(modules:I program:I module_fn_ret_types:I extra_struct_defs:I output
     i = i + 1
     wfd(2, ".")
   }
-  build_step8(program, module_fn_ret_types, extra_struct_defs, all_functions, all_globals, all_ginits, all_module_globals, output_path, source_path)
+  build_step8(program, module_fn_ret_types, module_fn_ret_snames, extra_struct_defs, all_functions, all_globals, all_ginits, all_module_globals, output_path, source_path)
 }
 
 // Helper: merge src array into dst (one while loop)
@@ -333,11 +342,11 @@ merge_arr(dst:I src:I) I {
 }
 
 // Step 8: IR lower entry point + merge main into all_functions/all_globals + finalize
-build_step8(program:I module_fn_ret_types:I extra_struct_defs:I all_functions:I all_globals:I all_ginits:I all_module_globals:I output_path:I source_path:I) I {
+build_step8(program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_defs:I all_functions:I all_globals:I all_ginits:I all_module_globals:I output_path:I source_path:I) I {
   main_ir = if extra_struct_defs.keys().len() > 0 {
-    lower_full(program, 0, module_fn_ret_types, extra_struct_defs, all_module_globals)
+    lower_full(program, 0, module_fn_ret_types, extra_struct_defs, all_module_globals, module_fn_ret_snames)
   } else {
-    lower_with_globals(program, 0, module_fn_ret_types, all_module_globals)
+    lower_full(program, 0, module_fn_ret_types, 0, all_module_globals, module_fn_ret_snames)
   }
   main_globals = irm_globals(main_ir)
   merge_arr(all_globals, main_globals)

@@ -269,3 +269,33 @@ sans_map_delete(m:I key:I) I {
   }
   found
 }
+
+sans_map_entries(m:I) I {
+  hashes = load64(m)
+  keys = load64(m + 8)
+  vals = load64(m + 16)
+  count = load64(m + 24)
+  cap = load64(m + 32)
+  arr = alloc(24)
+  data = alloc(if count > 0 { count * 8 } else { 8 })
+  store64(arr, data)
+  store64(arr + 8, 0)
+  store64(arr + 16, count)
+  i := 0
+  idx := 0
+  while i < cap {
+    h = load64(hashes + i * 8)
+    if h != 0 {
+      tuple = alloc(16)
+      store64(tuple, load64(keys + i * 8))
+      store64(tuple + 8, load64(vals + i * 8))
+      store64(data + idx * 8, tuple)
+      idx = idx + 1
+      0
+    } else { 0 }
+    i = i + 1
+    0
+  }
+  store64(arr + 8, idx)
+  arr
+}

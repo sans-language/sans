@@ -251,4 +251,52 @@ sans_string_char_at(s:I idx:I) I {
   }
 }
 
-// stof not yet supported — requires float bitcast infrastructure
+sans_string_pad_left(s:I width:I fill:I) I {
+  len = slen(s)
+  if len >= width { return s; 0 }
+  pad = width - len
+  fill_len = slen(fill)
+  r = alloc(width + 1)
+  i := 0
+  while i < pad {
+    store8(r + i, load8(fill + i % fill_len))
+    i += 1
+    0
+  }
+  mcpy(r + pad, s, len)
+  store8(r + width, 0)
+  r
+}
+
+sans_string_pad_right(s:I width:I fill:I) I {
+  len = slen(s)
+  if len >= width { return s; 0 }
+  pad = width - len
+  fill_len = slen(fill)
+  r = alloc(width + 1)
+  mcpy(r, s, len)
+  i := 0
+  while i < pad {
+    store8(r + len + i, load8(fill + i % fill_len))
+    i += 1
+    0
+  }
+  store8(r + width, 0)
+  r
+}
+
+sans_string_bytes(s:I) I {
+  len = slen(s)
+  arr = alloc(24)
+  data = alloc(if len > 0 { len * 8 } else { 8 })
+  i := 0
+  while i < len {
+    store64(data + i * 8, load8(s + i))
+    i += 1
+    0
+  }
+  store64(arr, data)
+  store64(arr + 8, len)
+  store64(arr + 16, len)
+  arr
+}

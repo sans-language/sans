@@ -491,6 +491,10 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `reduce(init, fn)` | `(T, (T, T) -> T) -> T` | Fold to single value |
 | `each(fn)` / `for_each(fn)` | `((T) -> Int) -> Int` | Iterate with side effects |
 | `flat_map(fn)` | `((T) -> Array<U>) -> Array<U>` | Map + flatten |
+| `sum` | `() -> Int` | Sum of elements |
+| `min` | `() -> Int` | Minimum element |
+| `max` | `() -> Int` | Maximum element |
+| `flat` | `() -> Array<T>` | Flatten nested arrays |
 
 ### String
 
@@ -511,6 +515,9 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `repeat(n)` | `(Int) -> String` |
 | `to_int` | `() -> Int` |
 | `get(index)` | `(Int) -> String` |
+| `pad_left(width, fill)` | `(Int, String) -> String` |
+| `pad_right(width, fill)` | `(Int, String) -> String` |
+| `bytes` | `() -> Array<Int>` |
 
 ### Int
 
@@ -529,6 +536,7 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `keys` | `() -> Array<String>` |
 | `vals` | `() -> Array<Int>` |
 | `delete(key)` | `(String) -> Int` |
+| `entries` | `() -> Array<(String, Int)>` |
 
 ### JsonValue
 
