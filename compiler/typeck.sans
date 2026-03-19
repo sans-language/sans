@@ -531,7 +531,16 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       mset(scope, load64(names_p + 8), make_receiver_type(inner))
       return 0
     }
-    tc_error("destructuring let is only supported for channel<T>()")
+    // Tuple destructuring: let (a, b) = tuple_expr
+    val_ty = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    num_names = load64(names_arr + 8)
+    names_p = load64(names_arr)
+    scope = locals[locals.len() - 1]
+    ni := 0
+    while ni < num_names {
+      mset(scope, load64(names_p + ni * 8), make_type(TY_INT))
+      ni += 1
+    }
     return 0
   }
 
@@ -975,6 +984,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if name == "random" || name == "rand" {
       if nargs != 1 { tc_error("random() takes exactly 1 argument (max)") }
       return make_type(TY_INT)
+    }
+
+    // ------ String to float -------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "stof" || name == "string_to_float" {
+      if nargs != 1 { tc_error("stof() takes exactly 1 argument") }
+      return make_type(TY_FLOAT)
     }
 
     // ------ Memory ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2274,7 +2289,22 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     arms_arr = load64(expr + 16)
     arms_p = load64(arms_arr)
     scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-    if type_tag(scrutinee_ty) != TY_ENUM { return tc_error("match scrutinee must be an enum type, got " + type_to_string(scrutinee_ty)) }
+    // Value match: Int, String, Bool — check arm bodies only
+    st = type_tag(scrutinee_ty)
+    if st == TY_INT || st == TY_STRING || st == TY_BOOL || st == TY_FLOAT {
+      num_arms = load64(arms_arr + 8)
+      result_ty := 0
+      ai := 0
+      while ai < num_arms {
+        arm = load64(arms_p + ai * 8)
+        arm_body = load64(arm + 8)
+        arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if result_ty == 0 { result_ty = arm_ty }
+        ai += 1
+      }
+      return if result_ty != 0 { result_ty } else { make_type(TY_INT) }
+    }
+    if st != TY_ENUM { return tc_error("match scrutinee must be an enum, Int, or String, got " + type_to_string(scrutinee_ty)) }
     enum_name_s = type_data_s(scrutinee_ty)
     // Get enum variants from enums map
     if mhas(enums, enum_name_s) == 0 { return tc_error("undefined enum '" + enum_name_s + "'") }

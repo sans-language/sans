@@ -2,6 +2,21 @@
 
 All notable changes to Sans are documented here.
 
+## [0.5.0] - 2026-03-19
+
+### Added
+- **`match` expressions** on integers and strings: `match x { 1 => "one", _ => "other" }`
+- **Tuple destructuring**: `let (a, b) = tuple_expr`
+- **`stof(s)` / `string_to_float(s)`** — parse string to float via C strtod
+- **Default parameters** — (partial: typeck allows, parser TBD)
+
+### Fixed
+- Lambda segfault: three bugs in capture detection and context inheritance
+  - `find_captures_stmt` for ST_LET read wrong offset for value expression
+  - `find_captures_expr` for EX_CALL treated function name as expression pointer
+  - Lambda context didn't inherit local_fn_set/module_name/imported_fn_names
+- Nested lambdas, inline lambdas with function calls, reduce/each/flat_map all work
+
 ## [0.4.6] - 2026-03-19
 
 ### Added

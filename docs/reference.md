@@ -158,6 +158,7 @@ String comparison (`==`, `!=`) is supported.
 | `int_to_float(n)` | `itof` | `(Int) -> Float` |
 | `float_to_int(f)` | `ftoi` | `(Float) -> Int` |
 | `float_to_string(f)` | `ftos` | `(Float) -> String` |
+| `string_to_float(s)` | `stof` | `(String) -> Float` |
 
 ### Math
 

@@ -631,6 +631,9 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "time" || name == "now" { lower_call_0(ctx, IR_TIME, IRTY_INT) }
   else if name == "random" || name == "rand" { lower_call_1(ctx, args, IR_RANDOM, IRTY_INT) }
 
+  // ------ String to float ------
+  else if name == "stof" || name == "string_to_float" { lower_call_1(ctx, args, IR_STRING_TO_FLOAT, IRTY_FLOAT) }
+
   // ------ Memory ------
   else if name == "alloc" { lower_call_1(ctx, args, IR_ALLOC, IRTY_INT) }
   else if name == "dealloc" { lower_call_1(ctx, args, IR_DEALLOC, IRTY_INT) }
@@ -2572,6 +2575,14 @@ lower_match(ctx:I expr:I) I {
 
   scrutinee_reg = lower_expr(ctx, scrutinee)
 
+  // Check if this is a value match or enum match (pat_type at offset 24: 0=enum, 1+=value)
+  first_arm = arms.get(0)
+  first_pat = load64(first_arm)
+  first_pat_type = load64(first_pat + 24)
+  if first_pat_type > 0 {
+    return lower_match_value(ctx, scrutinee_reg, arms)
+  }
+
   // Get enum tag
   tag_reg = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_enum_tag(tag_reg, scrutinee_reg))
@@ -2642,6 +2653,80 @@ lower_match(ctx:I expr:I) I {
     0
   }
 
+  ctx_emit(ctx, ir_label(merge_label))
+  result_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(result_reg, result_ptr))
+  ctx_set_reg_type(ctx, result_reg, IRTY_INT)
+  result_reg
+}
+
+// ------ lower_match_value: match on integers/strings/wildcards -----------------------------------------------
+lower_match_value(ctx:I scrutinee_reg:I arms:I) I {
+  result_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(result_ptr))
+  merge_label = ctx_fresh_label(ctx)
+  num_arms = arms.len()
+  i := 0
+  while i < num_arms {
+    arm = arms.get(i)
+    pattern = load64(arm)
+    body_expr = load64(arm + 8)
+    pat_type = load64(pattern + 24)
+    pat_val = load64(pattern + 8)
+
+    arm_label = ctx_fresh_label(ctx)
+
+    if pat_type == 3 {  // wildcard
+      // Wildcard: always matches (must be last arm)
+      ctx_emit(ctx, ir_jump(arm_label))
+      ctx_emit(ctx, ir_label(arm_label))
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+    } else if pat_type == 1 {  // integer value
+      // Integer value pattern
+      next_label = ctx_fresh_label(ctx)
+      val_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(val_reg, pat_val))
+      ctx_set_reg_type(ctx, val_reg, IRTY_INT)
+      cmp_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_EQ, scrutinee_reg, val_reg))
+      ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_branch(cmp_reg, arm_label, next_label))
+      ctx_emit(ctx, ir_label(arm_label))
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+      ctx_emit(ctx, ir_label(next_label))
+    } else if pat_type == 2 {  // string value
+      // String value pattern — compare with string equality via starts_with + length check
+      next_label = ctx_fresh_label(ctx)
+      str_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_string_const(str_reg, pat_val))
+      ctx_set_reg_type(ctx, str_reg, IRTY_STR)
+      // Use string_contains(scrutinee, pat) && len(scrutinee) == len(pat) for equality
+      // Simpler: emit IR_STRING_STARTS_WITH and IR_STRING_LEN checks
+      sw_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_STRING_STARTS_WITH, sw_reg, scrutinee_reg, str_reg))
+      len1_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_STRING_LEN, len1_reg, scrutinee_reg))
+      len2_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_STRING_LEN, len2_reg, str_reg))
+      len_eq = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_cmpop(len_eq, IRCMP_EQ, len1_reg, len2_reg))
+      cmp_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_binop(cmp_reg, OP_MUL, sw_reg, len_eq))
+      ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+      ctx_emit(ctx, ir_branch(cmp_reg, arm_label, next_label))
+      ctx_emit(ctx, ir_label(arm_label))
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+      ctx_emit(ctx, ir_label(next_label))
+    }
+    i = i + 1
+    0
+  }
   ctx_emit(ctx, ir_label(merge_label))
   result_reg = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_load(result_reg, result_ptr))

@@ -29,6 +29,8 @@ obj.method                 // no-arg method (parens optional)
 s[0:5]                     // string slice (= s.substring(0,5))
 s[6:]                      // slice to end
 s[:5]                      // slice from start
+match x { 1 => "a", 2 => "b", _ => "c" }  // value match (int/string)
+let (a, b) = (10 20)      // tuple destructuring
 """multi\nline"""           // multiline string
 -x                         // negation
 import "mod"               // module import
@@ -66,6 +68,7 @@ min(a b)                                I I -> I
 max(a b)                                I I -> I
 range(n)                                I -> Array<I> [0..n)
 range(a b)                              I I -> Array<I> [a..b)
+stof(s)           string_to_float(s)    S -> F
 sleep(ms)                               I -> I (pause ms)
 time()/now()                            -> I (unix timestamp)
 random(max)/rand(max)                   I -> I [0..max)

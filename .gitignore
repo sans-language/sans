@@ -14,3 +14,4 @@ compiler/main
 compiler/test_build
 compiler/test_const_import
 .superpowers/
+tests/fixtures/nested_lambda

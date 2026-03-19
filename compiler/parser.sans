@@ -1312,20 +1312,68 @@ parse_match_arm(p:I) I {
 }
 
 parse_pattern(p:I) I {
-  enum_name = p_expect_ident(p)
-  p_expect(p, TK_COLON_COLON)
-  variant_name = p_expect_ident(p)
-  bindings = array<I>()
-  if p_at(p, TK_LPAREN) == 1 {
-    p_advance(p)  // consume (
-    while p_at(p, TK_RPAREN) == 0 {
-      binding = p_expect_ident(p)
-      bindings.push(binding)
-      if p_at(p, TK_COMMA) == 1 { p_advance(p) }
-    }
-    p_expect(p, TK_RPAREN)
+  kind = p_peek_kind(p)
+  // Integer literal pattern
+  if kind == TK_INT_LIT {
+    t = p_advance(p)
+    pat = make_pattern(0, tok_val(t), array<I>())
+    store64(pat + 24, 1)  // pat_type = 1 (int value)
+    return pat
   }
-  make_pattern(enum_name, variant_name, bindings)
+  // Negative integer pattern
+  if kind == TK_MINUS {
+    p_advance(p)
+    t = p_advance(p)
+    pat = make_pattern(0, 0 - tok_val(t), array<I>())
+    store64(pat + 24, 1)  // pat_type = 1 (int value)
+    return pat
+  }
+  // String literal pattern
+  if kind == TK_STRING_LIT {
+    t = p_advance(p)
+    pat = make_pattern(0, tok_val(t), array<I>())
+    store64(pat + 24, 2)  // pat_type = 2 (string value)
+    return pat
+  }
+  // Wildcard pattern: _
+  if kind == TK_IDENT {
+    name = tok_val(p_peek(p))
+    if name == "_" {
+      p_advance(p)
+      pat = make_pattern(0, 0, array<I>())
+      store64(pat + 24, 3)  // pat_type = 3 (wildcard)
+      return pat
+    }
+    // Check for enum pattern: Name::Variant
+    if p_peek_kind_at(p, 1) == TK_COLON_COLON {
+      enum_name = p_expect_ident(p)
+      p_expect(p, TK_COLON_COLON)
+      variant_name = p_expect_ident(p)
+      bindings = array<I>()
+      if p_at(p, TK_LPAREN) == 1 {
+        p_advance(p)
+        while p_at(p, TK_RPAREN) == 0 {
+          binding = p_expect_ident(p)
+          bindings.push(binding)
+          if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+        }
+        p_expect(p, TK_RPAREN)
+      }
+      return make_pattern(enum_name, variant_name, bindings)
+    }
+    // Bool literal pattern (true/false)
+    if name == "true" {
+      p_advance(p)
+      return make_pattern(ptr("__val"), ptr("1"), array<I>())
+    }
+    if name == "false" {
+      p_advance(p)
+      return make_pattern(ptr("__val"), ptr("0"), array<I>())
+    }
+  }
+  p("parse error: expected pattern (int, string, _, or Enum::Variant)")
+  exit(1)
+  0
 }
 
 // ------ Interpolated string desugaring ---------------------------------------------------------------------------------------------
