@@ -1,0 +1,69 @@
+# Changelog
+
+All notable changes to Sans are documented here.
+
+## [0.4.4] - 2026-03-18
+
+### Added
+- `s.upper()` / `s.lower()` — string case conversion
+- `s.index_of(sub)` — find substring position (-1 if not found)
+- `a.join(sep)` — join array elements into string with separator
+- `a.reverse()` — reverse array in place
+- CHANGELOG.md
+
+## [0.4.3] - 2026-03-18
+
+### Added
+- `range(n)` and `range(a, b)` built-in functions for iteration
+- `a.sort()` in-place insertion sort for integer arrays
+
+## [0.4.2] - 2026-03-18
+
+### Fixed
+- Cross-module method calls (`utils.add()`) — pointer comparison replaced with map lookup
+- Nested module imports (`import "models/user"`) — short name extraction for prefix matching
+- Float type compatibility — `float_to_int()` and `float_to_string()` no longer reject Float arguments
+
+## [0.4.1] - 2026-03-18
+
+### Added
+- **Automatic memory management** — type-tagged scope GC tracks all heap allocations (arrays, maps, JSON, Result, strings, structs, enums) with type-aware destructors
+- Return value promotion — heap values returned from functions are automatically re-tracked in the caller's scope
+- `fn_ret_types` propagation — return values from user functions with heap return types are scope-tracked
+
+## [0.4.0] - 2026-03-17
+
+### Added
+- Reference counting runtime primitives (`rc_alloc`, `rc_retain`, `rc_release`, `rc_count`)
+- Scope-based memory management functions (`scope_enter`, `scope_exit`, `scope_track`)
+- Compiler auto-emits scope instrumentation for user code `alloc()` calls
+
+## [0.3.0] - 2026-03-16
+
+### Added
+- HTTPS/TLS server support with certificate configuration
+- WebSocket protocol (upgrade, send, recv, close)
+- Gzip compression for HTTP responses
+- HTTP request headers, cookies, query params, form data
+- CORS middleware helpers
+- Signal handling and graceful shutdown
+- Static file serving
+
+## [0.2.0] - 2026-03-14
+
+### Added
+- Self-hosted compiler — Sans compiles itself, Rust compiler removed
+- Website and documentation at sans.dev
+
+## [0.1.0] - 2026-03-12
+
+### Added
+- Initial release — self-hosted compiler targeting LLVM IR
+- Core language: functions, variables, control flow, closures
+- Types: Int, Float, Bool, String, Array, Map, Tuple, Struct, Enum, Result
+- Concurrency: spawn, channels, mutexes
+- HTTP client and server
+- JSON parsing and building
+- File I/O, logging, string operations
+- Arena allocator for phase-based deallocation
+- VSCode extension with syntax highlighting

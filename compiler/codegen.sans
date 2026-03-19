@@ -515,10 +515,17 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_arena_alloc(i64)")
   emit(cg, "declare i64 @sans_arena_end()")
 
-  // ------ Sans runtime: Range & Sort ------
+  // ------ Sans runtime: Range, Sort, Reverse, Join ------
   emit(cg, "declare i64 @sans_range1(i64)")
   emit(cg, "declare i64 @sans_range2(i64, i64)")
   emit(cg, "declare i64 @sans_array_sort(i64)")
+  emit(cg, "declare i64 @sans_array_reverse(i64)")
+  emit(cg, "declare i64 @sans_array_join(i64, i64)")
+
+  // ------ Sans runtime: String upper/lower/index_of ------
+  emit(cg, "declare i64 @sans_string_upper(i64)")
+  emit(cg, "declare i64 @sans_string_lower(i64)")
+  emit(cg, "declare i64 @sans_string_index_of(i64, i64)")
 
   // ------ Sans runtime: Reference Counting ------
   emit(cg, "declare i64 @sans_rc_alloc(i64)")
@@ -3127,6 +3134,33 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_ARRAY_SORT {
     compile_rt1(cg, inst, "sans_array_sort")
+    return 0
+  }
+
+  // ------ String upper/lower/index_of (218-220) ------
+  if op == IR_STRING_UPPER {
+    compile_rt1(cg, inst, "sans_string_upper")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 5)
+    return 0
+  }
+  if op == IR_STRING_LOWER {
+    compile_rt1(cg, inst, "sans_string_lower")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 5)
+    return 0
+  }
+  if op == IR_STRING_INDEX_OF {
+    compile_rt2(cg, inst, "sans_string_index_of")
+    return 0
+  }
+
+  // ------ Array join/reverse (221-222) ------
+  if op == IR_ARRAY_JOIN {
+    compile_rt2(cg, inst, "sans_array_join")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 5)
+    return 0
+  }
+  if op == IR_ARRAY_REVERSE {
+    compile_rt1(cg, inst, "sans_array_reverse")
     return 0
   }
 

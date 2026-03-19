@@ -1,0 +1,12 @@
+main() I {
+  a = range(5)
+  a.reverse()
+  // [4,3,2,1,0]
+  first = a.get(0)
+  last = a.get(4)
+
+  words = ["a" "b" "c"]
+  joined = words.join("-")
+  // "a-b-c" has length 5
+  first * 10 + last + joined.len()
+}

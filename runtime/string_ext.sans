@@ -189,3 +189,36 @@ sans_string_replace(s:I old:I new_s:I) I {
   sl = slen(s)
   if ol == 0 { sans_string_dup(s, sl) } else { sans_string_replace_inner(s, old, new_s, ol, nl, sl) }
 }
+
+sans_string_upper(s:I) I {
+  len = slen(s)
+  r = alloc(len + 1)
+  i := 0
+  while i < len {
+    c = load8(s + i)
+    store8(r + i, if c >= 97 && c <= 122 { c - 32 } else { c })
+    i += 1
+    0
+  }
+  store8(r + len, 0)
+  r
+}
+
+sans_string_lower(s:I) I {
+  len = slen(s)
+  r = alloc(len + 1)
+  i := 0
+  while i < len {
+    c = load8(s + i)
+    store8(r + i, if c >= 65 && c <= 90 { c + 32 } else { c })
+    i += 1
+    0
+  }
+  store8(r + len, 0)
+  r
+}
+
+sans_string_index_of(s:I sub:I) I {
+  r = strstr(s, sub)
+  if r != 0 { r - s } else { 0 - 1 }
+}

@@ -156,6 +156,8 @@ run_test "scope_nested_calls"        "$REPO_ROOT/tests/fixtures/scope_nested_cal
 run_test "scope_string"              "$REPO_ROOT/tests/fixtures/scope_string.sans"              0
 run_test "range_basic"               "$REPO_ROOT/tests/fixtures/range_basic.sans"               35
 run_test "array_sort"                "$REPO_ROOT/tests/fixtures/array_sort.sans"                55
+run_test "string_upper_lower"        "$REPO_ROOT/tests/fixtures/string_upper_lower.sans"        7
+run_test "array_join_reverse"        "$REPO_ROOT/tests/fixtures/array_join_reverse.sans"        45
 run_test "system_basic"              "$REPO_ROOT/tests/fixtures/system_basic.sans"              0
 run_test "builtin_override"          "$REPO_ROOT/tests/fixtures/builtin_override.sans"          42
 

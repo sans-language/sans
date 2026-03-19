@@ -1,0 +1,11 @@
+main() I {
+  s = "Hello"
+  u = s.upper()
+  l = s.lower()
+  // H=72 E=69 L=76 L=76 O=79 = 372
+  // h=104 e=101 l=108 l=108 o=111 = 532
+  // Check first chars match expected
+  if u == "HELLO" { 1 } else { 0 }
+  idx = s.index_of("llo")
+  idx + l.len()
+}
