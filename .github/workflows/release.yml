@@ -67,16 +67,26 @@ jobs:
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
           ./sans build compiler/main.sans
-          # Fix dylib paths for portability — allow OpenSSL from any Homebrew prefix
+          # Fix dylib paths for portability — use @rpath so binary works with any Homebrew prefix
+          echo "=== Before rpath fix ==="
+          otool -L compiler/main | grep -E "ssl|crypto"
           for lib in libssl.3.dylib libcrypto.3.dylib; do
-            old=$(otool -L compiler/main | grep "$lib" | awk '{print $1}' | head -1)
-            if [ -n "$old" ]; then
+            old=$(otool -L compiler/main | grep "$lib" | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
+            echo "Fixing: $old -> @rpath/$lib"
+            if [ -n "$old" ] && [ "$old" != "@rpath/$lib" ]; then
               install_name_tool -change "$old" "@rpath/$lib" compiler/main
             fi
           done
           install_name_tool -add_rpath /opt/homebrew/opt/openssl@3/lib compiler/main 2>/dev/null || true
           install_name_tool -add_rpath /usr/local/opt/openssl@3/lib compiler/main 2>/dev/null || true
-          install_name_tool -add_rpath /opt/homebrew/lib compiler/main 2>/dev/null || true
+          install_name_tool -add_rpath /usr/local/lib compiler/main 2>/dev/null || true
+          # Same for libcurl
+          curl_old=$(otool -L compiler/main | grep "libcurl" | sed 's/^[[:space:]]*//' | cut -d' ' -f1)
+          if [ -n "$curl_old" ] && echo "$curl_old" | grep -q homebrew; then
+            install_name_tool -change "$curl_old" "@rpath/libcurl.4.dylib" compiler/main
+          fi
+          echo "=== After rpath fix ==="
+          otool -L compiler/main | grep -E "ssl|crypto|curl|rpath"
           strip compiler/main
 
       - name: Verify binary
