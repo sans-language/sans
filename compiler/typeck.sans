@@ -2294,6 +2294,90 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         }
         return sig_ret
       }
+      // Try generic impl method instantiation for monomorphized generic structs
+      dd_pos = find_dollar_dollar(tname)
+      if dd_pos >= 0 && mhas(methods, "$$generic_impl_methods$$") {
+        gim = mget(methods, "$$generic_impl_methods$$")
+        base_name = as_str(tname).substring(0, dd_pos)
+        gim_key = base_name + "." + mc_method
+        if mhas(gim, gim_key) {
+          gim_entry = mget(gim, gim_key)
+          gim_mdef = load64(gim_entry)
+          gim_tparams_ptr = load64(gim_entry + 8)
+          // Build type param substitution map from mangled name
+          gim_tparams_p = load64(gim_tparams_ptr)
+          gim_num_tparams = load64(gim_tparams_ptr + 8)
+          tname_s = as_str(tname)
+          tname_len = slen(tname_s)
+          gim_rest := tname_s.substring(dd_pos + 2, tname_len)
+          gim_type_arg_strs = array<I>()
+          while slen(gim_rest) > 0 {
+            gim_next_dd = find_dollar_dollar(gim_rest)
+            if gim_next_dd >= 0 {
+              gim_type_arg_strs.push(gim_rest.substring(0, gim_next_dd))
+              gim_rest = gim_rest.substring(gim_next_dd + 2, slen(gim_rest))
+            } else {
+              gim_type_arg_strs.push(gim_rest)
+              gim_rest = ""
+            }
+            0
+          }
+          gim_tp_map = map()
+          gim_tpi := 0
+          while gim_tpi < gim_num_tparams {
+            gim_tp_entry = load64(gim_tparams_p + gim_tpi * 8)
+            gim_tp_name = load64(gim_tp_entry)
+            if gim_tpi < gim_type_arg_strs.len() {
+              mset(gim_tp_map, gim_tp_name, resolve_type(gim_type_arg_strs[gim_tpi], structs, enums, mod_exports))
+            }
+            gim_tpi += 1
+            0
+          }
+          // Resolve method param/return types with substitution
+          gim_mparams_arr = load64(gim_mdef + 8)
+          gim_mparams_p = load64(gim_mparams_arr)
+          gim_num_mparams = load64(gim_mparams_arr + 8)
+          gim_mret_name = load64(gim_mdef + 16)
+          // Build param types skipping self
+          gim_method_param_types = array<I>()
+          gim_mpi := 1
+          while gim_mpi < gim_num_mparams {
+            gim_mp = load64(gim_mparams_p + gim_mpi * 8)
+            gim_mp_type_name = load64(gim_mp + 8)
+            gim_mp_ty = if mhas(gim_tp_map, gim_mp_type_name) { mget(gim_tp_map, gim_mp_type_name) } else { resolve_type(gim_mp_type_name, structs, enums, mod_exports) }
+            gim_method_param_types.push(gim_mp_ty)
+            gim_mpi += 1
+          }
+          gim_mret = if mhas(gim_tp_map, gim_mret_name) { mget(gim_tp_map, gim_mret_name) } else { resolve_type(gim_mret_name, structs, enums, mod_exports) }
+          // Cache in methods_map and fn_env
+          mset(methods, method_key, make_fn_sig(ptr(gim_method_param_types), gim_mret, gim_method_param_types.len()))
+          gim_mangled = tname + "_" + mc_method
+          gim_all_params = array<I>()
+          gim_all_params.push(make_type(TY_STRUCT))
+          gim_api := 0
+          while gim_api < gim_method_param_types.len() {
+            gim_all_params.push(gim_method_param_types[gim_api])
+            gim_api += 1
+          }
+          mset(fn_env, gim_mangled, make_fn_sig(ptr(gim_all_params), gim_mret, gim_all_params.len()))
+          // Now dispatch normally
+          gim_sig = mget(methods, method_key)
+          gim_sig_params = load64(gim_sig)
+          gim_sig_ret = load64(gim_sig + 8)
+          gim_sig_params_len = if gim_sig_params != 0 { load64(gim_sig_params + 8) } else { 0 }
+          gim_sig_params_d = if gim_sig_params != 0 { load64(gim_sig_params) } else { 0 }
+          gim_sig_required = load64(gim_sig + 16)
+          if mc_nargs < gim_sig_required || mc_nargs > gim_sig_params_len { tc_error("method '" + mc_method + "' on '" + tname + "' expects " + str(gim_sig_required) + " to " + str(gim_sig_params_len) + " argument(s) but got " + str(mc_nargs)) }
+          gim_ci := 0
+          while gim_ci < mc_nargs {
+            gim_actual = check_expr(mc_args[gim_ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+            gim_expected = load64(gim_sig_params_d + gim_ci * 8)
+            if types_compatible(gim_actual, gim_expected) == 0 { tc_error("argument " + str(gim_ci + 1) + " to method '" + mc_method + "': expected " + type_to_string(gim_expected) + " but got " + type_to_string(gim_actual)) }
+            gim_ci += 1
+          }
+          return gim_sig_ret
+        }
+      }
       return tc_error("no method '" + mc_method + "' on type '" + tname + "'")
     }
     // Allow method calls on Int (opaque pointer types stored as i64)
@@ -2901,6 +2985,28 @@ check_inner(program:I mod_exports:I require_main:I) I {
       }
     }
 
+    // Check if this is a generic impl (has type params at offset 24)
+    impl_type_params_ptr = load64(impl_block + 24)
+
+    if impl_type_params_ptr != 0 {
+      // Generic impl — store method templates for lazy instantiation
+      gim := 0
+      if mhas(methods_map, "$$generic_impl_methods$$") { gim = mget(methods_map, "$$generic_impl_methods$$") }
+      if gim == 0 { gim = map(); mset(methods_map, "$$generic_impl_methods$$", gim) }
+      mi := 0
+      while mi < num_impl_methods {
+        mdef = load64(impl_methods_p + mi * 8)
+        mname = load64(mdef)
+        gim_key = impl_target_type + "." + mname
+        // Store: [method_ast, impl_type_params_ptr, target_type]
+        gim_entry = alloc(24)
+        store64(gim_entry, mdef)
+        store64(gim_entry + 8, impl_type_params_ptr)
+        store64(gim_entry + 16, impl_target_type)
+        mset(gim, gim_key, gim_entry)
+        mi += 1
+      }
+    } else {
     // Register methods (skip self param)
     mi := 0
     while mi < num_impl_methods {
@@ -2935,6 +3041,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       }
       mset(fn_env, mangled, make_fn_sig(ptr(all_param_types), mret, all_param_types.len()))
       mi += 1
+    }
     }
     ii += 1
   }
@@ -3093,6 +3200,13 @@ check_inner(program:I mod_exports:I require_main:I) I {
     impl_methods_p = load64(impl_methods_arr3)
     num_impl_methods = load64(impl_methods_arr3 + 8)
 
+    // Skip generic impl blocks — their methods are type-checked lazily at call site
+    impl_type_params_ptr2 = load64(impl_block + 24)
+    if impl_type_params_ptr2 != 0 {
+      ii += 1
+      0
+    } else {
+
     mi := 0
     while mi < num_impl_methods {
       mdef = load64(impl_methods_p + mi * 8)
@@ -3154,6 +3268,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       }
       mi += 1
     }
+    } // end else (non-generic impl)
     ii += 1
   }
 

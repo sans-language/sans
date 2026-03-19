@@ -1,0 +1,12 @@
+struct Box<T> {
+  value:T
+}
+
+impl Box<T> {
+  get(self:Box<T>) I = self.value
+}
+
+main() {
+  b = Box<I>{value:42}
+  b.get()
+}

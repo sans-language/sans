@@ -1576,6 +1576,11 @@ parse_method(p:I target_type:I) I {
 
   // First param must be self --- translate to typed param
   p_expect(p, TK_SELF_VAL)
+  // Consume optional type annotation on self (e.g., self:Box<T>)
+  if p_at(p, TK_COLON) == 1 {
+    p_advance(p)
+    parse_type_name(p)
+  }
   params = array<I>()
   params.push(make_param(ptr("self"), target_type))
 
@@ -1722,6 +1727,9 @@ parse_impl_block(p:I) I {
   p_expect(p, TK_IMPL)
   first_name = p_expect_ident(p)
 
+  // Parse optional type params: impl Box<T> { ... }
+  impl_type_params = parse_type_params(p)
+
   trait_name := 0
   target_type := first_name
 
@@ -1738,7 +1746,9 @@ parse_impl_block(p:I) I {
   }
   p_expect(p, TK_RBRACE)
 
-  make_impl_block(trait_name, target_type, methods)
+  blk = make_impl_block(trait_name, target_type, methods)
+  if impl_type_params.len() > 0 { store64(blk + 24, ptr(impl_type_params)) }
+  blk
 }
 
 // ------ Import parsing ---------------------------------------------------------------------------------------------------------------------------------------------

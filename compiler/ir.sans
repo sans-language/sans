@@ -4040,7 +4040,59 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
   while ii < prog_impls.len() {
     impl_block = prog_impls.get(ii)
     target_type = load64(impl_block + 8)
+    impl_type_params_ptr = load64(impl_block + 24)
     methods = load64(impl_block + 16)
+
+    if impl_type_params_ptr != 0 {
+      // Generic impl — lower method for each monomorphized struct instance
+      sd_keys = struct_defs.keys()
+      sdk := 0
+      while sdk < sd_keys.len() {
+        sd_key = sd_keys.get(sdk)
+        sd_key_s = sd_key
+        // Check if this key starts with target_type + "$$"
+        tt_s = target_type
+        tt_len = slen(tt_s)
+        sd_key_len = slen(sd_key_s)
+        is_match := 0
+        if sd_key_len > tt_len + 2 {
+          prefix = sd_key_s.substring(0, tt_len)
+          if prefix == tt_s && char_at(sd_key_s, tt_len) == 36 && char_at(sd_key_s, tt_len + 1) == 36 {
+            is_match = 1
+          }
+        }
+        if is_match == 1 {
+          // Ensure monomorphized struct fields are resolved in struct_defs
+          resolve_generic_struct_fields(struct_defs, sd_key)
+          // Lower each method for this monomorphized struct
+          gmi := 0
+          while gmi < methods.len() {
+            method = methods.get(gmi)
+            mname = load64(method)
+            mangled = if module_name != 0 { module_name + "__" + sd_key + "__" + mname } else { sd_key + "_" + mname }
+            // Patch self param type to monomorphized name for correct struct resolution
+            m_params_arr = load64(method + 8)
+            self_param = m_params_arr.get(0)
+            orig_self_type = load64(self_param + 8)
+            store64(self_param + 8, sd_key)
+            mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names, fn_param_defaults)
+            // Restore original self type
+            store64(self_param + 8, orig_self_type)
+            ir_functions.push(mfn_result.get(0))
+            gmfri := 1
+            while gmfri < mfn_result.len() {
+              ir_functions.push(mfn_result.get(gmfri))
+              gmfri = gmfri + 1
+              0
+            }
+            gmi = gmi + 1
+            0
+          }
+        }
+        sdk = sdk + 1
+        0
+      }
+    } else {
     mi := 0
     while mi < methods.len() {
       method = methods.get(mi)
@@ -4057,6 +4109,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
       }
       mi = mi + 1
       0
+    }
     }
     ii = ii + 1
     0
