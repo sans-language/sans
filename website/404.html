@@ -8,8 +8,8 @@
   <script>
     (function(){var t=localStorage.getItem('sans-theme');if(t)document.documentElement.setAttribute('data-theme',t);else if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.setAttribute('data-theme','dark');})();
   </script>
-  <link rel="stylesheet" href="/sans/css/style.css">
-  <script src="/sans/js/components.js" defer></script>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/components.js" defer></script>
 </head>
 <body>
   <sans-nav base="/sans"></sans-nav>
@@ -17,7 +17,7 @@
   <div class="container" style="text-align:center;padding:120px 0;">
     <h1 style="font-size:72px;font-weight:700;margin-bottom:16px;">404</h1>
     <p style="font-size:18px;color:var(--subtext0);margin-bottom:32px;">The page you're looking for doesn't exist.</p>
-    <a href="/sans/" class="btn-primary">Go to homepage</a>
+    <a href="/" class="btn-primary">Go to homepage</a>
   </div>
 
   <sans-footer base="/sans"></sans-footer>
