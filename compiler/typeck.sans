@@ -562,18 +562,27 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     return 0
   }
 
-  // ST_FOR_IN_DESTR: [tag, var1, var2, iterable, body_stmts_p]
+  // ST_FOR_IN_DESTR: [tag, vars_arr_p, iterable, body_stmts_p]
   if tag == ST_FOR_IN_DESTR {
-    var1 = load64(stmt + 8)
-    var2 = load64(stmt + 16)
-    iterable = load64(stmt + 24)
-    body_arr = load64(stmt + 32)
+    vars_arr = load64(stmt + 8)
+    vars_p = load64(vars_arr)
+    num_vars = load64(vars_arr + 8)
+    iterable = load64(stmt + 16)
+    body_arr = load64(stmt + 24)
     iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if type_tag(iter_ty) != TY_ARRAY { tc_error("for-in destructuring requires Array, got " + type_to_string(iter_ty)) }
     push_scope(locals)
     inner_scope = locals[locals.len() - 1]
-    mset(inner_scope, var1, make_type(TY_STRING))
-    mset(inner_scope, var2, make_type(TY_INT))
+    vi := 0
+    while vi < num_vars {
+      vname = load64(vars_p + vi * 8)
+      if vi == 0 && num_vars == 2 {
+        mset(inner_scope, vname, make_type(TY_STRING))
+      } else {
+        mset(inner_scope, vname, make_type(TY_INT))
+      }
+      vi += 1
+    }
     body_len = if body_arr != 0 { load64(body_arr + 8) } else { 0 }
     body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)

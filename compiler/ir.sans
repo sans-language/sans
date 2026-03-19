@@ -1541,11 +1541,12 @@ lower_for_in(ctx:I stmt:I) I {
 
 // ------ lower_for_in_destr --------------------------------------------------------------------------------------------------------------------------------
 lower_for_in_destr(ctx:I stmt:I) I {
-  // Layout: [tag, var1, var2, iterable_expr, body_stmts]
-  var1 = load64(stmt + 8)
-  var2 = load64(stmt + 16)
-  iterable = load64(stmt + 24)
-  body_stmts = load64(stmt + 32)
+  // Layout: [tag, vars_arr_p, iterable_expr, body_stmts]
+  vars_arr = load64(stmt + 8)
+  vars_p = load64(vars_arr)
+  num_vars = load64(vars_arr + 8)
+  iterable = load64(stmt + 16)
+  body_stmts = load64(stmt + 24)
 
   // Lower iterable
   arr_reg = lower_expr(ctx, iterable)
@@ -1594,18 +1595,21 @@ lower_for_in_destr(ctx:I stmt:I) I {
   ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, elem_reg, arr_reg, idx_reg2))
   ctx_set_reg_type(ctx, elem_reg, IRTY_INT)
 
-  // Destructure tuple: field 0 = key (string), field 1 = value (int)
-  key_reg = ctx_fresh_reg(ctx)
-  ctx_emit(ctx, ir_field_load(key_reg, elem_reg, 0, 2))
-  ctx_set_reg_type(ctx, key_reg, IRTY_STR)
-
-  val_reg = ctx_fresh_reg(ctx)
-  ctx_emit(ctx, ir_field_load(val_reg, elem_reg, 1, 2))
-  ctx_set_reg_type(ctx, val_reg, IRTY_INT)
-
-  // Bind loop variables
-  ctx_set_local(ctx, var1, key_reg)
-  ctx_set_local(ctx, var2, val_reg)
+  // Destructure tuple: N fields
+  vi := 0
+  while vi < num_vars {
+    vname = load64(vars_p + vi * 8)
+    field_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_field_load(field_reg, elem_reg, vi, num_vars))
+    if vi == 0 && num_vars == 2 {
+      ctx_set_reg_type(ctx, field_reg, IRTY_STR)
+    } else {
+      ctx_set_reg_type(ctx, field_reg, IRTY_INT)
+    }
+    ctx_set_local(ctx, vname, field_reg)
+    vi += 1
+    0
+  }
 
   // Lower body
   lower_stmts(ctx, body_stmts)

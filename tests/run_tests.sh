@@ -164,7 +164,9 @@ run_test "array_join_reverse"        "$REPO_ROOT/tests/fixtures/array_join_rever
 run_test "system_basic"              "$REPO_ROOT/tests/fixtures/system_basic.sans"              0
 run_test "builtin_override"          "$REPO_ROOT/tests/fixtures/builtin_override.sans"          42
 run_test "default_params"            "$REPO_ROOT/tests/fixtures/default_params.sans"            40
+run_test "default_params_negative"   "$REPO_ROOT/tests/fixtures/default_params_negative.sans"   50
 run_test "for_destructure_map"       "$REPO_ROOT/tests/fixtures/for_destructure_map.sans"       6
+run_test "for_destructure_triple"    "$REPO_ROOT/tests/fixtures/for_destructure_triple.sans"    21
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests

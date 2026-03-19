@@ -1,0 +1,9 @@
+clamp(x:I lo:I=-100 hi:I=100) I {
+  if x < lo { lo } else { if x > hi { hi } else { x } }
+}
+
+main() {
+  a = clamp(50)
+  b = clamp(-200)
+  a + b + 100
+}
