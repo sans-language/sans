@@ -121,6 +121,14 @@ jobs:
       - name: Build self-hosted compiler
         run: |
           export PATH="/usr/lib/llvm-17/bin:$PATH"
+          # Wrap llc to override target triple (bootstrap has hardcoded macOS triple)
+          mkdir -p /tmp/bin
+          cat > /tmp/bin/llc << 'WRAPPER'
+          #!/bin/bash
+          exec /usr/lib/llvm-17/bin/llc -mtriple=x86_64-pc-linux-gnu "$@"
+          WRAPPER
+          chmod +x /tmp/bin/llc
+          export PATH="/tmp/bin:$PATH"
           ./sans build compiler/main.sans
           strip compiler/main
 
