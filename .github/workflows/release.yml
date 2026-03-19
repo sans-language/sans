@@ -66,12 +66,13 @@ jobs:
 
       - name: Download bootstrap compiler
         run: |
-          curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz | tar xz
+          curl -fsSL https://github.com/sans-language/sans/releases/download/v0.4.0/sans-macos-arm64.tar.gz | tar xz
           chmod +x sans
           ./sans --version
 
       - name: Build self-hosted compiler
         run: |
+          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
           ./sans build compiler/main.sans
           strip compiler/main
 
@@ -112,7 +113,7 @@ jobs:
 
       - name: Download bootstrap compiler
         run: |
-          curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz | tar xz
+          curl -fsSL https://github.com/sans-language/sans/releases/download/v0.4.0/sans-linux-x86_64.tar.gz | tar xz
           chmod +x sans
           export PATH="/usr/lib/llvm-17/bin:$PATH"
           ./sans --version
