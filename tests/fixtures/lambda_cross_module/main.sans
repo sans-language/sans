@@ -1,0 +1,7 @@
+import "utils"
+
+main() {
+  offset = 10
+  f = |x:I| I { x + offset }
+  utils.apply(f 5)
+}

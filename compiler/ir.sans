@@ -3175,16 +3175,52 @@ lower_lambda(ctx:I expr:I) I {
     0
   }
 
-  // Emit FnRef for the lambda (needed when passed as argument to other functions)
-  dest = ctx_fresh_reg(ctx)
-  ctx_emit(ctx, ir_fn_ref(dest, lambda_name))
-  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  // Emit FnRef for the lambda
+  fn_ref_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_fn_ref(fn_ref_reg, lambda_name))
+  ctx_set_reg_type(ctx, fn_ref_reg, IRTY_INT)
 
-  // Store closure info keyed by the dest register name
-  ci_map = ctx_closure_info(ctx)
-  mset(ci_map, dest, cinfo)
+  if captures.len() > 0 {
+    // Capturing lambda: allocate closure object as struct [fn_ptr, ncaps, cap0, cap1, ...]
+    // Tag pointer with +1 so fcall can distinguish closures from raw fn ptrs
+    num_fields = 2 + captures.len()
+    closure_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_struct_alloc(closure_reg, num_fields))
+    // Field 0 = fn pointer
+    ctx_emit(ctx, ir_field_store(closure_reg, 0, fn_ref_reg))
+    // Field 1 = num captures
+    ncap_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(ncap_reg, captures.len()))
+    ctx_emit(ctx, ir_field_store(closure_reg, 1, ncap_reg))
+    // Fields 2..N = capture values
+    sci := 0
+    while sci < captures.len() {
+      cap_name = captures.get(sci)
+      cap_reg = ctx_get_local(ctx, cap_name)
+      ctx_emit(ctx, ir_field_store(closure_reg, 2 + sci, cap_reg))
+      sci = sci + 1
+      0
+    }
+    // Tag pointer: closure_reg + 1
+    one_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(one_reg, 1))
+    tagged_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_binop(tagged_reg, OP_ADD, closure_reg, one_reg))
+    ctx_set_reg_type(ctx, tagged_reg, IRTY_INT)
 
-  dest
+    // Store closure info keyed by the tagged register for intra-module direct calls
+    ci_map = ctx_closure_info(ctx)
+    mset(ci_map, tagged_reg, cinfo)
+
+    tagged_reg
+  } else {
+    // Non-capturing: just use raw fn pointer
+    // Store closure info keyed by the dest register name
+    ci_map = ctx_closure_info(ctx)
+    mset(ci_map, fn_ref_reg, cinfo)
+
+    fn_ref_reg
+  }
 }
 
 // Find captured variables in a list of statements

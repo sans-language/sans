@@ -1,0 +1,1 @@
+apply(f:I arg:I) I = fcall(f arg)

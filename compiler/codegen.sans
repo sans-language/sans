@@ -898,6 +898,203 @@ emit_scope_track(cg:I val:S tag:I) I {
   0
 }
 
+// ------ Closure-aware indirect call helpers -----------------------------------------------
+// These generate LLVM IR that checks if a function pointer is a tagged closure object.
+// Tagged closures have bit 0 set (ptr + 1). If tagged, the closure object layout is:
+//   [fn_ptr:i64, ncaps:i64, cap0:i64, cap1:i64, ...]
+// Captures are prepended to the explicit args when calling the underlying function.
+
+emit_closure_aware_call1(cg:I dest:I fp_val:S arg:S) I {
+  // Check tag bit
+  uid = cg_reg_counter(cg)
+  tag = cg_fresh_reg(cg)
+  emit(cg, "  " + tag + " = and i64 " + fp_val + ", 1")
+  is_clo = cg_fresh_reg(cg)
+  emit(cg, "  " + is_clo + " = icmp eq i64 " + tag + ", 1")
+  lbl_clo = "fcall1_clo_" + str(uid)
+  lbl_dir = "fcall1_dir_" + str(uid)
+  lbl_c0 = "fcall1_c0_" + str(uid)
+  lbl_c1 = "fcall1_c1_" + str(uid)
+  lbl_c1c = "fcall1_c1c_" + str(uid)
+  lbl_c2c = "fcall1_c2c_" + str(uid)
+  lbl_merge = "fcall1_merge_" + str(uid)
+  emit(cg, "  br i1 " + is_clo + ", label %" + lbl_clo + ", label %" + lbl_dir)
+  // Direct path
+  emit(cg, lbl_dir + ":")
+  fp_d = cg_fresh_reg(cg)
+  emit(cg, "  " + fp_d + " = inttoptr i64 " + fp_val + " to ptr")
+  r_d = cg_fresh_reg(cg)
+  emit(cg, "  " + r_d + " = call i64 " + fp_d + "(i64 " + arg + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // Closure path
+  emit(cg, lbl_clo + ":")
+  obj = cg_fresh_reg(cg)
+  emit(cg, "  " + obj + " = sub i64 " + fp_val + ", 1")
+  obj_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + obj_ptr + " = inttoptr i64 " + obj + " to ptr")
+  fn_slot = cg_fresh_reg(cg)
+  emit(cg, "  " + fn_slot + " = load i64, ptr " + obj_ptr)
+  fn_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + fn_ptr + " = inttoptr i64 " + fn_slot + " to ptr")
+  ncaps_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + ncaps_gep + " = getelementptr i64, ptr " + obj_ptr + ", i64 1")
+  ncaps = cg_fresh_reg(cg)
+  emit(cg, "  " + ncaps + " = load i64, ptr " + ncaps_gep)
+  has1 = cg_fresh_reg(cg)
+  emit(cg, "  " + has1 + " = icmp sgt i64 " + ncaps + ", 0")
+  emit(cg, "  br i1 " + has1 + ", label %" + lbl_c1 + ", label %" + lbl_c0)
+  // 0 captures: call fn_ptr(arg)
+  emit(cg, lbl_c0 + ":")
+  r_c0 = cg_fresh_reg(cg)
+  emit(cg, "  " + r_c0 + " = call i64 " + fn_ptr + "(i64 " + arg + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // 1+ captures: load cap0
+  emit(cg, lbl_c1 + ":")
+  cap0_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + cap0_gep + " = getelementptr i64, ptr " + obj_ptr + ", i64 2")
+  cap0 = cg_fresh_reg(cg)
+  emit(cg, "  " + cap0 + " = load i64, ptr " + cap0_gep)
+  has2 = cg_fresh_reg(cg)
+  emit(cg, "  " + has2 + " = icmp sgt i64 " + ncaps + ", 1")
+  emit(cg, "  br i1 " + has2 + ", label %" + lbl_c2c + ", label %" + lbl_c1c)
+  // 1 capture: call fn_ptr(cap0, arg)
+  emit(cg, lbl_c1c + ":")
+  r_c1 = cg_fresh_reg(cg)
+  emit(cg, "  " + r_c1 + " = call i64 " + fn_ptr + "(i64 " + cap0 + ", i64 " + arg + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // 2 captures: call fn_ptr(cap0, cap1, arg)
+  emit(cg, lbl_c2c + ":")
+  cap1_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + cap1_gep + " = getelementptr i64, ptr " + obj_ptr + ", i64 3")
+  cap1 = cg_fresh_reg(cg)
+  emit(cg, "  " + cap1 + " = load i64, ptr " + cap1_gep)
+  r_c2 = cg_fresh_reg(cg)
+  emit(cg, "  " + r_c2 + " = call i64 " + fn_ptr + "(i64 " + cap0 + ", i64 " + cap1 + ", i64 " + arg + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // Merge
+  emit(cg, lbl_merge + ":")
+  result = cg_fresh_reg(cg)
+  emit(cg, "  " + result + " = phi i64 [" + r_d + ", %" + lbl_dir + "], [" + r_c0 + ", %" + lbl_c0 + "], [" + r_c1 + ", %" + lbl_c1c + "], [" + r_c2 + ", %" + lbl_c2c + "]")
+  cg_set_val(cg, dest, result)
+  0
+}
+
+emit_closure_aware_call2(cg:I dest:I fp_val:S a1:S a2:S) I {
+  uid = cg_reg_counter(cg)
+  tag = cg_fresh_reg(cg)
+  emit(cg, "  " + tag + " = and i64 " + fp_val + ", 1")
+  is_clo = cg_fresh_reg(cg)
+  emit(cg, "  " + is_clo + " = icmp eq i64 " + tag + ", 1")
+  lbl_clo = "fcall2_clo_" + str(uid)
+  lbl_dir = "fcall2_dir_" + str(uid)
+  lbl_c0 = "fcall2_c0_" + str(uid)
+  lbl_c1 = "fcall2_c1_" + str(uid)
+  lbl_merge = "fcall2_merge_" + str(uid)
+  emit(cg, "  br i1 " + is_clo + ", label %" + lbl_clo + ", label %" + lbl_dir)
+  // Direct path
+  emit(cg, lbl_dir + ":")
+  fp_d = cg_fresh_reg(cg)
+  emit(cg, "  " + fp_d + " = inttoptr i64 " + fp_val + " to ptr")
+  r_d = cg_fresh_reg(cg)
+  emit(cg, "  " + r_d + " = call i64 " + fp_d + "(i64 " + a1 + ", i64 " + a2 + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // Closure path
+  emit(cg, lbl_clo + ":")
+  obj = cg_fresh_reg(cg)
+  emit(cg, "  " + obj + " = sub i64 " + fp_val + ", 1")
+  obj_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + obj_ptr + " = inttoptr i64 " + obj + " to ptr")
+  fn_slot = cg_fresh_reg(cg)
+  emit(cg, "  " + fn_slot + " = load i64, ptr " + obj_ptr)
+  fn_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + fn_ptr + " = inttoptr i64 " + fn_slot + " to ptr")
+  ncaps_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + ncaps_gep + " = getelementptr i64, ptr " + obj_ptr + ", i64 1")
+  ncaps = cg_fresh_reg(cg)
+  emit(cg, "  " + ncaps + " = load i64, ptr " + ncaps_gep)
+  has1 = cg_fresh_reg(cg)
+  emit(cg, "  " + has1 + " = icmp sgt i64 " + ncaps + ", 0")
+  emit(cg, "  br i1 " + has1 + ", label %" + lbl_c1 + ", label %" + lbl_c0)
+  // 0 captures
+  emit(cg, lbl_c0 + ":")
+  r_c0 = cg_fresh_reg(cg)
+  emit(cg, "  " + r_c0 + " = call i64 " + fn_ptr + "(i64 " + a1 + ", i64 " + a2 + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // 1 capture
+  emit(cg, lbl_c1 + ":")
+  cap0_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + cap0_gep + " = getelementptr i64, ptr " + obj_ptr + ", i64 2")
+  cap0 = cg_fresh_reg(cg)
+  emit(cg, "  " + cap0 + " = load i64, ptr " + cap0_gep)
+  r_c1 = cg_fresh_reg(cg)
+  emit(cg, "  " + r_c1 + " = call i64 " + fn_ptr + "(i64 " + cap0 + ", i64 " + a1 + ", i64 " + a2 + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // Merge
+  emit(cg, lbl_merge + ":")
+  result = cg_fresh_reg(cg)
+  emit(cg, "  " + result + " = phi i64 [" + r_d + ", %" + lbl_dir + "], [" + r_c0 + ", %" + lbl_c0 + "], [" + r_c1 + ", %" + lbl_c1 + "]")
+  cg_set_val(cg, dest, result)
+  0
+}
+
+emit_closure_aware_call3(cg:I dest:I fp_val:S a1:S a2:S a3:S) I {
+  uid = cg_reg_counter(cg)
+  tag = cg_fresh_reg(cg)
+  emit(cg, "  " + tag + " = and i64 " + fp_val + ", 1")
+  is_clo = cg_fresh_reg(cg)
+  emit(cg, "  " + is_clo + " = icmp eq i64 " + tag + ", 1")
+  lbl_clo = "fcall3_clo_" + str(uid)
+  lbl_dir = "fcall3_dir_" + str(uid)
+  lbl_c0 = "fcall3_c0_" + str(uid)
+  lbl_c1 = "fcall3_c1_" + str(uid)
+  lbl_merge = "fcall3_merge_" + str(uid)
+  emit(cg, "  br i1 " + is_clo + ", label %" + lbl_clo + ", label %" + lbl_dir)
+  // Direct path
+  emit(cg, lbl_dir + ":")
+  fp_d = cg_fresh_reg(cg)
+  emit(cg, "  " + fp_d + " = inttoptr i64 " + fp_val + " to ptr")
+  r_d = cg_fresh_reg(cg)
+  emit(cg, "  " + r_d + " = call i64 " + fp_d + "(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // Closure path
+  emit(cg, lbl_clo + ":")
+  obj = cg_fresh_reg(cg)
+  emit(cg, "  " + obj + " = sub i64 " + fp_val + ", 1")
+  obj_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + obj_ptr + " = inttoptr i64 " + obj + " to ptr")
+  fn_slot = cg_fresh_reg(cg)
+  emit(cg, "  " + fn_slot + " = load i64, ptr " + obj_ptr)
+  fn_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + fn_ptr + " = inttoptr i64 " + fn_slot + " to ptr")
+  ncaps_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + ncaps_gep + " = getelementptr i64, ptr " + obj_ptr + ", i64 1")
+  ncaps = cg_fresh_reg(cg)
+  emit(cg, "  " + ncaps + " = load i64, ptr " + ncaps_gep)
+  has1 = cg_fresh_reg(cg)
+  emit(cg, "  " + has1 + " = icmp sgt i64 " + ncaps + ", 0")
+  emit(cg, "  br i1 " + has1 + ", label %" + lbl_c1 + ", label %" + lbl_c0)
+  // 0 captures
+  emit(cg, lbl_c0 + ":")
+  r_c0 = cg_fresh_reg(cg)
+  emit(cg, "  " + r_c0 + " = call i64 " + fn_ptr + "(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // 1 capture
+  emit(cg, lbl_c1 + ":")
+  cap0_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + cap0_gep + " = getelementptr i64, ptr " + obj_ptr + ", i64 2")
+  cap0 = cg_fresh_reg(cg)
+  emit(cg, "  " + cap0 + " = load i64, ptr " + cap0_gep)
+  r_c1 = cg_fresh_reg(cg)
+  emit(cg, "  " + r_c1 + " = call i64 " + fn_ptr + "(i64 " + cap0 + ", i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
+  emit(cg, "  br label %" + lbl_merge)
+  // Merge
+  emit(cg, lbl_merge + ":")
+  result = cg_fresh_reg(cg)
+  emit(cg, "  " + result + " = phi i64 [" + r_d + ", %" + lbl_dir + "], [" + r_c0 + ", %" + lbl_c0 + "], [" + r_c1 + ", %" + lbl_c1 + "]")
+  cg_set_val(cg, dest, result)
+  0
+}
+
 // ------ Compile a single IR instruction to LLVM IR text ---------------------------------------
 
 compile_inst(cg:I inst:I) I {
@@ -2789,38 +2986,29 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_FCALL {
     // [op, dest, fn_ptr_reg, arg_reg]: indirect call with 1 arg
+    // Closure-aware: check tag bit to handle capturing lambdas
     fp_val = cg_get_val(cg, ir_field(inst, 16))
     arg_val = cg_get_val(cg, ir_field(inst, 24))
-    fp = cg_fresh_reg(cg)
-    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
-    r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + arg_val + ")")
-    cg_set_val(cg, dest, r)
+    emit_closure_aware_call1(cg, dest, fp_val, arg_val)
     return 0
   }
   if op == IR_FCALL2 {
     // [op, dest, fn_ptr_reg, arg1_reg, arg2_reg]
+    // Closure-aware: check tag bit to handle capturing lambdas
     fp_val = cg_get_val(cg, ir_field(inst, 16))
     a1 = cg_get_val(cg, ir_field(inst, 24))
     a2 = cg_get_val(cg, ir_field(inst, 32))
-    fp = cg_fresh_reg(cg)
-    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
-    r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + a1 + ", i64 " + a2 + ")")
-    cg_set_val(cg, dest, r)
+    emit_closure_aware_call2(cg, dest, fp_val, a1, a2)
     return 0
   }
   if op == IR_FCALL3 {
     // [op, dest, fn_ptr_reg, arg1_reg, arg2_reg, arg3_reg]
+    // Closure-aware: check tag bit to handle capturing lambdas
     fp_val = cg_get_val(cg, ir_field(inst, 16))
     a1 = cg_get_val(cg, ir_field(inst, 24))
     a2 = cg_get_val(cg, ir_field(inst, 32))
     a3 = cg_get_val(cg, ir_field(inst, 40))
-    fp = cg_fresh_reg(cg)
-    emit(cg, "  " + fp + " = inttoptr i64 " + fp_val + " to ptr")
-    r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = call i64 " + fp + "(i64 " + a1 + ", i64 " + a2 + ", i64 " + a3 + ")")
-    cg_set_val(cg, dest, r)
+    emit_closure_aware_call3(cg, dest, fp_val, a1, a2, a3)
     return 0
   }
 
