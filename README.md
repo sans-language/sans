@@ -150,6 +150,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up the development environ
 
 ## Known Limitations
 
-- No garbage collector -- use `arena_begin()`/`arena_alloc(n)`/`arena_end()` for phase-based bulk deallocation.
+- **Scope GC gaps**: Automatic scope-based memory management frees heap allocations on function return, but nested heap values in containers (array of arrays) are not recursively freed. Arenas available for hot paths.
 - No bounds checking on array access.
-- Multiple opaque type method calls in complex expressions may crash.
+- Type checker is relaxed for bootstrap compatibility — some type mismatches not caught at compile time.
+- Generics: no generic methods on generic structs, no nested generics (`Box<Pair<I S>>`).

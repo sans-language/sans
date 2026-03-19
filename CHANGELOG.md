@@ -2,7 +2,7 @@
 
 All notable changes to Sans are documented here.
 
-## [Unreleased]
+## [0.5.2] - 2026-03-19
 
 ### Added
 - **Default function parameters** — trailing params can have `=literal` defaults: `f(x:I y:I=0) = x+y`

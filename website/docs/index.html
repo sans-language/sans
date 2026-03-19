@@ -799,9 +799,10 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
 
     <h2>Known Limitations</h2>
     <ul>
-      <li>Scope-based GC automatically frees heap allocations on function return. Nested heap values in containers (array of arrays) may not be recursively freed. Arenas available for hot paths.</li>
+      <li>Scope-based GC automatically frees heap allocations on function return. Nested heap values in containers (array of arrays) are not recursively freed. Arenas available for hot paths.</li>
       <li>Type checker is relaxed for bootstrap compatibility &mdash; some type mismatches are not caught at compile time.</li>
-      <li>Generics on structs support concrete type params; generic functions use monomorphization for built-in types.</li>
+      <li>Generics: no generic methods on generic structs, no nested generics (<code>Box&lt;Pair&lt;I S&gt;&gt;</code>). Default params limited to literals only.</li>
+      <li>For-loop destructuring limited to 2-element tuples (map entries).</li>
     </ul>
   </div>
   </div>
