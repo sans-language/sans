@@ -23,5 +23,19 @@
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/claude-editor-check.sh",
+            "statusMessage": "Checking for VSCode extension updates..."
+          }
+        ]
+      }
+    ]
   }
 }

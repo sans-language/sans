@@ -13,6 +13,9 @@ sans build compiler/main.sans
 
 # Run all tests
 bash tests/run_tests.sh
+
+# Install git hooks (optional, warns about missing editor updates)
+bash scripts/setup-hooks.sh
 ```
 
 ## Project Overview
@@ -54,11 +57,13 @@ Every new feature, builtin, method, type, or syntax change must update **all** o
 1. `docs/reference.md` — human-readable reference
 2. `docs/ai-reference.md` — compact AI reference
 3. `website/docs/index.html` — website docs
-4. `editors/vscode-sans/src/extension.ts` — hover docs (`HOVER_DATA`)
-5. `editors/vscode-sans/syntaxes/sans.tmLanguage.json` — syntax highlighting
+4. **`editors/vscode-sans/src/extension.ts`** — hover docs (`HOVER_DATA`) **(enforced by CI)**
+5. **`editors/vscode-sans/syntaxes/sans.tmLanguage.json`** — syntax highlighting **(enforced by CI)**
 6. `tests/fixtures/` — E2E test fixture
 7. `examples/` — update or add example if significant
 8. `README.md` — update feature list if user-facing
+
+**Enforcement:** The `editor-guard` CI workflow warns on PRs that change compiler, runtime, or docs files without updating the VSCode extension. A pre-commit hook (`scripts/setup-hooks.sh`) provides the same warning locally. Add the `skip-editor-guard` label to suppress the CI warning when no editor changes are needed.
 
 ### 5. Test Fixtures Use Unique Temp Files
 E2E fixtures that write to disk must use unique `/tmp/` filenames (include the test name) to prevent parallel test races.
