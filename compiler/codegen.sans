@@ -285,7 +285,7 @@ emit_string_const(cg:I value:S) S {
 // ------ LLVM IR header ------------------------------------------------------------------------------------------------------------------------------------------
 
 emit_header(cg:I) I {
-  emit(cg, "target triple = \"arm64-apple-macosx14.0.0\"")
+  // Omit target triple — llc defaults to host platform
   emit(cg, "")
   0
 }

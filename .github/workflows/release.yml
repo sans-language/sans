@@ -73,18 +73,17 @@ jobs:
       - name: Build self-hosted compiler
         run: |
           ./sans build compiler/main.sans
-          mv compiler/main sans-new
-          strip sans-new
+          strip compiler/main
 
       - name: Verify binary
         run: |
-          ./sans-new --version
-          file sans-new
-          otool -L sans-new
+          ./compiler/main --version
+          file compiler/main
+          otool -L compiler/main
 
       - name: Package
         run: |
-          mv sans-new sans
+          mv compiler/main sans
           tar czf sans-macos-arm64.tar.gz sans
           rm sans
 
@@ -122,18 +121,17 @@ jobs:
         run: |
           export PATH="/usr/lib/llvm-17/bin:$PATH"
           ./sans build compiler/main.sans
-          mv compiler/main sans-new
-          strip sans-new
+          strip compiler/main
 
       - name: Verify binary
         run: |
-          ./sans-new --version
-          file sans-new
-          ldd sans-new
+          ./compiler/main --version
+          file compiler/main
+          ldd compiler/main
 
       - name: Package
         run: |
-          mv sans-new sans
+          mv compiler/main sans
           tar czf sans-linux-x86_64.tar.gz sans
           rm sans
 
