@@ -94,9 +94,54 @@ jobs:
           files: sans-macos-arm64.tar.gz
           generate_release_notes: true
 
+  build-ll:
+    name: Generate LLVM IR
+    needs: version-bump
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install LLVM 17
+        run: brew install llvm@17
+
+      - name: Download bootstrap compiler
+        run: |
+          curl -fsSL https://github.com/sans-language/sans/releases/download/v0.4.0/sans-macos-arm64.tar.gz | tar xz
+          chmod +x sans
+
+      - name: Generate .ll files
+        run: |
+          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          # Patch do_link to keep .ll files: compile but don't link
+          # Instead, manually run the compiler and capture .ll output
+          # The compiler writes .ll then calls llc then links — we just need the .ll
+          # Use a fake llc that just succeeds so compilation finishes and .ll is preserved
+          mkdir -p /tmp/fakebin
+          printf '#!/bin/bash\nexit 0\n' > /tmp/fakebin/llc
+          printf '#!/bin/bash\nexit 0\n' > /tmp/fakebin/cc
+          chmod +x /tmp/fakebin/llc /tmp/fakebin/cc
+          export PATH="/tmp/fakebin:$PATH"
+          ./sans build compiler/main.sans 2>&1 || true
+          # Collect all .ll files
+          mkdir -p ll-output
+          cp /tmp/sans_*_runtime.ll ll-output/ 2>/dev/null || true
+          cp compiler/main.ll ll-output/ 2>/dev/null || true
+          # Also try the default output path
+          find /tmp -name "*.ll" -newer /tmp/fakebin/llc -exec cp {} ll-output/ \; 2>/dev/null || true
+          ls -la ll-output/
+
+      - name: Upload .ll artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
+
   build-linux:
     name: Build Linux x86_64
-    needs: version-bump
+    needs: build-ll
     runs-on: ubuntu-latest
 
     steps:
@@ -109,25 +154,32 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
           sudo apt-get update
-          sudo apt-get install -y llvm-17 libcurl4-openssl-dev libssl-dev pkg-config
+          sudo apt-get install -y llvm-17 libcurl4-openssl-dev libssl-dev pkg-config zlib1g-dev
 
-      - name: Download bootstrap compiler
-        run: |
-          curl -fsSL https://github.com/sans-language/sans/releases/download/v0.4.0/sans-linux-x86_64.tar.gz | tar xz
-          chmod +x sans
-          export PATH="/usr/lib/llvm-17/bin:$PATH"
-          ./sans --version
+      - name: Download .ll artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
 
-      - name: Build self-hosted compiler
+      - name: Compile from LLVM IR
         run: |
           export PATH="/usr/lib/llvm-17/bin:$PATH"
-          mkdir -p /tmp/bin
-          printf '#!/bin/bash\nexec /usr/lib/llvm-17/bin/llc -mtriple=x86_64-pc-linux-gnu "$@"\n' > /tmp/bin/llc
-          chmod +x /tmp/bin/llc
-          export PATH="/tmp/bin:$PATH"
-          cat /tmp/bin/llc
-          which llc
-          ./sans build compiler/main.sans 2>&1 || { echo "BUILD FAILED"; cat /tmp/sans_*_runtime.ll 2>/dev/null | head -5; exit 1; }
+          ls -la ll-output/
+          # Compile main .ll to object
+          llc -filetype=obj -O2 -o compiler/main.o ll-output/main.ll
+          # Compile each runtime .ll to object
+          RUNTIME_OBJS=""
+          for ll in ll-output/sans_*_runtime.ll; do
+            base=$(basename "$ll" .ll)
+            llc -filetype=obj -O2 -o "/tmp/${base}.o" "$ll"
+            RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
+          done
+          # Link
+          cc compiler/main.o $RUNTIME_OBJS \
+            -lcurl -lz $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') \
+            -Wl,-z,stacksize=268435456 \
+            -o compiler/main
           strip compiler/main
 
       - name: Verify binary
