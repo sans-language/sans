@@ -2,12 +2,14 @@
 
 All notable changes to Sans are documented here.
 
-## [Unreleased]
+## [0.5.4] - 2026-03-19
 
 ### Added
 - **Short aliases for builtins**: `ab`/`aa`/`ae` (arena), `gz` (gzip), `ca` (cors_all), `ud` (url_decode), `ps` (path_segment), `sigh`/`sigc` (signals)
 - **Short aliases for methods**: `idx` (index_of), `pl`/`pr` (pad_left/right), `ti` (to_int), `fm` (flat_map), `gidx`/`gs`/`geti`/`gb` (JSON getters), `typeof` (type_of), `sh`/`cl`/`rj` (HTTP request)
 - **Documented 15 existing undocumented aliases**: `fread`, `fwrite`, `fappend`, `fexists`, `itos`, `jparse`, `jobj`, `jarr`, `jstr`, `jstringify`, `hget`, `hpost`, `hl`, `HS`, `HR`
+
+## [0.5.3] - 2026-03-19
 
 ### Fixed
 - Recursive promotion of nested container contents in scope GC — array of arrays no longer leaks
