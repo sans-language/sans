@@ -23,6 +23,8 @@ const HOVER_DATA: Record<string, string> = {
     'int_to_string': '**int_to_string**(n: Int) -> String\n\nConvert integer to string.',
     'stoi': '**string_to_int**(s: String) -> Int\n\nParse string as integer. Returns 0 on invalid input.',
     'string_to_int': '**string_to_int**(s: String) -> Int\n\nParse string as integer. Returns 0 on invalid input.',
+    'stof': '**string_to_float**(s: String) -> Float\n\nParse string as float.\n\nUsage: `stof("3.14")  // 3.14`',
+    'string_to_float': '**string_to_float**(s: String) -> Float\n\nParse string as float.\n\nUsage: `string_to_float("3.14")  // 3.14`',
     'itof': '**int_to_float**(n: Int) -> Float\n\nConvert integer to float.',
     'int_to_float': '**int_to_float**(n: Int) -> Float\n\nConvert integer to float.',
     'ftoi': '**float_to_int**(f: Float) -> Int\n\nTruncate float to integer.',
@@ -71,6 +73,11 @@ const HOVER_DATA: Record<string, string> = {
     'stream_end': '**stream_end**(writer: Int) -> Int\n\nFinalize a chunked HTTP response by sending the terminal chunk.\n\nUsage: `stream_end(w)`',
     'cors': '**cors**(req: HttpRequest, origin: String) -> Int\n\nSet CORS response headers: `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, and `Access-Control-Allow-Headers`. Call before `respond`.\n\nUsage: `cors(req "https://example.com")`',
     'cors_all': '**cors_all**(req: HttpRequest) -> Int\n\nSet CORS response headers with wildcard origin (`*`). Shorthand for `cors(req "*")`.\n\nUsage: `cors_all(req)`',
+    'ca': '**cors_all**(req: HttpRequest) -> Int\n\nAlias for `cors_all()`. Set CORS headers with wildcard origin.\n\nUsage: `ca(req)`',
+    'ud': '**url_decode**(s: String) -> String\n\nAlias for `url_decode()`. Decode URL-encoded string.\n\nUsage: `ud(raw)`',
+    'ps': '**path_segment**(path: String, idx: Int) -> String\n\nAlias for `path_segment()`. Extract URL path segment.\n\nUsage: `ps("/api/users/42" 2)  // "42"`',
+    'sigh': '**signal_handler**(signum: Int) -> Int\n\nAlias for `signal_handler()`. Register signal handler.\n\nUsage: `sigh(2)`',
+    'sigc': '**signal_check**() -> Int\n\nAlias for `signal_check()`. Returns 1 if signal received.\n\nUsage: `sigc()`',
     'ssl_ctx': '**ssl_ctx**(cert: String, key: String) -> Int\n\nCreate an SSL context from PEM certificate and private key file paths. Returns opaque context pointer.\n\nAdvanced — prefer `https_listen` for most use cases.\n\nUsage: `ctx = ssl_ctx("cert.pem" "key.pem")`',
     'ssl_accept': '**ssl_accept**(ctx: Int, fd: Int) -> Int\n\nPerform TLS handshake on an accepted socket fd using the given SSL context. Returns SSL object pointer.\n\nUsage: `ssl = ssl_accept(ctx fd)`',
     'ssl_read': '**ssl_read**(ssl: Int, buf: Int, len: Int) -> Int\n\nRead up to `len` bytes from a TLS connection into buffer. Returns bytes read.\n\nUsage: `n = ssl_read(ssl buf 4096)`',
@@ -98,6 +105,9 @@ const HOVER_DATA: Record<string, string> = {
     'content_length': '**content_length**() -> Int\n\nHttpRequest method. Get the Content-Length header value as an integer.\n\nUsage: `len = req.content_length()`',
     'respond_json': '**respond_json**(status: Int, body: String) -> Int\n\nHttpRequest method. Send a JSON response (sets Content-Type: application/json automatically).\n\nUsage: `req.respond_json(200 jfy(data))`',
     'respond_stream': '**respond_stream**(status: Int) -> Int\n\nHttpRequest method. Send HTTP headers with Transfer-Encoding: chunked and return a writer handle. Use `stream_write(w, data)` to send chunks and `stream_end(w)` to finalize.\n\nUsage: `w = req.respond_stream(200)`',
+    'sh': '**set_header**(name: String, value: String) -> Int\n\nAlias for `set_header()`. Add custom response header.\n\nUsage: `req.sh("X-Id" "abc")`',
+    'cl': '**content_length**() -> Int\n\nAlias for `content_length()`. Get Content-Length.\n\nUsage: `req.cl()`',
+    'rj': '**respond_json**(status: Int, body: String) -> Int\n\nAlias for `respond_json()`. Send JSON response.\n\nUsage: `req.rj(200 data)`',
 
     // Logging
     'ld': '**log_debug**(msg: String) -> Int\n\nLog message at DEBUG level to stderr.',
@@ -125,6 +135,16 @@ const HOVER_DATA: Record<string, string> = {
     'respond': '**respond**(status: Int, body: String, content_type?: String) -> Int\n\nSend HTTP response. `content_type` defaults to `text/html`.\n\nUsage: `req.respond(200, body)` or `req.respond(200, body, "text/css")`',
 
     // Memory / low-level
+    'alloc': '**alloc**(n: Int) -> Int\n\nAllocate `n` bytes of memory (malloc). Returns pointer.\n\nUsage: `ptr = alloc(1024)`',
+    'dealloc': '**dealloc**(ptr: Int) -> Int\n\nFree memory at pointer (free).\n\nUsage: `dealloc(ptr)`',
+    'ralloc': '**ralloc**(ptr: Int, n: Int) -> Int\n\nReallocate memory to `n` bytes (realloc). Returns new pointer.\n\nUsage: `ptr = ralloc(ptr 2048)`',
+    'mcpy': '**mcpy**(dest: Int, src: Int, n: Int) -> Int\n\nCopy `n` bytes from src to dest (memcpy).\n\nUsage: `mcpy(dst src 64)`',
+    'mcmp': '**mcmp**(a: Int, b: Int, n: Int) -> Int\n\nCompare `n` bytes at two addresses (memcmp). Returns 0 if equal.\n\nUsage: `mcmp(a b 16)  // 0 if equal`',
+    'slen': '**slen**(ptr: Int) -> Int\n\nGet string length at pointer (strlen).\n\nUsage: `n = slen(ptr)`',
+    'load8': '**load8**(ptr: Int) -> Int\n\nLoad byte (8-bit unsigned) from memory address.\n\nUsage: `v = load8(addr)`',
+    'store8': '**store8**(ptr: Int, val: Int) -> Int\n\nStore byte to memory address.\n\nUsage: `store8(addr 0xFF)`',
+    'mzero': '**mzero**(ptr: Int, n: Int) -> Int\n\nZero out `n` bytes at pointer (memset 0).\n\nUsage: `mzero(buf 1024)`',
+    'wfd': '**wfd**(fd: Int, msg: String) -> Int\n\nWrite string to file descriptor.\n\nUsage: `wfd(2 "error msg")`',
     'load16': '**load16**(ptr: Int) -> Int\n\nLoad 16-bit unsigned integer from memory address.\n\nUsage: `v = load16(addr)`',
     'store16': '**store16**(ptr: Int, val: Int) -> Int\n\nStore 16-bit value to memory address.\n\nUsage: `store16(addr, 0xFF)`',
     'load32': '**load32**(ptr: Int) -> Int\n\nLoad 32-bit unsigned integer from memory address.\n\nUsage: `v = load32(addr)`',
@@ -139,17 +159,34 @@ const HOVER_DATA: Record<string, string> = {
 
     // Compression
     'gzip_compress': '**gzip_compress**(data: Int, len: Int) -> Int\n\nGzip-compress `len` bytes at `data` pointer. Returns pointer to a 16-byte struct: `[compressed_ptr (i64), compressed_len (i64)]`.\n\nUsage: `result = gzip_compress(buf, buf_len)`\n`ptr = load64(result)`\n`clen = load64(result + 8)`',
+    'gz': '**gzip_compress**(data: Int, len: Int) -> Int\n\nAlias for `gzip_compress()`. Returns pointer to [ptr, len] struct.\n\nUsage: `result = gz(buf buf_len)`',
 
     // Arena allocator
     'arena_begin': '**arena_begin**() -> Int\n\nPush a new arena onto the stack. All subsequent `arena_alloc()` calls allocate from this arena until `arena_end()`. Nestable up to 8 deep.\n\nUsage: `arena_begin()`',
     'arena_alloc': '**arena_alloc**(size: Int) -> Int\n\nBump-allocate `size` bytes (8-byte aligned) from the current arena. Falls back to `alloc()` if no arena is active.\n\nUsage: `ptr = arena_alloc(24)`',
     'arena_end': '**arena_end**() -> Int\n\nPop the current arena and free all its memory at once.\n\nUsage: `arena_end()`',
+    'ab': '**arena_begin**() -> Int\n\nAlias for `arena_begin()`. Push new arena.\n\nUsage: `ab()`',
+    'aa': '**arena_alloc**(size: Int) -> Int\n\nAlias for `arena_alloc()`. Bump-allocate from arena.\n\nUsage: `ptr = aa(24)`',
+    'ae': '**arena_end**() -> Int\n\nAlias for `arena_end()`. Pop arena and free.\n\nUsage: `ae()`',
 
     // Sockets
+    'sock': '**sock**(domain: Int, type: Int, protocol: Int) -> Int\n\nCreate a socket. Returns fd.\n\nUsage: `fd = sock(2 1 0)  // AF_INET, SOCK_STREAM`',
+    'sbind': '**sbind**(fd: Int, port: Int) -> Int\n\nBind socket to port.\n\nUsage: `sbind(fd 8080)`',
+    'slisten': '**slisten**(fd: Int, backlog: Int) -> Int\n\nListen on socket.\n\nUsage: `slisten(fd 128)`',
+    'saccept': '**saccept**(fd: Int) -> Int\n\nAccept connection on socket. Returns client fd.\n\nUsage: `client = saccept(fd)`',
+    'srecv': '**srecv**(fd: Int, buf: Int, len: Int) -> Int\n\nReceive data from socket into buffer. Returns bytes read.\n\nUsage: `n = srecv(fd buf 4096)`',
+    'ssend': '**ssend**(fd: Int, buf: Int, len: Int) -> Int\n\nSend data from buffer to socket. Returns bytes sent.\n\nUsage: `ssend(fd ptr(msg) msg.len)`',
+    'sclose': '**sclose**(fd: Int) -> Int\n\nClose a socket.\n\nUsage: `sclose(fd)`',
     'rbind': '**rbind**(port: Int) -> Int\n\nCreate and bind a raw TCP socket to port. Returns socket fd, or -1 on error.\n\nUsage: `fd = rbind(8080)`',
     'rsetsockopt': '**rsetsockopt**(fd: Int, opt: Int, val: Int) -> Int\n\nSet a socket option on fd. Returns 0 on success.\n\nUsage: `rsetsockopt(fd, 1, 1)`',
 
     // Curl helpers
+    'cinit': '**cinit**() -> Int\n\nInitialize a curl handle.\n\nUsage: `h = cinit()`',
+    'csets': '**csets**(handle: Int, opt: Int, val: String) -> Int\n\nSet curl string option.\n\nUsage: `csets(h 10002 "https://example.com")`',
+    'cseti': '**cseti**(handle: Int, opt: Int, val: Int) -> Int\n\nSet curl integer option.\n\nUsage: `cseti(h 13 30)  // timeout`',
+    'cperf': '**cperf**(handle: Int) -> Int\n\nPerform the curl request.\n\nUsage: `cperf(h)`',
+    'cclean': '**cclean**(handle: Int) -> Int\n\nCleanup curl handle.\n\nUsage: `cclean(h)`',
+    'cinfo': '**cinfo**(handle: Int, info: Int, buf: Int) -> Int\n\nGet info from completed curl request.\n\nUsage: `cinfo(h 0x200002 buf)  // get response code`',
     'curl_slist_append': '**curl_slist_append**(list: Int, header: String) -> Int\n\nAppend a header string to a curl slist. Pass 0 for list to create a new one. Returns new list pointer.\n\nUsage: `hdrs = curl_slist_append(0, "Content-Type: application/json")`',
     'curl_slist_free': '**curl_slist_free**(list: Int) -> Int\n\nFree a curl slist previously built with curl_slist_append.\n\nUsage: `curl_slist_free(hdrs)`',
 
@@ -213,6 +250,111 @@ const HOVER_DATA: Record<string, string> = {
 
     // Generic structs
     'struct': '**struct** — Define a struct type\n\nUsage: `struct Point { x I, y I }`\n\nGeneric: `struct Pair<A B> { first A, second B }`\n`Pair<I S>{ first: 1, second: "hi" }`',
+
+    // Math
+    'abs': '**abs**(n: Int) -> Int\n\nReturn absolute value.\n\nUsage: `abs(-5)  // 5`',
+    'min': '**min**(a: Int, b: Int) -> Int\n\nReturn the smaller of two integers.\n\nUsage: `min(3 7)  // 3`',
+    'max': '**max**(a: Int, b: Int) -> Int\n\nReturn the larger of two integers.\n\nUsage: `max(3 7)  // 7`',
+
+    // Collections
+    'range': '**range**(n: Int) -> Array\\<Int\\>\n**range**(a: Int, b: Int) -> Array\\<Int\\>\n\nGenerate array of integers [0..n) or [a..b).\n\nUsage: `range(5)  // [0 1 2 3 4]`\n`range(2 5)  // [2 3 4]`',
+
+    // System
+    'sleep': '**sleep**(ms: Int) -> Int\n\nPause execution for `ms` milliseconds.\n\nUsage: `sleep(1000)  // sleep 1 second`',
+    'time': '**time**() -> Int\n\nGet current Unix timestamp in seconds.\n\nUsage: `t = time()`',
+    'now': '**now**() -> Int\n\nAlias for `time()`. Get current Unix timestamp.\n\nUsage: `t = now()`',
+    'random': '**random**(max: Int) -> Int\n\nReturn random integer in [0..max).\n\nUsage: `random(100)  // 0-99`',
+    'rand': '**rand**(max: Int) -> Int\n\nAlias for `random()`. Return random integer in [0..max).\n\nUsage: `rand(6)  // 0-5`',
+    'print_err': '**print_err**(value: String) -> Int\n\nPrint to stderr.\n\nUsage: `print_err("error occurred")`',
+
+    // Function pointers
+    'fptr': '**fptr**(name: String) -> Int\n\nGet function pointer by name.\n\nUsage: `fp = fptr("handler")`',
+    'fcall': '**fcall**(ptr: Int, arg: Int) -> Int\n\nCall function pointer with 1 argument.\n\nUsage: `result = fcall(fp 42)`',
+
+    // Type aliases
+    'HS': '**HttpServer** — HTTP server handle type',
+    'HR': '**HttpRequest** — HTTP request type',
+    'Fn': '**Fn** — Function pointer type',
+
+    // Concurrency
+    'spawn': '**spawn** func(args)\n\nStart a new thread running the given function.\n\nUsage: `h = spawn worker(data)`\n`h.join()`',
+    'channel': '**channel**\\<T\\>() -> (Sender\\<T\\>, Receiver\\<T\\>)\n\nCreate a typed channel for inter-thread communication.\n\nUsage: `let (tx rx) = channel<I>()`',
+    'mutex': '**mutex**(value: T) -> Mutex\\<T\\>\n\nCreate a mutex wrapping the given value.\n\nUsage: `m = mutex(0)`\n`v = m.lock()`\n`m.unlock(v + 1)`',
+    'send': '**send**(value: T) -> Int\n\nSend value on channel.\n\nUsage: `tx.send(42)`',
+    'recv': '**recv**() -> T\n\nReceive value from channel.\n\nUsage: `v = rx.recv()`',
+    'lock': '**lock**() -> T\n\nLock mutex and get inner value.\n\nUsage: `val = mtx.lock()`',
+    'unlock': '**unlock**(value: T) -> Int\n\nUnlock mutex with updated value.\n\nUsage: `mtx.unlock(val)`',
+
+    // Array methods
+    'push': '**push**(value: T) -> Int\n\nAppend value to array.\n\nUsage: `a.push(42)`',
+    'pop': '**pop**() -> T\n\nRemove and return last element.\n\nUsage: `v = a.pop()`',
+    'len': '**len**() -> Int\n\nGet length of array, string, map, or JSON value.\n\nUsage: `n = a.len()`',
+    'get': '**get**(key/index) -> T\n\nGet element by index (Array, String) or key (Map, JsonValue).\n\nUsage: `a.get(0)` or `m.get("key")`',
+    'set': '**set**(key/index, value) -> Int\n\nSet element by index (Array) or key (Map, JsonValue).\n\nUsage: `a.set(0 42)` or `m.set("key" val)`',
+    'remove': '**remove**(index: Int) -> T\n\nRemove element at index from array.\n\nUsage: `a.remove(2)`',
+    'contains': '**contains**(value) -> Bool\n\nCheck if array or string contains value.\n\nUsage: `a.contains(42)` or `s.contains("hi")`',
+    'filter': '**filter**(f: (T) -> Bool) -> Array\\<T\\>\n\nReturn elements that satisfy predicate.\n\nUsage: `a.filter(|x:I| B { x > 0 })`',
+    'sort': '**sort**() -> Array\\<T\\>\n\nSort array in ascending order.\n\nUsage: `a.sort()`',
+    'reverse': '**reverse**() -> Array\\<T\\>\n\nReverse array order.\n\nUsage: `a.reverse()`',
+    'join': '**join**(sep: String) -> String\n\nJoin array elements with separator.\n\nUsage: `[1 2 3].join(",")  // "1,2,3"`',
+    'slice': '**slice**(start: Int, end: Int) -> Array\\<T\\>\n\nReturn sub-array from start to end.\n\nUsage: `a.slice(1 3)`',
+    'reduce': '**reduce**(init: T, f: (T, T) -> T) -> T\n\nReduce array to single value.\n\nUsage: `[1 2 3].reduce(0 |a:I b:I| I { a + b })  // 6`',
+    'each': '**each**(f: (T) -> Int) -> Int\n\nCall function on each element. Alias: `for_each`.\n\nUsage: `a.each(|x:I| I { p(x) })`',
+    'for_each': '**for_each**(f: (T) -> Int) -> Int\n\nCall function on each element. Alias: `each`.\n\nUsage: `a.for_each(|x:I| I { p(x) })`',
+    'flat_map': '**flat_map**(f: (T) -> Array\\<U\\>) -> Array\\<U\\>\n\nMap then flatten one level.\n\nUsage: `a.flat_map(|x:I| [I] { [x x*2] })`',
+    'fm': '**flat_map**(f: (T) -> Array\\<U\\>) -> Array\\<U\\>\n\nAlias for `flat_map()`.\n\nUsage: `a.fm(|x:I| [I] { [x x*2] })`',
+    'sum': '**sum**() -> Int\n\nSum all elements in integer array.\n\nUsage: `[1 2 3].sum()  // 6`',
+    'flat': '**flat**() -> Array\\<T\\>\n\nFlatten nested array by one level.\n\nUsage: `[[1 2] [3 4]].flat()  // [1 2 3 4]`',
+
+    // String methods
+    'trim': '**trim**() -> String\n\nRemove leading and trailing whitespace.\n\nUsage: `" hi ".trim()  // "hi"`',
+    'split': '**split**(delimiter: String) -> Array\\<String\\>\n\nSplit string by delimiter.\n\nUsage: `"a,b,c".split(",")  // ["a" "b" "c"]`',
+    'replace': '**replace**(old: String, new: String) -> String\n\nReplace all occurrences of old with new.\n\nUsage: `"hello".replace("l" "r")  // "herro"`',
+    'starts_with': '**starts_with**(prefix: String) -> Bool\n\nCheck if string starts with prefix.\n\nUsage: `s.starts_with("/api")`',
+    'sw': '**starts_with**(prefix: String) -> Bool\n\nAlias for `starts_with()`.\n\nUsage: `s.sw("/api")`',
+    'upper': '**upper**() -> String\n\nConvert to uppercase.\n\nUsage: `"hi".upper()  // "HI"`',
+    'lower': '**lower**() -> String\n\nConvert to lowercase.\n\nUsage: `"HI".lower()  // "hi"`',
+    'index_of': '**index_of**(sub: String) -> Int\n\nReturn index of first occurrence, or -1 if not found.\n\nUsage: `"hello".index_of("ll")  // 2`',
+    'idx': '**index_of**(sub: String) -> Int\n\nAlias for `index_of()`.\n\nUsage: `s.idx("ll")`',
+    'repeat': '**repeat**(n: Int) -> String\n\nRepeat string n times.\n\nUsage: `"ab".repeat(3)  // "ababab"`',
+    'to_int': '**to_int**() -> Int\n\nParse string as integer. Returns 0 on invalid input.\n\nUsage: `"42".to_int()  // 42`',
+    'ti': '**to_int**() -> Int\n\nAlias for `to_int()`.\n\nUsage: `s.ti()`',
+    'pad_left': '**pad_left**(width: Int, char: String) -> String\n\nPad string on the left to given width.\n\nUsage: `"42".pad_left(5 "0")  // "00042"`',
+    'pl': '**pad_left**(width: Int, char: String) -> String\n\nAlias for `pad_left()`.\n\nUsage: `s.pl(5 "0")`',
+    'pad_right': '**pad_right**(width: Int, char: String) -> String\n\nPad string on the right to given width.\n\nUsage: `"hi".pad_right(5 ".")  // "hi..."`',
+    'pr': '**pad_right**(width: Int, char: String) -> String\n\nAlias for `pad_right()`.\n\nUsage: `s.pr(5 ".")`',
+    'bytes': '**bytes**() -> Int\n\nGet byte length of string.\n\nUsage: `"hello".bytes()  // 5`',
+    'to_str': '**to_str**() -> String\n\nConvert Int to string. Alias: `to_string`.\n\nUsage: `42.to_str()  // "42"`',
+    'to_string': '**to_string**() -> String\n\nConvert Int to string.\n\nUsage: `42.to_string()  // "42"`',
+    'add': '**add**(other: String) -> String\n\nConcatenate strings.\n\nUsage: `s.add(" world")`',
+
+    // Map methods
+    'has': '**has**(key: String) -> Bool\n\nCheck if map contains key.\n\nUsage: `m.has("key")`',
+    'keys': '**keys**() -> Array\\<String\\>\n\nGet all keys from map.\n\nUsage: `m.keys()`',
+    'vals': '**vals**() -> Array\\<Int\\>\n\nGet all values from map.\n\nUsage: `m.vals()`',
+    'delete': '**delete**(key: String) -> Int\n\nRemove key from map.\n\nUsage: `m.delete("key")`',
+    'entries': '**entries**() -> Array\\<(String, Int)\\>\n\nGet all key-value pairs as tuples.\n\nUsage: `for (k v) in m.entries() { }`',
+
+    // JsonValue methods
+    'get_index': '**get_index**(i: Int) -> JsonValue\n\nGet JSON array element by index.\n\nUsage: `arr.get_index(0)`',
+    'gidx': '**get_index**(i: Int) -> JsonValue\n\nAlias for `get_index()`.\n\nUsage: `arr.gidx(0)`',
+    'get_string': '**get_string**() -> String\n\nExtract string value from JsonValue.\n\nUsage: `v.get_string()`',
+    'gs': '**get_string**() -> String\n\nAlias for `get_string()`.\n\nUsage: `v.gs()`',
+    'get_int': '**get_int**() -> Int\n\nExtract integer value from JsonValue.\n\nUsage: `v.get_int()`',
+    'geti': '**get_int**() -> Int\n\nAlias for `get_int()`.\n\nUsage: `v.geti()`',
+    'get_bool': '**get_bool**() -> Bool\n\nExtract boolean value from JsonValue.\n\nUsage: `v.get_bool()`',
+    'gb': '**get_bool**() -> Bool\n\nAlias for `get_bool()`.\n\nUsage: `v.gb()`',
+    'type_of': '**type_of**() -> String\n\nGet JSON value type: "object", "array", "string", "number", "boolean", or "null".\n\nUsage: `v.type_of()`',
+    'typeof': '**type_of**() -> String\n\nAlias for `type_of()`.\n\nUsage: `v.typeof()`',
+    'stringify': '**stringify**() -> String\n\nSerialize JsonValue to string. Same as `json_stringify(v)`.\n\nUsage: `v.stringify()`',
+
+    // HttpResponse methods
+    'status': '**status**() -> Int\n\nGet HTTP response status code.\n\nUsage: `r.status()  // 200`',
+    'body': '**body**() -> String\n\nGet HTTP response/request body.\n\nUsage: `r.body()`',
+
+    // HttpRequest methods (path/method)
+    'path': '**path**() -> String\n\nGet request URL path.\n\nUsage: `req.path()`',
+    'method': '**method**() -> String\n\nGet request HTTP method.\n\nUsage: `req.method()  // "GET"`',
 };
 
 export function activate(context: vscode.ExtensionContext) {
