@@ -15,3 +15,4 @@ compiler/test_build
 compiler/test_const_import
 .superpowers/
 tests/fixtures/nested_lambda
+tests/fixtures/lambda_cross_module/main
