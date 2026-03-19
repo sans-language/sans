@@ -320,6 +320,16 @@ make_st_for_in(var_name_ptr:I iterable_expr:I body_stmts:I) I {
   n
 }
 
+make_st_for_in_destr(var1:I var2:I iterable_expr:I body_stmts:I) I {
+  n = alloc(40)
+  store64(n, ST_FOR_IN_DESTR)
+  store64(n + 8, var1)
+  store64(n + 16, var2)
+  store64(n + 24, iterable_expr)
+  store64(n + 32, ptr(body_stmts))
+  n
+}
+
 make_st_expr(expr:I) I {
   n = alloc(16)
   store64(n, ST_EXPR)
@@ -732,13 +742,26 @@ parse_stmt_inner(p:I) I {
   // for
   if kind == TK_FOR {
     p_advance(p)  // consume for
-    var_name = p_expect_ident(p)
-    p_expect(p, TK_IN)
-    iterable = parse_expr(p, 0)
-    p_expect(p, TK_LBRACE)
-    body = parse_body(p)
-    p_expect(p, TK_RBRACE)
-    return make_st_for_in(var_name, iterable, body)
+    if p_at(p, TK_LPAREN) == 1 {
+      p_advance(p)  // consume (
+      var1 = p_expect_ident(p)
+      var2 = p_expect_ident(p)
+      p_expect(p, TK_RPAREN)
+      p_expect(p, TK_IN)
+      iterable = parse_expr(p, 0)
+      p_expect(p, TK_LBRACE)
+      body = parse_body(p)
+      p_expect(p, TK_RBRACE)
+      return make_st_for_in_destr(var1, var2, iterable, body)
+    } else {
+      var_name = p_expect_ident(p)
+      p_expect(p, TK_IN)
+      iterable = parse_expr(p, 0)
+      p_expect(p, TK_LBRACE)
+      body = parse_body(p)
+      p_expect(p, TK_RBRACE)
+      return make_st_for_in(var_name, iterable, body)
+    }
   }
 
   // Check for := mutable declaration

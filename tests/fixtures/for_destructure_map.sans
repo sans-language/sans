@@ -1,0 +1,11 @@
+main() {
+  m = M()
+  m.set("a" 1)
+  m.set("b" 2)
+  m.set("c" 3)
+  total := 0
+  for (k v) in m.entries() {
+    total += v
+  }
+  total
+}

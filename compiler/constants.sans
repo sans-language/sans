@@ -100,6 +100,7 @@ g ST_CONTINUE = 6
 g ST_LET_DESTR = 7
 g ST_FOR_IN = 8
 g ST_EXPR = 9
+g ST_FOR_IN_DESTR = 10
 
 // BinOp tags (13 total)
 g OP_ADD = 0

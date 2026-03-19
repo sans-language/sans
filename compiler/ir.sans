@@ -1413,6 +1413,11 @@ lower_stmt(ctx:I stmt:I) I {
     lower_for_in(ctx, stmt)
   }
 
+  // ST_FOR_IN_DESTR --- for (k v) in expr { ... }
+  else if tag == ST_FOR_IN_DESTR {
+    lower_for_in_destr(ctx, stmt)
+  }
+
   // Unknown statement --- skip
   else { 0 }
 }
@@ -1512,6 +1517,95 @@ lower_for_in(ctx:I stmt:I) I {
   ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, elem_reg, arr_reg, idx_reg2))
   ctx_set_reg_type(ctx, elem_reg, IRTY_INT)
   ctx_set_local(ctx, var_name, elem_reg)
+
+  // Lower body
+  lower_stmts(ctx, body_stmts)
+
+  // Increment index
+  idx_reg3 = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg3, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg3, IRTY_INT)
+  one_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(one_reg, 1))
+  ctx_set_reg_type(ctx, one_reg, IRTY_INT)
+  new_idx = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_binop(new_idx, IROP_ADD, idx_reg3, one_reg))
+  ctx_set_reg_type(ctx, new_idx, IRTY_INT)
+  ctx_emit(ctx, ir_store(idx_ptr, new_idx))
+  ctx_emit(ctx, ir_jump(cond_label))
+  ctx_emit(ctx, ir_label(end_label))
+  ctx_set_break_label(ctx, old_break)
+  ctx_set_continue_label(ctx, old_continue)
+  0
+}
+
+// ------ lower_for_in_destr --------------------------------------------------------------------------------------------------------------------------------
+lower_for_in_destr(ctx:I stmt:I) I {
+  // Layout: [tag, var1, var2, iterable_expr, body_stmts]
+  var1 = load64(stmt + 8)
+  var2 = load64(stmt + 16)
+  iterable = load64(stmt + 24)
+  body_stmts = load64(stmt + 32)
+
+  // Lower iterable
+  arr_reg = lower_expr(ctx, iterable)
+
+  // Get length
+  len_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, len_reg, arr_reg))
+  ctx_set_reg_type(ctx, len_reg, IRTY_INT)
+
+  // Index variable (mutable)
+  idx_ptr = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_alloca(idx_ptr))
+  zero_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(zero_reg, 0))
+  ctx_set_reg_type(ctx, zero_reg, IRTY_INT)
+  ctx_emit(ctx, ir_store(idx_ptr, zero_reg))
+
+  cond_label = ctx_fresh_label(ctx)
+  body_label = ctx_fresh_label(ctx)
+  end_label = ctx_fresh_label(ctx)
+
+  old_break = ctx_break_label(ctx)
+  old_continue = ctx_continue_label(ctx)
+  ctx_set_break_label(ctx, end_label)
+  ctx_set_continue_label(ctx, cond_label)
+
+  ctx_emit(ctx, ir_jump(cond_label))
+  ctx_emit(ctx, ir_label(cond_label))
+
+  // Load index, compare to length
+  idx_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg, IRTY_INT)
+  cmp_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_LT, idx_reg, len_reg))
+  ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+  ctx_emit(ctx, ir_branch(cmp_reg, body_label, end_label))
+
+  ctx_emit(ctx, ir_label(body_label))
+
+  // Get element at index (a tuple)
+  elem_reg = ctx_fresh_reg(ctx)
+  idx_reg2 = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_load(idx_reg2, idx_ptr))
+  ctx_set_reg_type(ctx, idx_reg2, IRTY_INT)
+  ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, elem_reg, arr_reg, idx_reg2))
+  ctx_set_reg_type(ctx, elem_reg, IRTY_INT)
+
+  // Destructure tuple: field 0 = key (string), field 1 = value (int)
+  key_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_field_load(key_reg, elem_reg, 0, 2))
+  ctx_set_reg_type(ctx, key_reg, IRTY_STR)
+
+  val_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_field_load(val_reg, elem_reg, 1, 2))
+  ctx_set_reg_type(ctx, val_reg, IRTY_INT)
+
+  // Bind loop variables
+  ctx_set_local(ctx, var1, key_reg)
+  ctx_set_local(ctx, var2, val_reg)
 
   // Lower body
   lower_stmts(ctx, body_stmts)
