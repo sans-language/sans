@@ -89,6 +89,7 @@ All notable changes to Sans are documented here.
 ## [0.4.0] - 2026-03-17
 
 ### Added
+- **Self-hosted compiler** — Sans compiles itself, Rust bootstrap compiler removed
 - Reference counting runtime primitives (`rc_alloc`, `rc_retain`, `rc_release`, `rc_count`)
 - Scope-based memory management functions (`scope_enter`, `scope_exit`, `scope_track`)
 - Compiler auto-emits scope instrumentation for user code `alloc()` calls
@@ -96,7 +97,7 @@ All notable changes to Sans are documented here.
 ## [0.3.0] - 2026-03-16
 
 ### Added
-- HTTPS/TLS server support with certificate configuration
+- HTTPS/TLS server support with certificate configuration (Rust bootstrap compiler)
 - WebSocket protocol (upgrade, send, recv, close)
 - Gzip compression for HTTP responses
 - HTTP request headers, cookies, query params, form data
@@ -107,13 +108,13 @@ All notable changes to Sans are documented here.
 ## [0.2.0] - 2026-03-14
 
 ### Added
-- Self-hosted compiler — Sans compiles itself, Rust compiler removed
 - Website and documentation at sans.dev
+- Benchmark suite
 
 ## [0.1.0] - 2026-03-12
 
 ### Added
-- Initial release — self-hosted compiler targeting LLVM IR
+- Initial release — Rust bootstrap compiler targeting LLVM IR
 - Core language: functions, variables, control flow, closures
 - Types: Int, Float, Bool, String, Array, Map, Tuple, Struct, Enum, Result
 - Concurrency: spawn, channels, mutexes
