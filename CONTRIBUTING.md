@@ -74,14 +74,16 @@ Sans has three feature-addition pipelines — see [CLAUDE.md](CLAUDE.md) for the
 
 If you are an AI agent (or a human directing one):
 
-1. **Read [CLAUDE.md](CLAUDE.md) fully** — it is the authoritative rule set for this project. It contains the exact pipeline steps, mandatory checklists, and conventions.
-2. **Use Claude Code skills** — the `docs/superpowers/` directory contains structured development workflows:
-   - **brainstorming** — design exploration before implementation
-   - **writing-plans** — create detailed implementation plans
-   - **subagent-driven-development** — execute plans with parallel task dispatch
-   - **requesting-code-review** — self-review before requesting human review
-3. **Self-review is required** — run the code-review skill before opening a PR.
-4. **AI-optimized syntax** — all new features must use the fewest tokens possible. Ask: "Can this be expressed in fewer tokens?" See the syntax rules in CLAUDE.md.
+1. **Read [CLAUDE.md](CLAUDE.md) fully** — it is the authoritative rule set for this project.
+2. **Follow the development workflows** in `docs/workflows/`:
+   - [Planning](docs/workflows/planning.md) — identify pipeline stages, map changes, build doc checklist
+   - [Architecture Review](docs/workflows/architecture-review.md) — evaluate against Sans conventions
+   - [Skeptic Review](docs/workflows/skeptic-review.md) — challenge the design before implementing
+   - [Testing](docs/workflows/testing.md) — write comprehensive E2E fixtures
+   - [PR Review](docs/workflows/pr-review.md) — full review before submission
+3. **Claude Code users:** Use the project skills in `.claude/skills/` (`sans-plan`, `sans-architect`, `sans-skeptic`, `sans-test`, `sans-review-pr`) — they inject Sans-specific context into the workflow. The general superpowers skills (brainstorming, writing-plans, etc.) are also available as the underlying workflow engine.
+4. **Self-review is required** — run the PR review workflow or `sans-review-pr` skill before opening a PR.
+5. **AI-optimized syntax** — all new features must use the fewest tokens possible. See CLAUDE.md.
 
 ## Pull Request Process
 
@@ -97,6 +99,20 @@ If you are an AI agent (or a human directing one):
 - No compiled binaries (.o files, executables) committed.
 - **Do not manually bump version numbers.** Version is managed by CI when the maintainer pushes a release tag. See [CLAUDE.md Versioning](CLAUDE.md#versioning).
 
+## Development Workflows
+
+These guides walk through common development tasks step by step. Useful for both human and AI contributors.
+
+| Workflow | Guide |
+|----------|-------|
+| Planning a feature | [docs/workflows/planning.md](docs/workflows/planning.md) |
+| Architecture review | [docs/workflows/architecture-review.md](docs/workflows/architecture-review.md) |
+| Skeptic review | [docs/workflows/skeptic-review.md](docs/workflows/skeptic-review.md) |
+| Writing tests | [docs/workflows/testing.md](docs/workflows/testing.md) |
+| PR review | [docs/workflows/pr-review.md](docs/workflows/pr-review.md) |
+
+**Recommended sequence:** Planning → Architecture Review → Implementation → Testing → PR Review
+
 ## Common Gotchas
 
 - **Do not manually bump version numbers.** Version is managed by CI on tag push (`git tag v0.5.3 && git push origin v0.5.3`). The workflow updates all version files automatically.
@@ -104,6 +120,7 @@ If you are an AI agent (or a human directing one):
 - **`!` is postfix unwrap** for Result types, not logical NOT. Use `== 0` for logical negation.
 - **Scope GC** manages heap memory automatically — allocations are freed on function return. Use `arena_begin()`/`arena_end()` for hot paths that need manual control.
 - **E2E test fixtures** must use unique temp filenames to prevent parallel test races.
+- **CI blocks version changes in PRs.** The `version-guard` workflow will fail your PR if it modifies version-managed files. Remove version changes from your diff. Only maintainers can release via git tags.
 - **Bootstrap binary required** — the compiler compiles itself, so you need an existing `sans` binary to build from source.
 
 ## Getting Help
