@@ -1,0 +1,7 @@
+add(a:I b:I=10) I = a + b
+
+main() {
+  x = add(5)
+  y = add(5 20)
+  x + y
+}

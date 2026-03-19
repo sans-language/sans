@@ -160,6 +160,7 @@ run_test "string_upper_lower"        "$REPO_ROOT/tests/fixtures/string_upper_low
 run_test "array_join_reverse"        "$REPO_ROOT/tests/fixtures/array_join_reverse.sans"        45
 run_test "system_basic"              "$REPO_ROOT/tests/fixtures/system_basic.sans"              0
 run_test "builtin_override"          "$REPO_ROOT/tests/fixtures/builtin_override.sans"          42
+run_test "default_params"            "$REPO_ROOT/tests/fixtures/default_params.sans"            40
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests

@@ -523,7 +523,14 @@ parse_params(p:I) [I] {
     // Allow optional colon between param name and type
     if p_at(p, TK_COLON) == 1 { p_advance(p) }
     type_name = parse_type_name(p)
-    params.push(make_param(name, type_name))
+    // Check for default value: =literal
+    def_expr = if p_at(p, TK_EQ) == 1 {
+      p_advance(p)
+      parse_atom(p)
+    } else { 0 }
+    node = make_param(name, type_name)
+    store64(node + 16, def_expr)
+    params.push(node)
     if p_at(p, TK_COMMA) == 1 { p_advance(p) }
     if p_at(p, TK_RPAREN) == 1 { return params }
   }

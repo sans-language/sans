@@ -242,9 +242,10 @@ irm_fn_ret_types(m:I) I = load64(m + 32)
 // offset 144: module_name (I) --- current module name string (or 0)
 // offset 152: local_fn_set (I) --- Map: local function names defined in current module
 // offset 160: imported_fn_names (I) --- Map: bare name -> mangled name for imported functions
+// offset 168: fn_param_defaults (I) --- Map: func name -> array of default expr ASTs (0 = no default)
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(168)
+  ctx = alloc(176)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -304,6 +305,9 @@ ctx_set_local_fn_set(ctx:I v:I) I { store64(ctx + 152, v)
   0 }
 ctx_imported_fn_names(ctx:I) I = load64(ctx + 160)
 ctx_set_imported_fn_names(ctx:I v:I) I { store64(ctx + 160, v)
+  0 }
+ctx_fn_param_defaults(ctx:I) I = load64(ctx + 168)
+ctx_set_fn_param_defaults(ctx:I v:I) I { store64(ctx + 168, v)
   0 }
 ctx_set_lambda_counter(ctx:I v:I) I { store64(ctx + 120, v)
   0 }
@@ -931,6 +935,23 @@ lower_call_user(ctx:I name:I args:I) I {
     } else { if imp_fns != 0 && mhas(imp_fns, name) == 1 {
       mget(imp_fns, name)
     } else { name } }
+    // Fill missing args with defaults
+    fn_defaults_map = ctx_fn_param_defaults(ctx)
+    defaults_arr = if fn_defaults_map != 0 && mhas(fn_defaults_map, call_name) == 1 { mget(fn_defaults_map, call_name) } else {
+      if fn_defaults_map != 0 && mhas(fn_defaults_map, name) == 1 { mget(fn_defaults_map, name) } else { 0 }
+    }
+    if defaults_arr != 0 {
+      total_params = defaults_arr.len()
+      while arg_regs.len() < total_params {
+        di = arg_regs.len()
+        def_expr = defaults_arr.get(di)
+        if def_expr != 0 {
+          arg_regs.push(lower_expr(ctx, def_expr))
+        }
+        0
+      }
+      0
+    }
     ctx_emit(ctx, ir_call(dest, call_name, arg_regs))
     rt_raw = ctx_get_fn_ret_type(ctx, call_name)
     rt = if rt_raw == 0 { ctx_get_fn_ret_type(ctx, name) } else { rt_raw }
@@ -2883,6 +2904,7 @@ lower_lambda(ctx:I expr:I) I {
   store64(lctx + 144, load64(ctx + 144)) // module_name
   store64(lctx + 152, load64(ctx + 152)) // local_fn_set
   store64(lctx + 160, load64(ctx + 160)) // imported_fn_names
+  store64(lctx + 168, load64(ctx + 168)) // fn_param_defaults
   // Share lambda counter to avoid collisions with nested lambdas
   store64(lctx + 120, load64(ctx + 120))
 
@@ -3391,7 +3413,7 @@ struct_size_for_param(type_name:I struct_defs:I enum_defs:I) I {
 // ------ lower_function_body ---------------------------------------------------------------------------------------------------------------------------
 // Lower a single function's body, handling last-statement-as-return.
 // Returns an IrFunction pointer.
-lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I vtag_map:I vfields_map:I fn_ret_snames:I module_name:I local_fn_set:I imported_fn_names:I) I {
+lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I global_names:I vtag_map:I vfields_map:I fn_ret_snames:I module_name:I local_fn_set:I imported_fn_names:I fn_param_defaults:I) I {
   // Create fresh context
   ctx = make_lower_ctx(struct_defs, enum_defs, fn_ret_types, global_names)
   store64(ctx + 96, vtag_map)
@@ -3400,6 +3422,7 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
   store64(ctx + 144, module_name)
   store64(ctx + 152, local_fn_set)
   store64(ctx + 160, imported_fn_names)
+  store64(ctx + 168, fn_param_defaults)
 
   // Set up params
   params_ast = load64(func + 8)   // Array of Param pointers [name@0, type@8]
@@ -3644,6 +3667,34 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     0
   }
 
+  // 3a2. Build fn_param_defaults: func name -> array of default expr ASTs
+  fn_param_defaults = M()
+  fpdi := 0
+  while fpdi < nfns {
+    func = prog_fns.get(fpdi)
+    fname = load64(func)
+    fparams_arr2 = load64(func + 8)
+    fparams_p2 = load64(fparams_arr2)
+    num_fp2 = load64(fparams_arr2 + 8)
+    defaults = array<I>()
+    has_defaults := 0
+    dpi := 0
+    while dpi < num_fp2 {
+      p_node = load64(fparams_p2 + dpi * 8)
+      p_default = load64(p_node + 16)
+      defaults.push(p_default)
+      if p_default != 0 { has_defaults = 1 }
+      dpi += 1
+      0
+    }
+    if has_defaults == 1 {
+      mset(fn_param_defaults, fname, defaults)
+      if module_name != 0 { mset(fn_param_defaults, module_name + "__" + fname, defaults) }
+    }
+    fpdi += 1
+    0
+  }
+
   // 3b. Register ALL local functions in fn_ret_types with mangled names
   // This ensures lower_call_user can find intra-module calls
   if module_name != 0 {
@@ -3786,7 +3837,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     fname = load64(func)
     // Handle module name mangling
     func_name = if module_name != 0 { module_name + "__" + fname } else { fname }
-    fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names)
+    fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names, fn_param_defaults)
     // fn_result is [ir_fn, lifted0, lifted1, ...]
     ir_functions.push(fn_result.get(0))
     fri2 := 1
@@ -3812,7 +3863,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
       mname = load64(method)
       // Mangle: module__Type__method or Type_method
       mangled = if module_name != 0 { module_name + "__" + target_type + "__" + mname } else { target_type + "_" + mname }
-      mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names)
+      mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names, fn_param_defaults)
       ir_functions.push(mfn_result.get(0))
       mfri := 1
       while mfri < mfn_result.len() {

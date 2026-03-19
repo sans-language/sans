@@ -1488,7 +1488,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       sig_ret = load64(sig + 8)
       sig_params_len = if sig_params != 0 { load64(sig_params + 8) } else { 0 }
       sig_params_d = if sig_params != 0 { load64(sig_params) } else { 0 }
-      if nargs != sig_params_len { tc_error("wrong argument count calling '" + name + "': expected " + str(sig_params_len) + " argument(s) but got " + str(nargs)) }
+      sig_required = load64(sig + 16)
+      if nargs < sig_required || nargs > sig_params_len { tc_error("wrong argument count calling '" + name + "': expected " + str(sig_required) + " to " + str(sig_params_len) + " argument(s) but got " + str(nargs)) }
       ci := 0
       while ci < nargs {
       actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -1530,7 +1531,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           sig_ret = load64(sig + 8)
           sig_params_len = if sig_params != 0 { load64(sig_params + 8) } else { 0 }
           sig_params_d = if sig_params != 0 { load64(sig_params) } else { 0 }
-          if nargs != sig_params_len { tc_error("wrong argument count calling '" + name + "': expected " + str(sig_params_len) + " argument(s) but got " + str(nargs)) }
+          sig_required2 = load64(sig + 16)
+          if nargs < sig_required2 || nargs > sig_params_len { tc_error("wrong argument count calling '" + name + "': expected " + str(sig_required2) + " to " + str(sig_params_len) + " argument(s) but got " + str(nargs)) }
           ci := 0
           while ci < nargs {
           actual = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -1606,7 +1608,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           sig_ret = load64(sig + 8)
           sig_params_len = if sig_params != 0 { load64(sig_params + 8) } else { 0 }
           sig_params_d = if sig_params != 0 { load64(sig_params) } else { 0 }
-          if mc_nargs != sig_params_len { tc_error("function '" + mc_method + "' in module '" + mod_name + "' expects " + str(sig_params_len) + " arguments, got " + str(mc_nargs)) }
+          sig_required3 = load64(sig + 16)
+          if mc_nargs < sig_required3 || mc_nargs > sig_params_len { tc_error("function '" + mc_method + "' in module '" + mod_name + "' expects " + str(sig_required3) + " to " + str(sig_params_len) + " arguments, got " + str(mc_nargs)) }
           mci := 0
           while mci < mc_nargs {
           actual = check_expr(mc_args[mci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -2161,7 +2164,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         sig_ret = load64(sig + 8)
         sig_params_len = if sig_params != 0 { load64(sig_params + 8) } else { 0 }
         sig_params_d = if sig_params != 0 { load64(sig_params) } else { 0 }
-        if mc_nargs != sig_params_len { tc_error("method '" + mc_method + "' on '" + tname + "' expects " + str(sig_params_len) + " argument(s) but got " + str(mc_nargs)) }
+        sig_required4 = load64(sig + 16)
+        if mc_nargs < sig_required4 || mc_nargs > sig_params_len { tc_error("method '" + mc_method + "' on '" + tname + "' expects " + str(sig_required4) + " to " + str(sig_params_len) + " argument(s) but got " + str(mc_nargs)) }
         mci := 0
         while mci < mc_nargs {
         actual = check_expr(mc_args[mci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -2424,7 +2428,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     sig_params_arr = load64(sig)
     sig_params = if sig_params_arr != 0 { load64(sig_params_arr) } else { 0 }
     sig_params_len = if sig_params_arr != 0 { load64(sig_params_arr + 8) } else { 0 }
-    if num_args != sig_params_len { return tc_error("wrong argument count calling '" + func_name + "': expected " + str(sig_params_len) + " but got " + str(num_args)) }
+    sig_required5 = load64(sig + 16)
+    if num_args < sig_required5 || num_args > sig_params_len { return tc_error("wrong argument count calling '" + func_name + "': expected " + str(sig_required5) + " to " + str(sig_params_len) + " but got " + str(num_args)) }
     si := 0
     while si < num_args {
     arg_expr = load64(args_p + si * 8)
@@ -2493,13 +2498,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   tc_error("check_expr: unknown expression tag " + str(tag))
 }
 
-// ------ make_fn_sig: create FunctionSignature (16 bytes) ---------------------------------------
+// ------ make_fn_sig: create FunctionSignature (24 bytes) ---------------------------------------
 // offset 0: params (raw ptr to array of Type ptrs)
 // offset 8: return_type (Type ptr)
-make_fn_sig(params_ptr:I ret_type:I) I {
-  sig = alloc(16)
+// offset 16: required_count (min args — params without defaults)
+make_fn_sig(params_ptr:I ret_type:I required_count:I) I {
+  sig = alloc(24)
   store64(sig, params_ptr)
   store64(sig + 8, ret_type)
+  store64(sig + 16, required_count)
   sig
 }
 
@@ -2762,7 +2769,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       }
       mret = resolve_type(mret_name, structs_map, enums_map, mod_exports)
       method_key = impl_target_type + "." + mname
-      mset(methods_map, method_key, make_fn_sig(ptr(method_param_types), mret))
+      mset(methods_map, method_key, make_fn_sig(ptr(method_param_types), mret, method_param_types.len()))
 
       // Also add mangled name to fn_env (with self param included)
       mangled = impl_target_type + "_" + mname
@@ -2774,7 +2781,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
         all_param_types.push(resolve_type(mp_type_name, structs_map, enums_map, mod_exports))
         api += 1
       }
-      mset(fn_env, mangled, make_fn_sig(ptr(all_param_types), mret))
+      mset(fn_env, mangled, make_fn_sig(ptr(all_param_types), mret, all_param_types.len()))
       mi += 1
     }
     ii += 1
@@ -2798,15 +2805,20 @@ check_inner(program:I mod_exports:I require_main:I) I {
     if num_type_params == 0 {
       num_fparams = load64(fparams_arr + 8)
       param_types = array<I>()
+      required_count := num_fparams
       pi := 0
       while pi < num_fparams {
       p_node = load64(fparams_p + pi * 8)
       p_type_name = load64(p_node + 8)
+      p_default = load64(p_node + 16)
       param_types.push(resolve_type(p_type_name, structs_map, enums_map, mod_exports))
+      if p_default != 0 && required_count == num_fparams {
+        required_count = pi
+      }
       pi += 1
       }
       ret_ty = resolve_type(fret_name, structs_map, enums_map, mod_exports)
-      mset(fn_env, fname, make_fn_sig(ptr(param_types), ret_ty))
+      mset(fn_env, fname, make_fn_sig(ptr(param_types), ret_ty, required_count))
     } else {
       // Generic function --- store function node for call-site inference
       mset(generic_fns, fname, func)
