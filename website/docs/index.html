@@ -148,17 +148,40 @@ a.<span class="fn">sort</span>()                        <span class="comment">//
 a.<span class="fn">reverse</span>()                     <span class="comment">// in-place reverse</span>
 a.<span class="fn">join</span>(<span class="str">","</span>)                    <span class="comment">// "1,2,3" — join to string</span>
 a.<span class="fn">slice</span>(<span class="num">1</span>, <span class="num">3</span>)                  <span class="comment">// sub-array [start..end)</span>
+a.<span class="fn">sum</span>()  a.<span class="fn">min</span>()  a.<span class="fn">max</span>()      <span class="comment">// aggregate operations</span>
+a.<span class="fn">flat</span>()                       <span class="comment">// flatten nested arrays</span>
+a.<span class="fn">reduce</span>(<span class="num">0</span>, |a:<span class="type">I</span> b:<span class="type">I</span>| <span class="type">I</span> { a + b })  <span class="comment">// fold</span>
+a.<span class="fn">each</span>(|x:<span class="type">I</span>| <span class="type">I</span> { p(x); <span class="num">0</span> })    <span class="comment">// side-effect iteration</span>
+a.<span class="fn">flat_map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { <span class="fn">range</span>(x) }) <span class="comment">// map + flatten</span>
 
 <span class="comment">// String methods</span>
 s.<span class="fn">upper</span>()  s.<span class="fn">lower</span>()            <span class="comment">// case conversion</span>
 s.<span class="fn">index_of</span>(<span class="str">"sub"</span>)               <span class="comment">// position or -1</span>
 s.<span class="fn">char_at</span>(<span class="num">0</span>)  s.<span class="fn">get</span>(<span class="num">0</span>)         <span class="comment">// single character as string</span>
 s.<span class="fn">repeat</span>(<span class="num">3</span>)                     <span class="comment">// "abcabcabc"</span>
+s.<span class="fn">pad_left</span>(<span class="num">5</span>, <span class="str">"0"</span>)              <span class="comment">// "00042"</span>
+s.<span class="fn">pad_right</span>(<span class="num">6</span>, <span class="str">"."</span>)             <span class="comment">// "hi...."</span>
+s.<span class="fn">bytes</span>()                       <span class="comment">// [65, 66, 67] — byte values</span>
+s.<span class="fn">to_int</span>()                      <span class="comment">// "42".to_int() = 42</span>
+<span class="num">42</span>.<span class="fn">to_str</span>()                     <span class="comment">// 42.to_str() = "42"</span>
 
 <span class="comment">// Math &amp; range</span>
 <span class="fn">abs</span>(<span class="num">-5</span>)  <span class="fn">min</span>(<span class="num">3</span>, <span class="num">7</span>)  <span class="fn">max</span>(<span class="num">3</span>, <span class="num">7</span>)
 <span class="fn">range</span>(<span class="num">5</span>)                          <span class="comment">// [0 1 2 3 4]</span>
-<span class="fn">range</span>(<span class="num">2</span>, <span class="num">5</span>)                       <span class="comment">// [2 3 4]</span></code></pre>
+<span class="fn">range</span>(<span class="num">2</span>, <span class="num">5</span>)                       <span class="comment">// [2 3 4]</span>
+<span class="fn">sleep</span>(<span class="num">1000</span>)  <span class="fn">time</span>()  <span class="fn">random</span>(<span class="num">100</span>)  <span class="comment">// system</span>
+<span class="fn">stof</span>(<span class="str">"3.14"</span>)                       <span class="comment">// string to float</span>
+
+<span class="comment">// Match expressions</span>
+<span class="kw">match</span> x { <span class="num">1</span> => <span class="str">"one"</span>, <span class="num">2</span> => <span class="str">"two"</span>, _ => <span class="str">"other"</span> }
+<span class="kw">match</span> cmd { <span class="str">"build"</span> => <span class="num">1</span>, <span class="str">"run"</span> => <span class="num">2</span>, _ => <span class="num">0</span> }
+
+<span class="comment">// Tuple destructuring</span>
+<span class="kw">let</span> (a, b) = (<span class="num">10</span> <span class="num">20</span>)
+
+<span class="comment">// Map entries</span>
+m.<span class="fn">entries</span>()                        <span class="comment">// [(key, val), ...]</span>
+m.<span class="fn">delete</span>(<span class="str">"key"</span>)                    <span class="comment">// remove key</span></code></pre>
 
     <h2 id="operators">Operators</h2>
     <table>
@@ -735,9 +758,9 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
 
     <h2>Known Limitations</h2>
     <ul>
-      <li>No automatic garbage collector &mdash; all heap memory leaked until process exit. Use <code>arena_begin</code>/<code>arena_end</code> for phase-based bulk deallocation.</li>
-      <li>Type checker is relaxed for bootstrap compatibility &mdash; some type mismatches (if/else branch type mismatch, wrong arg types to certain builtins) are not caught at compile time</li>
-      <li>Capturing lambdas (closures with captured variables) passed across module boundaries return incorrect results &mdash; the capture context is not preserved. Non-capturing lambdas work correctly across modules.</li>
+      <li>Scope-based GC automatically frees heap allocations on function return. Nested heap values in containers (array of arrays) may not be recursively freed. Arenas available for hot paths.</li>
+      <li>Type checker is relaxed for bootstrap compatibility &mdash; some type mismatches are not caught at compile time.</li>
+      <li>No user-defined generics &mdash; only built-in types support type parameters (Array&lt;T&gt;, Result&lt;T&gt;, etc.).</li>
     </ul>
   </div>
   </div>
