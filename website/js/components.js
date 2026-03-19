@@ -38,7 +38,7 @@ class SansNav extends HTMLElement {
 
   _render() {
     const active = this.getAttribute('active') || '';
-    const base = this.getAttribute('base') || '/';
+    const base = this.hasAttribute('base') ? this.getAttribute('base') : '';
     const dark = this._isDark();
 
     const links = [
@@ -172,7 +172,7 @@ class SansNav extends HTMLElement {
           <a href="${base}/" class="brand">Sans <sup class="alpha">ALPHA</sup></a>
           <div class="desktop-links">
             ${navLinks}
-            <a href="https://github.com/-language/" target="_blank" rel="noopener" class="github-link">GitHub</a>
+            <a href="https://github.com/sans-language/sans" target="_blank" rel="noopener" class="github-link">GitHub</a>
           </div>
           <button
             class="theme-toggle"
@@ -187,7 +187,7 @@ class SansNav extends HTMLElement {
         ${links.map(({ key, label, href }) =>
           `<a href="${href}" class="${active === key ? 'active' : ''}">${label}</a>`
         ).join('')}
-        <a href="https://github.com/-language/" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/sans-language/sans" target="_blank" rel="noopener">GitHub</a>
       </div>
     `;
   }
@@ -254,7 +254,7 @@ class SansFooter extends HTMLElement {
   }
 
   _render() {
-    const base = this.getAttribute('base') || '/';
+    const base = this.hasAttribute('base') ? this.getAttribute('base') : '';
     const versionMeta = document.querySelector('meta[name="sans-version"]');
     const version = versionMeta?.content ? ` v${versionMeta.content}` : '';
 
@@ -293,7 +293,7 @@ class SansFooter extends HTMLElement {
       <div class="footer-bar">
         <div class="footer-inner">
           Sans <span style="color: var(--mauve); font-weight: 600;">Alpha</span>${version} — MIT License —
-          <a href="https://github.com/-language/">GitHub</a> —
+          <a href="https://github.com/sans-language/sans">GitHub</a> —
           <a href="${base}/download/">Download</a>
         </div>
       </div>
