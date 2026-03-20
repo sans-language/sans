@@ -255,8 +255,7 @@ class SansFooter extends HTMLElement {
 
   _render() {
     const base = this.hasAttribute('base') ? this.getAttribute('base') : '';
-    const versionMeta = document.querySelector('meta[name="sans-version"]');
-    const version = versionMeta?.content ? ` v${versionMeta.content}` : '';
+    // Version is tracked in meta tags for CI but not displayed in the footer
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -292,7 +291,7 @@ class SansFooter extends HTMLElement {
       </style>
       <div class="footer-bar">
         <div class="footer-inner">
-          Sans <span style="color: var(--mauve); font-weight: 600;">Alpha</span>${version} — MIT License —
+          Sans <span style="color: var(--mauve); font-weight: 600;">Alpha</span> — MIT License —
           <a href="https://github.com/sans-language/sans">GitHub</a> —
           <a href="${base}/download/">Download</a>
         </div>
