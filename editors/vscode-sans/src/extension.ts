@@ -255,6 +255,13 @@ const HOVER_DATA: Record<string, string> = {
     'B': '**Bool** — Boolean (true/false)',
     'S': '**String** — UTF-8 string',
     'R': '**Result\\<T\\>** — Success or error value',
+    'J': '**JsonValue** — Opaque JSON value (short alias for JsonValue)',
+    'JsonValue': '**JsonValue** — Opaque JSON value. Created via `jo()`, `ja()`, `jp()`. Methods: `.get()`, `.set()`, `.keys()`, `.has()`, `.delete()`, `.type_of()`, `.get_string()`, `.get_int()`',
+
+    // Package manager
+    'pkg': '**sans pkg** — Package manager commands\n\n`sans pkg init` — Create sans.json\n`sans pkg add <url> [tag]` — Add dependency\n`sans pkg install` — Install all deps\n`sans pkg remove <url>` — Remove dependency\n`sans pkg list` — List deps\n`sans pkg update <url> [tag]` — Update dependency\n`sans pkg search <query>` — Search index',
+    'scope_disable': '**scope_disable**() -> Int\n\nDisable scope-based GC. Used internally by the compiler build pipeline.',
+    'scope_enable': '**scope_enable**() -> Int\n\nRe-enable scope-based GC after `scope_disable()`.',
 
     // Default parameters
     'default': '**Default Parameters**\n\nTrailing function parameters can have default values using `=literal`.\n\nUsage: `f(x:I y:I=0) = x + y`\n`f(5)  // 5`\n`f(5 3)  // 8`',

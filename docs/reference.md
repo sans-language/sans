@@ -34,7 +34,7 @@ main() {
 | `Array<T>` | — | Dynamic growable array |
 | `Map` | `M` | Hash map with string keys |
 | `Result<T>` | `R<T>` | Success or error value |
-| `JsonValue` | — | Opaque JSON value |
+| `JsonValue` | `J` | Opaque JSON value |
 | `HttpResponse` | — | HTTP client response |
 | `HttpServer` | — | HTTP server socket |
 | `HttpRequest` | — | HTTP server request |
@@ -874,6 +874,47 @@ main() {
     result
 }
 ```
+
+## Package Manager
+
+Sans includes a built-in package manager accessed via `sans pkg`. Packages are git repositories fetched by version tag.
+
+### sans.json
+
+Every project has a `sans.json` manifest:
+
+```json
+{
+  "name": "my-project",
+  "version": "0.1.0",
+  "deps": {
+    "github.com/user/repo": "v1.0.0"
+  }
+}
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `sans pkg init` | Create `sans.json` in current directory |
+| `sans pkg init --name mylib --version 2.0.0` | Create with custom name/version |
+| `sans pkg add <url> [tag]` | Add dependency (auto-resolves latest tag if omitted) |
+| `sans pkg install` | Install all dependencies from `sans.json` |
+| `sans pkg remove <url>` | Remove dependency |
+| `sans pkg list` | List direct and transitive dependencies |
+| `sans pkg update <url> [tag]` | Update dependency to new version |
+| `sans pkg search <query>` | Search community package index |
+
+Short aliases: `sans pkg i` (install), `sans pkg ls` (list), `sans pkg rm` (remove).
+
+### Global Cache
+
+Packages are cached at `~/.sans/packages/<url>/<version>/`. Each version is a shallow git clone. Repeated installs reuse cached packages.
+
+### Dependency Resolution
+
+Dependencies are resolved transitively via BFS. Each package's `sans.json` is checked for its own dependencies. Version conflicts (same package, different versions) are rejected with an error.
 
 ## Concurrency
 

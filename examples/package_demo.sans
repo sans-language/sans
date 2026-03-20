@@ -1,0 +1,41 @@
+// Package Manager Demo
+// Run: sans pkg init && sans pkg add github.com/user/repo v1.0.0
+//
+// sans.json format:
+// {"name":"my-project","version":"0.1.0","deps":{"github.com/user/repo":"v1.0.0"}}
+//
+// Commands:
+//   sans pkg init               Create sans.json
+//   sans pkg add <url> [tag]    Add dependency
+//   sans pkg install            Install all deps
+//   sans pkg remove <url>       Remove dependency
+//   sans pkg list               List deps
+//   sans pkg update <url> [tag] Update dependency
+//   sans pkg search <query>     Search index
+
+// Example: reading sans.json in your own code
+read_manifest() J {
+  if fe("sans.json") != true { return jp("{}") }
+  jp(fr("sans.json"))
+}
+
+main() I {
+  mf = read_manifest()
+  name = mf.get("name").get_string()
+  version = mf.get("version").get_string()
+  p("Project: " + name + " v" + version)
+
+  deps = mf.get("deps")
+  if deps.type_of() == "object" {
+    k = deps.keys()
+    p("Dependencies: " + str(k.len()))
+    i := 0
+    while i < k.len() {
+      url = k.get(i)
+      ver = deps.get(url).get_string()
+      p("  " + url + " " + ver)
+      i = i + 1
+    }
+  }
+  0
+}

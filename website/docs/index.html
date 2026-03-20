@@ -39,6 +39,7 @@
         <li><a href="#lambdas">Lambdas</a></li>
         <li><a href="#errors">Error Handling</a></li>
         <li><a href="#modules">Modules</a></li>
+        <li><a href="#package-manager">Package Manager</a></li>
         <li><a href="#concurrency">Concurrency</a></li>
         <li><a href="#builtins">Built-ins</a></li>
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
@@ -67,7 +68,7 @@
         <tr><td><code>Array&lt;T&gt;</code></td><td>&mdash;</td><td>Dynamic growable array</td></tr>
         <tr><td><code>Map</code></td><td><code>M</code></td><td>Hash map with string keys</td></tr>
         <tr><td><code>Result&lt;T&gt;</code></td><td><code>R&lt;T&gt;</code></td><td>Success or error value</td></tr>
-        <tr><td><code>JsonValue</code></td><td>&mdash;</td><td>Opaque JSON value</td></tr>
+        <tr><td><code>JsonValue</code></td><td><code>J</code></td><td>Opaque JSON value</td></tr>
         <tr><td><code>HttpResponse</code></td><td>&mdash;</td><td>HTTP client response</td></tr>
         <tr><td><code>HttpServer</code></td><td>&mdash;</td><td>HTTP server socket</td></tr>
         <tr><td><code>HttpRequest</code></td><td>&mdash;</td><td>HTTP server request</td></tr>
@@ -375,6 +376,34 @@ r.<span class="fn">code</span>()                    <span class="comment">// get
     result = math.<span class="fn">add</span>(<span class="num">3</span> <span class="num">4</span>)
     result
 }</code></pre>
+
+    <h2 id="package-manager">Package Manager</h2>
+    <p>Sans includes a built-in package manager. Packages are git repositories fetched by version tag.</p>
+
+    <h3>sans.json</h3>
+    <pre><code>{
+  <span class="str">"name"</span>: <span class="str">"my-project"</span>,
+  <span class="str">"version"</span>: <span class="str">"0.1.0"</span>,
+  <span class="str">"deps"</span>: {
+    <span class="str">"github.com/user/repo"</span>: <span class="str">"v1.0.0"</span>
+  }
+}</code></pre>
+
+    <h3>Commands</h3>
+    <table>
+      <thead><tr><th>Command</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>sans pkg init</code></td><td>Create <code>sans.json</code></td></tr>
+        <tr><td><code>sans pkg add &lt;url&gt; [tag]</code></td><td>Add dependency</td></tr>
+        <tr><td><code>sans pkg install</code></td><td>Install all dependencies</td></tr>
+        <tr><td><code>sans pkg remove &lt;url&gt;</code></td><td>Remove dependency</td></tr>
+        <tr><td><code>sans pkg list</code></td><td>List dependencies</td></tr>
+        <tr><td><code>sans pkg update &lt;url&gt; [tag]</code></td><td>Update dependency version</td></tr>
+        <tr><td><code>sans pkg search &lt;query&gt;</code></td><td>Search package index</td></tr>
+      </tbody>
+    </table>
+    <p>Short aliases: <code>sans pkg i</code> (install), <code>sans pkg ls</code> (list), <code>sans pkg rm</code> (remove).</p>
+    <p>Packages are cached at <code>~/.sans/packages/</code>. Dependencies are resolved transitively via BFS.</p>
 
     <h2 id="concurrency">Concurrency</h2>
     <pre><code><span class="fn">worker</span>(tx <span class="type">Sender</span>&lt;<span class="type">Int</span>&gt;) <span class="type">I</span> {

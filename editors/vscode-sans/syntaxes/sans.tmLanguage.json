@@ -98,7 +98,7 @@
         },
         {
           "name": "support.type.builtin.sans",
-          "match": "\\b(Array|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|HS|HR|Fn|Map)\\b"
+          "match": "\\b(Array|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|HS|HR|Fn|Map|J)\\b"
         }
       ]
     },
