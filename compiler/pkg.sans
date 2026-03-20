@@ -2,16 +2,23 @@
 
 // ---- Validation ----
 
-// Reject strings with shell metacharacters or path traversal
+// Validate input: allowlist of safe characters only (alphanumeric, . - _ /)
+// Rejects anything that could cause shell injection or path traversal
 pkg_validate(s: S label: S) I {
-  if s.contains("'") || s.contains("\"") || s.contains("`") || s.contains("$") || s.contains(";") || s.contains("|") || s.contains("&") || s.contains("(") || s.contains(")") || s.contains("\\") || s.contains("\n") {
-    p("error: " + label + " contains invalid characters")
-    exit(1)
+  if s.len() == 0 { p("error: " + label + " is empty") exit(1) }
+  // Must not start with - (flag injection) or / (absolute path)
+  first = char_at(s 0)
+  if first == 45 || first == 47 { p("error: " + label + " must not start with - or /") exit(1) }
+  // Check every character against allowlist: a-z A-Z 0-9 . - _ /
+  i := 0
+  while i < s.len() {
+    c = char_at(s i)
+    ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 46 || c == 45 || c == 95 || c == 47
+    if ok != true { p("error: " + label + " contains invalid character") exit(1) }
+    i = i + 1
   }
-  if s.contains("..") {
-    p("error: " + label + " contains path traversal")
-    exit(1)
-  }
+  // Reject path traversal
+  if s.contains("..") { p("error: " + label + " contains path traversal") exit(1) }
   0
 }
 

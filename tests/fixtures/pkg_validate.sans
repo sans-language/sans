@@ -1,0 +1,42 @@
+// Test package manager validation (allowlist: a-zA-Z0-9._/-)
+// Tests run inline since pkg commands need filesystem side effects
+
+pkg_validate_ok(s: S) I {
+  i := 0
+  while i < s.len() {
+    c = char_at(s i)
+    ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 46 || c == 45 || c == 95 || c == 47
+    if ok != true { return 0 }
+    i = i + 1
+  }
+  if s.len() == 0 { return 0 }
+  first = char_at(s 0)
+  if first == 45 || first == 47 { return 0 }
+  if s.contains("..") { return 0 }
+  1
+}
+
+main() I {
+  // Valid URLs
+  if pkg_validate_ok("github.com/user/repo") != 1 { return 1 }
+  if pkg_validate_ok("v1.0.0") != 1 { return 2 }
+  if pkg_validate_ok("my-lib_v2") != 1 { return 3 }
+
+  // Shell injection attempts
+  if pkg_validate_ok("test';inject") != 0 { return 4 }
+  if pkg_validate_ok("$(whoami)") != 0 { return 5 }
+  if pkg_validate_ok("foo|bar") != 0 { return 6 }
+  if pkg_validate_ok("foo&bar") != 0 { return 7 }
+
+  // Path traversal
+  if pkg_validate_ok("../../etc") != 0 { return 8 }
+
+  // Leading - or /
+  if pkg_validate_ok("-flag") != 0 { return 9 }
+  if pkg_validate_ok("/absolute") != 0 { return 10 }
+
+  // Empty
+  if pkg_validate_ok("") != 0 { return 11 }
+
+  0
+}

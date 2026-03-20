@@ -99,12 +99,14 @@ scope_free(ptr:I tag:I) I {
     if jt == 3 {
       dealloc(load64(ptr + 8))
     } else if jt == 4 {
+      // JSON array: free items array (children are tracked separately in scope)
       arr_ptr = load64(ptr + 8)
       if arr_ptr != 0 {
         dealloc(load64(arr_ptr))
         dealloc(arr_ptr)
       }
     } else if jt == 5 {
+      // JSON object: free hash table arrays (children are tracked separately in scope)
       obj_ptr = load64(ptr + 8)
       if obj_ptr != 0 {
         dealloc(load64(obj_ptr))
