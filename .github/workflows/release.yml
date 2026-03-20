@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Test build only (no release publish)'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -11,11 +17,12 @@ permissions:
 jobs:
   version-bump:
     name: Bump version files
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.dry_run && github.ref || 'main' }}
           token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Extract version from tag
@@ -47,12 +54,13 @@ jobs:
   build-macos:
     name: Build macOS ARM64
     needs: version-bump
+    if: ${{ always() && (needs.version-bump.result == 'success' || needs.version-bump.result == 'skipped') }}
     runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.dry_run && github.ref || 'main' }}
 
       - name: Install LLVM 17
         run: brew install llvm@17
@@ -82,7 +90,7 @@ jobs:
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
           # Try direct build first. If the bootstrap segfaults (new builtins the
-          # old compiler doesn't know), do a two-stage build: check out the
+          # old compiler can't handle), do a two-stage build: download the
           # previous release source, build that with the bootstrap to get an
           # intermediate compiler, then build the current source with it.
           if ./sans build compiler/main.sans 2>&1; then
@@ -94,13 +102,12 @@ jobs:
               echo "No previous release tag found for stage 1"
               exit 1
             fi
-            echo "Stage 1: building from ${PREV_TAG} source"
-            git stash
-            git checkout "$PREV_TAG" -- compiler/ runtime/
-            ./sans build compiler/main.sans
-            mv compiler/main /tmp/sans-stage1
-            git checkout -- compiler/ runtime/
-            git stash pop 2>/dev/null || true
+            echo "Stage 1: building from ${PREV_TAG} source with bootstrap"
+            mkdir -p /tmp/prev-src
+            curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/${PREV_TAG}.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
+            ./sans build /tmp/prev-src/compiler/main.sans
+            mv /tmp/prev-src/compiler/main /tmp/sans-stage1
+            rm -rf /tmp/prev-src
             echo "Stage 2: building current source with stage 1 compiler"
             /tmp/sans-stage1 build compiler/main.sans
           fi
@@ -165,6 +172,7 @@ jobs:
           rm sans
 
       - name: Upload release asset
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v2
         with:
           files: sans-macos-arm64.tar.gz
@@ -178,7 +186,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.dry_run && github.ref || 'main' }}
 
       - name: Install LLVM 17 and dependencies
         run: |
@@ -225,6 +233,7 @@ jobs:
           rm sans
 
       - name: Upload release asset
+        if: ${{ !inputs.dry_run }}
         uses: softprops/action-gh-release@v2
         with:
           files: sans-linux-x86_64.tar.gz
