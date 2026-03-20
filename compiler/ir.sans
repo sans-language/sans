@@ -538,6 +538,8 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "ls" { lower_call_1(ctx, args, IR_LISTDIR, IRTY_ARRAY) }
   else if name == "sh" { lower_call_1(ctx, args, IR_SH, IRTY_STR) }
   else if name == "shell" { lower_call_1(ctx, args, IR_SH, IRTY_STR) }
+  else if name == "scope_disable" { lower_call_0(ctx, IR_SCOPE_DISABLE, IRTY_INT) }
+  else if name == "scope_enable" { lower_call_0(ctx, IR_SCOPE_ENABLE, IRTY_INT) }
 
   // ------ Conversion ------
   else if name == "str" { lower_call_str(ctx, args) }

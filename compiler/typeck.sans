@@ -902,6 +902,14 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("mkdir() requires String argument, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
+    if name == "scope_disable" {
+      if nargs != 0 { tc_error("scope_disable() takes 0 arguments") }
+      return make_type(TY_INT)
+    }
+    if name == "scope_enable" {
+      if nargs != 0 { tc_error("scope_enable() takes 0 arguments") }
+      return make_type(TY_INT)
+    }
     if name == "is_dir" {
       if nargs != 1 { tc_error("is_dir() takes exactly 1 argument") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
