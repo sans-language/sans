@@ -1,0 +1,41 @@
+#!/bin/sh
+# Pre-commit hook: warn if compiler/runtime/docs changed without editor updates.
+# This is a tracked script — symlink it via scripts/setup-hooks.sh.
+
+TRIGGER_PATTERN='^\(docs/\|compiler/typeck\.sans\|compiler/constants\.sans\|compiler/ir\.sans\|compiler/codegen\.sans\|runtime/.*\.sans\)'
+EDITOR_TS='editors/vscode-sans/src/extension.ts'
+EDITOR_GRAMMAR='editors/vscode-sans/syntaxes/sans.tmLanguage.json'
+
+staged=$(git diff --cached --name-only)
+
+has_trigger=0
+has_editor_ts=0
+has_editor_grammar=0
+
+for f in $staged; do
+  case "$f" in
+    docs/*|compiler/typeck.sans|compiler/constants.sans|compiler/ir.sans|compiler/codegen.sans|runtime/*.sans)
+      has_trigger=1 ;;
+  esac
+  case "$f" in
+    "$EDITOR_TS") has_editor_ts=1 ;;
+    "$EDITOR_GRAMMAR") has_editor_grammar=1 ;;
+  esac
+done
+
+if [ "$has_trigger" -eq 1 ]; then
+  missing=""
+  if [ "$has_editor_ts" -eq 0 ]; then
+    missing="$missing\n  - $EDITOR_TS (hover docs)"
+  fi
+  if [ "$has_editor_grammar" -eq 0 ]; then
+    missing="$missing\n  - $EDITOR_GRAMMAR (syntax highlighting)"
+  fi
+  if [ -n "$missing" ]; then
+    printf '\n\033[33mWARNING: You changed compiler/runtime/docs files but did not stage:\033[0m\n'
+    printf "$missing\n"
+    printf '\033[33mRemember to update VSCode extension hover docs and syntax highlighting.\033[0m\n\n'
+  fi
+fi
+
+exit 0

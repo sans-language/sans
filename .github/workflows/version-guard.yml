@@ -1,0 +1,61 @@
+name: Version Guard
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-version-files:
+    name: Block version file changes
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.pull_request.labels.*.name, 'skip-version-guard')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version changes
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          VIOLATIONS=""
+
+          # Helper: extract diff for a specific file
+          file_diff() {
+            git diff "$BASE...$HEAD" -U0 -- "$1"
+          }
+
+          # Check package.json version field
+          if file_diff "editors/vscode-sans/package.json" | grep -qE '^\+.*"version"\s*:'; then
+            VIOLATIONS="$VIOLATIONS\n  - editors/vscode-sans/package.json (version field)"
+          fi
+
+          # Check CLAUDE.md version line
+          if file_diff "CLAUDE.md" | grep -qE '^\+.*\*\*Current version:'; then
+            VIOLATIONS="$VIOLATIONS\n  - CLAUDE.md (Current version line)"
+          fi
+
+          # Check compiler/main.sans version string
+          if file_diff "compiler/main.sans" | grep -qE '^\+.*"sans [0-9]+\.[0-9]+\.[0-9]+"'; then
+            VIOLATIONS="$VIOLATIONS\n  - compiler/main.sans (version string)"
+          fi
+
+          # Check website HTML meta version tags
+          for html in website/index.html website/docs/index.html website/benchmarks/index.html website/download/index.html; do
+            if file_diff "$html" | grep -qE '^\+.*content="[0-9]+\.[0-9]+\.[0-9]+"'; then
+              VIOLATIONS="$VIOLATIONS\n  - $html (version meta tag)"
+            fi
+          done
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Version files are managed by CI on tag push. Please remove version changes from your PR."
+            echo ""
+            echo "Detected version changes in:"
+            echo -e "$VIOLATIONS"
+            echo ""
+            echo "See CLAUDE.md#versioning for details."
+            echo "If this is intentional, ask a maintainer to add the 'skip-version-guard' label."
+            exit 1
+          fi
+
+          echo "✓ No version file changes detected."

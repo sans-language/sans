@@ -1,0 +1,15 @@
+main() I {
+  r = mkdir("/tmp/sans_test_mkdir_2/sub/deep")
+  if r != 1 { return 1 }
+  if is_dir("/tmp/sans_test_mkdir_2/sub/deep") != true { return 2 }
+  fw("/tmp/sans_test_mkdir_2/file.txt" "hi")
+  if is_dir("/tmp/sans_test_mkdir_2/file.txt") != false { return 3 }
+  if is_dir("/tmp/sans_test_mkdir_2/nope") != false { return 4 }
+  r2 = mkdir("/tmp/sans_test_mkdir_2/sub/deep")
+  if r2 != 1 { return 5 }
+  remove("/tmp/sans_test_mkdir_2/file.txt")
+  rmdir("/tmp/sans_test_mkdir_2/sub/deep")
+  rmdir("/tmp/sans_test_mkdir_2/sub")
+  rmdir("/tmp/sans_test_mkdir_2")
+  0
+}

@@ -98,7 +98,7 @@
         },
         {
           "name": "support.type.builtin.sans",
-          "match": "\\b(Array|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R)\\b"
+          "match": "\\b(Array|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|HS|HR|Fn|Map)\\b"
         }
       ]
     },
@@ -106,11 +106,19 @@
       "patterns": [
         {
           "name": "support.function.io.sans",
-          "match": "\\b(print|p|file_read|fread|fr|file_write|fwrite|fw|file_append|fappend|fa|file_exists|fexists|fe)\\b"
+          "match": "\\b(print|p|file_read|fread|fr|file_write|fwrite|fw|file_append|fappend|fa|file_exists|fexists|fe|read_file|write_file|args)\\b"
         },
         {
           "name": "support.function.conversion.sans",
-          "match": "\\b(int_to_string|str|itos|string_to_int|stoi|int_to_float|itof|float_to_int|ftoi|float_to_string|ftos)\\b"
+          "match": "\\b(int_to_string|str|itos|string_to_int|stoi|int_to_float|itof|float_to_int|ftoi|float_to_string|ftos|string_to_float|stof)\\b"
+        },
+        {
+          "name": "support.function.math.sans",
+          "match": "\\b(abs|min|max|range)\\b"
+        },
+        {
+          "name": "support.function.system.sans",
+          "match": "\\b(sleep|time|now|random|rand|print_err)\\b"
         },
         {
           "name": "support.function.json.sans",
@@ -118,11 +126,11 @@
         },
         {
           "name": "support.function.http.sans",
-          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws|serve_file|url_decode|path_segment|respond_json|respond_stream|query|path_only|content_length)\\b"
+          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ca|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws|serve_file|url_decode|ud|path_segment|ps|respond_json|rj|respond_stream|query|path_only|content_length|cl|set_header)\\b"
         },
         {
           "name": "support.function.log.sans",
-          "match": "\\b(log_debug|ld|log_info|li|log_warn|lw|log_error|le|log_set_level|ll)\\b"
+          "match": "\\b(log_debug|ld|log_info|li|log_warn|lw|log_error|le|log_set_level|ll|get_log_level|set_log_level)\\b"
         },
         {
           "name": "support.function.result.sans",
@@ -130,15 +138,23 @@
         },
         {
           "name": "support.function.memory.sans",
-          "match": "\\b(load16|store16|load32|store32|load64|store64|strstr|bswap16|exit|system|sys|arena_begin|arena_alloc|arena_end|mget|mset|mhas|signal_handler|signal_check|spoll|gzip_compress)\\b"
+          "match": "\\b(alloc|dealloc|ralloc|mcpy|mcmp|mzero|slen|load8|store8|load16|store16|load32|store32|load64|store64|strstr|bswap16|exit|system|sys|wfd|arena_begin|arena_alloc|arena_end|ab|aa|ae|mget|mset|mhas|signal_handler|signal_check|sigh|sigc|spoll|gzip_compress|gz)\\b"
+        },
+        {
+          "name": "support.function.pointer.sans",
+          "match": "\\b(fptr|fcall|fcall2|fcall3|ptr|char_at)\\b"
+        },
+        {
+          "name": "support.function.fs.sans",
+          "match": "\\b(getenv|genv|mkdir|rmdir|remove|rm|listdir|ls|is_dir|sh|shell)\\b"
         },
         {
           "name": "support.function.socket.sans",
-          "match": "\\b(rbind|rsetsockopt)\\b"
+          "match": "\\b(sock|sbind|slisten|saccept|srecv|ssend|sclose|rbind|rsetsockopt)\\b"
         },
         {
           "name": "support.function.curl.sans",
-          "match": "\\b(curl_slist_append|curl_slist_free)\\b"
+          "match": "\\b(cinit|csets|cseti|cperf|cclean|cinfo|curl_slist_append|curl_slist_free)\\b"
         }
       ]
     },

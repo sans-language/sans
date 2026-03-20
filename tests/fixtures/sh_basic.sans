@@ -1,0 +1,20 @@
+main() I {
+  r = sh("echo hello")
+  if r.trim() != "hello" { return 1 }
+
+  r2 = shell("echo world")
+  if r2.trim() != "world" { return 2 }
+
+  r3 = sh("false 2>/dev/null")
+  if r3.len() == 0 {
+    0
+  } else {
+    return 3
+  }
+
+  r4 = sh("echo 'line1'; echo 'line2'")
+  lines = r4.trim().split("\n")
+  if lines.len() != 2 { return 4 }
+
+  0
+}

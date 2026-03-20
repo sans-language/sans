@@ -41,6 +41,7 @@
         <li><a href="#modules">Modules</a></li>
         <li><a href="#concurrency">Concurrency</a></li>
         <li><a href="#builtins">Built-ins</a></li>
+        <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
         <li><a href="#internals">Internals</a></li>
       </ul>
@@ -526,6 +527,32 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
       </tbody>
     </table>
     <p>Log levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR</p>
+
+    <h3 id="filesystem">Filesystem &amp; Process</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>getenv(name)</code></td><td><code>genv</code></td><td><code>(String) -&gt; String</code></td><td>Read environment variable. Returns <code>""</code> if not set.</td></tr>
+        <tr><td><code>mkdir(path)</code></td><td>&mdash;</td><td><code>(String) -&gt; Int</code></td><td>Create directory and parents (mkdir -p). Returns 1 on success, 0 on error.</td></tr>
+        <tr><td><code>rmdir(path)</code></td><td>&mdash;</td><td><code>(String) -&gt; Int</code></td><td>Remove empty directory. Returns 1 on success, 0 on error.</td></tr>
+        <tr><td><code>remove(path)</code></td><td><code>rm</code></td><td><code>(String) -&gt; Int</code></td><td>Delete a file. Returns 1 on success, 0 on error.</td></tr>
+        <tr><td><code>listdir(path)</code></td><td><code>ls</code></td><td><code>(String) -&gt; Array&lt;String&gt;</code></td><td>List directory contents. Returns empty array on error.</td></tr>
+        <tr><td><code>is_dir(path)</code></td><td>&mdash;</td><td><code>(String) -&gt; Bool</code></td><td>Check if path is a directory.</td></tr>
+        <tr><td><code>sh(cmd)</code></td><td><code>shell</code></td><td><code>(String) -&gt; String</code></td><td>Execute command and capture stdout. Returns <code>""</code> on failure.</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="comment">// Environment</span>
+home = <span class="fn">getenv</span>(<span class="str">"HOME"</span>)
+
+<span class="comment">// Filesystem</span>
+<span class="fn">mkdir</span>(<span class="str">"build/output"</span>)
+<span class="fn">is_dir</span>(<span class="str">"build/output"</span>)       <span class="comment">// true</span>
+files = <span class="fn">listdir</span>(<span class="str">"src/"</span>)
+<span class="fn">remove</span>(<span class="str">"old.txt"</span>)
+<span class="fn">rmdir</span>(<span class="str">"build/output"</span>)
+
+<span class="comment">// Process</span>
+output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code></pre>
 
     <h3 id="lowlevel">Low-Level Primitives</h3>
     <p>These enable Sans to replace its own C runtime. Pointers are stored as Int (i64).</p>

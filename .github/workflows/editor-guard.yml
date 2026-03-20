@@ -1,0 +1,69 @@
+name: Editor Guard
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-editor-updates:
+    name: Warn if editor files need updating
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.pull_request.labels.*.name, 'skip-editor-guard')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for missing editor updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          CHANGED=$(git diff --name-only "$BASE...$HEAD")
+
+          # Check if any trigger files changed
+          TRIGGER=false
+          if echo "$CHANGED" | grep -qE '^docs/'; then
+            TRIGGER=true
+          fi
+          if echo "$CHANGED" | grep -qE '^compiler/(typeck|constants|ir|codegen)\.sans$'; then
+            TRIGGER=true
+          fi
+          if echo "$CHANGED" | grep -qE '^runtime/.*\.sans$'; then
+            TRIGGER=true
+          fi
+
+          if [ "$TRIGGER" = "false" ]; then
+            echo "No trigger files changed — skipping."
+            exit 0
+          fi
+
+          # Check if editor files are also in the diff
+          EDITOR_UPDATED=false
+          if echo "$CHANGED" | grep -qE '^editors/vscode-sans/src/extension\.ts$'; then
+            EDITOR_UPDATED=true
+          fi
+          if echo "$CHANGED" | grep -qE '^editors/vscode-sans/syntaxes/sans\.tmLanguage\.json$'; then
+            EDITOR_UPDATED=true
+          fi
+
+          if [ "$EDITOR_UPDATED" = "true" ]; then
+            echo "Editor files updated — no warning needed."
+            exit 0
+          fi
+
+          # Post a warning comment
+          gh pr comment "${{ github.event.pull_request.number }}" --body "$(cat <<'EOF'
+          ⚠️ **Editor Guard Warning**
+
+          This PR changes compiler, runtime, or docs files but does not update the VSCode extension.
+
+          Please check whether these files need updating:
+          - `editors/vscode-sans/src/extension.ts` — hover docs in `HOVER_DATA`
+          - `editors/vscode-sans/syntaxes/sans.tmLanguage.json` — syntax highlighting patterns
+
+          If no editor changes are needed, add the `skip-editor-guard` label to suppress this warning.
+          EOF
+          )"
+          echo "Warning comment posted."

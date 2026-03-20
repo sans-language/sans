@@ -1,5 +1,7 @@
 .idea
-.claude
+.claude/*
+!.claude/skills/
+!.claude/settings.json
 target
 
 # Compiled binaries

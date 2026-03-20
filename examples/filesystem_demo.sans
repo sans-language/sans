@@ -1,0 +1,16 @@
+main() I {
+  home = getenv("HOME")
+  p("Home: " + home)
+
+  mkdir(home + "/.sans-demo")
+  p("Created dir: " + str(is_dir(home + "/.sans-demo")))
+
+  files = listdir(home)
+  p("Files in home: " + str(files.len()))
+
+  output = sh("uname -s")
+  p("OS: " + output.trim())
+
+  rmdir(home + "/.sans-demo")
+  0
+}

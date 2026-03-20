@@ -309,6 +309,9 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare void @exit(i64)")
   emit(cg, "declare i32 @system(ptr)")
   emit(cg, "declare i32 @access(ptr, i32)")
+  emit(cg, "declare ptr @getenv(ptr)")
+  emit(cg, "declare i32 @rmdir(ptr)")
+  emit(cg, "declare i32 @remove(ptr)")
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
@@ -374,6 +377,8 @@ emit_externals_core(cg:I) I {
   // ------ LLVM intrinsics ------
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
 
+  emit(cg, "@.empty_str = private unnamed_addr constant [1 x i8] zeroinitializer")
+
   0
 }
 
@@ -394,6 +399,9 @@ emit_externals(cg:I) I {
   emit(cg, "declare void @exit(i64)")
   emit(cg, "declare i32 @system(ptr)")
   emit(cg, "declare i32 @access(ptr, i32)")
+  emit(cg, "declare ptr @getenv(ptr)")
+  emit(cg, "declare i32 @rmdir(ptr)")
+  emit(cg, "declare i32 @remove(ptr)")
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
@@ -574,6 +582,14 @@ emit_externals(cg:I) I {
   // ------ Sans runtime: Map entries ------
   emit(cg, "declare i64 @sans_map_entries(i64)")
 
+  // ------ Sans runtime: Filesystem ------
+  emit(cg, "declare i64 @sans_mkdir(i64)")
+  emit(cg, "declare i64 @sans_is_dir(i64)")
+  emit(cg, "declare i64 @sans_listdir(i64)")
+
+  // ------ Sans runtime: Process ------
+  emit(cg, "declare i64 @sans_sh(i64)")
+
   // ------ Sans runtime: Reference Counting ------
   emit(cg, "declare i64 @sans_rc_alloc(i64)")
   emit(cg, "declare i64 @sans_rc_retain(i64)")
@@ -653,6 +669,8 @@ emit_externals(cg:I) I {
 
   // ------ LLVM intrinsics ------
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
+
+  emit(cg, "@.empty_str = private unnamed_addr constant [1 x i8] zeroinitializer")
 
   emit(cg, "")
   0
@@ -2277,6 +2295,84 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = zext i1 " + ok + " to i64")
     cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_GETENV (246): [op, dest, name_reg] ------
+  if op == IR_GETENV {
+    nv = cg_get_val(cg, ir_field(inst, 16))
+    np = cg_fresh_reg(cg)
+    emit(cg, "  " + np + " = inttoptr i64 " + nv + " to ptr")
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = call ptr @getenv(ptr " + np + ")")
+    is_null = cg_fresh_reg(cg)
+    emit(cg, "  " + is_null + " = icmp eq ptr " + rp + ", null")
+    safe_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + safe_ptr + " = select i1 " + is_null + ", ptr @.empty_str, ptr " + rp)
+    slen = cg_fresh_reg(cg)
+    emit(cg, "  " + slen + " = call i64 @strlen(ptr " + safe_ptr + ")")
+    sz = cg_fresh_reg(cg)
+    emit(cg, "  " + sz + " = add i64 " + slen + ", 1")
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 " + sz + ")")
+    mcr = cg_fresh_reg(cg)
+    emit(cg, "  " + mcr + " = call ptr @memcpy(ptr " + buf + ", ptr " + safe_ptr + ", i64 " + sz + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
+    cg_set_val(cg, dest, r)
+    emit_scope_track(cg, r, 0)
+    return 0
+  }
+
+  // ------ IR_RMDIR (248): [op, dest, path_reg] ------
+  if op == IR_RMDIR {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @rmdir(ptr " + pp + ")")
+    is_ok = cg_fresh_reg(cg)
+    emit(cg, "  " + is_ok + " = icmp eq i32 " + rv + ", 0")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = select i1 " + is_ok + ", i64 1, i64 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_REMOVE (249): [op, dest, path_reg] ------
+  if op == IR_REMOVE {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @remove(ptr " + pp + ")")
+    is_ok = cg_fresh_reg(cg)
+    emit(cg, "  " + is_ok + " = icmp eq i32 " + rv + ", 0")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = select i1 " + is_ok + ", i64 1, i64 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  if op == IR_MKDIR {
+    compile_rt1(cg, inst, "sans_mkdir")
+    return 0
+  }
+
+  if op == IR_IS_DIR {
+    compile_rt1(cg, inst, "sans_is_dir")
+    return 0
+  }
+
+  if op == IR_LISTDIR {
+    compile_rt1(cg, inst, "sans_listdir")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 1)
+    return 0
+  }
+
+  if op == IR_SH {
+    compile_rt1(cg, inst, "sans_sh")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 0)
     return 0
   }
 

@@ -81,6 +81,13 @@ fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I
 fe(path)          file_exists(path)     S -> B
+getenv(name)/genv(name)                 S -> S (read env var, "" if unset)
+mkdir(path)                             S -> I (mkdir -p, 1=ok 0=err)
+rmdir(path)                             S -> I (remove empty dir, 1=ok 0=err)
+remove(path)/rm(path)                   S -> I (delete file, 1=ok 0=err)
+listdir(path)/ls(path)                  S -> [S] (directory listing)
+is_dir(path)                            S -> B (true if directory)
+sh(cmd)/shell(cmd)                      S -> S (execute, capture stdout)
 jo()              json_object()         -> JsonValue
 ja()              json_array()          -> JsonValue
 js(s)             json_string(s)        S -> JsonValue
@@ -261,4 +268,5 @@ ab/arena_begin  aa/arena_alloc  ae/arena_end  gz/gzip_compress
 ca/cors_all  ud/url_decode  ps/path_segment  sigh/signal_handler  sigc/signal_check
 idx/index_of  pl/pad_left  pr/pad_right  ti/to_int  fm/flat_map
 gidx/get_index  gs/get_string  geti/get_int  gb/get_bool  typeof/type_of
-sh/set_header  cl/content_length  rj/respond_json
+cl/content_length  rj/respond_json
+getenv/genv  remove/rm  listdir/ls  sh/shell
