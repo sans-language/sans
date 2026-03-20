@@ -24,11 +24,9 @@ find_llc() S {
   if fexists("/opt/homebrew/opt/llvm/bin/llc") == 1 { return "/opt/homebrew/opt/llvm/bin/llc" }
   if fexists("/usr/local/opt/llvm/bin/llc") == 1 { return "/usr/local/opt/llvm/bin/llc" }
   if fexists("/usr/bin/llc") == 1 { return "/usr/bin/llc" }
-  // Use brew to discover LLVM path
-  sys("brew --prefix llvm@17 > /tmp/.sans_llvm_prefix 2>/dev/null || brew --prefix llvm > /tmp/.sans_llvm_prefix 2>/dev/null")
-  prefix = fr("/tmp/.sans_llvm_prefix")
+  // Use brew to discover LLVM path (use sh() to capture output instead of temp file)
+  prefix = sh("brew --prefix llvm@17 2>/dev/null || brew --prefix llvm 2>/dev/null")
   if slen(prefix) > 1 {
-    // Trim trailing newline
     llc_path = prefix.trim() + "/bin/llc"
     if fexists(llc_path) == 1 { return llc_path }
   }
@@ -399,7 +397,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
 
   // 11. Invoke llc to produce object file
   obj_path = output_path + ".o"
-  sys(llc + " -filetype=obj -O2 -o " + obj_path + " " + ll_path)
+  sys("'" + llc + "' -filetype=obj -O2 -o '" + obj_path + "' '" + ll_path + "'")
 
   // 12. Compile runtime
   runtime_dir_cwd = "runtime"
@@ -441,29 +439,29 @@ do_link(ll_path:S output_path:S source_path:S) I {
     rir = lower(rprog, 0, empty_fn_ret)
     r_ll = "/tmp/sans_" + rname + "_runtime.ll"
     r_cg = compile_to_ll_runtime(rir, r_ll)
-    sys(llc + " -filetype=obj -O2 -o " + o_path + " " + r_ll)
-    sys("rm -f " + r_ll)
+    sys("'" + llc + "' -filetype=obj -O2 -o '" + o_path + "' '" + r_ll + "'")
+    sys("rm -f '" + r_ll + "'")
     runtime_o_paths.push(o_path)
     ri = ri + 1
     0
   }
 
   // 13. Link
-  link_cmd := "cc " + obj_path
+  link_cmd := "cc '" + obj_path + "'"
   li := 0
   while li < runtime_o_paths.len() {
-    link_cmd = link_cmd + " " + runtime_o_paths.get(li)
+    link_cmd = link_cmd + " '" + runtime_o_paths.get(li) + "'"
     li = li + 1
     0
   }
-  link_cmd = link_cmd + " -lcurl -lz -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib -o " + output_path
+  link_cmd = link_cmd + " -lcurl -lz -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib -o '" + output_path + "'"
   sys(link_cmd)
 
   // 14. Cleanup
-  sys("rm -f " + ll_path + " " + obj_path)
+  sys("rm -f '" + ll_path + "' '" + obj_path + "'")
   ri = 0
   while ri < runtime_o_paths.len() {
-    sys("rm -f " + runtime_o_paths.get(ri))
+    sys("rm -f '" + runtime_o_paths.get(ri) + "'")
     ri = ri + 1
     0
   }
@@ -526,7 +524,7 @@ main() I {
     0
   } else { if cmd == "run" {
     g_file = file
-    g_out = "/tmp/sans_run_out"
+    g_out = "/tmp/sans_run_" + str(time() * 1000 + random(9999))
     g_src = file
     wfd(2, "STEP=0 FILE=")
     wfd(2, g_file)
