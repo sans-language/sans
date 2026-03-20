@@ -66,21 +66,10 @@ jobs:
         run: brew install llvm@17
 
       - name: Download bootstrap compiler
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Try previous release first, fall back to v0.4.0
-          PREV_TAG=$(gh release list --limit 2 --json tagName -q '.[1].tagName' 2>/dev/null || echo "")
-          if [ -n "$PREV_TAG" ]; then
-            echo "Using previous release ${PREV_TAG} as bootstrap"
-            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PREV_TAG}/sans-macos-arm64.tar.gz" | tar xz || {
-              echo "Previous release download failed, falling back to v0.4.0"
-              curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
-            }
-          else
-            echo "No previous release found, using v0.4.0"
-            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
-          fi
+          # Always use v0.4.0 as bootstrap — later versions may have scope GC
+          # bugs that cause segfaults when compiling large codebases.
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
           chmod +x sans
           ./sans --version
 
@@ -97,14 +86,12 @@ jobs:
             echo "=== Direct build succeeded ==="
           else
             echo "=== Direct build failed, doing two-stage bootstrap ==="
-            PREV_TAG=$(gh release list --limit 2 --json tagName -q '.[1].tagName' 2>/dev/null || echo "")
-            if [ -z "$PREV_TAG" ]; then
-              echo "No previous release tag found for stage 1"
-              exit 1
-            fi
-            echo "Stage 1: building from ${PREV_TAG} source with bootstrap"
+            # v0.4.0 bootstrap may not handle newer/larger source files due to
+            # scope GC bugs. Build v0.4.0 source first (known to work), then
+            # use that to build the current source.
+            echo "Stage 1: building v0.4.0 source with v0.4.0 bootstrap"
             mkdir -p /tmp/prev-src
-            curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/${PREV_TAG}.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
+            curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/v0.4.0.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
             ./sans build /tmp/prev-src/compiler/main.sans
             mv /tmp/prev-src/compiler/main /tmp/sans-stage1
             rm -rf /tmp/prev-src
