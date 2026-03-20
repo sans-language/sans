@@ -79,7 +79,20 @@ jobs:
       - name: Build self-hosted compiler
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
-          ./sans build compiler/main.sans
+          # Two-stage bootstrap: the old release may not support new builtins/types,
+          # so first build without pkg.sans, then use that to build the full compiler.
+          if grep -q 'import "pkg"' compiler/main.sans; then
+            echo "=== Stage 1: build without pkg.sans ==="
+            sed -i.bak 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
+            sed -i.bak 's/pkg_main(argv)/0/' compiler/main.sans
+            ./sans build compiler/main.sans
+            mv compiler/main /tmp/sans-stage1
+            mv compiler/main.sans.bak compiler/main.sans
+            echo "=== Stage 2: build full compiler with stage 1 ==="
+            /tmp/sans-stage1 build compiler/main.sans
+          else
+            ./sans build compiler/main.sans
+          fi
           # Fix dylib paths for portability — use @rpath so binary works with any Homebrew prefix
           echo "=== Before rpath fix ==="
           otool -L compiler/main | grep -E "ssl|crypto"
