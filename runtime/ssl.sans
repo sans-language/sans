@@ -116,9 +116,11 @@ sans_https_accept_fd(ssl:I cfd:I) I {
   }
 }
 
+// NOTE: Single-read buffer — requests larger than 65535 bytes will be truncated.
+// Content-Length is not checked; body is whatever arrives in one ssl_read call.
 sans_https_read(ssl:I cfd:I) I {
-  buf = alloc(8192)
-  n = ssl_read(ssl, buf, 8191)
+  buf = alloc(65536)
+  n = ssl_read(ssl, buf, 65535)
   if n <= 0 {
     ssl_shutdown(ssl)
     ssl_free(ssl)
@@ -332,9 +334,9 @@ sans_ssl_extract_body(buf:I n:I bstart:I) I {
 // ------ Header parsing (duplicated for ssl module) ------------------------------------------------------
 
 sans_ssl_parse_headers(req:I buf:I n:I) I {
-  hdrs = alloc(16 + 32 * 16)
+  hdrs = alloc(16 + 64 * 16)
   store64(hdrs, 0)
-  store64(hdrs + 8, 32)
+  store64(hdrs + 8, 64)
   store64(req + 32, hdrs)
   i := sans_ssl_find_crlf(buf, n, 0)
   if i < 0 { 0 } else { sans_ssl_parse_headers_loop(hdrs, buf, n, i + 2) }

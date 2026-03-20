@@ -160,9 +160,9 @@ sans_http_request_body(req:I) I = load64(req + 24)
 // Header storage: simple array at offset 32 of req
 // Layout: offset 0 = count, offset 8 = capacity, offset 16+ = entries (16 bytes each: name, value)
 sans_parse_headers(req:I buf:I n:I) I {
-  hdrs = alloc(16 + 32 * 16)
+  hdrs = alloc(16 + 64 * 16)
   store64(hdrs, 0)
-  store64(hdrs + 8, 32)
+  store64(hdrs + 8, 64)
   store64(req + 32, hdrs)
   // Skip first line (request line) --- find \r\n
   i := sans_find_crlf(buf, n, 0)
@@ -340,9 +340,29 @@ sans_hdrs_find_check(hdrs:I name:I nlen:I count:I i:I) I {
 
 // ------ Response Headers (set_header) ---------------------------------------------------------------------------------------------
 
+// Strip \r and \n from header values to prevent CRLF injection
+sans_strip_crlf(s:I) I {
+  len = slen(s)
+  out = alloc(len + 1)
+  oi := 0
+  si := 0
+  while si < len {
+    ch = load8(s + si)
+    if ch != 13 && ch != 10 {
+      store8(out + oi, ch)
+      oi = oi + 1
+    }
+    si = si + 1
+  }
+  store8(out + oi, 0)
+  out
+}
+
 sans_http_request_set_header(req:I name:I value:I) I {
+  sname = sans_strip_crlf(name)
+  svalue = sans_strip_crlf(value)
   arr = load64(req + 40)
-  if arr == 0 { sans_set_header_init(req, name, value) } else { sans_resp_headers_add(arr, name, value) }
+  if arr == 0 { sans_set_header_init(req, sname, svalue) } else { sans_resp_headers_add(arr, sname, svalue) }
 }
 
 sans_set_header_init(req:I name:I value:I) I {
@@ -354,9 +374,9 @@ sans_set_header_init(req:I name:I value:I) I {
 sans_resp_headers_init() I {
   // Simple array: pairs of (name, value) stored sequentially
   // offset 0: count, offset 8: capacity, offset 16+: pairs (16 bytes each)
-  arr = alloc(16 + 16 * 16)
+  arr = alloc(16 + 64 * 16)
   store64(arr, 0)
-  store64(arr + 8, 16)
+  store64(arr + 8, 64)
   arr
 }
 
