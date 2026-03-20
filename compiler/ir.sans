@@ -532,6 +532,8 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "rmdir" { lower_call_1(ctx, args, IR_RMDIR, IRTY_INT) }
   else if name == "remove" { lower_call_1(ctx, args, IR_REMOVE, IRTY_INT) }
   else if name == "rm" { lower_call_1(ctx, args, IR_REMOVE, IRTY_INT) }
+  else if name == "mkdir" { lower_call_1(ctx, args, IR_MKDIR, IRTY_INT) }
+  else if name == "is_dir" { lower_call_1(ctx, args, IR_IS_DIR, IRTY_BOOL) }
 
   // ------ Conversion ------
   else if name == "str" { lower_call_str(ctx, args) }

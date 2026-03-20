@@ -410,6 +410,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("rc")
   runtime_modules.push("ssl")
   runtime_modules.push("math")
+  runtime_modules.push("fs")
 
   runtime_o_paths = array<I>()
   ri := 0

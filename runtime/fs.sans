@@ -1,0 +1,26 @@
+// Filesystem runtime — mkdir, is_dir
+
+sans_mkdir(path_i: I) I {
+  plen = slen(path_i)
+  if plen == 0 { return 0 }
+  // "mkdir -p " = 9 chars
+  cmd = alloc(9 + plen + 1)
+  mcpy(cmd, ptr("mkdir -p "), 9)
+  mcpy(cmd + 9, path_i, plen)
+  store8(cmd + 9 + plen, 0)
+  r = system(cmd)
+  dealloc(cmd)
+  r == 0 ? 1 : 0
+}
+
+sans_is_dir(path_i: I) I {
+  plen = slen(path_i)
+  // "test -d " = 8 chars
+  cmd = alloc(8 + plen + 1)
+  mcpy(cmd, ptr("test -d "), 8)
+  mcpy(cmd + 8, path_i, plen)
+  store8(cmd + 8 + plen, 0)
+  r = system(cmd)
+  dealloc(cmd)
+  r == 0 ? 1 : 0
+}

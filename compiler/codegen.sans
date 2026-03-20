@@ -582,6 +582,10 @@ emit_externals(cg:I) I {
   // ------ Sans runtime: Map entries ------
   emit(cg, "declare i64 @sans_map_entries(i64)")
 
+  // ------ Sans runtime: Filesystem ------
+  emit(cg, "declare i64 @sans_mkdir(i64)")
+  emit(cg, "declare i64 @sans_is_dir(i64)")
+
   // ------ Sans runtime: Reference Counting ------
   emit(cg, "declare i64 @sans_rc_alloc(i64)")
   emit(cg, "declare i64 @sans_rc_retain(i64)")
@@ -2343,6 +2347,16 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = select i1 " + is_ok + ", i64 1, i64 0")
     cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  if op == IR_MKDIR {
+    compile_rt1(cg, inst, "sans_mkdir")
+    return 0
+  }
+
+  if op == IR_IS_DIR {
+    compile_rt1(cg, inst, "sans_is_dir")
     return 0
   }
 
