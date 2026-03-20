@@ -1,0 +1,9 @@
+main() I {
+  home = getenv("HOME")
+  home2 = genv("HOME")
+  missing = getenv("SANS_NONEXISTENT_VAR_XYZ")
+  if home.len() == 0 { return 1 }
+  if home2.len() == 0 { return 2 }
+  if missing.len() != 0 { return 3 }
+  0
+}

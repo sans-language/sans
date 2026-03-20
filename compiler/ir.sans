@@ -527,6 +527,8 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "file_exists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
   else if name == "fexists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
   else if name == "fe" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
+  else if name == "getenv" { lower_call_1(ctx, args, IR_GETENV, IRTY_STR) }
+  else if name == "genv" { lower_call_1(ctx, args, IR_GETENV, IRTY_STR) }
 
   // ------ Conversion ------
   else if name == "str" { lower_call_str(ctx, args) }
