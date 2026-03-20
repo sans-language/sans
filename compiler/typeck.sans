@@ -268,7 +268,7 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
   if name == "B" || name == "Bool" { return make_type(TY_BOOL) }
   if name == "S" || name == "String" { return make_type(TY_STRING) }
   if name == "M" || name == "Map" { return make_type(TY_MAP) }
-  if name == "JsonValue" { return make_type(TY_JSON) }
+  if name == "J" || name == "JsonValue" { return make_type(TY_JSON) }
   if name == "HttpResponse" { return make_type(TY_HTTP_RESP) }
   if name == "HttpServer" || name == "HS" { return make_type(TY_HTTP_SERVER) }
   if name == "HttpRequest" || name == "HR" { return make_type(TY_HTTP_REQ) }

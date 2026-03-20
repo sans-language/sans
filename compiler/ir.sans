@@ -1963,6 +1963,9 @@ lower_method_call(ctx:I expr:I) I {
       ctx_emit(ctx, ir_inst1(IR_INT_TO_STRING, dest, obj_reg))
       ctx_set_reg_type(ctx, dest, IRTY_STR)
       dest
+    // ------ JSON methods on IRTY_INT (type lost across function boundaries) ------
+    } else if method == "get_string" || method == "gs" || method == "get_int" || method == "geti" || method == "get_bool" || method == "gb" || method == "type_of" || method == "stringify" || method == "get_index" || method == "gidx" || method == "delete" {
+      lower_json_method(ctx, obj_reg, method, args)
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
@@ -3720,6 +3723,7 @@ ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
   else if type_name == "String" { IRTY_STR }
   else if type_name == "M" { IRTY_MAP }
   else if type_name == "Map" { IRTY_MAP }
+  else if type_name == "J" { IRTY_JSON }
   else if type_name == "JsonValue" { IRTY_JSON }
   else if type_name == "HttpResponse" { IRTY_HTTP_RESP }
   else if type_name == "HttpRequest" { IRTY_HTTP_REQ }

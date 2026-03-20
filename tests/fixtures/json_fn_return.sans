@@ -1,0 +1,28 @@
+// Test that J return type preserves JsonValue method dispatch across functions
+// Uses jp() which returns a fresh parse (not affected by scope GC of builder calls)
+read_json(s: S) J {
+  jp(s)
+}
+
+main() I {
+  // Parse JSON string — the parsed object survives scope GC
+  obj = read_json("{\"name\":\"test\",\"count\":42}")
+
+  // .type_of() works on function-returned J (routed through IRTY_JSON)
+  t = obj.type_of()
+  if t != "object" { return 1 }
+
+  // .get() returns J, .get_string() works
+  name = obj.get("name").get_string()
+  if name != "test" { return 2 }
+
+  // .get_int() works
+  count = obj.get("count").get_int()
+  if count != 42 { return 3 }
+
+  // .keys() works
+  k = obj.keys()
+  if k.len() != 2 { return 4 }
+
+  0
+}
