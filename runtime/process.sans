@@ -1,10 +1,12 @@
 // Process execution runtime
+g sans_sh_counter = 0
 
 sans_sh(cmd_i: I) I {
   cmd_len = slen(cmd_i)
 
-  // Unique temp filename using time()
-  ts = time()
+  // Unique temp filename using time + counter to avoid collisions
+  sans_sh_counter = sans_sh_counter + 1
+  ts = time() * 10000 + sans_sh_counter
   rnd_s = str(ts)
   rnd_len = slen(ptr(rnd_s))
 

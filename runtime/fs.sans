@@ -1,13 +1,15 @@
-// Filesystem runtime — mkdir, is_dir
+// Filesystem runtime — mkdir, is_dir, listdir
+g sans_fs_counter = 0
 
 sans_mkdir(path_i: I) I {
   plen = slen(path_i)
   if plen == 0 { return 0 }
-  // "mkdir -p " = 9 chars
-  cmd = alloc(9 + plen + 1)
-  mcpy(cmd, ptr("mkdir -p "), 9)
-  mcpy(cmd + 9, path_i, plen)
-  store8(cmd + 9 + plen, 0)
+  // "mkdir -p '<path>'" — single-quote to prevent shell injection
+  cmd = alloc(10 + plen + 1 + 1)
+  mcpy(cmd, ptr("mkdir -p '"), 10)
+  mcpy(cmd + 10, path_i, plen)
+  store8(cmd + 10 + plen, 39)
+  store8(cmd + 10 + plen + 1, 0)
   r = system(cmd)
   dealloc(cmd)
   r == 0 ? 1 : 0
@@ -15,11 +17,12 @@ sans_mkdir(path_i: I) I {
 
 sans_is_dir(path_i: I) I {
   plen = slen(path_i)
-  // "test -d " = 8 chars
-  cmd = alloc(8 + plen + 1)
-  mcpy(cmd, ptr("test -d "), 8)
-  mcpy(cmd + 8, path_i, plen)
-  store8(cmd + 8 + plen, 0)
+  // "test -d '<path>'" — single-quote to prevent shell injection
+  cmd = alloc(9 + plen + 1 + 1)
+  mcpy(cmd, ptr("test -d '"), 9)
+  mcpy(cmd + 9, path_i, plen)
+  store8(cmd + 9 + plen, 39)
+  store8(cmd + 9 + plen + 1, 0)
   r = system(cmd)
   dealloc(cmd)
   r == 0 ? 1 : 0
@@ -28,8 +31,9 @@ sans_is_dir(path_i: I) I {
 sans_listdir(path_i: I) I {
   plen = slen(path_i)
 
-  // Unique temp file using time
-  rnd = time()
+  // Unique temp file using time + counter to avoid collisions
+  sans_fs_counter = sans_fs_counter + 1
+  rnd = time() * 10000 + sans_fs_counter
   rnd_s = str(rnd)
   rnd_len = slen(ptr(rnd_s))
   tmp_len = 13 + rnd_len + 4
@@ -39,16 +43,18 @@ sans_listdir(path_i: I) I {
   mcpy(tmp + 13 + rnd_len, ptr(".txt"), 4)
   store8(tmp + tmp_len, 0)
 
-  // Build "ls -1 <path> > <tmp> 2>/dev/null"
+  // Build "ls -1 '<path>' > <tmp> 2>/dev/null" — single-quote path
   sfx1 = " > "
   sfx2 = " 2>/dev/null"
-  cmd_len = 6 + plen + 3 + tmp_len + 12 + 1
+  cmd_len = 7 + plen + 1 + 3 + tmp_len + 12 + 1
   cmd = alloc(cmd_len)
   pos := 0
-  mcpy(cmd + pos, ptr("ls -1 "), 6)
-  pos = pos + 6
+  mcpy(cmd + pos, ptr("ls -1 '"), 7)
+  pos = pos + 7
   mcpy(cmd + pos, path_i, plen)
   pos = pos + plen
+  store8(cmd + pos, 39)
+  pos = pos + 1
   mcpy(cmd + pos, ptr(sfx1), 3)
   pos = pos + 3
   mcpy(cmd + pos, tmp, tmp_len)
