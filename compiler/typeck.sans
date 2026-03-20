@@ -908,6 +908,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("is_dir() requires String argument, got " + type_to_string(at)) }
       return make_type(TY_BOOL)
     }
+    if name == "listdir" || name == "ls" {
+      if nargs != 1 { tc_error("listdir() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("listdir() requires String argument, got " + type_to_string(at)) }
+      return make_array_type(make_type(TY_STRING))
+    }
     // ------ Conversion ---------------------------------------------------------------------------------------------------------------------------------------------
     if name == "str" || name == "int_to_string" || name == "itos" {
       if nargs != 1 { tc_error("str() takes exactly 1 argument") }

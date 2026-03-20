@@ -1,0 +1,21 @@
+main() I {
+  mkdir("/tmp/sans_test_listdir_1")
+  fw("/tmp/sans_test_listdir_1/a.txt" "a")
+  fw("/tmp/sans_test_listdir_1/b.txt" "b")
+  fw("/tmp/sans_test_listdir_1/c.txt" "c")
+
+  files = listdir("/tmp/sans_test_listdir_1")
+  if files.len() != 3 { return 1 }
+
+  files2 = ls("/tmp/sans_test_listdir_1")
+  if files2.len() != 3 { return 2 }
+
+  empty = listdir("/tmp/sans_test_listdir_nonexistent")
+  if empty.len() != 0 { return 3 }
+
+  remove("/tmp/sans_test_listdir_1/a.txt")
+  remove("/tmp/sans_test_listdir_1/b.txt")
+  remove("/tmp/sans_test_listdir_1/c.txt")
+  rmdir("/tmp/sans_test_listdir_1")
+  0
+}
