@@ -85,18 +85,32 @@ jobs:
           if ./sans build compiler/main.sans 2>&1; then
             echo "=== Direct build succeeded ==="
           else
-            echo "=== Direct build failed, doing two-stage bootstrap ==="
-            # v0.4.0 bootstrap may not handle newer/larger source files due to
-            # scope GC bugs. Build v0.4.0 source first (known to work), then
-            # use that to build the current source.
-            echo "Stage 1: building v0.4.0 source with v0.4.0 bootstrap"
+            echo "=== Multi-stage bootstrap ==="
+            # The v0.4.0 bootstrap can only compile v0.4.0 source. The current
+            # source has new builtins (getenv, mkdir, etc.) that v0.4.0 doesn't
+            # know. Three stages:
+            #   Stage 1: v0.4.0 bootstrap -> v0.4.0 source (known good)
+            #   Stage 2: stage1 compiler -> current source WITHOUT pkg.sans
+            #            (compiler modules define new builtins but don't call them)
+            #   Stage 3: stage2 compiler -> full current source (has all builtins)
+
+            echo "Stage 1: v0.4.0 bootstrap -> v0.4.0 source"
             mkdir -p /tmp/prev-src
             curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/v0.4.0.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
             ./sans build /tmp/prev-src/compiler/main.sans
             mv /tmp/prev-src/compiler/main /tmp/sans-stage1
             rm -rf /tmp/prev-src
-            echo "Stage 2: building current source with stage 1 compiler"
+
+            echo "Stage 2: stage1 -> current source (without pkg.sans)"
+            cp compiler/main.sans compiler/main.sans.bak
+            sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
+            sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
             /tmp/sans-stage1 build compiler/main.sans
+            mv compiler/main /tmp/sans-stage2
+            mv compiler/main.sans.bak compiler/main.sans
+
+            echo "Stage 3: stage2 -> full current source"
+            /tmp/sans-stage2 build compiler/main.sans
           fi
           # Fix dylib paths for portability — use @rpath so binary works with any Homebrew prefix
           echo "=== Before rpath fix ==="
