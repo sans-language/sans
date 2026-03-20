@@ -8,7 +8,10 @@ These rules apply to all AI coding assistants (Claude Code, Copilot, Cursor, Gem
 # Prerequisites
 brew install llvm@17   # macOS
 
-# Build the compiler
+# Bootstrap (first time — downloads a release binary and builds from source)
+bash scripts/bootstrap.sh
+
+# Build the compiler (after bootstrap)
 sans build compiler/main.sans
 
 # Run all tests

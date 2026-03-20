@@ -58,8 +58,21 @@ jobs:
         run: brew install llvm@17
 
       - name: Download bootstrap compiler
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -fsSL https://github.com/sans-language/sans/releases/download/v0.4.0/sans-macos-arm64.tar.gz | tar xz
+          # Try previous release first, fall back to v0.4.0
+          PREV_TAG=$(gh release list --limit 2 --json tagName -q '.[1].tagName' 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            echo "Using previous release ${PREV_TAG} as bootstrap"
+            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${PREV_TAG}/sans-macos-arm64.tar.gz" | tar xz || {
+              echo "Previous release download failed, falling back to v0.4.0"
+              curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
+            }
+          else
+            echo "No previous release found, using v0.4.0"
+            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
+          fi
           chmod +x sans
           ./sans --version
 
@@ -87,13 +100,20 @@ jobs:
           fi
           echo "=== After rpath fix ==="
           otool -L compiler/main | grep -E "ssl|crypto|curl|rpath"
-          strip compiler/main
+          # NOTE: Do NOT strip the binary — strip can corrupt self-hosted compiler binaries
 
       - name: Verify binary
         run: |
           ./compiler/main --version
           file compiler/main
           otool -L compiler/main
+
+      - name: Smoke test
+        run: |
+          echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
+          ./compiler/main build /tmp/smoke.sans
+          /tmp/smoke
+          echo "Smoke test passed"
 
       - name: Generate .ll files for Linux cross-build
         run: |
