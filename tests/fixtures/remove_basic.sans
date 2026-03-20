@@ -1,0 +1,10 @@
+main() I {
+  fw("/tmp/sans_test_remove_file.txt" "delete me")
+  if fe("/tmp/sans_test_remove_file.txt") != true { return 1 }
+  r = remove("/tmp/sans_test_remove_file.txt")
+  if r != 1 { return 2 }
+  if fe("/tmp/sans_test_remove_file.txt") == true { return 3 }
+  r2 = rm("/tmp/sans_test_remove_nonexistent.txt")
+  if r2 != 0 { return 4 }
+  0
+}

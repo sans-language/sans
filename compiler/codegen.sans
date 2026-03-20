@@ -310,6 +310,8 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare i32 @system(ptr)")
   emit(cg, "declare i32 @access(ptr, i32)")
   emit(cg, "declare ptr @getenv(ptr)")
+  emit(cg, "declare i32 @rmdir(ptr)")
+  emit(cg, "declare i32 @remove(ptr)")
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
@@ -398,6 +400,8 @@ emit_externals(cg:I) I {
   emit(cg, "declare i32 @system(ptr)")
   emit(cg, "declare i32 @access(ptr, i32)")
   emit(cg, "declare ptr @getenv(ptr)")
+  emit(cg, "declare i32 @rmdir(ptr)")
+  emit(cg, "declare i32 @remove(ptr)")
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
@@ -2309,6 +2313,36 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + r + " = ptrtoint ptr " + buf + " to i64")
     cg_set_val(cg, dest, r)
     emit_scope_track(cg, r, 0)
+    return 0
+  }
+
+  // ------ IR_RMDIR (248): [op, dest, path_reg] ------
+  if op == IR_RMDIR {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @rmdir(ptr " + pp + ")")
+    is_ok = cg_fresh_reg(cg)
+    emit(cg, "  " + is_ok + " = icmp eq i32 " + rv + ", 0")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = select i1 " + is_ok + ", i64 1, i64 0")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ IR_REMOVE (249): [op, dest, path_reg] ------
+  if op == IR_REMOVE {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    rv = cg_fresh_reg(cg)
+    emit(cg, "  " + rv + " = call i32 @remove(ptr " + pp + ")")
+    is_ok = cg_fresh_reg(cg)
+    emit(cg, "  " + is_ok + " = icmp eq i32 " + rv + ", 0")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = select i1 " + is_ok + ", i64 1, i64 0")
+    cg_set_val(cg, dest, r)
     return 0
   }
 
