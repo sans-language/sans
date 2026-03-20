@@ -101,11 +101,14 @@ jobs:
             mv /tmp/prev-src/compiler/main /tmp/sans-stage1
             rm -rf /tmp/prev-src
 
-            echo "Stage 2: stage1 -> current source (without pkg.sans + new builtins in main.sans)"
+            echo "Stage 2: stage1 -> current source (strip builtins v0.4.0 doesn't know)"
             cp compiler/main.sans compiler/main.sans.bak
             sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
             sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
             sed -i '' 's/scope_disable()/0/' compiler/main.sans
+            # Strip builtins added after v0.4.0 that appear in main.sans
+            sed -i '' 's/sh("brew[^"]*")/""/' compiler/main.sans
+            sed -i '' 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
             /tmp/sans-stage1 build compiler/main.sans
             mv compiler/main /tmp/sans-stage2
             mv compiler/main.sans.bak compiler/main.sans
