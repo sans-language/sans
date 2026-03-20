@@ -7,7 +7,6 @@ import "parser"
 import "typeck"
 import "ir"
 import "codegen"
-import "pkg"
 g g_merged = 0
 g g_file = 0
 g g_out = 0
@@ -490,8 +489,15 @@ main() I {
   }
 
   if cmd == "pkg" {
-    pkg_main(argv)
-    exit(0)
+    // Delegate to standalone sans-pkg binary
+    pkg_cmd := "sans-pkg"
+    pi := 2
+    while pi < argc {
+      pkg_cmd = pkg_cmd + " '" + argv.get(pi) + "'"
+      pi = pi + 1
+    }
+    r = system(pkg_cmd)
+    exit(r)
   }
 
   if argc < 3 {
