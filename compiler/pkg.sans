@@ -1,0 +1,144 @@
+// Sans Package Manager — sans pkg subcommand
+
+// ---- Helpers ----
+
+pkg_sans_dir() S {
+  home = getenv("HOME")
+  if home.len() == 0 {
+    p("error: HOME environment variable not set")
+    exit(1)
+  }
+  home + "/.sans"
+}
+
+pkg_cache_dir() S {
+  pkg_sans_dir() + "/packages"
+}
+
+// Check if string looks like a URL (has dot before first slash, and has a slash)
+pkg_is_url(s: S) B {
+  has_dot := false
+  i := 0
+  while i < s.len() {
+    ch = char_at(s i)
+    if ch == 46 { has_dot = true }
+    if ch == 47 { return has_dot }
+    i = i + 1
+  }
+  false
+}
+
+pkg_cache_path(url: S version: S) S {
+  pkg_cache_dir() + "/" + url + "/" + version
+}
+
+// Read sans.json from current directory. Returns JsonValue or 0.
+pkg_read_manifest() I {
+  if fe("sans.json") != true { return 0 }
+  content = fr("sans.json")
+  if content.len() == 0 { return 0 }
+  jp(content)
+}
+
+pkg_write_manifest(obj: I) I {
+  fw("sans.json" jfy(obj))
+}
+
+// Get current directory name
+pkg_cwd_name() S {
+  cwd = sh("pwd").trim()
+  parts = cwd.split("/")
+  if parts.len() > 0 { parts.get(parts.len() - 1) } else { "my-project" }
+}
+
+// Clone a package at a specific tag into the cache
+pkg_clone(url: S version: S) I {
+  dest = pkg_cache_path(url version)
+  if is_dir(dest) {
+    p("  " + url + " " + version + "... cached")
+    return 1
+  }
+  mkdir(pkg_cache_dir() + "/" + url)
+  p("  " + url + " " + version + "... cloning")
+  r = system("git clone --depth 1 --branch " + version + " 'https://" + url + ".git' '" + dest + "' 2>/dev/null")
+  if r != 0 {
+    p("error: failed to clone " + url + " at " + version)
+    return 0
+  }
+  1
+}
+
+// Get latest tag from a git remote
+pkg_latest_tag(url: S) S {
+  output = sh("git ls-remote --tags --sort=-v:refname 'https://" + url + ".git' 'v*' 2>/dev/null | head -1 | sed 's/.*refs\\/tags\\///' | sed 's/\\^{}//'")
+  output.trim()
+}
+
+// Parse --flag value from args
+pkg_parse_flag(a: I flag: S) S {
+  i := 2
+  while i < a.len() - 1 {
+    if a.get(i) == flag { return a.get(i + 1) }
+    i = i + 1
+  }
+  ""
+}
+
+// Resolve name for pkg init: use flag or cwd name
+pkg_resolve_name(a: I) S {
+  name = pkg_parse_flag(a "--name")
+  if name.len() > 0 { return name }
+  pkg_cwd_name()
+}
+
+// Resolve version for pkg init: use flag or default
+pkg_resolve_version(a: I) S {
+  version = pkg_parse_flag(a "--version")
+  if version.len() > 0 { return version }
+  "0.1.0"
+}
+
+// ---- Commands ----
+
+pkg_init(a: I) I {
+  if fe("sans.json") {
+    p("error: sans.json already exists")
+    return 1
+  }
+  name = pkg_resolve_name(a)
+  version = pkg_resolve_version(a)
+
+  obj = jo()
+  obj.set("name" js(name))
+  obj.set("version" js(version))
+  obj.set("deps" jo())
+  pkg_write_manifest(obj)
+  p("Created sans.json (" + name + " v" + version + ")")
+  0
+}
+
+// ---- Dispatch ----
+
+pkg_help() I {
+  p("usage: sans pkg <command>")
+  p("")
+  p("commands:")
+  p("  init               Create sans.json")
+  p("  add <url> [tag]    Add dependency")
+  p("  install            Install all dependencies")
+  p("  remove <url>       Remove dependency")
+  p("  list               List dependencies")
+  p("  update <url> [tag] Update dependency")
+  p("  search <query>     Search package index")
+  0
+}
+
+pkg_main(a: I) I {
+  if a.len() < 3 { return pkg_help() }
+  sub = a.get(2)
+  if sub == "init" { return pkg_init(a) }
+  if sub == "help" || sub == "--help" { return pkg_help() }
+  p("unknown command: sans pkg " + sub)
+  p("run 'sans pkg help' for usage")
+  1
+}

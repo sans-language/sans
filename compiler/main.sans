@@ -7,6 +7,7 @@ import "parser"
 import "typeck"
 import "ir"
 import "codegen"
+import "pkg"
 g g_merged = 0
 g g_file = 0
 g g_out = 0
@@ -475,6 +476,11 @@ main() I {
 
   if cmd == "--version" || cmd == "-V" {
     p("sans 0.5.4")
+    exit(0)
+  }
+
+  if cmd == "pkg" {
+    pkg_main(argv)
     exit(0)
   }
 
