@@ -1,6 +1,4 @@
-// Sans Package Manager — standalone binary (sans-pkg)
-// Built separately from the compiler to avoid codegen size limits.
-// Invoked by `sans pkg ...` which execs `sans-pkg ...`
+// Sans Package Manager — sans pkg subcommand
 
 // ---- Validation ----
 
@@ -63,7 +61,6 @@ pkg_resolve_deps(manifest_path: S requester: S) I {
   q_vers = array<S>()
   q_reqs = array<S>()
 
-  // Inline JSON read to avoid codegen bug with .set() on function-returned JsonValue
   content = fr(manifest_path)
   if content.len() == 0 { return ptr(resolved) }
   mf = jp(content)
@@ -122,13 +119,8 @@ pkg_resolve_deps(manifest_path: S requester: S) I {
 
 // ---- Commands ----
 
-// NOTE: Each command that modifies sans.json reads/parses it inline
-// rather than through a helper function. This avoids a compiler codegen
-// bug where .set() on a JsonValue returned from a function call segfaults.
-
 pkg_init(a: I) I {
   if fe("sans.json") { p("error: sans.json already exists") return 1 }
-  // Parse --name and --version flags
   name := ""
   version := ""
   i := 2
@@ -175,9 +167,9 @@ pkg_add_with_ver(url: S ver: S) I {
 }
 
 pkg_add(a: I) I {
-  if a.len() < 3 { p("usage: sans pkg add <url> [tag]") return 1 }
-  url = a.get(2)
-  if a.len() > 3 { return pkg_add_with_ver(url a.get(3)) }
+  if a.len() < 4 { p("usage: sans pkg add <url> [tag]") return 1 }
+  url = a.get(3)
+  if a.len() > 4 { return pkg_add_with_ver(url a.get(4)) }
   p("Resolving latest tag for " + url + "...")
   ver = pkg_latest_tag(url)
   if ver.len() == 0 { p("error: no tags found for " + url) return 1 }
@@ -186,8 +178,8 @@ pkg_add(a: I) I {
 }
 
 pkg_remove(a: I) I {
-  if a.len() < 3 { p("usage: sans pkg remove <url>") return 1 }
-  url = a.get(2)
+  if a.len() < 4 { p("usage: sans pkg remove <url>") return 1 }
+  url = a.get(3)
   if fe("sans.json") != true { p("error: no sans.json") return 1 }
   content = fr("sans.json")
   mf = jp(content)
@@ -238,8 +230,8 @@ pkg_update_to(url: S nv: S) I {
 }
 
 pkg_update(a: I) I {
-  if a.len() < 3 { p("usage: sans pkg update <url> [tag]") return 1 }
-  url = a.get(2)
+  if a.len() < 4 { p("usage: sans pkg update <url> [tag]") return 1 }
+  url = a.get(3)
   if fe("sans.json") != true { p("error: no sans.json") return 1 }
   content = fr("sans.json")
   mf = jp(content)
@@ -248,7 +240,7 @@ pkg_update(a: I) I {
     p("error: " + url + " not in dependencies")
     return 1
   }
-  if a.len() > 3 { return pkg_update_to(url a.get(3)) }
+  if a.len() > 4 { return pkg_update_to(url a.get(4)) }
   p("Resolving latest tag for " + url + "...")
   nv = pkg_latest_tag(url)
   if nv.len() == 0 { p("error: no tags found for " + url) return 1 }
@@ -256,8 +248,8 @@ pkg_update(a: I) I {
 }
 
 pkg_search(a: I) I {
-  if a.len() < 3 { p("usage: sans pkg search <query>") return 1 }
-  query = a.get(2)
+  if a.len() < 4 { p("usage: sans pkg search <query>") return 1 }
+  query = a.get(3)
   p("Fetching package index...")
   resp = hg("https://raw.githubusercontent.com/sans-language/packages/main/index.json")
   if resp.status() != 200 { p("error: could not fetch index") return 1 }
@@ -297,10 +289,9 @@ pkg_help() I {
   0
 }
 
-main() I {
-  a = args()
-  if a.len() < 2 { return pkg_help() }
-  sub = a.get(1)
+pkg_main(a: I) I {
+  if a.len() < 3 { return pkg_help() }
+  sub = a.get(2)
   if sub == "init" { return pkg_init(a) }
   if sub == "install" || sub == "i" { return pkg_install(a) }
   if sub == "add" { return pkg_add(a) }

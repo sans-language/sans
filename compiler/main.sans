@@ -7,6 +7,7 @@ import "parser"
 import "typeck"
 import "ir"
 import "codegen"
+import "pkg"
 g g_merged = 0
 g g_file = 0
 g g_out = 0
@@ -489,17 +490,8 @@ main() I {
   }
 
   if cmd == "pkg" {
-    // Delegate to standalone sans-pkg binary
-    // Escape single quotes in args to prevent shell injection
-    pkg_cmd := "sans-pkg"
-    pi := 2
-    while pi < argc {
-      arg = argv.get(pi).replace("'", "'\\''")
-      pkg_cmd = pkg_cmd + " '" + arg + "'"
-      pi = pi + 1
-    }
-    r = system(pkg_cmd)
-    exit(r)
+    pkg_main(argv)
+    exit(0)
   }
 
   if argc < 3 {
