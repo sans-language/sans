@@ -3898,11 +3898,14 @@ emit_globals(cg:I module:I) I {
   i := 0
   while i < ng {
     gname = globals.get(i)
+    // Scope GC globals must be thread-local to prevent data corruption
+    // when spawned threads concurrently modify the tracking linked list
+    tl = if gname.sw("rc_") { "thread_local " } else { "" }
     if mhas(ginits, gname) {
       gval = mget(ginits, gname)
-      emit(cg, "@" + gname + " = global i64 " + str(gval))
+      emit(cg, "@" + gname + " = " + tl + "global i64 " + str(gval))
     } else {
-      emit(cg, "@" + gname + " = global i64 0")
+      emit(cg, "@" + gname + " = " + tl + "global i64 0")
     }
     i = i + 1
     0
