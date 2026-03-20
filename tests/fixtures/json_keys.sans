@@ -1,0 +1,14 @@
+main() I {
+  obj = jo()
+  obj.set("name" js("test"))
+  obj.set("version" js("1.0"))
+  obj.set("count" ji(42))
+  k = obj.keys()
+  if k.len() != 3 { return 1 }
+  if obj.has("name") != true { return 2 }
+  if obj.has("missing") != false { return 3 }
+  obj.delete("count")
+  if obj.keys().len() != 2 { return 4 }
+  if obj.has("count") != false { return 5 }
+  0
+}
