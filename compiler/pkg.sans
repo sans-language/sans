@@ -89,26 +89,26 @@ pkg_resolve_deps(manifest_path: S requester: S) I {
         p("ERROR: conflict " + url + ": " + req + " wants " + ver + ", have " + ex)
         exit(1)
       }
-      0
-    } else {
-      resolved.set(url ver)
-      r = pkg_clone(url ver)
-      if r != 1 { exit(1) }
-      dm = pkg_cache_path(url ver) + "/sans.json"
-      if fe(dm) {
-        sc = fr(dm)
-        if sc.len() > 0 {
-          so = jp(sc)
-          sd = so.get("deps")
-          if sd.type_of() == "object" {
-            sk = sd.keys()
-            j := 0
-            while j < sk.len() {
-              q_urls.push(sk.get(j))
-              q_vers.push(sd.get(sk.get(j)).get_string())
-              q_reqs.push(url)
-              j = j + 1
-            }
+      continue
+    }
+
+    resolved.set(url ver)
+    r = pkg_clone(url ver)
+    if r != 1 { exit(1) }
+    dm = pkg_cache_path(url ver) + "/sans.json"
+    if fe(dm) {
+      sc = fr(dm)
+      if sc.len() > 0 {
+        so = jp(sc)
+        sd = so.get("deps")
+        if sd.type_of() == "object" {
+          sk = sd.keys()
+          j := 0
+          while j < sk.len() {
+            q_urls.push(sk.get(j))
+            q_vers.push(sd.get(sk.get(j)).get_string())
+            q_reqs.push(url)
+            j = j + 1
           }
         }
       }
