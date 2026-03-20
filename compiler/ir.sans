@@ -536,6 +536,8 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "is_dir" { lower_call_1(ctx, args, IR_IS_DIR, IRTY_BOOL) }
   else if name == "listdir" { lower_call_1(ctx, args, IR_LISTDIR, IRTY_ARRAY) }
   else if name == "ls" { lower_call_1(ctx, args, IR_LISTDIR, IRTY_ARRAY) }
+  else if name == "sh" { lower_call_1(ctx, args, IR_SH, IRTY_STR) }
+  else if name == "shell" { lower_call_1(ctx, args, IR_SH, IRTY_STR) }
 
   // ------ Conversion ------
   else if name == "str" { lower_call_str(ctx, args) }

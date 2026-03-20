@@ -1,0 +1,54 @@
+// Process execution runtime
+
+sans_sh(cmd_i: I) I {
+  cmd_len = slen(cmd_i)
+
+  // Unique temp filename using time()
+  ts = time()
+  rnd_s = str(ts)
+  rnd_len = slen(ptr(rnd_s))
+
+  // Build "/tmp/sans_sh_<ts>.txt"
+  tmp_len = 13 + rnd_len + 4
+  tmp = alloc(tmp_len + 1)
+  mcpy(tmp, ptr("/tmp/sans_sh_"), 13)
+  mcpy(tmp + 13, ptr(rnd_s), rnd_len)
+  mcpy(tmp + 13 + rnd_len, ptr(".txt"), 4)
+  store8(tmp + tmp_len, 0)
+
+  // Build "( <cmd> ) > <tmp> 2>/dev/null"
+  pfx = "( "
+  sfx1 = " ) > "
+  sfx2 = " 2>/dev/null"
+  full_len = 2 + cmd_len + 5 + tmp_len + 12
+  full = alloc(full_len + 1)
+  pos := 0
+  mcpy(full + pos, ptr(pfx), 2)
+  pos = pos + 2
+  mcpy(full + pos, cmd_i, cmd_len)
+  pos = pos + cmd_len
+  mcpy(full + pos, ptr(sfx1), 5)
+  pos = pos + 5
+  mcpy(full + pos, tmp, tmp_len)
+  pos = pos + tmp_len
+  mcpy(full + pos, ptr(sfx2), 12)
+  pos = pos + 12
+  store8(full + pos, 0)
+
+  system(full)
+  dealloc(full)
+
+  // Read temp file content
+  content = fr(tmp)
+
+  // Clean up temp file
+  rm_cmd = alloc(6 + tmp_len + 1)
+  mcpy(rm_cmd, ptr("rm -f "), 6)
+  mcpy(rm_cmd + 6, tmp, tmp_len)
+  store8(rm_cmd + 6 + tmp_len, 0)
+  system(rm_cmd)
+  dealloc(rm_cmd)
+  dealloc(tmp)
+
+  ptr(content)
+}
