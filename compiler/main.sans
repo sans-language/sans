@@ -490,10 +490,12 @@ main() I {
 
   if cmd == "pkg" {
     // Delegate to standalone sans-pkg binary
+    // Escape single quotes in args to prevent shell injection
     pkg_cmd := "sans-pkg"
     pi := 2
     while pi < argc {
-      pkg_cmd = pkg_cmd + " '" + argv.get(pi) + "'"
+      arg = argv.get(pi).replace("'", "'\\''")
+      pkg_cmd = pkg_cmd + " '" + arg + "'"
       pi = pi + 1
     }
     r = system(pkg_cmd)

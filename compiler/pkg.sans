@@ -2,6 +2,21 @@
 // Built separately from the compiler to avoid codegen size limits.
 // Invoked by `sans pkg ...` which execs `sans-pkg ...`
 
+// ---- Validation ----
+
+// Reject strings with shell metacharacters or path traversal
+pkg_validate(s: S label: S) I {
+  if s.contains("'") || s.contains("\"") || s.contains("`") || s.contains("$") || s.contains(";") || s.contains("|") || s.contains("&") || s.contains("(") || s.contains(")") || s.contains("\\") || s.contains("\n") {
+    p("error: " + label + " contains invalid characters")
+    exit(1)
+  }
+  if s.contains("..") {
+    p("error: " + label + " contains path traversal")
+    exit(1)
+  }
+  0
+}
+
 // ---- Helpers ----
 
 pkg_sans_dir() S {
@@ -23,16 +38,19 @@ pkg_cwd_name() S {
 }
 
 pkg_clone(url: S version: S) I {
+  pkg_validate(url "url")
+  pkg_validate(version "version")
   dest = pkg_cache_path(url version)
   if is_dir(dest) { p("  " + url + " " + version + " (cached)") return 1 }
   mkdir(pkg_cache_dir() + "/" + url)
   p("  " + url + " " + version + " (cloning)")
-  r = system("git clone --depth 1 --branch " + version + " 'https://" + url + ".git' '" + dest + "' 2>/dev/null")
+  r = system("git clone --depth 1 --branch '" + version + "' 'https://" + url + ".git' '" + dest + "' 2>/dev/null")
   if r != 0 { p("error: failed to clone " + url + " at " + version) return 0 }
   1
 }
 
 pkg_latest_tag(url: S) S {
+  pkg_validate(url "url")
   output = sh("git ls-remote --tags --sort=-v:refname 'https://" + url + ".git' 'v*' 2>/dev/null | head -1 | sed 's/.*refs\\/tags\\///' | sed 's/\\^{}//'")
   output.trim()
 }
@@ -141,6 +159,8 @@ pkg_install(a: I) I {
 }
 
 pkg_add_with_ver(url: S ver: S) I {
+  pkg_validate(url "url")
+  pkg_validate(ver "version")
   if fe("sans.json") != true { p("error: no sans.json. Run 'sans pkg init' first.") return 1 }
   content = fr("sans.json")
   mf = jp(content)
@@ -203,6 +223,8 @@ pkg_list(a: I) I {
 }
 
 pkg_update_to(url: S nv: S) I {
+  pkg_validate(url "url")
+  pkg_validate(nv "version")
   content = fr("sans.json")
   mf = jp(content)
   deps = mf.get("deps")
