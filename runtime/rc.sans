@@ -30,8 +30,10 @@ sans_rc_count(ptr:I) I {
 // Tracking nodes: 24 bytes [ptr, type_tag, next]
 g rc_alloc_head = 0
 g rc_scope_head = 0
+g rc_scope_disabled = 0
 
 sans_scope_track(ptr:I tag:I) I {
+  if rc_scope_disabled != 0 { return ptr }
   node = alloc(24)
   store64(node, ptr)
   store64(node + 8, tag)
@@ -62,10 +64,22 @@ sans_scope_untrack(ptr:I) I {
 }
 
 sans_scope_enter() I {
+  if rc_scope_disabled != 0 { return 0 }
   frame = alloc(16)
   store64(frame, rc_alloc_head)
   store64(frame + 8, rc_scope_head)
   rc_scope_head = frame
+  0
+}
+
+// Disable/enable scope GC (for compiler build pipeline)
+sans_scope_disable() I {
+  rc_scope_disabled = 1
+  0
+}
+
+sans_scope_enable() I {
+  rc_scope_disabled = 0
   0
 }
 
@@ -138,6 +152,7 @@ scope_should_keep(ptr:I keep:I) I {
 }
 
 sans_scope_exit(keep:I) I {
+  if rc_scope_disabled != 0 { return 0 }
   if rc_scope_head != 0 {
     watermark = load64(rc_scope_head)
     old_frame = rc_scope_head

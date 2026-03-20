@@ -1,5 +1,10 @@
 # Sans
 
+[![Release](https://img.shields.io/github/v/release/sans-language/sans?style=flat-square)](https://github.com/sans-language/sans/releases)
+[![License](https://img.shields.io/github/license/sans-language/sans?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS-blue?style=flat-square)]()
+[![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-green?style=flat-square)]()
+
 A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
 
 ## Quick Start
@@ -67,7 +72,7 @@ main() {
 
 | Feature | Syntax |
 |---|---|
-| **Types** | `I` (Int), `F` (Float), `B` (Bool), `S` (String), `M` (Map), `R<T>` (Result) |
+| **Types** | `I` (Int), `F` (Float), `B` (Bool), `S` (String), `J` (Json), `M` (Map), `R<T>` (Result) |
 | **Variables** | `x = 42` (immutable) / `x := 0` (mutable) / `g x = 0` (global) |
 | **Functions** | `add(a:I b:I) I = a + b` (compact) or `fn add(a Int, b Int) Int { a + b }` — default params: `f(x:I y:I=0)` |
 | **Lambdas** | `\|x:I\| I { x * 2 }` with implicit capture from enclosing scope |
@@ -84,6 +89,7 @@ main() {
 | **String methods** | `len`, `trim`, `split`, `starts_with`, `contains`, `replace`, `[0:5]` slicing |
 | **String interpolation** | `"Hello {name}!"` with expression support `"{x + 1}"` |
 | **Modules** | `import "math"` |
+| **Package Manager** | `sans pkg init`, `sans pkg add <url>`, `sans pkg install`, `sans pkg remove <url>` |
 | **Concurrency** | `spawn`, channels (`channel<I>()`, `send`, `recv`), `mutex` |
 | **File I/O** | `file_read`/`fr`, `file_write`/`fw`, `file_exists`/`fe` |
 | **Filesystem** | `mkdir`, `rmdir`, `remove`/`rm`, `listdir`/`ls`, `is_dir`, `getenv`/`genv` |

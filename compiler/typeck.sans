@@ -268,7 +268,7 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
   if name == "B" || name == "Bool" { return make_type(TY_BOOL) }
   if name == "S" || name == "String" { return make_type(TY_STRING) }
   if name == "M" || name == "Map" { return make_type(TY_MAP) }
-  if name == "JsonValue" { return make_type(TY_JSON) }
+  if name == "J" || name == "JsonValue" { return make_type(TY_JSON) }
   if name == "HttpResponse" { return make_type(TY_HTTP_RESP) }
   if name == "HttpServer" || name == "HS" { return make_type(TY_HTTP_SERVER) }
   if name == "HttpRequest" || name == "HR" { return make_type(TY_HTTP_REQ) }
@@ -900,6 +900,14 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if nargs != 1 { tc_error("mkdir() takes exactly 1 argument") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       if is_i64_compat(at) != 1 { tc_error("mkdir() requires String argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "scope_disable" {
+      if nargs != 0 { tc_error("scope_disable() takes 0 arguments") }
+      return make_type(TY_INT)
+    }
+    if name == "scope_enable" {
+      if nargs != 0 { tc_error("scope_enable() takes 0 arguments") }
       return make_type(TY_INT)
     }
     if name == "is_dir" {
@@ -2235,6 +2243,22 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if mc_method == "stringify" {
         if mc_nargs != 0 { tc_error("stringify() takes no arguments") }
         return make_type(TY_STRING)
+      }
+      if mc_method == "keys" {
+        if mc_nargs != 0 { tc_error("keys() takes no arguments") }
+        return make_array_type(make_type(TY_STRING))
+      }
+      if mc_method == "has" {
+        if mc_nargs != 1 { tc_error("has() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if is_i64_compat(at) != 1 { tc_error("has() key must be String, got " + type_to_string(at)) }
+        return make_type(TY_BOOL)
+      }
+      if mc_method == "delete" {
+        if mc_nargs != 1 { tc_error("delete() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if is_i64_compat(at) != 1 { tc_error("delete() key must be String, got " + type_to_string(at)) }
+        return make_type(TY_INT)
       }
       return tc_error("JsonValue has no method '" + mc_method + "'")
     }

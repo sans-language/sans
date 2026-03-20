@@ -386,6 +386,72 @@ sans_json_set_inner(o:I key:I val:I) I {
   }
 }
 
+sans_json_keys(o:I) I {
+  tag = load64(o)
+  if tag != 5 {
+    arr = alloc(24)
+    data = alloc(8)
+    store64(arr, data)
+    store64(arr + 8, 0)
+    store64(arr + 16, 1)
+    arr
+  } else {
+    obj = load64(o + 8)
+    cap = load64(obj + 32)
+    count = load64(obj + 24)
+    arr = alloc(24)
+    data = alloc(if count > 0 { count * 8 } else { 8 })
+    store64(arr, data)
+    store64(arr + 8, 0)
+    store64(arr + 16, if count > 0 { count } else { 1 })
+    hashes = load64(obj)
+    keys = load64(obj + 8)
+    i := 0
+    idx := 0
+    while i < cap {
+      h = load64(hashes + i * 8)
+      if h != 0 {
+        store64(data + idx * 8, load64(keys + i * 8))
+        idx = idx + 1
+        0
+      } else { 0 }
+      i = i + 1
+      0
+    }
+    store64(arr + 8, idx)
+    arr
+  }
+}
+
+sans_json_has(o:I key:I) I {
+  tag = load64(o)
+  if tag != 5 { 0 } else {
+    obj = load64(o + 8)
+    h = sans_json_hash(key)
+    slot = sans_json_ht_probe(obj, key, h)
+    hashes = load64(obj)
+    sh = load64(hashes + slot * 8)
+    if sh != 0 { 1 } else { 0 }
+  }
+}
+
+sans_json_delete(o:I key:I) I {
+  tag = load64(o)
+  if tag != 5 { 0 } else {
+    obj = load64(o + 8)
+    h = sans_json_hash(key)
+    slot = sans_json_ht_probe(obj, key, h)
+    hashes = load64(obj)
+    sh = load64(hashes + slot * 8)
+    if sh == 0 { 0 } else {
+      store64(hashes + slot * 8, 0)
+      count = load64(obj + 24)
+      store64(obj + 24, count - 1)
+      1
+    }
+  }
+}
+
 sans_json_obj_append(o:I key:I val:I) I {
   obj = load64(o + 8)
   count = load64(obj + 24)

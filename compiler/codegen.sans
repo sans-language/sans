@@ -464,6 +464,9 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_json_set(i64, i64, i64)")
   emit(cg, "declare i64 @sans_json_push(i64, i64)")
   emit(cg, "declare i64 @sans_json_stringify(i64)")
+  emit(cg, "declare i64 @sans_json_keys(i64)")
+  emit(cg, "declare i64 @sans_json_has(i64, i64)")
+  emit(cg, "declare i64 @sans_json_delete(i64, i64)")
 
   // ------ Sans runtime: HTTP ------
   emit(cg, "declare i64 @sans_http_listen(i64)")
@@ -601,6 +604,8 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_scope_exit(i64)")
   emit(cg, "declare i64 @sans_scope_track(i64, i64)")
   emit(cg, "declare i64 @sans_scope_untrack(i64)")
+  emit(cg, "declare i64 @sans_scope_disable()")
+  emit(cg, "declare i64 @sans_scope_enable()")
 
   // ------ Sans runtime: Socket helper ------
   emit(cg, "declare i64 @sans_bind_port(i64, i64)")
@@ -2376,6 +2381,20 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
+  if op == IR_SCOPE_DISABLE {
+    d = cg_fresh_reg(cg)
+    emit(cg, "  " + d + " = call i64 @sans_scope_disable()")
+    cg_set_val(cg, dest, d)
+    return 0
+  }
+
+  if op == IR_SCOPE_ENABLE {
+    d = cg_fresh_reg(cg)
+    emit(cg, "  " + d + " = call i64 @sans_scope_enable()")
+    cg_set_val(cg, dest, d)
+    return 0
+  }
+
   // ------ JSON (66-82) --- runtime calls ------
   if op == IR_JSON_PARSE {
     compile_rt1(cg, inst, "sans_json_parse")
@@ -2434,6 +2453,13 @@ compile_inst(cg:I inst:I) I {
     emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 5)
     return 0
   }
+  if op == IR_JSON_KEYS {
+    compile_rt1(cg, inst, "sans_json_keys")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 1)
+    return 0
+  }
+  if op == IR_JSON_HAS { return compile_rt2(cg, inst, "sans_json_has") }
+  if op == IR_JSON_DELETE { return compile_rt2(cg, inst, "sans_json_delete") }
 
   // ------ HTTP Server (83-89) ------
   if op == IR_HTTP_LISTEN { return compile_rt1(cg, inst, "sans_http_listen") }

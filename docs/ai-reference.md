@@ -3,8 +3,8 @@
 Compact reference for LLM context injection. Use short aliases.
 
 ## Types
-`I`=Int `F`=Float `B`=Bool `S`=String `R<T>`=Result<T>
-Array<T> Map(`M`) JsonValue HttpResponse HttpServer HttpRequest
+`I`=Int `F`=Float `B`=Bool `S`=String `J`=JsonValue `R<T>`=Result<T>
+Array<T> Map(`M`) HttpResponse HttpServer HttpRequest
 Sender<T> Receiver<T> Mutex<T> JoinHandle
 Tuple: `(I S B)` — heterogeneous fixed-size collection
 
@@ -269,4 +269,18 @@ ca/cors_all  ud/url_decode  ps/path_segment  sigh/signal_handler  sigc/signal_ch
 idx/index_of  pl/pad_left  pr/pad_right  ti/to_int  fm/flat_map
 gidx/get_index  gs/get_string  geti/get_int  gb/get_bool  typeof/type_of
 cl/content_length  rj/respond_json
-getenv/genv  remove/rm  listdir/ls  sh/shell
+getenv/genv  remove/rm  listdir/ls  sh/shell  J=JsonValue
+
+## Package Manager
+```
+sans pkg init [--name N --version V]   // create sans.json
+sans pkg add <url> [tag]               // add dependency
+sans pkg install                       // install all deps
+sans pkg remove <url>                  // remove dependency
+sans pkg list                          // list deps
+sans pkg update <url> [tag]            // update dependency
+sans pkg search <query>                // search index
+```
+sans.json: `{"name":"mylib","version":"0.1.0","deps":{"github.com/user/repo":"v1.0.0"}}`
+Cache: `~/.sans/packages/<url>/<version>/` — git clone per version tag
+Transitive deps resolved via BFS from each dep's sans.json

@@ -7,14 +7,12 @@ import "parser"
 import "typeck"
 import "ir"
 import "codegen"
+import "pkg"
 g g_merged = 0
 g g_file = 0
 g g_out = 0
 g g_src = 0
 g g_ll = 0
-g g_link_ll = 0
-g g_link_out = 0
-g g_link_src = 0
 g g_llc = 0
 
 
@@ -166,6 +164,9 @@ resolve_imports(entry_path:S) I {
 // ------ Build Pipeline ------------------------------------------------------------------------------------------------------------------------------------------
 
 build(source_path:S output_path:S) I {
+  // Disable scope GC for the build pipeline — the multi-step chain
+  // passes data across function boundaries that scope_exit would free
+  scope_disable()
   // 1. Resolve imports (topological order, deps first)
   modules = resolve_imports(source_path)
   // 2. Parse entry point
@@ -366,6 +367,16 @@ build_step8(program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_
   merged = make_ir_module(all_functions, all_globals, main_struct_defs)
   store64(merged + 24, all_ginits)
   g_merged = merged
+  // Run codegen and link in the SAME scope to prevent scope GC from freeing IR data
+  g_ll = g_out + ".ll"
+  wfd(2, "+STEP=1 FILE=")
+  wfd(2, g_file)
+  wfd(2, "\n")
+  compile_to_ll(g_merged, g_ll)
+  wfd(2, "+STEP=2 FILE=")
+  wfd(2, g_file)
+  wfd(2, "\n")
+  do_link(g_ll, g_out, g_src)
   0
 }
 
@@ -478,6 +489,11 @@ main() I {
     exit(0)
   }
 
+  if cmd == "pkg" {
+    pkg_main(argv)
+    exit(0)
+  }
+
   if argc < 3 {
     p("usage: sans <build|run> <file.sans>")
     exit(1)
@@ -499,36 +515,25 @@ main() I {
     g_file = file
     g_out = out
     g_src = file
-    // All steps in a single-iteration loop
-    step := 0
-    while step < 4 {
-      wfd(2, "STEP=")
-      wfd(2, str(step))
-      wfd(2, " FILE=")
-      wfd(2, g_file)
-      wfd(2, "\n")
-      if step == 0 { build(g_file, g_out) }
-      if step == 1 { g_ll = g_out + ".ll"
-        compile_to_ll(g_merged, g_ll) }
-      if step == 2 { do_link(g_ll, g_out, g_src) }
-      step = step + 1
-      wfd(2, "+")
-    }
+    wfd(2, "STEP=0 FILE=")
+    wfd(2, g_file)
+    wfd(2, "\n")
+    // build() now runs codegen + link internally (same scope as IR data)
+    build(g_file, g_out)
+    wfd(2, "+STEP=3 FILE=")
+    wfd(2, g_file)
+    wfd(2, "\n")
+    0
   } else { if cmd == "run" {
     g_file = file
     g_out = "/tmp/sans_run_out"
     g_src = file
-    step := 0
-    while step < 5 {
-      if step == 0 { build(g_file, g_out) }
-      if step == 1 { g_ll = g_out + ".ll"
-        compile_to_ll(g_merged, g_ll) }
-      if step == 2 { do_link(g_ll, g_out, g_src) }
-      if step == 3 { sys(g_out) }
-      if step == 4 { sys("rm -f " + g_out) }
-      step = step + 1
-      wfd(2, "+")
-    }
+    wfd(2, "STEP=0 FILE=")
+    wfd(2, g_file)
+    wfd(2, "\n")
+    build(g_file, g_out)
+    sys(g_out)
+    sys("rm -f " + g_out)
     0
   } else {
     p("unknown command: " + cmd)
