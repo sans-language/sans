@@ -86,6 +86,8 @@ main() {
 | **Modules** | `import "math"` |
 | **Concurrency** | `spawn`, channels (`channel<I>()`, `send`, `recv`), `mutex` |
 | **File I/O** | `file_read`/`fr`, `file_write`/`fw`, `file_exists`/`fe` |
+| **Filesystem** | `mkdir`, `rmdir`, `remove`/`rm`, `listdir`/`ls`, `is_dir`, `getenv`/`genv` |
+| **Process** | `sh`/`shell` (capture stdout), `system`/`sys` (exit code) |
 | **JSON** | `json_parse`/`jp`, `json_stringify`/`jfy`, `json_object`/`jo` |
 | **HTTP client** | `http_get`/`hg`, `http_post`/`hp` |
 | **HTTP server** | `serve(port handler)` with auto-threading, keep-alive, auto-gzip, graceful shutdown |

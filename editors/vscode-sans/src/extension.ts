@@ -105,7 +105,8 @@ const HOVER_DATA: Record<string, string> = {
     'content_length': '**content_length**() -> Int\n\nHttpRequest method. Get the Content-Length header value as an integer.\n\nUsage: `len = req.content_length()`',
     'respond_json': '**respond_json**(status: Int, body: String) -> Int\n\nHttpRequest method. Send a JSON response (sets Content-Type: application/json automatically).\n\nUsage: `req.respond_json(200 jfy(data))`',
     'respond_stream': '**respond_stream**(status: Int) -> Int\n\nHttpRequest method. Send HTTP headers with Transfer-Encoding: chunked and return a writer handle. Use `stream_write(w, data)` to send chunks and `stream_end(w)` to finalize.\n\nUsage: `w = req.respond_stream(200)`',
-    'sh': '**set_header**(name: String, value: String) -> Int\n\nAlias for `set_header()`. Add custom response header.\n\nUsage: `req.sh("X-Id" "abc")`',
+    'sh': '**sh**(cmd: String) -> String\n\nExecute command and capture stdout. Returns "" on failure.\n\nUsage: `output = sh("git status")`',
+    'shell': '**sh**(cmd: String) -> String\n\nAlias for `sh()`. Execute command and capture stdout.\n\nUsage: `shell("ls -la")`',
     'cl': '**content_length**() -> Int\n\nAlias for `content_length()`. Get Content-Length.\n\nUsage: `req.cl()`',
     'rj': '**respond_json**(status: Int, body: String) -> Int\n\nAlias for `respond_json()`. Send JSON response.\n\nUsage: `req.rj(200 data)`',
 
@@ -238,6 +239,16 @@ const HOVER_DATA: Record<string, string> = {
     'write_file': '**write_file**(path: String, content: String) -> Int\n\nWrite string to file. Returns 1 on success.\n\nUsage: `write_file("output.txt" "hello")`',
     'args': '**args**() -> Array\\<String\\>\n\nGet command-line arguments as a string array.\n\nUsage: `a = args()`',
 
+    // Filesystem & Process
+    'getenv': '**getenv**(name: String) -> String\n\nRead environment variable. Returns "" if not set.\n\nUsage: `home = getenv("HOME")`',
+    'genv': '**getenv**(name: String) -> String\n\nAlias for `getenv()`. Read environment variable.\n\nUsage: `genv("PATH")`',
+    'mkdir': '**mkdir**(path: String) -> Int\n\nCreate directory and parents (mkdir -p). Returns 1 on success, 0 on error.\n\nUsage: `mkdir("src/lib")`',
+    'rmdir': '**rmdir**(path: String) -> Int\n\nRemove empty directory. Returns 1 on success, 0 on error.\n\nUsage: `rmdir("build/tmp")`',
+    'rm': '**remove**(path: String) -> Int\n\nAlias for `remove()`. Delete a file. Returns 1 on success, 0 on error.\n\nUsage: `rm("old.txt")`',
+    'listdir': '**listdir**(path: String) -> Array\\<String\\>\n\nList directory contents. Returns empty array on error.\n\nUsage: `files = listdir("src/")`',
+    'ls': '**listdir**(path: String) -> Array\\<String\\>\n\nAlias for `listdir()`. List directory contents.\n\nUsage: `ls("src/")`',
+    'is_dir': '**is_dir**(path: String) -> Bool\n\nCheck if path is a directory.\n\nUsage: `is_dir("/tmp")`',
+
     // Type aliases
     'I': '**Int** — 64-bit signed integer',
     'F': '**Float** — 64-bit floating point',
@@ -291,7 +302,7 @@ const HOVER_DATA: Record<string, string> = {
     'len': '**len**() -> Int\n\nGet length of array, string, map, or JSON value.\n\nUsage: `n = a.len()`',
     'get': '**get**(key/index) -> T\n\nGet element by index (Array, String) or key (Map, JsonValue).\n\nUsage: `a.get(0)` or `m.get("key")`',
     'set': '**set**(key/index, value) -> Int\n\nSet element by index (Array) or key (Map, JsonValue).\n\nUsage: `a.set(0 42)` or `m.set("key" val)`',
-    'remove': '**remove**(index: Int) -> T\n\nRemove element at index from array.\n\nUsage: `a.remove(2)`',
+    'remove': '**remove**(index: Int) -> T — Array method: remove element at index.\n\n**remove**(path: String) -> Int — Builtin: delete a file. Returns 1 on success. Alias: `rm`.\n\nUsage: `a.remove(2)` or `remove("old.txt")`',
     'contains': '**contains**(value) -> Bool\n\nCheck if array or string contains value.\n\nUsage: `a.contains(42)` or `s.contains("hi")`',
     'filter': '**filter**(f: (T) -> Bool) -> Array\\<T\\>\n\nReturn elements that satisfy predicate.\n\nUsage: `a.filter(|x:I| B { x > 0 })`',
     'sort': '**sort**() -> Array\\<T\\>\n\nSort array in ascending order.\n\nUsage: `a.sort()`',

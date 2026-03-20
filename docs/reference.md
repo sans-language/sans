@@ -223,6 +223,33 @@ String comparison (`==`, `!=`) is supported.
 | `time()` / `now()` | `() -> Int` | Current Unix timestamp (seconds) |
 | `random(max)` / `rand(max)` | `(Int) -> Int` | Random integer in `[0, max)` |
 
+### Filesystem & Process
+
+| Function | Alias | Signature | Description |
+|----------|-------|-----------|-------------|
+| `getenv(name)` | `genv` | `(String) -> String` | Read environment variable. Returns `""` if not set. |
+| `mkdir(path)` | — | `(String) -> Int` | Create directory and parents (like `mkdir -p`). Returns 1 on success, 0 on error. |
+| `rmdir(path)` | — | `(String) -> Int` | Remove an empty directory. Returns 1 on success, 0 on error. |
+| `remove(path)` | `rm` | `(String) -> Int` | Delete a file. Returns 1 on success, 0 on error. |
+| `listdir(path)` | `ls` | `(String) -> Array<String>` | List directory contents. Returns empty array on error. |
+| `is_dir(path)` | — | `(String) -> Bool` | Check if path is a directory. |
+| `sh(cmd)` | `shell` | `(String) -> String` | Execute shell command and capture stdout. Returns `""` on failure. |
+
+```sans
+// Environment
+home = getenv("HOME")
+
+// Filesystem
+mkdir("build/output")       // creates parents
+is_dir("build/output")      // true
+files = listdir("src/")     // ["main.sans" "lib.sans" ...]
+remove("old.txt")           // delete file
+rmdir("build/output")       // remove empty dir
+
+// Process
+output = sh("uname -s")    // "Darwin\n" or "Linux\n"
+```
+
 ### JSON
 
 | Function | Alias | Signature |
