@@ -881,6 +881,9 @@ parse_stmt_inner(p:I) I {
 
   // for
   if kind == TK_FOR {
+    for_tok = p_peek(p)
+    for_line = tok_line(for_tok)
+    for_col = tok_col(for_tok)
     p_advance(p)  // consume for
     if p_at(p, TK_LPAREN) == 1 {
       p_advance(p)  // consume (
@@ -894,7 +897,7 @@ parse_stmt_inner(p:I) I {
       p_expect(p, TK_LBRACE)
       body = parse_body(p)
       p_expect(p, TK_RBRACE)
-      return make_st_for_in_destr(vars, iterable, body, 0, 0)
+      return make_st_for_in_destr(vars, iterable, body, for_line, for_col)
     } else {
       var_name = p_expect_ident(p)
       p_expect(p, TK_IN)
@@ -902,16 +905,19 @@ parse_stmt_inner(p:I) I {
       p_expect(p, TK_LBRACE)
       body = parse_body(p)
       p_expect(p, TK_RBRACE)
-      return make_st_for_in(var_name, iterable, body, 0, 0)
+      return make_st_for_in(var_name, iterable, body, for_line, for_col)
     }
   }
 
   // Check for := mutable declaration
   if kind == TK_IDENT && p_peek_kind_at(p, 1) == TK_COLON_EQ {
+    mut_tok = p_peek(p)
+    mut_line = tok_line(mut_tok)
+    mut_col = tok_col(mut_tok)
     name = p_expect_ident(p)
     p_advance(p)  // consume :=
     value = parse_expr(p, 0)
-    return make_st_let(name, 1, 0, value, 0, 0)
+    return make_st_let(name, 1, 0, value, mut_line, mut_col)
   }
 
   // Check for index assignment: ident[expr] = expr
@@ -942,6 +948,9 @@ parse_stmt_inner(p:I) I {
 
   // Check for compound assignment: ident += expr, etc.
   if kind == TK_IDENT {
+    ca_tok = p_peek(p)
+    ca_line = tok_line(ca_tok)
+    ca_col = tok_col(ca_tok)
     next_kind = p_peek_kind_at(p, 1)
     compound_op := -1
     if next_kind == TK_PLUS_EQ { compound_op = OP_ADD }
@@ -953,8 +962,8 @@ parse_stmt_inner(p:I) I {
       name = p_expect_ident(p)
       p_advance(p)  // consume compound operator
       rhs = parse_expr(p, 0)
-      value = make_binop(compound_op, make_ident(name, 0, 0), rhs, 0, 0)
-      return make_st_assign(name, value, 0, 0)
+      value = make_binop(compound_op, make_ident(name, ca_line, ca_col), rhs, ca_line, ca_col)
+      return make_st_assign(name, value, ca_line, ca_col)
     }
   }
 
@@ -965,9 +974,11 @@ parse_stmt_inner(p:I) I {
   if p_at(p, TK_EQ) == 1 {
     if load64(expr) == EX_IDENT {
       name = load64(expr + 16)
+      asgn_line = node_line(expr)
+      asgn_col = node_col(expr)
       p_advance(p)  // consume =
       value = parse_expr(p, 0)
-      return make_st_assign(name, value, 0, 0)
+      return make_st_assign(name, value, asgn_line, asgn_col)
     } else {
       print("parse error: left side of assignment must be a variable name\n")
       exit(1)
@@ -979,6 +990,9 @@ parse_stmt_inner(p:I) I {
 
 // ------ Let statement ------------------------------------------------------------------------------------------------------------------------------------------------
 parse_let(p:I) I {
+  let_tok = p_peek(p)
+  let_line = tok_line(let_tok)
+  let_col = tok_col(let_tok)
   p_expect(p, TK_LET)
 
   // Check for destructuring: let (a, b) = expr
@@ -993,7 +1007,7 @@ parse_let(p:I) I {
     names = array<I>()
     names.push(name1)
     names.push(name2)
-    return make_st_let_destr(names, value, 0, 0)
+    return make_st_let_destr(names, value, let_line, let_col)
   }
 
   // Check for mut keyword
@@ -1014,24 +1028,30 @@ parse_let(p:I) I {
   p_expect(p, TK_EQ)
   value = parse_expr(p, 0)
 
-  make_st_let(name, mutable, type_name, value, 0, 0)
+  make_st_let(name, mutable, type_name, value, let_line, let_col)
 }
 
 // ------ While statement ------------------------------------------------------------------------------------------------------------------------------------------
 parse_while_stmt(p:I) I {
+  w_tok = p_peek(p)
+  w_line = tok_line(w_tok)
+  w_col = tok_col(w_tok)
   p_expect(p, TK_WHILE)
   cond = parse_expr(p, 0)
   p_expect(p, TK_LBRACE)
   body = parse_body(p)
   p_expect(p, TK_RBRACE)
-  make_st_while(cond, body, 0, 0)
+  make_st_while(cond, body, w_line, w_col)
 }
 
 // ------ Return statement ---------------------------------------------------------------------------------------------------------------------------------------
 parse_return(p:I) I {
+  ret_tok = p_peek(p)
+  ret_line = tok_line(ret_tok)
+  ret_col = tok_col(ret_tok)
   p_expect(p, TK_RETURN)
   value = parse_expr(p, 0)
-  make_st_return(value, 0, 0)
+  make_st_return(value, ret_line, ret_col)
 }
 
 // ------ If statement / expression ------------------------------------------------------------------------------------------------------------
@@ -1215,6 +1235,9 @@ parse_atom(p:I) I {
 
   // Identifier
   if kind == TK_IDENT {
+    id_tok = p_peek(p)
+    id_line = tok_line(id_tok)
+    id_col = tok_col(id_tok)
     name = p_expect_ident(p)
 
     // Check for enum variant: Name::Variant
@@ -1227,7 +1250,7 @@ parse_atom(p:I) I {
         ev_args = parse_call_args(p)
         p_expect(p, TK_RPAREN)
       }
-      return make_enum_variant(name, variant_name, ev_args, 0, 0)
+      return make_enum_variant(name, variant_name, ev_args, id_line, id_col)
     }
 
     // Check for function call: Name(args)
@@ -1235,7 +1258,7 @@ parse_atom(p:I) I {
       p_advance(p)  // consume (
       args = parse_call_args(p)
       p_expect(p, TK_RPAREN)
-      return make_call(name, args, 0, 0)
+      return make_call(name, args, id_line, id_col)
     }
 
     // Check for generic struct literal: Name<T1 T2>{field:value}
@@ -1293,11 +1316,11 @@ parse_atom(p:I) I {
         if p_at(p, TK_COMMA) == 1 { p_advance(p) }
       }
       p_expect(p, TK_RBRACE)
-      return make_struct_lit(name, field_names, field_values, 0, 0)
+      return make_struct_lit(name, field_names, field_values, id_line, id_col)
     }
 
     // Plain identifier
-    return make_ident(name, 0, 0)
+    return make_ident(name, id_line, id_col)
   }
 
   // self

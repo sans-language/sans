@@ -181,6 +181,10 @@ build_step3(modules:I program:I output_path:I source_path:I) I {
     mod = modules.get(i)
     mod_n = rm_name(mod)
     mod_prog = rm_program(mod)
+    mod_path = rm_path(mod)
+    tc_current_file = mod_path
+    tc_current_source = fr(mod_path)
+    tc_has_source = 1
     exports = check_module(mod_prog, mod_exports)
     mset(mod_exports, mod_n, exports)
     i = i + 1
@@ -191,6 +195,9 @@ build_step3(modules:I program:I output_path:I source_path:I) I {
 
 // Step 4: Type-check entry point (no loop)
 build_step4(modules:I program:I mod_exports:I output_path:I source_path:I) I {
+  tc_current_file = source_path
+  tc_current_source = fr(source_path)
+  tc_has_source = 1
   check(program, mod_exports)
   build_step5(modules, program, mod_exports, output_path, source_path)
 }

@@ -414,6 +414,11 @@ g SCOPE_TAG_JSON = 3
 g SCOPE_TAG_RESULT = 4
 g SCOPE_TAG_STRING = 5
 
+// Diagnostic severity tags
+g DIAG_ERROR = 0
+g DIAG_WARN = 1
+g DIAG_INFO = 2
+
 // String interpolation part tags
 g INTERP_LITERAL = 0
 g INTERP_IDENT = 1
