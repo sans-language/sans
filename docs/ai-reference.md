@@ -6,6 +6,7 @@ Compact reference for LLM context injection. Use short aliases.
 `I`=Int `F`=Float `B`=Bool `S`=String `J`=JsonValue `R<T>`=Result<T> `O<T>`=Option<T>
 Array<T> Map<K V>(`M`) HttpResponse HttpServer HttpRequest
 Sender<T> Receiver<T> Mutex<T> JoinHandle
+`dyn T` — trait object (fat ptr: data+vtable); `x as dyn T` to coerce concrete struct
 Tuple: `(I S B)` — heterogeneous fixed-size collection
 Note: HttpResponse HttpServer Sender Receiver Mutex JoinHandle are distinct opaque handles (not interchangeable with I)
 
@@ -44,6 +45,8 @@ enum E { A, B(I) }         // enum
 match v { E::A => 0, E::B(x) => x }
 trait T { fn m(self) I }   // trait
 impl T for S { fn m(self) I { self.x } }
+x as dyn T                 // coerce to trait object (dyn T)
+f(v dyn T) I { v.m() }    // dyn T as parameter type
 spawn func(args)           // thread
 let (tx rx) = channel<I>() // channel
 mutex(val)                 // mutex
@@ -210,7 +213,7 @@ args()                                  -> [S] (command-line args)
 
 ## Methods
 ```
-Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b) sort reverse join(sep) slice(s e) reduce(init f) each(f)/for_each(f) flat_map(f) sum min max flat
+Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f)->O<T> enumerate zip(b) sort reverse join(sep) slice(s e) reduce(init f) each(f)/for_each(f) flat_map(f) sum min max flat
 Map<K V>:  set(k v) get(k)->O<V> has(k) len keys vals delete(k) entries  // bare M() = M<S I>
            M<S I>() M<I I>() M<I S>() M<S S>()  // int keys use multiplicative hash; float keys disallowed
            BREAKING(v0.7.1): get() returns O<V> — use ! or .unwrap_or(d) to extract
@@ -276,7 +279,7 @@ lookup(m:M<S I> k:S) O<I> {
 ```
 a.map(|x:I| I { x * 2 }).filter(|x:I| B { x > 3 })  // chained, auto-materialized
 a.any(|x:I| B { x > 3 })       // B — true if any match
-a.find(|x:I| B { x > 3 })      // I — first match or 0
+a.find(|x:I| B { x > 3 })      // O<T> — first match or None (use ! or .unwrap_or(d))
 a.enumerate()                    // [(I I)] — index-value tuples
 a.zip(b)                         // [(I I)] — paired tuples
 ```
