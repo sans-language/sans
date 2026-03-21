@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: macos-arm64
+            bootstrap_binary: sans-macos-arm64
+          - os: ubuntu-latest
+            platform: linux-x86_64
+            bootstrap_binary: sans-linux-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 17 (macOS)
+        if: runner.os == 'macOS'
+        run: brew install llvm@17
+
+      - name: Install LLVM 17 and dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/keyrings/llvm.asc
+          echo "deb [signed-by=/etc/apt/keyrings/llvm.asc] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 libcurl4-openssl-dev libssl-dev pkg-config zlib1g-dev
+
+      - name: Download bootstrap compiler
+        run: |
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/${{ matrix.bootstrap_binary }}.tar.gz" | tar xz
+          chmod +x sans
+          mv sans sans-bootstrap
+          ./sans-bootstrap --version
+
+      - name: Build compiler from source (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          ./sans-bootstrap build compiler/main.sans
+
+      - name: Build compiler from source (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          export PATH="/usr/lib/llvm-17/bin:$PATH"
+          ./sans-bootstrap build compiler/main.sans
+
+      - name: Run tests
+        run: bash tests/run_tests.sh
