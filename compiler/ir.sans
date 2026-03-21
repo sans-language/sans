@@ -880,7 +880,7 @@ lower_call_char_at(ctx:I args:I) I {
 lower_call_fptr(ctx:I args:I) I {
   // The arg is an EX_STRING_LIT node; extract the string pointer
   arg_expr = args.get(0)
-  fname = load64(arg_expr + 8)
+  fname = load64(arg_expr + 16)
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst1(IR_FPTR_NAMED, dest, fname))
   ctx_set_reg_type(ctx, dest, IRTY_INT)
@@ -4457,12 +4457,12 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     vtag = load64(gvalue)
     if vtag == EX_INT_LIT {
       mset(global_names, gname, IRTY_INT)
-      mset(global_init_vals, gname, load64(gvalue + 8))
+      mset(global_init_vals, gname, load64(gvalue + 16))
     }
     if vtag == EX_FLOAT_LIT { mset(global_names, gname, IRTY_FLOAT) }
     if vtag == EX_BOOL_LIT {
       mset(global_names, gname, IRTY_BOOL)
-      bval = load64(gvalue + 8)
+      bval = load64(gvalue + 16)
       mset(global_init_vals, gname, bval)
     }
     if vtag == EX_STRING_LIT { mset(global_names, gname, IRTY_STR) }
