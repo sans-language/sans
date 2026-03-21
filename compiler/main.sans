@@ -413,6 +413,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules = array<I>()
   runtime_modules.push("log")
   runtime_modules.push("result")
+  runtime_modules.push("option")
   runtime_modules.push("functional")
   runtime_modules.push("array_ext")
   runtime_modules.push("string_ext")

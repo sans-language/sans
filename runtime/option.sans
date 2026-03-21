@@ -1,0 +1,40 @@
+// Option<T> runtime — 16-byte layout: [tag:I, value:I]
+// tag: 0 = none, 1 = some
+
+sans_option_some(value:I) I {
+  o = alloc(16)
+  store64(o, 1)
+  store64(o + 8, value)
+  o
+}
+
+sans_option_none() I {
+  o = alloc(16)
+  store64(o, 0)
+  store64(o + 8, 0)
+  o
+}
+
+sans_option_is_some(o:I) I {
+  tag = load64(o)
+  if tag == 1 { 1 } else { 0 }
+}
+
+sans_option_is_none(o:I) I {
+  tag = load64(o)
+  if tag == 0 { 1 } else { 0 }
+}
+
+sans_option_unwrap(o:I) I {
+  tag = load64(o)
+  if tag == 1 { load64(o + 8) } else {
+    p("error: unwrap called on none\n")
+    exit(1)
+    0
+  }
+}
+
+sans_option_unwrap_or(o:I default_val:I) I {
+  tag = load64(o)
+  if tag == 1 { load64(o + 8) } else { default_val }
+}
