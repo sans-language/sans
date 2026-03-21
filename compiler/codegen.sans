@@ -540,6 +540,11 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_map_len(i64)")
   emit(cg, "declare i64 @sans_map_keys(i64)")
   emit(cg, "declare i64 @sans_map_vals(i64)")
+  emit(cg, "declare i64 @sans_map_set_int(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_map_get_int(i64, i64)")
+  emit(cg, "declare i64 @sans_map_has_int(i64, i64)")
+  emit(cg, "declare i64 @sans_map_keys_int(i64)")
+  emit(cg, "declare i64 @sans_map_delete_int(i64, i64)")
 
   // ------ Sans runtime: Arena ------
   emit(cg, "declare i64 @sans_arena_begin()")
@@ -748,6 +753,38 @@ compile_map_get_opt(cg:I inst:I) I {
   emit(cg, found_lbl + ":")
   raw_r = cg_fresh_reg(cg)
   emit(cg, "  " + raw_r + " = call i64 @sans_map_get(i64 " + m_val + ", i64 " + k_val + ")")
+  some_r = cg_fresh_reg(cg)
+  emit(cg, "  " + some_r + " = call i64 @sans_option_some(i64 " + raw_r + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, miss_lbl + ":")
+  none_r = cg_fresh_reg(cg)
+  emit(cg, "  " + none_r + " = call i64 @sans_option_none()")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, merge_lbl + ":")
+  phi_r = cg_fresh_reg(cg)
+  emit(cg, "  " + phi_r + " = phi i64 [" + some_r + ", %" + found_lbl + "], [" + none_r + ", %" + miss_lbl + "]")
+  cg_set_val(cg, dest, phi_r)
+  cg_set_current_block(cg, merge_lbl)
+  emit_scope_track(cg, phi_r, 6)
+  0
+}
+
+compile_map_get_opt_int(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  m_val = cg_get_val(cg, ir_field(inst, 16))
+  k_val = cg_get_val(cg, ir_field(inst, 24))
+  uid = cg_label_id(cg)
+  has_r = cg_fresh_reg(cg)
+  emit(cg, "  " + has_r + " = call i64 @sans_map_has_int(i64 " + m_val + ", i64 " + k_val + ")")
+  cmp_r = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp_r + " = icmp ne i64 " + has_r + ", 0")
+  found_lbl = "mgoi_found_" + uid
+  miss_lbl = "mgoi_miss_" + uid
+  merge_lbl = "mgoi_merge_" + uid
+  emit(cg, "  br i1 " + cmp_r + ", label %" + found_lbl + ", label %" + miss_lbl)
+  emit(cg, found_lbl + ":")
+  raw_r = cg_fresh_reg(cg)
+  emit(cg, "  " + raw_r + " = call i64 @sans_map_get_int(i64 " + m_val + ", i64 " + k_val + ")")
   some_r = cg_fresh_reg(cg)
   emit(cg, "  " + some_r + " = call i64 @sans_option_some(i64 " + raw_r + ")")
   emit(cg, "  br label %" + merge_lbl)
@@ -1903,6 +1940,7 @@ compile_inst(cg:I inst:I) I {
           stag := 0
           if frt == IRTY_ARRAY { stag = 1 }
           else if frt == IRTY_MAP { stag = 2 }
+          else if frt == IRTY_MAP_INT { stag = 2 }
           else if frt == IRTY_JSON { stag = 3 }
           else if frt == IRTY_RESULT { stag = 4 }
           else if frt == IRTY_STR { stag = 5 }
@@ -4247,13 +4285,27 @@ compile_inst(cg:I inst:I) I {
     emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 2)
     return 0
   }
+  if op == IR_MAP_CREATE_INT {
+    compile_rt0(cg, inst, "sans_map_create")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 2)
+    return 0
+  }
   if op == IR_MAP_GET { return compile_rt2(cg, inst, "sans_map_get") }
   if op == IR_MAP_GET_OPT { return compile_map_get_opt(cg, inst) }
+  if op == IR_MAP_GET_OPT_INT { return compile_map_get_opt_int(cg, inst) }
   if op == IR_MAP_SET { return compile_rt3(cg, inst, "sans_map_set") }
+  if op == IR_MAP_SET_INT { return compile_rt3(cg, inst, "sans_map_set_int") }
   if op == IR_MAP_HAS { return compile_rt2(cg, inst, "sans_map_has") }
+  if op == IR_MAP_HAS_INT { return compile_rt2(cg, inst, "sans_map_has_int") }
   if op == IR_MAP_LEN { return compile_rt1(cg, inst, "sans_map_len") }
+  if op == IR_MAP_GET_INT { return compile_rt2(cg, inst, "sans_map_get_int") }
   if op == IR_MAP_KEYS {
     compile_rt1(cg, inst, "sans_map_keys")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 1)
+    return 0
+  }
+  if op == IR_MAP_KEYS_INT {
+    compile_rt1(cg, inst, "sans_map_keys_int")
     emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 1)
     return 0
   }
@@ -4408,6 +4460,10 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_MAP_DELETE {
     compile_rt2(cg, inst, "sans_map_delete")
+    return 0
+  }
+  if op == IR_MAP_DELETE_INT {
+    compile_rt2(cg, inst, "sans_map_delete_int")
     return 0
   }
   if op == IR_STRING_CHAR_AT {

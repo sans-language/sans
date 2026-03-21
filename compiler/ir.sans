@@ -24,6 +24,7 @@ g IRTY_HTTP_REQ = 15
 g IRTY_TUPLE = 16
 g IRTY_MAP = 17
 g IRTY_OPTION = 18
+g IRTY_MAP_INT = 19
 
 // ------ IrBinOp constants ------------------------------------------------------------------------------------------------------------------------------
 g IROP_ADD = 0
@@ -741,6 +742,9 @@ lower_call(ctx:I name:I args:I) I {
   // ------ Map ------
   else if name == "M" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
   else if name == "map" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
+  // M<K V>() via mangled names: M$$I$$I, M$$I$$S, etc.
+  else if name == "M$$I$$I" || name == "M$$I$$S" || name == "M$$I$$F" || name == "M$$I$$B" { lower_call_0(ctx, IR_MAP_CREATE_INT, IRTY_MAP_INT) }
+  else if name == "M$$S$$I" || name == "M$$S$$S" || name == "M$$S$$F" || name == "M$$S$$B" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }
 
   // ------ Signal / Poll ------
   else if name == "signal_handler" || name == "sigh" { lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) }
@@ -1758,6 +1762,11 @@ lower_method_call(ctx:I expr:I) I {
     lower_map_method(ctx, obj_reg, method, args)
   }
 
+  // ------ Map (int key) methods ------
+  else if obj_type == IRTY_MAP_INT {
+    lower_map_int_method(ctx, obj_reg, method, args)
+  }
+
   // ------ JSON methods ------
   else if obj_type == IRTY_JSON {
     lower_json_method(ctx, obj_reg, method, args)
@@ -2411,6 +2420,65 @@ lower_map_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
+// ------ lower_map_int_method (integer key maps) ----------------------------------------------------------------------------------------------------------
+lower_map_int_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "get" {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_GET_OPT_INT, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_OPTION)
+    dest
+  }
+  else if method == "set" {
+    key_reg = lower_expr(ctx, args.get(0))
+    val_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_MAP_SET_INT, dest, obj_reg, key_reg, val_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "has" {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_HAS_INT, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "len" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_LEN, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "keys" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_KEYS_INT, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "vals" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_VALS, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "delete" {
+    key_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_MAP_DELETE_INT, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "entries" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_MAP_ENTRIES, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
 // ------ lower_json_method ---------------------------------------------------------------------------------------------------------------------------------
 lower_json_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "get" {
@@ -2841,6 +2909,7 @@ lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
   if obj_type == IRTY_ARRAY { lower_array_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_STR { lower_string_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_MAP { lower_map_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_MAP_INT { lower_map_int_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_JSON { lower_json_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_HTTP_RESP { lower_http_resp_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_HTTP_SERVER {
@@ -3794,6 +3863,8 @@ ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
   else if type_name == "String" { IRTY_STR }
   else if type_name == "M" { IRTY_MAP }
   else if type_name == "Map" { IRTY_MAP }
+  else if type_name.sw("M<I") || type_name.sw("Map<I") { IRTY_MAP_INT }
+  else if type_name.sw("M<S") || type_name.sw("Map<S") { IRTY_MAP }
   else if type_name == "J" { IRTY_JSON }
   else if type_name == "JsonValue" { IRTY_JSON }
   else if type_name == "HttpResponse" { IRTY_HTTP_RESP }

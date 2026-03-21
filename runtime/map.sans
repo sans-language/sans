@@ -299,3 +299,189 @@ sans_map_entries(m:I) I {
   store64(arr + 8, idx)
   arr
 }
+
+// ------ Integer key map functions ------
+
+sans_map_hash_int(key:I) I {
+  h := key * 2654435761
+  if h < 0 { h = 0 - h } else { 0 }
+  if h == 0 { 1 } else { h }
+}
+
+sans_map_probe_int(m:I key:I h:I) I {
+  hashes = load64(m)
+  keys = load64(m + 8)
+  cap = load64(m + 32)
+  slot := h % cap
+  if slot < 0 { slot = slot + cap
+    0 } else { 0 }
+  done := 0
+  result := slot
+  while done == 0 {
+    sh = load64(hashes + slot * 8)
+    if sh == 0 {
+      result = slot
+      done = 1
+      0
+    } else {
+      if sh == h {
+        k = load64(keys + slot * 8)
+        if k == key {
+          result = slot
+          done = 1
+          0
+        } else {
+          slot = slot + 1
+          if slot >= cap {
+            slot = 0
+            0
+          } else { 0 }
+          0
+        }
+      } else {
+        slot = slot + 1
+        if slot >= cap {
+          slot = 0
+          0
+        } else { 0 }
+        0
+      }
+    }
+  }
+  result
+}
+
+sans_map_set_int(m:I key:I val:I) I {
+  count = load64(m + 24)
+  cap = load64(m + 32)
+  if count * 4 >= cap * 3 {
+    sans_map_grow_int(m)
+    sans_map_set_int(m, key, val)
+  } else {
+    h = sans_map_hash_int(key)
+    slot = sans_map_probe_int(m, key, h)
+    hashes = load64(m)
+    sh = load64(hashes + slot * 8)
+    if sh != 0 {
+      store64(load64(m + 16) + slot * 8, val)
+      0
+    } else {
+      store64(hashes + slot * 8, h)
+      store64(load64(m + 8) + slot * 8, key)
+      store64(load64(m + 16) + slot * 8, val)
+      store64(m + 24, count + 1)
+      0
+    }
+  }
+}
+
+sans_map_get_int(m:I key:I) I {
+  h = sans_map_hash_int(key)
+  slot = sans_map_probe_int(m, key, h)
+  hashes = load64(m)
+  sh = load64(hashes + slot * 8)
+  if sh == 0 { 0 } else { load64(load64(m + 16) + slot * 8) }
+}
+
+sans_map_has_int(m:I key:I) I {
+  h = sans_map_hash_int(key)
+  slot = sans_map_probe_int(m, key, h)
+  hashes = load64(m)
+  sh = load64(hashes + slot * 8)
+  if sh == 0 { 0 } else { 1 }
+}
+
+sans_map_keys_int(m:I) I {
+  cap = load64(m + 32)
+  count = load64(m + 24)
+  arr = alloc(24)
+  data = alloc(if count > 0 { count * 8 } else { 8 })
+  store64(arr, data)
+  store64(arr + 8, 0)
+  store64(arr + 16, count)
+  hashes = load64(m)
+  keys = load64(m + 8)
+  i := 0
+  idx := 0
+  while i < cap {
+    h = load64(hashes + i * 8)
+    if h != 0 {
+      store64(data + idx * 8, load64(keys + i * 8))
+      idx = idx + 1
+      0
+    } else { 0 }
+    i = i + 1
+    0
+  }
+  store64(arr + 8, idx)
+  arr
+}
+
+sans_map_delete_int(m:I key:I) I {
+  hashes = load64(m)
+  keys = load64(m + 8)
+  count = load64(m + 24)
+  cap = load64(m + 32)
+  h = sans_map_hash_int(key)
+  idx := h % cap
+  if idx < 0 { idx = 0 - idx }
+  found := 0
+  i := 0
+  while i < cap {
+    slot = (idx + i) % cap
+    sh = load64(hashes + slot * 8)
+    if sh == 0 {
+      i = cap
+    } else {
+      if sh == h {
+        sk = load64(keys + slot * 8)
+        if sk == key {
+          store64(hashes + slot * 8, 0)
+          store64(m + 24, count - 1)
+          found = 1
+          i = cap
+        }
+      }
+    }
+    i += 1
+    0
+  }
+  found
+}
+
+sans_map_grow_int(m:I) I {
+  old_hashes = load64(m)
+  old_keys = load64(m + 8)
+  old_vals = load64(m + 16)
+  old_cap = load64(m + 32)
+  new_cap = old_cap * 2
+  new_hashes = alloc(new_cap * 8)
+  mzero(new_hashes, new_cap * 8)
+  new_keys = alloc(new_cap * 8)
+  new_vals = alloc(new_cap * 8)
+  store64(m, new_hashes)
+  store64(m + 8, new_keys)
+  store64(m + 16, new_vals)
+  store64(m + 24, 0)
+  store64(m + 32, new_cap)
+  i := 0
+  while i < old_cap {
+    h = load64(old_hashes + i * 8)
+    if h != 0 {
+      k = load64(old_keys + i * 8)
+      vv = load64(old_vals + i * 8)
+      slot = sans_map_probe_int(m, k, h)
+      store64(load64(m) + slot * 8, h)
+      store64(load64(m + 8) + slot * 8, k)
+      store64(load64(m + 16) + slot * 8, vv)
+      store64(m + 24, load64(m + 24) + 1)
+      0
+    } else { 0 }
+    i = i + 1
+    0
+  }
+  dealloc(old_hashes)
+  dealloc(old_keys)
+  dealloc(old_vals)
+  0
+}

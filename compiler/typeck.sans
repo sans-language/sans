@@ -54,6 +54,15 @@ make_option_type(inner:I) I {
   t
 }
 
+make_map_type(key_type:I val_type:I) I {
+  t = alloc(32)
+  store64(t, TY_MAP)
+  store64(t + 8, key_type)
+  store64(t + 16, val_type)
+  store64(t + 24, 0)
+  t
+}
+
 make_sender_type(inner:I) I {
   t = alloc(32)
   store64(t, TY_SENDER)
@@ -382,6 +391,22 @@ find_last_char(s:S ch:I) I {
 }
 
 // ------ resolve_type: parse type name string --- Type ptr ---------------------------------------------------
+resolve_map_type(inner:S structs:I enums:I mod_exports:I) I {
+  sp := find_char(inner, 32, 0)
+  if sp < 0 { sp = find_char(inner, 44, 0) } else { 0 }
+  if sp < 0 { return tc_error("Map<K V> requires two type parameters") }
+  k_name = inner.substring(0, sp)
+  v_start := sp + 1
+  il = slen(inner)
+  if v_start < il && char_at(inner, v_start) == 32 { v_start = v_start + 1 } else { 0 }
+  v_name = inner.substring(v_start, il)
+  kt = resolve_type(k_name, structs, enums, mod_exports)
+  ktag = type_tag(kt)
+  if ktag != TY_STRING && ktag != TY_INT { return tc_error("Map key type must be I or S, got " + type_to_string(kt)) }
+  vt = resolve_type(v_name, structs, enums, mod_exports)
+  make_map_type(kt, vt)
+}
+
 resolve_type(name:S structs:I enums:I mod_exports:I) I {
   len = slen(name)
   if len == 0 { return tc_error("resolve_type: empty type name") }
@@ -418,7 +443,7 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
   if name == "F" || name == "Float" { return make_type(TY_FLOAT) }
   if name == "B" || name == "Bool" { return make_type(TY_BOOL) }
   if name == "S" || name == "String" { return make_type(TY_STRING) }
-  if name == "M" || name == "Map" { return make_type(TY_MAP) }
+  if name == "M" || name == "Map" { return make_map_type(make_type(TY_STRING), make_type(TY_INT)) }
   if name == "J" || name == "JsonValue" { return make_type(TY_JSON) }
   if name == "HttpResponse" { return make_type(TY_HTTP_RESP) }
   if name == "HttpServer" || name == "HS" { return make_type(TY_HTTP_SERVER) }
@@ -441,6 +466,16 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
   if name.sw("R<") && char_at(name, len - 1) == 62 {
     inner_name = name.substring(2, len - 1)
     return make_result_type(resolve_type(inner_name, structs, enums, mod_exports))
+  }
+
+  // Map<K V> or Map<K, V>
+  if name.sw("Map<") && char_at(name, len - 1) == 62 {
+    return resolve_map_type(name.substring(4, len - 1), structs, enums, mod_exports)
+  }
+
+  // M<K V> or M<K, V>
+  if name.sw("M<") && char_at(name, len - 1) == 62 {
+    return resolve_map_type(name.substring(2, len - 1), structs, enums, mod_exports)
   }
 
   // Sender<T>
@@ -519,7 +554,14 @@ type_to_string(t:I) S {
   if tag == TY_FLOAT { return "Float" }
   if tag == TY_BOOL { return "Bool" }
   if tag == TY_STRING { return "String" }
-  if tag == TY_MAP { return "Map" }
+  if tag == TY_MAP {
+    kt = type_inner(t)
+    vt = type_data(t)
+    if kt != 0 && vt != 0 {
+      return "Map<" + type_to_string(kt) + ", " + type_to_string(vt) + ">"
+    }
+    return "Map"
+  }
   if tag == TY_VOID { return "Void" }
   if tag == TY_JSON { return "JsonValue" }
   if tag == TY_HTTP_RESP { return "HttpResponse" }
@@ -896,6 +938,59 @@ instantiate_generic_struct(sname:I structs:I enums:I mod_exports:I) I {
 }
 
 // ------ check_expr: type-check an expression, return Type ptr ---------------------------
+map_key_t(obj_ty:I) I {
+  kt = type_inner(obj_ty)
+  kt != 0 ? kt : make_type(TY_STRING)
+}
+
+map_val_t(obj_ty:I) I {
+  vt = type_data(obj_ty)
+  vt != 0 ? vt : make_type(TY_INT)
+}
+
+check_map_method(obj_ty:I mc_method:I mc_args:I mc_nargs:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
+  if mc_method == "get" {
+    if mc_nargs != 1 { tc_error("get() takes exactly 1 argument") }
+    at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    if is_i64_compat(at) != 1 { tc_error("get() key type mismatch, got " + type_to_string(at)) }
+    return make_option_type(map_val_t(obj_ty))
+  }
+  if mc_method == "set" {
+    if mc_nargs != 2 { tc_error("set() takes exactly 2 arguments (key, value)") }
+    at0 = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    if is_i64_compat(at0) != 1 { tc_error("set() key type mismatch, got " + type_to_string(at0)) }
+    check_expr(mc_args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    return make_type(TY_INT)
+  }
+  if mc_method == "has" {
+    if mc_nargs != 1 { tc_error("has() takes exactly 1 argument") }
+    at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    if is_i64_compat(at) != 1 { tc_error("has() key type mismatch, got " + type_to_string(at)) }
+    return make_type(TY_BOOL)
+  }
+  if mc_method == "len" {
+    if mc_nargs != 0 { tc_error("len() takes no arguments") }
+    return make_type(TY_INT)
+  }
+  if mc_method == "keys" {
+    if mc_nargs != 0 { tc_error("keys() takes no arguments") }
+    return make_array_type(map_key_t(obj_ty))
+  }
+  if mc_method == "vals" {
+    if mc_nargs != 0 { tc_error("vals() takes no arguments") }
+    return make_array_type(map_val_t(obj_ty))
+  }
+  if mc_method == "delete" {
+    if mc_nargs != 1 { tc_error("delete() takes exactly 1 argument (key)") }
+    return make_type(TY_INT)
+  }
+  if mc_method == "entries" {
+    if mc_nargs != 0 { tc_error("entries() takes no arguments") }
+    return make_array_type(make_type(TY_TUPLE))
+  }
+  tc_error("Map has no method '" + mc_method + "'")
+}
+
 check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
   tag = load64(expr)
 
@@ -1801,7 +1896,22 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // ------ Map ------------------------------------------------------------------------------------------------------------------------------------------------------------------
     if name == "M" || name == "map" {
       if nargs != 0 { tc_error("map() takes 0 arguments") }
-      return make_type(TY_MAP)
+      return make_map_type(make_type(TY_STRING), make_type(TY_INT))
+    }
+    // M<K V>() via mangled names from parser: M$$I$$I, M$$S$$I, M$$S$$S, M$$I$$S
+    if name.sw("M$$") {
+      if nargs != 0 { tc_error(name + "() takes 0 arguments") }
+      // Parse mangled name: M$$K$$V
+      rest = as_str(name).substring(3, slen(name))
+      sp = find_char(rest, 36, 0)
+      if sp < 0 { return tc_error("invalid Map type: " + name) }
+      k_str = rest.substring(0, sp)
+      v_str = rest.substring(sp + 2, slen(rest))
+      kt = resolve_type(ptr(k_str), structs, enums, mod_exports)
+      ktag = type_tag(kt)
+      if ktag != TY_STRING && ktag != TY_INT { return tc_error("Map key type must be I or S, got " + type_to_string(kt)) }
+      vt = resolve_type(ptr(v_str), structs, enums, mod_exports)
+      return make_map_type(kt, vt)
     }
     if name == "mget" {
       if nargs != 2 { tc_error("mget() takes exactly 2 arguments (map, key)") }
@@ -2305,47 +2415,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     }
     // ------ Map methods ------------------------------------------------------------------------------------------------------------------------------------------
     if ot == TY_MAP {
-      if mc_method == "get" {
-        if mc_nargs != 1 { tc_error("get() takes exactly 1 argument") }
-        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-        if is_i64_compat(at) != 1 { tc_error("get() key must be String, got " + type_to_string(at)) }
-        return make_option_type(make_type(TY_INT))
-      }
-      if mc_method == "set" {
-        if mc_nargs != 2 { tc_error("set() takes exactly 2 arguments (key, value)") }
-        at0 = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-        if is_i64_compat(at0) != 1 { tc_error("set() key must be String, got " + type_to_string(at0)) }
-        // Accept any value type --- stored as i64
-        check_expr(mc_args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-        return make_type(TY_INT)
-      }
-      if mc_method == "has" {
-        if mc_nargs != 1 { tc_error("has() takes exactly 1 argument") }
-        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-        if is_i64_compat(at) != 1 { tc_error("has() key must be String, got " + type_to_string(at)) }
-        return make_type(TY_BOOL)
-      }
-      if mc_method == "len" {
-        if mc_nargs != 0 { tc_error("len() takes no arguments") }
-        return make_type(TY_INT)
-      }
-      if mc_method == "keys" {
-        if mc_nargs != 0 { tc_error("keys() takes no arguments") }
-        return make_array_type(make_type(TY_STRING))
-      }
-      if mc_method == "vals" {
-        if mc_nargs != 0 { tc_error("vals() takes no arguments") }
-        return make_array_type(make_type(TY_INT))
-      }
-      if mc_method == "delete" {
-        if mc_nargs != 1 { tc_error("delete() takes exactly 1 argument (key)") }
-        return make_type(TY_INT)
-      }
-      if mc_method == "entries" {
-        if mc_nargs != 0 { tc_error("entries() takes no arguments") }
-        return make_array_type(make_type(TY_TUPLE))
-      }
-      return tc_error("Map has no method '" + mc_method + "'")
+      return check_map_method(obj_ty, mc_method, mc_args, mc_nargs, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     }
     // ------ Result methods ---------------------------------------------------------------------------------------------------------------------------------
     if ot == TY_RESULT || ot == TY_RESULT_ERR {
@@ -2782,10 +2852,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       return make_type(TY_INT)
     }
     if obj_tag == TY_MAP && field_s == "keys" {
-      return make_array_type(make_type(TY_STRING))
+      fkt = type_inner(obj_ty)
+      return make_array_type(fkt != 0 ? fkt : make_type(TY_STRING))
     }
     if obj_tag == TY_MAP && field_s == "vals" {
-      return make_array_type(make_type(TY_INT))
+      fvt = type_data(obj_ty)
+      return make_array_type(fvt != 0 ? fvt : make_type(TY_INT))
     }
     // Generic fallback: treat as no-arg method call (e.g. server.accept → server.accept())
     synth_mc = alloc(56)
