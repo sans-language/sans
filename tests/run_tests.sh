@@ -178,6 +178,7 @@ run_test "pkg_validate"               "$REPO_ROOT/tests/fixtures/pkg_validate.sa
 run_test "random_real"                "$REPO_ROOT/tests/fixtures/random_real.sans"                0
 run_test "json_float"                 "$REPO_ROOT/tests/fixtures/json_float.sans"                 3
 run_test "closure_captures"          "$REPO_ROOT/tests/fixtures/closure_captures.sans"          0
+run_test "deep_recursion"            "$REPO_ROOT/tests/fixtures/deep_recursion.sans"            0
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests

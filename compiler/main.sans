@@ -447,6 +447,11 @@ do_link(ll_path:S output_path:S source_path:S) I {
   }
 
   // 13. Link
+  // Detect platform: 'D' (68) = Darwin/macOS, 'L' (76) = Linux
+  platform = sh("uname -s")
+  is_mac := 0
+  if load8(platform) == 68 { is_mac = 1 } else { 0 }
+
   link_cmd := "cc '" + obj_path + "'"
   li := 0
   while li < runtime_o_paths.len() {
@@ -454,7 +459,13 @@ do_link(ll_path:S output_path:S source_path:S) I {
     li = li + 1
     0
   }
-  link_cmd = link_cmd + " -lcurl -lz -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib -o '" + output_path + "'"
+  link_cmd = link_cmd + " -lcurl -lz"
+  if is_mac == 1 {
+    link_cmd = link_cmd + " -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib"
+  } else {
+    link_cmd = link_cmd + " -Wl,-z,stacksize=268435456 $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto')"
+  }
+  link_cmd = link_cmd + " -o '" + output_path + "'"
   sys(link_cmd)
 
   // 14. Cleanup
