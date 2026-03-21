@@ -221,7 +221,7 @@ String comparison (`==`, `!=`) is supported.
 |----------|-----------|-------------|
 | `sleep(ms)` | `(Int) -> Int` | Pause execution for milliseconds |
 | `time()` / `now()` | `() -> Int` | Current Unix timestamp (seconds) |
-| `random(max)` / `rand(max)` | `(Int) -> Int` | Random integer in `[0, max)` |
+| `random(max)` / `rand(max)` | `(Int) -> Int` | Cryptographically seeded random integer in `[0, max)` |
 
 ### Filesystem & Process
 
@@ -260,7 +260,7 @@ output = sh("uname -s")    // "Darwin\n" or "Linux\n"
 | `json_int(n)` | `ji` | `(Int) -> JsonValue` |
 | `json_bool(b)` | `jb` | `(Bool) -> JsonValue` |
 | `json_null()` | `jn` | `() -> JsonValue` |
-| `json_parse(s)` | `jp` | `(String) -> JsonValue` |
+| `json_parse(s)` | `jp` | `(String) -> JsonValue` — parses objects, arrays, strings, ints, floats, bools, null |
 | `json_stringify(v)` | `jfy` | `(JsonValue) -> String` |
 
 ### HTTP Client
@@ -732,6 +732,8 @@ multiplier = 3
 scaled = nums.map(|x:I| I { x * multiplier })
 ```
 
+Up to 8 variables can be captured from the enclosing scope per closure.
+
 ---
 
 ## Iterator Chains
@@ -938,6 +940,24 @@ main() {
 name = "Sans"
 msg = "Hello {name}!"    // "Hello Sans!"
 ```
+
+---
+
+## Compiler Diagnostics
+
+The Sans compiler reports errors with source location and context:
+
+```
+file.sans:12:5: error: undefined variable 'foo'
+    foo + 1
+    ^
+```
+
+Format: `file:line:col: severity: message`, followed by the source line and a caret (`^`) pointing to the offending token.
+
+The compiler collects multiple errors before exiting, so all errors in a file are reported in a single pass. Warnings are also emitted for common issues (e.g. unused variables).
+
+Error severities: `error` (build fails), `warning` (build continues).
 
 ### Expression Interpolation
 

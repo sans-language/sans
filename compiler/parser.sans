@@ -4,7 +4,15 @@ import "lexer"
 // ------ Token accessors ------------------------------------------------------------------------------------------------------------------------------------------
 tok_kind(t:I) I = load64(t)
 tok_val(t:I) I = load64(t + 8)
+tok_line(t:I) I = load64(t + 16)
+tok_col(t:I) I = load64(t + 24)
 
+
+// ------ AST node source location accessors (universal for tagged nodes) -------------------------------------------
+// Tagged nodes have: [tag:I, size:I, ...fields..., line:I, col:I]
+// size is at offset 8, line is at size-16, col is at size-8
+node_line(n:I) I = load64(n + load64(n + 8) - 16)
+node_col(n:I) I = load64(n + load64(n + 8) - 8)
 // ------ Parser state ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Parser: [tokens:I, pos:I, last_try_expr:I] = 24 bytes
 make_parser(tokens:I) I {
@@ -81,258 +89,354 @@ p_expect_ident(p:I) I {
 // ------ AST constructors ---------------------------------------------------------------------------------------------------------------------------------------
 
 // Expr nodes
-make_int_lit(val:I) I {
-  n = alloc(16)
+make_int_lit(val:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_INT_LIT)
-  store64(n + 8, val)
+  store64(n + 8, 40)
+  store64(n + 16, val)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_float_lit(val:I) I {
-  n = alloc(16)
+make_float_lit(val:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_FLOAT_LIT)
-  store64(n + 8, val)
+  store64(n + 8, 40)
+  store64(n + 16, val)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_bool_lit(val:I) I {
-  n = alloc(16)
+make_bool_lit(val:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_BOOL_LIT)
-  store64(n + 8, val)
+  store64(n + 8, 40)
+  store64(n + 16, val)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_string_lit(str_ptr:I) I {
-  n = alloc(16)
+make_string_lit(str_ptr:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_STRING_LIT)
-  store64(n + 8, str_ptr)
+  store64(n + 8, 40)
+  store64(n + 16, str_ptr)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_ident(name_ptr:I) I {
-  n = alloc(16)
+make_ident(name_ptr:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_IDENT)
-  store64(n + 8, name_ptr)
+  store64(n + 8, 40)
+  store64(n + 16, name_ptr)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_binop(op:I left:I right:I) I {
-  n = alloc(32)
+make_binop(op:I left:I right:I line:I col:I) I {
+  n = alloc(56)
   store64(n, EX_BINOP)
-  store64(n + 8, op)
-  store64(n + 16, left)
-  store64(n + 24, right)
+  store64(n + 8, 56)
+  store64(n + 16, op)
+  store64(n + 24, left)
+  store64(n + 32, right)
+  store64(n + 40, line)
+  store64(n + 48, col)
   n
 }
 
-make_unaryop(op:I operand:I) I {
-  n = alloc(24)
+make_unaryop(op:I operand:I line:I col:I) I {
+  n = alloc(48)
   store64(n, EX_UNARYOP)
-  store64(n + 8, op)
-  store64(n + 16, operand)
+  store64(n + 8, 48)
+  store64(n + 16, op)
+  store64(n + 24, operand)
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_call(name_ptr:I args:I) I {
-  n = alloc(24)
+make_call(name_ptr:I args:I line:I col:I) I {
+  n = alloc(48)
   store64(n, EX_CALL)
-  store64(n + 8, name_ptr)
-  store64(n + 16, ptr(args))
-  n
-}
-
-make_method_call(object:I method_ptr:I args:I) I {
-  n = alloc(32)
-  store64(n, EX_METHOD_CALL)
-  store64(n + 8, object)
-  store64(n + 16, method_ptr)
+  store64(n + 8, 48)
+  store64(n + 16, name_ptr)
   store64(n + 24, ptr(args))
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_field_access(object:I field_ptr:I) I {
-  n = alloc(24)
+make_method_call(object:I method_ptr:I args:I line:I col:I) I {
+  n = alloc(56)
+  store64(n, EX_METHOD_CALL)
+  store64(n + 8, 56)
+  store64(n + 16, object)
+  store64(n + 24, method_ptr)
+  store64(n + 32, ptr(args))
+  store64(n + 40, line)
+  store64(n + 48, col)
+  n
+}
+
+make_field_access(object:I field_ptr:I line:I col:I) I {
+  n = alloc(48)
   store64(n, EX_FIELD_ACCESS)
-  store64(n + 8, object)
-  store64(n + 16, field_ptr)
+  store64(n + 8, 48)
+  store64(n + 16, object)
+  store64(n + 24, field_ptr)
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
 // NOTE: then_stmts_p and else_stmts_p are raw array pointers (from ptr(array))
-make_if_expr(cond:I then_stmts_p:I then_expr:I else_stmts_p:I else_expr:I) I {
-  n = alloc(48)
+make_if_expr(cond:I then_stmts_p:I then_expr:I else_stmts_p:I else_expr:I line:I col:I) I {
+  n = alloc(72)
   store64(n, EX_IF)
-  store64(n + 8, cond)
-  store64(n + 16, then_stmts_p)
-  store64(n + 24, then_expr)
-  store64(n + 32, else_stmts_p)
-  store64(n + 40, else_expr)
+  store64(n + 8, 72)
+  store64(n + 16, cond)
+  store64(n + 24, then_stmts_p)
+  store64(n + 32, then_expr)
+  store64(n + 40, else_stmts_p)
+  store64(n + 48, else_expr)
+  store64(n + 56, line)
+  store64(n + 64, col)
   n
 }
 
-make_lambda(params:I ret_type:I body_stmts:I) I {
-  n = alloc(32)
+make_lambda(params:I ret_type:I body_stmts:I line:I col:I) I {
+  n = alloc(56)
   store64(n, EX_LAMBDA)
-  store64(n + 8, ptr(params))
-  store64(n + 16, ret_type)
-  store64(n + 24, ptr(body_stmts))
+  store64(n + 8, 56)
+  store64(n + 16, ptr(params))
+  store64(n + 24, ret_type)
+  store64(n + 32, ptr(body_stmts))
+  store64(n + 40, line)
+  store64(n + 48, col)
   n
 }
 
-make_array_lit(elements:I) I {
-  n = alloc(16)
+make_array_lit(elements:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_ARRAY_LIT)
-  store64(n + 8, ptr(elements))
+  store64(n + 8, 40)
+  store64(n + 16, ptr(elements))
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_struct_lit(name_ptr:I field_names:I field_values:I) I {
-  n = alloc(32)
+make_struct_lit(name_ptr:I field_names:I field_values:I line:I col:I) I {
+  n = alloc(56)
   store64(n, EX_STRUCT_LIT)
-  store64(n + 8, name_ptr)
-  store64(n + 16, ptr(field_names))
-  store64(n + 24, ptr(field_values))
+  store64(n + 8, 56)
+  store64(n + 16, name_ptr)
+  store64(n + 24, ptr(field_names))
+  store64(n + 32, ptr(field_values))
+  store64(n + 40, line)
+  store64(n + 48, col)
   n
 }
 
-make_tuple_lit(elements:I) I {
-  n = alloc(16)
+make_tuple_lit(elements:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_TUPLE_LIT)
-  store64(n + 8, ptr(elements))
+  store64(n + 8, 40)
+  store64(n + 16, ptr(elements))
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_match_expr(scrutinee:I arms:I) I {
-  n = alloc(24)
+make_match_expr(scrutinee:I arms:I line:I col:I) I {
+  n = alloc(48)
   store64(n, EX_MATCH)
-  store64(n + 8, scrutinee)
-  store64(n + 16, ptr(arms))
+  store64(n + 8, 48)
+  store64(n + 16, scrutinee)
+  store64(n + 24, ptr(arms))
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_spawn(func_name_ptr:I args:I) I {
-  n = alloc(24)
+make_spawn(func_name_ptr:I args:I line:I col:I) I {
+  n = alloc(48)
   store64(n, EX_SPAWN)
-  store64(n + 8, func_name_ptr)
-  store64(n + 16, ptr(args))
-  n
-}
-
-make_channel(elem_type_ptr:I capacity_expr:I) I {
-  n = alloc(24)
-  store64(n, EX_CHANNEL)
-  store64(n + 8, elem_type_ptr)
-  store64(n + 16, capacity_expr)
-  n
-}
-
-make_mutex_expr(value_expr:I) I {
-  n = alloc(16)
-  store64(n, EX_MUTEX)
-  store64(n + 8, value_expr)
-  n
-}
-
-make_enum_variant(enum_name:I variant_name:I args:I) I {
-  n = alloc(32)
-  store64(n, EX_ENUM_VARIANT)
-  store64(n + 8, enum_name)
-  store64(n + 16, variant_name)
+  store64(n + 8, 48)
+  store64(n + 16, func_name_ptr)
   store64(n + 24, ptr(args))
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_array_create(elem_type_ptr:I) I {
-  n = alloc(16)
+make_channel(elem_type_ptr:I capacity_expr:I line:I col:I) I {
+  n = alloc(48)
+  store64(n, EX_CHANNEL)
+  store64(n + 8, 48)
+  store64(n + 16, elem_type_ptr)
+  store64(n + 24, capacity_expr)
+  store64(n + 32, line)
+  store64(n + 40, col)
+  n
+}
+
+make_mutex_expr(value_expr:I line:I col:I) I {
+  n = alloc(40)
+  store64(n, EX_MUTEX)
+  store64(n + 8, 40)
+  store64(n + 16, value_expr)
+  store64(n + 24, line)
+  store64(n + 32, col)
+  n
+}
+
+make_enum_variant(enum_name:I variant_name:I args:I line:I col:I) I {
+  n = alloc(56)
+  store64(n, EX_ENUM_VARIANT)
+  store64(n + 8, 56)
+  store64(n + 16, enum_name)
+  store64(n + 24, variant_name)
+  store64(n + 32, ptr(args))
+  store64(n + 40, line)
+  store64(n + 48, col)
+  n
+}
+
+make_array_create(elem_type_ptr:I line:I col:I) I {
+  n = alloc(40)
   store64(n, EX_ARRAY_CREATE)
-  store64(n + 8, elem_type_ptr)
+  store64(n + 8, 40)
+  store64(n + 16, elem_type_ptr)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
 // Stmt nodes
-make_st_let(name_ptr:I mutable:I type_ptr:I value_expr:I) I {
-  n = alloc(40)
+make_st_let(name_ptr:I mutable:I type_ptr:I value_expr:I line:I col:I) I {
+  n = alloc(64)
   store64(n, ST_LET)
-  store64(n + 8, name_ptr)
-  store64(n + 16, mutable)
-  store64(n + 24, type_ptr)
-  store64(n + 32, value_expr)
+  store64(n + 8, 64)
+  store64(n + 16, name_ptr)
+  store64(n + 24, mutable)
+  store64(n + 32, type_ptr)
+  store64(n + 40, value_expr)
+  store64(n + 48, line)
+  store64(n + 56, col)
   n
 }
 
-make_st_while(cond_expr:I body_stmts:I) I {
-  n = alloc(24)
+make_st_while(cond_expr:I body_stmts:I line:I col:I) I {
+  n = alloc(48)
   store64(n, ST_WHILE)
-  store64(n + 8, cond_expr)
-  store64(n + 16, ptr(body_stmts))
+  store64(n + 8, 48)
+  store64(n + 16, cond_expr)
+  store64(n + 24, ptr(body_stmts))
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_st_return(value_expr:I) I {
-  n = alloc(16)
+make_st_return(value_expr:I line:I col:I) I {
+  n = alloc(40)
   store64(n, ST_RETURN)
-  store64(n + 8, value_expr)
+  store64(n + 8, 40)
+  store64(n + 16, value_expr)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
-make_st_assign(target_ptr:I value_expr:I) I {
-  n = alloc(24)
+make_st_assign(target_ptr:I value_expr:I line:I col:I) I {
+  n = alloc(48)
   store64(n, ST_ASSIGN)
-  store64(n + 8, target_ptr)
-  store64(n + 16, value_expr)
+  store64(n + 8, 48)
+  store64(n + 16, target_ptr)
+  store64(n + 24, value_expr)
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_st_if(cond_expr:I body_stmts:I) I {
-  n = alloc(24)
+make_st_if(cond_expr:I body_stmts:I line:I col:I) I {
+  n = alloc(48)
   store64(n, ST_IF)
-  store64(n + 8, cond_expr)
-  store64(n + 16, ptr(body_stmts))
+  store64(n + 8, 48)
+  store64(n + 16, cond_expr)
+  store64(n + 24, ptr(body_stmts))
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_st_break() I {
-  n = alloc(8)
+make_st_break(line:I col:I) I {
+  n = alloc(32)
   store64(n, ST_BREAK)
+  store64(n + 8, 32)
+  store64(n + 16, line)
+  store64(n + 24, col)
   n
 }
 
-make_st_continue() I {
-  n = alloc(8)
+make_st_continue(line:I col:I) I {
+  n = alloc(32)
   store64(n, ST_CONTINUE)
+  store64(n + 8, 32)
+  store64(n + 16, line)
+  store64(n + 24, col)
   n
 }
 
-make_st_let_destr(names:I value_expr:I) I {
-  n = alloc(24)
+make_st_let_destr(names:I value_expr:I line:I col:I) I {
+  n = alloc(48)
   store64(n, ST_LET_DESTR)
-  store64(n + 8, ptr(names))
-  store64(n + 16, value_expr)
+  store64(n + 8, 48)
+  store64(n + 16, ptr(names))
+  store64(n + 24, value_expr)
+  store64(n + 32, line)
+  store64(n + 40, col)
   n
 }
 
-make_st_for_in(var_name_ptr:I iterable_expr:I body_stmts:I) I {
-  n = alloc(32)
+make_st_for_in(var_name_ptr:I iterable_expr:I body_stmts:I line:I col:I) I {
+  n = alloc(56)
   store64(n, ST_FOR_IN)
-  store64(n + 8, var_name_ptr)
-  store64(n + 16, iterable_expr)
-  store64(n + 24, ptr(body_stmts))
+  store64(n + 8, 56)
+  store64(n + 16, var_name_ptr)
+  store64(n + 24, iterable_expr)
+  store64(n + 32, ptr(body_stmts))
+  store64(n + 40, line)
+  store64(n + 48, col)
   n
 }
 
-make_st_for_in_destr(vars:[I] iterable_expr:I body_stmts:I) I {
-  n = alloc(32)
+make_st_for_in_destr(vars:[I] iterable_expr:I body_stmts:I line:I col:I) I {
+  n = alloc(56)
   store64(n, ST_FOR_IN_DESTR)
-  store64(n + 8, ptr(vars))
-  store64(n + 16, iterable_expr)
-  store64(n + 24, ptr(body_stmts))
+  store64(n + 8, 56)
+  store64(n + 16, ptr(vars))
+  store64(n + 24, iterable_expr)
+  store64(n + 32, ptr(body_stmts))
+  store64(n + 40, line)
+  store64(n + 48, col)
   n
 }
 
-make_st_expr(expr:I) I {
-  n = alloc(16)
+make_st_expr(expr:I line:I col:I) I {
+  n = alloc(40)
   store64(n, ST_EXPR)
-  store64(n + 8, expr)
+  store64(n + 8, 40)
+  store64(n + 16, expr)
+  store64(n + 24, line)
+  store64(n + 32, col)
   n
 }
 
@@ -568,8 +672,8 @@ parse_params(p:I) [I] {
         p_advance(p)
         nk = p_peek_kind(p)
         t = p_advance(p)
-        if nk == TK_FLOAT_LIT { make_float_lit(0 - tok_val(t)) }
-        else { make_int_lit(0 - tok_val(t)) }
+        if nk == TK_FLOAT_LIT { make_float_lit(0 - tok_val(t), tok_line(t), tok_col(t)) }
+        else { make_int_lit(0 - tok_val(t), tok_line(t), tok_col(t)) }
       } else {
         parse_atom(p)
       }
@@ -672,7 +776,7 @@ parse_block_body(p:I) [I] {
       if last_tag == ST_EXPR {
         result = array<I>()
         result.push(ptr(stmts))
-        result.push(load64(last + 8))  // the expr
+        result.push(load64(last + 16))  // the expr
         return result
         0
       } else { if last_tag == ST_RETURN {
@@ -680,7 +784,7 @@ parse_block_body(p:I) [I] {
         stmts.push(last)
         result = array<I>()
         result.push(ptr(stmts))
-        result.push(make_int_lit(0))
+        result.push(make_int_lit(0, 0, 0))
         return result
         0
       } else {
@@ -688,7 +792,7 @@ parse_block_body(p:I) [I] {
         stmts.push(last)
         result = array<I>()
         result.push(ptr(stmts))
-        result.push(make_int_lit(0))
+        result.push(make_int_lit(0, 0, 0))
         return result
         0
       } }
@@ -733,10 +837,10 @@ parse_stmt(p:I) [I] {
     p_set_last_try(p, 0)
     // Build guard: if try_expr.is_err() { return try_expr }
     is_err_args = array<I>()
-    is_err_call = make_method_call(try_expr, ptr("is_err"), is_err_args)
+    is_err_call = make_method_call(try_expr, ptr("is_err"), is_err_args, 0, 0)
     ret_body = array<I>()
-    ret_body.push(make_st_return(try_expr))
-    guard = make_st_if(is_err_call, ret_body)
+    ret_body.push(make_st_return(try_expr, 0, 0))
+    guard = make_st_if(is_err_call, ret_body, 0, 0)
     out = array<I>()
     out.push(guard)
     out.push(result)
@@ -759,14 +863,14 @@ parse_stmt_inner(p:I) I {
 
   // break
   if kind == TK_BREAK {
-    p_advance(p)
-    return make_st_break()
+    t_brk = p_advance(p)
+    return make_st_break(tok_line(t_brk), tok_col(t_brk))
   }
 
   // continue
   if kind == TK_CONTINUE {
-    p_advance(p)
-    return make_st_continue()
+    t_cont = p_advance(p)
+    return make_st_continue(tok_line(t_cont), tok_col(t_cont))
   }
 
   // return
@@ -777,6 +881,9 @@ parse_stmt_inner(p:I) I {
 
   // for
   if kind == TK_FOR {
+    for_tok = p_peek(p)
+    for_line = tok_line(for_tok)
+    for_col = tok_col(for_tok)
     p_advance(p)  // consume for
     if p_at(p, TK_LPAREN) == 1 {
       p_advance(p)  // consume (
@@ -790,7 +897,7 @@ parse_stmt_inner(p:I) I {
       p_expect(p, TK_LBRACE)
       body = parse_body(p)
       p_expect(p, TK_RBRACE)
-      return make_st_for_in_destr(vars, iterable, body)
+      return make_st_for_in_destr(vars, iterable, body, for_line, for_col)
     } else {
       var_name = p_expect_ident(p)
       p_expect(p, TK_IN)
@@ -798,16 +905,19 @@ parse_stmt_inner(p:I) I {
       p_expect(p, TK_LBRACE)
       body = parse_body(p)
       p_expect(p, TK_RBRACE)
-      return make_st_for_in(var_name, iterable, body)
+      return make_st_for_in(var_name, iterable, body, for_line, for_col)
     }
   }
 
   // Check for := mutable declaration
   if kind == TK_IDENT && p_peek_kind_at(p, 1) == TK_COLON_EQ {
+    mut_tok = p_peek(p)
+    mut_line = tok_line(mut_tok)
+    mut_col = tok_col(mut_tok)
     name = p_expect_ident(p)
     p_advance(p)  // consume :=
     value = parse_expr(p, 0)
-    return make_st_let(name, 1, 0, value)
+    return make_st_let(name, 1, 0, value, mut_line, mut_col)
   }
 
   // Check for index assignment: ident[expr] = expr
@@ -824,8 +934,8 @@ parse_stmt_inner(p:I) I {
         set_args = array<I>()
         set_args.push(index)
         set_args.push(value)
-        mc = make_method_call(make_ident(name), ptr("set"), set_args)
-        return make_st_expr(mc)
+        mc = make_method_call(make_ident(name, 0, 0), ptr("set"), set_args, 0, 0)
+        return make_st_expr(mc, 0, 0)
       } else {
         // Not index assignment, backtrack
         p_set_pos(p, saved_pos)
@@ -838,6 +948,9 @@ parse_stmt_inner(p:I) I {
 
   // Check for compound assignment: ident += expr, etc.
   if kind == TK_IDENT {
+    ca_tok = p_peek(p)
+    ca_line = tok_line(ca_tok)
+    ca_col = tok_col(ca_tok)
     next_kind = p_peek_kind_at(p, 1)
     compound_op := -1
     if next_kind == TK_PLUS_EQ { compound_op = OP_ADD }
@@ -849,8 +962,8 @@ parse_stmt_inner(p:I) I {
       name = p_expect_ident(p)
       p_advance(p)  // consume compound operator
       rhs = parse_expr(p, 0)
-      value = make_binop(compound_op, make_ident(name), rhs)
-      return make_st_assign(name, value)
+      value = make_binop(compound_op, make_ident(name, ca_line, ca_col), rhs, ca_line, ca_col)
+      return make_st_assign(name, value, ca_line, ca_col)
     }
   }
 
@@ -860,21 +973,26 @@ parse_stmt_inner(p:I) I {
   // Check if this is an assignment: identifier followed by =
   if p_at(p, TK_EQ) == 1 {
     if load64(expr) == EX_IDENT {
-      name = load64(expr + 8)
+      name = load64(expr + 16)
+      asgn_line = node_line(expr)
+      asgn_col = node_col(expr)
       p_advance(p)  // consume =
       value = parse_expr(p, 0)
-      return make_st_assign(name, value)
+      return make_st_assign(name, value, asgn_line, asgn_col)
     } else {
       print("parse error: left side of assignment must be a variable name\n")
       exit(1)
     }
   }
 
-  make_st_expr(expr)
+  make_st_expr(expr, 0, 0)
 }
 
 // ------ Let statement ------------------------------------------------------------------------------------------------------------------------------------------------
 parse_let(p:I) I {
+  let_tok = p_peek(p)
+  let_line = tok_line(let_tok)
+  let_col = tok_col(let_tok)
   p_expect(p, TK_LET)
 
   // Check for destructuring: let (a, b) = expr
@@ -889,7 +1007,7 @@ parse_let(p:I) I {
     names = array<I>()
     names.push(name1)
     names.push(name2)
-    return make_st_let_destr(names, value)
+    return make_st_let_destr(names, value, let_line, let_col)
   }
 
   // Check for mut keyword
@@ -910,24 +1028,30 @@ parse_let(p:I) I {
   p_expect(p, TK_EQ)
   value = parse_expr(p, 0)
 
-  make_st_let(name, mutable, type_name, value)
+  make_st_let(name, mutable, type_name, value, let_line, let_col)
 }
 
 // ------ While statement ------------------------------------------------------------------------------------------------------------------------------------------
 parse_while_stmt(p:I) I {
+  w_tok = p_peek(p)
+  w_line = tok_line(w_tok)
+  w_col = tok_col(w_tok)
   p_expect(p, TK_WHILE)
   cond = parse_expr(p, 0)
   p_expect(p, TK_LBRACE)
   body = parse_body(p)
   p_expect(p, TK_RBRACE)
-  make_st_while(cond, body)
+  make_st_while(cond, body, w_line, w_col)
 }
 
 // ------ Return statement ---------------------------------------------------------------------------------------------------------------------------------------
 parse_return(p:I) I {
+  ret_tok = p_peek(p)
+  ret_line = tok_line(ret_tok)
+  ret_col = tok_col(ret_tok)
   p_expect(p, TK_RETURN)
   value = parse_expr(p, 0)
-  make_st_return(value)
+  make_st_return(value, ret_line, ret_col)
 }
 
 // ------ If statement / expression ------------------------------------------------------------------------------------------------------------
@@ -949,20 +1073,20 @@ parse_if_or_if_else(p:I) I {
     if p_at(p, TK_IF) == 1 {
       else_if_expr = parse_if_expr(p)
       empty_stmts = array<I>()
-      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr))
+      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr, 0, 0), 0, 0)
     } else {
       p_expect(p, TK_LBRACE)
       else_block = parse_block_body(p)
       else_stmts_ptr = else_block.get(0)
       else_expr = else_block.get(1)
       p_expect(p, TK_RBRACE)
-      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr))
+      make_st_expr(make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr, 0, 0), 0, 0)
     }
   } else {
     // if statement (no else)
     body = parse_body(p)
     p_expect(p, TK_RBRACE)
-    make_st_if(cond, body)
+    make_st_if(cond, body, 0, 0)
   }
 }
 
@@ -990,9 +1114,9 @@ parse_expr(p:I min_bp:I) I {
         p_advance(p)  // consume (
         args = parse_call_args(p)
         p_expect(p, TK_RPAREN)
-        lhs = make_method_call(lhs, field_or_method, args)
+        lhs = make_method_call(lhs, field_or_method, args, 0, 0)
       } else {
-        lhs = make_field_access(lhs, field_or_method)
+        lhs = make_field_access(lhs, field_or_method, 0, 0)
       }
       continue
     }
@@ -1001,7 +1125,7 @@ parse_expr(p:I min_bp:I) I {
     if kind == TK_BANG {
       p_advance(p)  // consume !
       unwrap_args = array<I>()
-      lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args)
+      lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args, 0, 0)
       continue
     }
 
@@ -1013,7 +1137,7 @@ parse_expr(p:I min_bp:I) I {
       // Check for [:end] --- start defaults to 0
       start_expr := 0
       if p_at(p, TK_COLON) == 1 {
-        start_expr = make_int_lit(0)
+        start_expr = make_int_lit(0, 0, 0)
       } else {
         start_expr = parse_expr(p, 0)
       }
@@ -1025,7 +1149,7 @@ parse_expr(p:I min_bp:I) I {
         if p_at(p, TK_RBRACKET) == 1 {
           // [start:] --- end defaults to len()
           len_args = array<I>()
-          end_expr = make_method_call(saved_lhs, ptr("len"), len_args)
+          end_expr = make_method_call(saved_lhs, ptr("len"), len_args, 0, 0)
         } else {
           end_expr = parse_expr(p, 0)
         }
@@ -1033,7 +1157,7 @@ parse_expr(p:I min_bp:I) I {
         slice_args = array<I>()
         slice_args.push(start_expr)
         slice_args.push(end_expr)
-        lhs = make_method_call(saved_lhs, ptr("substring"), slice_args)
+        lhs = make_method_call(saved_lhs, ptr("substring"), slice_args, 0, 0)
         continue
       }
 
@@ -1041,7 +1165,7 @@ parse_expr(p:I min_bp:I) I {
       p_expect(p, TK_RBRACKET)
       get_args = array<I>()
       get_args.push(start_expr)
-      lhs = make_method_call(saved_lhs, ptr("get"), get_args)
+      lhs = make_method_call(saved_lhs, ptr("get"), get_args, 0, 0)
       continue
     }
 
@@ -1054,7 +1178,7 @@ parse_expr(p:I min_bp:I) I {
         op = bp_op(packed)
         p_advance(p)  // consume operator
         rhs = parse_expr(p, right_bp)
-        lhs = make_binop(op, lhs, rhs)
+        lhs = make_binop(op, lhs, rhs, 0, 0)
         continue
       }
     }
@@ -1078,7 +1202,7 @@ parse_expr(p:I min_bp:I) I {
       else_expr = parse_expr(p, 0)
       empty_then = array<I>()
       empty_else = array<I>()
-      lhs = make_if_expr(lhs, ptr(empty_then), then_expr, ptr(empty_else), else_expr)
+      lhs = make_if_expr(lhs, ptr(empty_then), then_expr, ptr(empty_else), else_expr, 0, 0)
     } else {
       // Not ternary --- it's try operator: expr?
       // Restore to just after ?
@@ -1086,7 +1210,7 @@ parse_expr(p:I min_bp:I) I {
       // Store original expr for the guard statement
       p_set_last_try(p, lhs)
       unwrap_args = array<I>()
-      lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args)
+      lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args, 0, 0)
     }
   }
 
@@ -1100,17 +1224,20 @@ parse_atom(p:I) I {
   // Integer literal
   if kind == TK_INT_LIT {
     t = p_advance(p)
-    return make_int_lit(tok_val(t))
+    return make_int_lit(tok_val(t), tok_line(t), tok_col(t))
   }
 
   // Float literal
   if kind == TK_FLOAT_LIT {
     t = p_advance(p)
-    return make_float_lit(tok_val(t))
+    return make_float_lit(tok_val(t), tok_line(t), tok_col(t))
   }
 
   // Identifier
   if kind == TK_IDENT {
+    id_tok = p_peek(p)
+    id_line = tok_line(id_tok)
+    id_col = tok_col(id_tok)
     name = p_expect_ident(p)
 
     // Check for enum variant: Name::Variant
@@ -1123,7 +1250,7 @@ parse_atom(p:I) I {
         ev_args = parse_call_args(p)
         p_expect(p, TK_RPAREN)
       }
-      return make_enum_variant(name, variant_name, ev_args)
+      return make_enum_variant(name, variant_name, ev_args, id_line, id_col)
     }
 
     // Check for function call: Name(args)
@@ -1131,7 +1258,7 @@ parse_atom(p:I) I {
       p_advance(p)  // consume (
       args = parse_call_args(p)
       p_expect(p, TK_RPAREN)
-      return make_call(name, args)
+      return make_call(name, args, id_line, id_col)
     }
 
     // Check for generic struct literal: Name<T1 T2>{field:value}
@@ -1168,7 +1295,7 @@ parse_atom(p:I) I {
             if p_at(p, TK_COMMA) == 1 { p_advance(p) }
           }
           p_expect(p, TK_RBRACE)
-          return make_struct_lit(mangled, gfield_names, gfield_values)
+          return make_struct_lit(mangled, gfield_names, gfield_values, 0, 0)
         }
       }
     }
@@ -1189,29 +1316,29 @@ parse_atom(p:I) I {
         if p_at(p, TK_COMMA) == 1 { p_advance(p) }
       }
       p_expect(p, TK_RBRACE)
-      return make_struct_lit(name, field_names, field_values)
+      return make_struct_lit(name, field_names, field_values, id_line, id_col)
     }
 
     // Plain identifier
-    return make_ident(name)
+    return make_ident(name, id_line, id_col)
   }
 
   // self
   if kind == TK_SELF_VAL {
     p_advance(p)
-    return make_ident(ptr("self"))
+    return make_ident(ptr("self"), 0, 0)
   }
 
   // true
   if kind == TK_TRUE {
     p_advance(p)
-    return make_bool_lit(1)
+    return make_bool_lit(1, 0, 0)
   }
 
   // false
   if kind == TK_FALSE {
     p_advance(p)
-    return make_bool_lit(0)
+    return make_bool_lit(0, 0, 0)
   }
 
   // if expression (in expression position)
@@ -1228,20 +1355,20 @@ parse_atom(p:I) I {
   if kind == TK_BANG {
     p_advance(p)
     operand = parse_expr(p, 13)
-    return make_unaryop(UOP_NOT, operand)
+    return make_unaryop(UOP_NOT, operand, 0, 0)
   }
 
   // Prefix -
   if kind == TK_MINUS {
     p_advance(p)
     operand = parse_expr(p, 13)
-    return make_unaryop(UOP_NEG, operand)
+    return make_unaryop(UOP_NEG, operand, 0, 0)
   }
 
   // String literal
   if kind == TK_STRING_LIT {
     t = p_advance(p)
-    return make_string_lit(tok_val(t))
+    return make_string_lit(tok_val(t), tok_line(t), tok_col(t))
   }
 
   // Interpolated string
@@ -1261,7 +1388,7 @@ parse_atom(p:I) I {
       if p_at(p, TK_COMMA) == 1 { p_advance(p) }
     }
     p_expect(p, TK_RPAREN)
-    return make_spawn(func_name, args)
+    return make_spawn(func_name, args, 0, 0)
   }
 
   // array<T>()
@@ -1272,7 +1399,7 @@ parse_atom(p:I) I {
     p_expect(p, TK_GT)
     p_expect(p, TK_LPAREN)
     p_expect(p, TK_RPAREN)
-    return make_array_create(type_name)
+    return make_array_create(type_name, 0, 0)
   }
 
   // mutex(value)
@@ -1281,7 +1408,7 @@ parse_atom(p:I) I {
     p_expect(p, TK_LPAREN)
     value = parse_expr(p, 0)
     p_expect(p, TK_RPAREN)
-    return make_mutex_expr(value)
+    return make_mutex_expr(value, 0, 0)
   }
 
   // channel<T>(capacity?)
@@ -1296,7 +1423,7 @@ parse_atom(p:I) I {
       capacity = parse_expr(p, 0)
     }
     p_expect(p, TK_RPAREN)
-    return make_channel(type_name, capacity)
+    return make_channel(type_name, capacity, 0, 0)
   }
 
   // Parenthesized expression or tuple
@@ -1315,7 +1442,7 @@ parse_atom(p:I) I {
         elements.push(parse_expr(p, 0))
       }
       p_expect(p, TK_RPAREN)
-      return make_tuple_lit(elements)
+      return make_tuple_lit(elements, 0, 0)
     }
   }
 
@@ -1332,7 +1459,7 @@ parse_atom(p:I) I {
       print("parse error: empty array literal not allowed; use array<T>() for empty arrays\n")
       exit(1)
     }
-    return make_array_lit(elements)
+    return make_array_lit(elements, 0, 0)
   }
 
   // Lambda: |params| RetType { body }
@@ -1350,7 +1477,7 @@ parse_atom(p:I) I {
     p_expect(p, TK_LBRACE)
     body = parse_body(p)
     p_expect(p, TK_RBRACE)
-    return make_lambda(params, ret_type, body)
+    return make_lambda(params, ret_type, body, 0, 0)
   }
 
   // Unknown token
@@ -1380,19 +1507,19 @@ parse_if_expr(p:I) I {
     if p_at(p, TK_IF) == 1 {
       else_if_expr = parse_if_expr(p)
       empty_stmts = array<I>()
-      make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr)
+      make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), else_if_expr, 0, 0)
     } else {
       p_expect(p, TK_LBRACE)
       else_block = parse_block_body(p)
       else_stmts_ptr = else_block.get(0)
       else_expr = else_block.get(1)
       p_expect(p, TK_RBRACE)
-      make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr)
+      make_if_expr(cond, then_stmts_ptr, then_expr, else_stmts_ptr, else_expr, 0, 0)
     }
   } else {
     // No else --- use 0 as default
     empty_stmts = array<I>()
-    make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), make_int_lit(0))
+    make_if_expr(cond, then_stmts_ptr, then_expr, ptr(empty_stmts), make_int_lit(0, 0, 0), 0, 0)
   }
 }
 
@@ -1408,7 +1535,7 @@ parse_match_expr(p:I) I {
     if p_at(p, TK_COMMA) == 1 { p_advance(p) }
   }
   p_expect(p, TK_RBRACE)
-  make_match_expr(scrutinee, arms)
+  make_match_expr(scrutinee, arms, 0, 0)
 }
 
 parse_match_arm(p:I) I {
@@ -1531,10 +1658,10 @@ desugar_interp_string(p:I parts_ptr:I) I {
 
     expr := 0
     if tag == INTERP_LITERAL {
-      expr = make_string_lit(val)
+      expr = make_string_lit(val, 0, 0)
     } else { if tag == INTERP_IDENT {
       // Just create an identifier (type checker handles str conversion)
-      expr = make_ident(val)
+      expr = make_ident(val, 0, 0)
     } else { if tag == INTERP_EXPR {
       // Re-lex the expression text, parse it, wrap in str()
       expr_text = val  // string pointer
@@ -1543,18 +1670,18 @@ desugar_interp_string(p:I parts_ptr:I) I {
       inner_expr = parse_expr(sub_p, 0)
       str_args = array<I>()
       str_args.push(inner_expr)
-      expr = make_call(ptr("str"), str_args)
+      expr = make_call(ptr("str"), str_args, 0, 0)
     } } }
 
     if result == 0 {
       result = expr
     } else {
-      result = make_binop(OP_ADD, result, expr)
+      result = make_binop(OP_ADD, result, expr, 0, 0)
     }
     i = i + 1
   }
 
-  if result == 0 { make_string_lit(ptr("")) } else { result }
+  if result == 0 { make_string_lit(ptr(""), 0, 0) } else { result }
 }
 
 // ------ Function parsing ---------------------------------------------------------------------------------------------------------------------------------------
@@ -1582,7 +1709,7 @@ parse_function(p:I) I {
     p_advance(p)  // consume =
     expr = parse_expr(p, 0)
     body = array<I>()
-    body.push(make_st_expr(expr))
+    body.push(make_st_expr(expr, 0, 0))
     return make_function(name, params, ret_type, body, type_params, 0)
   }
 
@@ -1638,7 +1765,7 @@ parse_method(p:I target_type:I) I {
     p_advance(p)
     expr = parse_expr(p, 0)
     body = array<I>()
-    body.push(make_st_expr(expr))
+    body.push(make_st_expr(expr, 0, 0))
     return make_function(name, params, ret_type, body, type_params, 1)
   }
 

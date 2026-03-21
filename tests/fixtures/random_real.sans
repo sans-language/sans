@@ -1,0 +1,16 @@
+main() I {
+  a := random(1000000)
+  b := random(1000000)
+  c := random(1000000)
+  d := random(1000000)
+  e := random(1000000)
+  if a == b {
+    if b == c {
+      if c == d {
+        if d == e {
+          1
+        } else { 0 }
+      } else { 0 }
+    } else { 0 }
+  } else { 0 }
+}

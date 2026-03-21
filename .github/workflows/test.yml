@@ -1,0 +1,106 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test-macos:
+    name: Test (macOS ARM64)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 17
+        run: brew install llvm@17
+
+      - name: Download bootstrap compiler
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use v0.6.1 as bootstrap — recent enough to know all current builtins.
+          # v0.4.0 is too old (missing getenv, stof, etc.)
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.6.1/sans-macos-arm64.tar.gz" | tar xz
+          chmod +x sans
+          mv sans sans-bootstrap
+          ./sans-bootstrap --version
+
+      - name: Build compiler (with .ll capture for Linux cross-build)
+        run: |
+          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          mkdir -p ll-output
+
+          # The compiler writes .ll files then deletes them via sys("rm -f ...").
+          # Replace rm with a wrapper that skips .ll deletion so files survive.
+          mkdir -p /tmp/wrap
+          printf '#!/bin/bash\nARGS=()\nfor f in "$@"; do [[ "$f" == *.ll ]] || ARGS+=("$f"); done\n[ ${#ARGS[@]} -gt 0 ] && exec /bin/rm "${ARGS[@]}"\n' > /tmp/wrap/rm
+          chmod +x /tmp/wrap/rm
+
+          # Build with rm wrapper active — captures .ll files during THE build
+          # (not a second build which may crash due to scope GC)
+          PATH="/tmp/wrap:$PATH" ./sans-bootstrap build compiler/main.sans
+
+          # Collect surviving .ll files
+          [ -f compiler/main.ll ] && cp compiler/main.ll ll-output/main.ll
+          for f in /tmp/sans_*_runtime.ll; do
+            [ -f "$f" ] && cp "$f" ll-output/
+          done
+
+          echo "=== Captured .ll files ==="
+          ls -la ll-output/
+          echo "Total: $(ls ll-output/*.ll 2>/dev/null | wc -l) files"
+
+      - name: Run tests
+        run: bash tests/run_tests.sh
+
+      - name: Upload .ll artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
+
+  test-linux:
+    name: Test (Linux x86_64)
+    needs: test-macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 17 and dependencies
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/keyrings/llvm.asc
+          echo "deb [signed-by=/etc/apt/keyrings/llvm.asc] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
+          sudo apt-get update
+          sudo apt-get install -y llvm-17 libcurl4-openssl-dev libssl-dev pkg-config zlib1g-dev
+
+      - name: Download .ll artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
+
+      - name: Compile from LLVM IR
+        run: |
+          export PATH="/usr/lib/llvm-17/bin:$PATH"
+          echo "=== .ll files ==="
+          ls -la ll-output/
+          # Compile ALL .ll files to .o
+          OBJ_FILES=""
+          for ll in ll-output/*.ll; do
+            base=$(basename "$ll" .ll)
+            echo "Compiling: $ll -> /tmp/${base}.o"
+            llc -filetype=obj -O2 --relocation-model=pic -o "/tmp/${base}.o" "$ll"
+            OBJ_FILES="$OBJ_FILES /tmp/${base}.o"
+          done
+          echo "Linking: $OBJ_FILES"
+          # Link — same flags as release.yml
+          cc -no-pie $OBJ_FILES \
+            -lcurl -lz $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') \
+            -lpthread -lm \
+            -o compiler/main
+          chmod +x compiler/main
+
+      - name: Run tests
+        run: bash tests/run_tests.sh

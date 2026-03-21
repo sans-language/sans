@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/sans-language/sans?style=flat-square)](https://github.com/sans-language/sans/releases)
 [![License](https://img.shields.io/github/license/sans-language/sans?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS-blue?style=flat-square)]()
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue?style=flat-square)]()
 [![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-green?style=flat-square)]()
 
 A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
@@ -75,7 +75,7 @@ main() {
 | **Types** | `I` (Int), `F` (Float), `B` (Bool), `S` (String), `J` (Json), `M` (Map), `R<T>` (Result) |
 | **Variables** | `x = 42` (immutable) / `x := 0` (mutable) / `g x = 0` (global) |
 | **Functions** | `add(a:I b:I) I = a + b` (compact) or `fn add(a Int, b Int) Int { a + b }` — default params: `f(x:I y:I=0)` |
-| **Lambdas** | `\|x:I\| I { x * 2 }` with implicit capture from enclosing scope |
+| **Lambdas** | `\|x:I\| I { x * 2 }` with implicit capture from enclosing scope (up to 8 variables) |
 | **If/Else** | `if x > 0 { ... } else { ... }` or ternary `cond ? a : b` |
 | **Loops** | `while cond { }`, `for item in arr { }`, `for (k v) in m.entries()`, `break`, `continue` |
 | **Match** | `match value { Enum::A => ..., Enum::B(x) => x }` — guards: `n if n > 0 => ...` |
@@ -94,7 +94,7 @@ main() {
 | **File I/O** | `file_read`/`fr`, `file_write`/`fw`, `file_exists`/`fe` |
 | **Filesystem** | `mkdir`, `rmdir`, `remove`/`rm`, `listdir`/`ls`, `is_dir`, `getenv`/`genv` |
 | **Process** | `sh`/`shell` (capture stdout), `system`/`sys` (exit code) |
-| **JSON** | `json_parse`/`jp`, `json_stringify`/`jfy`, `json_object`/`jo` |
+| **JSON** | `json_parse`/`jp` (handles floats, objects, arrays, strings, ints, bools, null), `json_stringify`/`jfy`, `json_object`/`jo` |
 | **HTTP client** | `http_get`/`hg`, `http_post`/`hp` |
 | **HTTP server** | `serve(port handler)` with auto-threading, keep-alive, auto-gzip, graceful shutdown |
 | **HTTPS/TLS** | `serve_tls(port cert key handler)`, `https_listen` |
@@ -105,6 +105,7 @@ main() {
 | **Logging** | `log_debug`/`ld`, `log_info`/`li`, `log_warn`/`lw`, `log_error`/`le` |
 | **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()` |
 | **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator |
+| **Diagnostics** | `file:line:col: error: message` with source context, caret, multi-error reporting, and warnings |
 
 ## HTTP Server Example
 

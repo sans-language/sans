@@ -45,6 +45,7 @@
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
         <li><a href="#internals">Internals</a></li>
+        <li><a href="#diagnostics">Compiler Diagnostics</a></li>
       </ul>
       </div>
     </div>
@@ -323,7 +324,7 @@ t = <span class="type">Triple</span>&lt;<span class="type">I</span> <span class=
 <span class="fn">identity</span>&lt;T&gt;(x <span class="type">T</span>) <span class="type">T</span> = x</code></pre>
 
     <h2 id="lambdas">Lambdas &amp; Closures</h2>
-    <p>Lambda expressions are anonymous functions. They implicitly capture variables from their enclosing scope.</p>
+    <p>Lambda expressions are anonymous functions. They implicitly capture variables from their enclosing scope (up to 8 captured variables per closure).</p>
     <pre><code><span class="comment">// Non-capturing lambda</span>
 f = |x:<span class="type">I</span>| <span class="type">I</span> { x + <span class="num">10</span> }
 <span class="fn">f</span>(<span class="num">5</span>)  <span class="comment">// 15</span>
@@ -454,7 +455,7 @@ r.<span class="fn">code</span>()                    <span class="comment">// get
         <tr><td><code>json_int(n)</code></td><td><code>ji</code></td><td><code>(Int) -&gt; JsonValue</code></td></tr>
         <tr><td><code>json_bool(b)</code></td><td><code>jb</code></td><td><code>(Bool) -&gt; JsonValue</code></td></tr>
         <tr><td><code>json_null()</code></td><td><code>jn</code></td><td><code>() -&gt; JsonValue</code></td></tr>
-        <tr><td><code>json_parse(s)</code></td><td><code>jp</code></td><td><code>(String) -&gt; JsonValue</code></td></tr>
+        <tr><td><code>json_parse(s)</code></td><td><code>jp</code></td><td><code>(String) -&gt; JsonValue</code> — handles int, float, string, bool, null, object, array</td></tr>
         <tr><td><code>json_stringify(v)</code></td><td><code>jfy</code></td><td><code>(JsonValue) -&gt; String</code></td></tr>
       </tbody>
     </table>
@@ -850,6 +851,13 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
     <h3>Builtin Names</h3>
     <p>The compiler has builtin mappings for a large set of names. <strong>User-defined functions take precedence over builtins of the same name.</strong> Builtin names include:</p>
     <p><code>p</code>, <code>print</code>, <code>str</code>, <code>stoi</code>, <code>itof</code>, <code>ftoi</code>, <code>ftos</code>, <code>fr</code>, <code>fw</code>, <code>fa</code>, <code>fe</code>, <code>file_read</code>, <code>file_write</code>, <code>file_exists</code>, <code>listen</code>, <code>serve</code>, <code>serve_file</code>, <code>serve_tls</code>, <code>alloc</code>, <code>dealloc</code>, <code>load8/16/32/64</code>, <code>store8/16/32/64</code>, <code>mcpy</code>, <code>slen</code>, <code>wfd</code>, <code>exit</code>, <code>system</code>, <code>ok</code>, <code>err</code>, <code>map</code>, <code>M</code>, <code>jp</code>, <code>jfy</code>, <code>jo</code>, <code>ja</code>, <code>sock</code>, <code>saccept</code>, <code>args</code>, <code>signal_handler</code>, <code>signal_check</code>, and all others listed in the reference.</p>
+
+    <h2 id="diagnostics">Compiler Diagnostics</h2>
+    <p>The Sans compiler reports errors with source location, the offending source line, and a caret pointing to the token:</p>
+    <pre><code>file.sans:12:5: error: undefined variable 'foo'
+    foo + 1
+    ^</code></pre>
+    <p>The compiler collects multiple errors before exiting — all errors in a file are reported in a single pass. Warnings are also emitted for common issues and do not prevent compilation.</p>
 
     <h2>Known Limitations</h2>
     <ul>
