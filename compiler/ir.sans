@@ -1004,7 +1004,7 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_INT_LIT ------
   if tag == EX_INT_LIT {
-    value = load64(expr + 8)
+    value = load64(expr + 16)
     dest = ctx_fresh_reg(ctx)
     inst = ir_const(dest, value)
     ctx_emit(ctx, inst)
@@ -1014,7 +1014,7 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_FLOAT_LIT ------
   else if tag == EX_FLOAT_LIT {
-    value = load64(expr + 8)
+    value = load64(expr + 16)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_float_const(dest, value))
     ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
@@ -1023,7 +1023,7 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_BOOL_LIT ------
   else if tag == EX_BOOL_LIT {
-    value = load64(expr + 8)
+    value = load64(expr + 16)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_bool_const(dest, value))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
@@ -1032,7 +1032,7 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_STRING_LIT ------
   else if tag == EX_STRING_LIT {
-    str_ptr = load64(expr + 8)
+    str_ptr = load64(expr + 16)
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_string_const(dest, str_ptr))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
@@ -1041,7 +1041,7 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_IDENT ------
   else if tag == EX_IDENT {
-    name = load64(expr + 8)
+    name = load64(expr + 16)
     local = ctx_get_local(ctx, name)
     if local != 0 {
       // Check for mutable variable marker "!" prefix
@@ -1083,9 +1083,9 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_BINOP ------
   else if tag == EX_BINOP {
-    op = load64(expr + 8)
-    left = load64(expr + 16)
-    right = load64(expr + 24)
+    op = load64(expr + 16)
+    left = load64(expr + 24)
+    right = load64(expr + 32)
 
     // Short-circuit: AND
     if op == OP_AND {
@@ -1155,8 +1155,8 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_UNARYOP ------
   else if tag == EX_UNARYOP {
-    op = load64(expr + 8)
-    operand = load64(expr + 16)
+    op = load64(expr + 16)
+    operand = load64(expr + 24)
     src_reg = lower_expr(ctx, operand)
     src_type = ctx_get_reg_type(ctx, src_reg)
     dest = ctx_fresh_reg(ctx)
@@ -1183,8 +1183,8 @@ lower_expr(ctx:I expr:I) I {
 
   // ------ EX_CALL ------
   else if tag == EX_CALL {
-    name = load64(expr + 8)
-    args := load64(expr + 16)
+    name = load64(expr + 16)
+    args := load64(expr + 24)
     lower_call(ctx, name, args)
   }
 
@@ -1288,16 +1288,16 @@ lower_stmt(ctx:I stmt:I) I {
 
   // ST_EXPR --- lower the expression, discard result
   if tag == ST_EXPR {
-    expr = load64(stmt + 8)
+    expr = load64(stmt + 16)
     lower_expr(ctx, expr)
     0
   }
 
   // ST_LET --- lower value, bind to local
   else if tag == ST_LET {
-    name = load64(stmt + 8)
-    is_mut = load64(stmt + 16)
-    value_expr = load64(stmt + 32)
+    name = load64(stmt + 16)
+    is_mut = load64(stmt + 24)
+    value_expr = load64(stmt + 40)
     val_reg = lower_expr(ctx, value_expr)
     if is_mut == 1 {
       // Mutable: alloca + store, prefix reg with "!"
@@ -1318,8 +1318,8 @@ lower_stmt(ctx:I stmt:I) I {
 
   // ST_ASSIGN --- store to mutable local or global
   else if tag == ST_ASSIGN {
-    name = load64(stmt + 8)
-    value_expr = load64(stmt + 16)
+    name = load64(stmt + 16)
+    value_expr = load64(stmt + 24)
     val_reg = lower_expr(ctx, value_expr)
     local = ctx_get_local(ctx, name)
     if local != 0 {
@@ -1350,7 +1350,7 @@ lower_stmt(ctx:I stmt:I) I {
 
   // ST_RETURN
   else if tag == ST_RETURN {
-    value_expr = load64(stmt + 8)
+    value_expr = load64(stmt + 16)
     val_reg = lower_expr(ctx, value_expr)
     ctx_emit(ctx, ir_ret(val_reg))
     0
@@ -1358,8 +1358,8 @@ lower_stmt(ctx:I stmt:I) I {
 
   // ST_WHILE
   else if tag == ST_WHILE {
-    cond_expr = load64(stmt + 8)
-    body_stmts = load64(stmt + 16)
+    cond_expr = load64(stmt + 16)
+    body_stmts = load64(stmt + 24)
     cond_label = ctx_fresh_label(ctx)
     body_label = ctx_fresh_label(ctx)
     end_label = ctx_fresh_label(ctx)
@@ -1387,9 +1387,9 @@ lower_stmt(ctx:I stmt:I) I {
 
   // ST_IF (statement if --- no value)
   else if tag == ST_IF {
-    cond_expr = load64(stmt + 8)
-    then_stmts = load64(stmt + 16)
-    else_stmts = load64(stmt + 24)
+    cond_expr = load64(stmt + 16)
+    then_stmts = load64(stmt + 24)
+    else_stmts = load64(stmt + 32)
     then_l = ctx_fresh_label(ctx)
     else_l = ctx_fresh_label(ctx)
     end_l = ctx_fresh_label(ctx)
@@ -1440,15 +1440,15 @@ lower_stmt(ctx:I stmt:I) I {
 
 // ------ lower_let_destructure ---------------------------------------------------------------------------------------------------------------------
 lower_let_destructure(ctx:I stmt:I) I {
-  // Layout: [tag, names_array, value_expr]
-  names = load64(stmt + 8)
-  value_expr = load64(stmt + 16)
+  // Layout: [tag, size, names_array, value_expr, line, col]
+  names = load64(stmt + 16)
+  value_expr = load64(stmt + 24)
 
   // Check if value is a channel create
   vtag = load64(value_expr)
   if vtag == EX_CHANNEL {
-    elem_type = load64(value_expr + 8)
-    cap_expr = load64(value_expr + 16)
+    elem_type = load64(value_expr + 16)
+    cap_expr = load64(value_expr + 24)
     tx_dest = ctx_fresh_reg(ctx)
     rx_dest = ctx_fresh_reg(ctx)
     if cap_expr != 0 {
@@ -1481,10 +1481,10 @@ lower_let_destructure(ctx:I stmt:I) I {
 
 // ------ lower_for_in (stub) ---------------------------------------------------------------------------------------------------------------------------
 lower_for_in(ctx:I stmt:I) I {
-  // Layout: [tag, var_name, iterable_expr, body_stmts]
-  var_name = load64(stmt + 8)
-  iterable = load64(stmt + 16)
-  body_stmts = load64(stmt + 24)
+  // Layout: [tag, size, var_name, iterable_expr, body_stmts, line, col]
+  var_name = load64(stmt + 16)
+  iterable = load64(stmt + 24)
+  body_stmts = load64(stmt + 32)
 
   // Lower iterable
   arr_reg = lower_expr(ctx, iterable)
@@ -1557,12 +1557,12 @@ lower_for_in(ctx:I stmt:I) I {
 
 // ------ lower_for_in_destr --------------------------------------------------------------------------------------------------------------------------------
 lower_for_in_destr(ctx:I stmt:I) I {
-  // Layout: [tag, vars_arr_p, iterable_expr, body_stmts]
-  vars_arr = load64(stmt + 8)
+  // Layout: [tag, size, vars_arr_p, iterable_expr, body_stmts, line, col]
+  vars_arr = load64(stmt + 16)
   vars_p = load64(vars_arr)
   num_vars = load64(vars_arr + 8)
-  iterable = load64(stmt + 16)
-  body_stmts = load64(stmt + 24)
+  iterable = load64(stmt + 24)
+  body_stmts = load64(stmt + 32)
 
   // Lower iterable
   arr_reg = lower_expr(ctx, iterable)
@@ -1650,9 +1650,9 @@ lower_for_in_destr(ctx:I stmt:I) I {
 
 // ------ lower_method_call ---------------------------------------------------------------------------------------------------------------------------------
 lower_method_call(ctx:I expr:I) I {
-  object = load64(expr + 8)
-  method = load64(expr + 16)
-  args = load64(expr + 24)
+  object = load64(expr + 16)
+  method = load64(expr + 24)
+  args = load64(expr + 32)
 
   // ------ Cross-module call: obj is an identifier that is a module name ------
   if load64(object) == EX_IDENT {
@@ -2679,8 +2679,8 @@ lower_result_method(ctx:I obj_reg:I method:I args:I) I {
 
 // ------ lower_field_access ------------------------------------------------------------------------------------------------------------------------------
 lower_field_access(ctx:I expr:I) I {
-  object = load64(expr + 8)
-  field = load64(expr + 16)
+  object = load64(expr + 16)
+  field = load64(expr + 24)
 
   obj_reg = lower_expr(ctx, object)
   obj_type = ctx_get_reg_type(ctx, obj_reg)
@@ -2792,11 +2792,11 @@ lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
 
 // ------ lower_if_expr ---------------------------------------------------------------------------------------------------------------------------------------------
 lower_if_expr(ctx:I expr:I) I {
-  cond = load64(expr + 8)
-  then_stmts = load64(expr + 16)
-  then_expr = load64(expr + 24)
-  else_stmts = load64(expr + 32)
-  else_expr = load64(expr + 40)
+  cond = load64(expr + 16)
+  then_stmts = load64(expr + 24)
+  then_expr = load64(expr + 32)
+  else_stmts = load64(expr + 40)
+  else_expr = load64(expr + 48)
 
   cond_reg = lower_expr(ctx, cond)
   then_label = ctx_fresh_label(ctx)
@@ -2835,8 +2835,8 @@ lower_if_expr(ctx:I expr:I) I {
 
 // ------ lower_match ---------------------------------------------------------------------------------------------------------------------------------------------------
 lower_match(ctx:I expr:I) I {
-  scrutinee = load64(expr + 8)
-  arms = load64(expr + 16)
+  scrutinee = load64(expr + 16)
+  arms = load64(expr + 24)
 
   scrutinee_reg = lower_expr(ctx, scrutinee)
 
@@ -3078,9 +3078,9 @@ lower_match_bindings(ctx:I scrutinee_reg:I bindings:I variant_name:I) I {
 // Compile lambda body as a lifted function and emit FnRef.
 // Handles both non-capturing and capturing lambdas.
 lower_lambda(ctx:I expr:I) I {
-  params = load64(expr + 8)
-  ret_type = load64(expr + 16)
-  body_stmts = load64(expr + 24)
+  params = load64(expr + 16)
+  ret_type = load64(expr + 24)
+  body_stmts = load64(expr + 32)
 
   // Generate unique lambda name using lambda counter
   lambda_id = ctx_fresh_lambda_id(ctx)
@@ -3169,11 +3169,11 @@ lower_lambda(ctx:I expr:I) I {
     if is_last == 1 {
       stag = load64(stmt)
       if stag == ST_EXPR {
-        bexpr = load64(stmt + 8)
+        bexpr = load64(stmt + 16)
         reg = lower_expr(lctx, bexpr)
         ctx_emit(lctx, ir_ret(reg))
       } else { if stag == ST_RETURN {
-        val_expr = load64(stmt + 8)
+        val_expr = load64(stmt + 16)
         reg = lower_expr(lctx, val_expr)
         ctx_emit(lctx, ir_ret(reg))
       } else {
@@ -3284,33 +3284,33 @@ find_captures_stmts(stmts:I param_set:I ctx:I result:I seen:I local_set:I) I {
 
 find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
   stag = load64(stmt)
-  if stag == ST_EXPR { find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  if stag == ST_EXPR { find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set) }
   else if stag == ST_LET {
-    // ST_LET layout: [tag, name, mutable, type_ptr, value_expr]
-    val = load64(stmt + 32)
+    // ST_LET layout: [tag, size, name, mutable, type_ptr, value_expr, line, col]
+    val = load64(stmt + 40)
     find_captures_expr(val, param_set, ctx, result, seen, local_set)
     // Add the let-bound name to local_set so it's not treated as a capture
-    mset(local_set, load64(stmt + 8), 1)
+    mset(local_set, load64(stmt + 16), 1)
   }
   else if stag == ST_ASSIGN {
-    find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(stmt + 24), param_set, ctx, result, seen, local_set)
     // The assigned name might itself be a capture
-    aname = load64(stmt + 8)
+    aname = load64(stmt + 16)
     if mget(param_set, aname) == 0 && mget(local_set, aname) == 0 && mget(seen, aname) == 0 && ctx_get_local(ctx, aname) != 0 {
       mset(seen, aname, 1)
       result.push(aname)
     }
   }
-  else if stag == ST_RETURN { find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set) }
+  else if stag == ST_RETURN { find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set) }
   else if stag == ST_IF {
-    find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
-    find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
-    else_stmts = load64(stmt + 24)
+    find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    find_captures_stmts(load64(stmt + 24), param_set, ctx, result, seen, local_set)
+    else_stmts = load64(stmt + 32)
     if else_stmts != 0 { find_captures_stmts(else_stmts, param_set, ctx, result, seen, local_set) }
   }
   else if stag == ST_WHILE {
-    find_captures_expr(load64(stmt + 8), param_set, ctx, result, seen, local_set)
-    find_captures_stmts(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+    find_captures_stmts(load64(stmt + 24), param_set, ctx, result, seen, local_set)
   } else { 0 }
 }
 
@@ -3318,7 +3318,7 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
   if expr == 0 { return 0 }
   etag = load64(expr)
   if etag == EX_IDENT {
-    name = load64(expr + 8)
+    name = load64(expr + 16)
     // It's a capture if: not a param, not locally defined, not already seen, and exists in enclosing ctx
     if mget(param_set, name) == 0 && mget(local_set, name) == 0 && mget(seen, name) == 0 && ctx_get_local(ctx, name) != 0 {
       mset(seen, name, 1)
@@ -3326,24 +3326,7 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
     }
   }
   else if etag == EX_CALL {
-    // EX_CALL: [tag, name_ptr(string), args_arr] — name is a string, not an expression
-    args = load64(expr + 16)
-    ai := 0
-    while ai < args.len() {
-      find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
-      ai = ai + 1
-      0
-    }
-  }
-  else if etag == EX_BINOP {
-    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
-    find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
-  }
-  else if etag == EX_UNARYOP {
-    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
-  }
-  else if etag == EX_METHOD_CALL {
-    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+    // EX_CALL: [tag, size, name_ptr(string), args_arr, line, col] — name is a string, not an expression
     args = load64(expr + 24)
     ai := 0
     while ai < args.len() {
@@ -3352,16 +3335,33 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
       0
     }
   }
-  else if etag == EX_FIELD_ACCESS {
-    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
+  else if etag == EX_BINOP {
+    find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 32), param_set, ctx, result, seen, local_set)
   }
-  else if etag == EX_IF {
-    find_captures_expr(load64(expr + 8), param_set, ctx, result, seen, local_set)
-    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+  else if etag == EX_UNARYOP {
     find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
   }
+  else if etag == EX_METHOD_CALL {
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    args = load64(expr + 32)
+    ai := 0
+    while ai < args.len() {
+      find_captures_expr(args.get(ai), param_set, ctx, result, seen, local_set)
+      ai = ai + 1
+      0
+    }
+  }
+  else if etag == EX_FIELD_ACCESS {
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+  }
+  else if etag == EX_IF {
+    find_captures_expr(load64(expr + 16), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 24), param_set, ctx, result, seen, local_set)
+    find_captures_expr(load64(expr + 32), param_set, ctx, result, seen, local_set)
+  }
   else if etag == EX_ARRAY_LIT {
-    elems = load64(expr + 8)
+    elems = load64(expr + 16)
     ai := 0
     while ai < elems.len() {
       find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
@@ -3370,7 +3370,7 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
     }
   }
   else if etag == EX_TUPLE_LIT {
-    elems = load64(expr + 8)
+    elems = load64(expr + 16)
     ai := 0
     while ai < elems.len() {
       find_captures_expr(elems.get(ai), param_set, ctx, result, seen, local_set)
@@ -3380,8 +3380,8 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
   }
   else if etag == EX_LAMBDA {
     // Scan nested lambda body for captures from the enclosing scope
-    inner_params = load64(expr + 8)
-    inner_body = load64(expr + 24)
+    inner_params = load64(expr + 16)
+    inner_body = load64(expr + 32)
     // Inner lambda's params are local to it, not captures
     inner_local = M()
     ipi := 0
@@ -3397,7 +3397,7 @@ find_captures_expr(expr:I param_set:I ctx:I result:I seen:I local_set:I) I {
 
 // ------ lower_array_lit ---------------------------------------------------------------------------------------------------------------------------------------
 lower_array_lit(ctx:I expr:I) I {
-  elements = load64(expr + 8)
+  elements = load64(expr + 16)
 
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
@@ -3564,9 +3564,9 @@ resolve_generic_struct_fields(sd:I name:I) I {
 
 // ------ lower_struct_lit ------------------------------------------------------------------------------------------------------------------------------------
 lower_struct_lit(ctx:I expr:I) I {
-  name = load64(expr + 8)
-  field_names = load64(expr + 16)
-  field_values = load64(expr + 24)
+  name = load64(expr + 16)
+  field_names = load64(expr + 24)
+  field_values = load64(expr + 32)
 
   // Look up struct definition to get field order; try generic instantiation first
   sd = ctx_struct_defs(ctx)
@@ -3615,7 +3615,7 @@ lower_struct_lit(ctx:I expr:I) I {
 
 // ------ lower_tuple_lit ---------------------------------------------------------------------------------------------------------------------------------------
 lower_tuple_lit(ctx:I expr:I) I {
-  elements = load64(expr + 8)
+  elements = load64(expr + 16)
   num_fields = elements.len()
 
   dest = ctx_fresh_reg(ctx)
@@ -3634,9 +3634,9 @@ lower_tuple_lit(ctx:I expr:I) I {
 
 // ------ lower_enum_variant ------------------------------------------------------------------------------------------------------------------------------
 lower_enum_variant(ctx:I expr:I) I {
-  enum_name = load64(expr + 8)
-  variant_name = load64(expr + 16)
-  args = load64(expr + 24)
+  enum_name = load64(expr + 16)
+  variant_name = load64(expr + 24)
+  args = load64(expr + 32)
 
   // Look up tag from variant_tag_map
   tmap = load64(ctx + 96)
@@ -3677,8 +3677,8 @@ lower_enum_variant(ctx:I expr:I) I {
 
 // ------ lower_spawn ---------------------------------------------------------------------------------------------------------------------------------------------------
 lower_spawn(ctx:I expr:I) I {
-  func_name = load64(expr + 8)
-  args = load64(expr + 16)
+  func_name = load64(expr + 16)
+  args = load64(expr + 24)
 
   arg_regs = array<I>()
   i := 0
@@ -3696,7 +3696,7 @@ lower_spawn(ctx:I expr:I) I {
 
 // ------ lower_mutex ---------------------------------------------------------------------------------------------------------------------------------------------------
 lower_mutex(ctx:I expr:I) I {
-  value_expr = load64(expr + 8)
+  value_expr = load64(expr + 16)
   val_reg = lower_expr(ctx, value_expr)
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_mutex_create(dest, val_reg))
@@ -3706,7 +3706,7 @@ lower_mutex(ctx:I expr:I) I {
 
 // ------ lower_array_create ------------------------------------------------------------------------------------------------------------------------------
 lower_array_create(ctx:I expr:I) I {
-  // elem_type_ptr = load64(expr + 8) --- used only for type tracking
+  // elem_type_ptr = load64(expr + 16) --- used only for type tracking
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
   ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
@@ -3879,11 +3879,11 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
       stag = load64(stmt)
       // If last stmt is an expression or return, emit Ret
       if stag == ST_EXPR {
-        expr = load64(stmt + 8)
+        expr = load64(stmt + 16)
         reg = lower_expr(ctx, expr)
         ctx_emit(ctx, ir_ret(reg))
       } else { if stag == ST_RETURN {
-        val_expr = load64(stmt + 8)
+        val_expr = load64(stmt + 16)
         reg = lower_expr(ctx, val_expr)
         ctx_emit(ctx, ir_ret(reg))
       } else {

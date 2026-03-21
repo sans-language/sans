@@ -433,12 +433,12 @@ lookup_local(locals:I name:S) I {
 check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
   tag = load64(stmt)
 
-  // ST_LET: [tag, name, mutable, type_ptr, value_expr]
+  // ST_LET: [tag, size, name, mutable, type_ptr, value_expr, line, col]
   if tag == ST_LET {
-    name = load64(stmt + 8)
-    mutable = load64(stmt + 16)
-    type_ptr = load64(stmt + 24)
-    value_expr = load64(stmt + 32)
+    name = load64(stmt + 16)
+    mutable = load64(stmt + 24)
+    type_ptr = load64(stmt + 32)
+    value_expr = load64(stmt + 40)
     actual = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     ty = if type_ptr != 0 {
       declared = resolve_type(type_ptr, structs, enums, mod_exports)
@@ -453,8 +453,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_WHILE: [tag, cond, body_stmts_p]
   if tag == ST_WHILE {
-    cond = load64(stmt + 8)
-    body_arr = load64(stmt + 16)
+    cond = load64(stmt + 16)
+    body_arr = load64(stmt + 24)
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     ct = type_tag(cond_ty)
     if ct != TY_BOOL && ct != TY_INT { tc_error("while condition must be Bool or Int, got " + type_to_string(cond_ty)) }
@@ -466,7 +466,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_RETURN: [tag, value_expr]
   if tag == ST_RETURN {
-    value_expr = load64(stmt + 8)
+    value_expr = load64(stmt + 16)
     ty = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if types_compatible(ty, ret_type) == 0 { tc_error("return type mismatch: expected " + type_to_string(ret_type) + " but got " + type_to_string(ty)) }
     return 0
@@ -474,8 +474,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_ASSIGN: [tag, target, value_expr]
   if tag == ST_ASSIGN {
-    name = load64(stmt + 8)
-    value_expr = load64(stmt + 16)
+    name = load64(stmt + 16)
+    value_expr = load64(stmt + 24)
     existing = lookup_local(locals, name)
     if existing != 0 {
       // Existing variable --- just check value type compatible
@@ -494,8 +494,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_IF: [tag, cond, body_stmts_p]
   if tag == ST_IF {
-    cond = load64(stmt + 8)
-    body_arr = load64(stmt + 16)
+    cond = load64(stmt + 16)
+    body_arr = load64(stmt + 24)
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     ct2 = type_tag(cond_ty)
     if ct2 != TY_BOOL && ct2 != TY_INT { tc_error("if condition must be Bool or Int, got " + type_to_string(cond_ty)) }
@@ -511,17 +511,17 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_LET_DESTR: [tag, names_p, value_expr]
   if tag == ST_LET_DESTR {
-    names_arr = load64(stmt + 8)
-    value_expr = load64(stmt + 16)
+    names_arr = load64(stmt + 16)
+    value_expr = load64(stmt + 24)
     // Check if value is channel create (EX_CHANNEL)
     val_tag = load64(value_expr)
     if val_tag == EX_CHANNEL {
-      cap_expr = load64(value_expr + 16)
+      cap_expr = load64(value_expr + 24)
       if cap_expr != 0 {
         cap_ty = check_expr(cap_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
         if type_tag(cap_ty) != TY_INT { tc_error("channel capacity must be Int, got " + type_to_string(cap_ty)) }
       }
-      elem_type_name = load64(value_expr + 8)
+      elem_type_name = load64(value_expr + 16)
       inner = resolve_type(elem_type_name, structs, enums, mod_exports)
       num_names = load64(names_arr + 8)
       names_p = load64(names_arr)
@@ -546,9 +546,9 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_FOR_IN: [tag, var_name, iterable, body_stmts_p]
   if tag == ST_FOR_IN {
-    var_name = load64(stmt + 8)
-    iterable = load64(stmt + 16)
-    body_arr = load64(stmt + 24)
+    var_name = load64(stmt + 16)
+    iterable = load64(stmt + 24)
+    body_arr = load64(stmt + 32)
     iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if type_tag(iter_ty) != TY_ARRAY { tc_error("for-in requires Array, got " + type_to_string(iter_ty)) }
     // Add loop var to scope
@@ -564,11 +564,11 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_FOR_IN_DESTR: [tag, vars_arr_p, iterable, body_stmts_p]
   if tag == ST_FOR_IN_DESTR {
-    vars_arr = load64(stmt + 8)
+    vars_arr = load64(stmt + 16)
     vars_p = load64(vars_arr)
     num_vars = load64(vars_arr + 8)
-    iterable = load64(stmt + 16)
-    body_arr = load64(stmt + 24)
+    iterable = load64(stmt + 24)
+    body_arr = load64(stmt + 32)
     iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if type_tag(iter_ty) != TY_ARRAY { tc_error("for-in destructuring requires Array, got " + type_to_string(iter_ty)) }
     push_scope(locals)
@@ -592,7 +592,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ST_EXPR: [tag, expr]
   if tag == ST_EXPR {
-    check_expr(load64(stmt + 8), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    check_expr(load64(stmt + 16), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     return 0
   }
 
@@ -743,7 +743,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Identifier ------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_IDENT {
-    name = load64(expr + 8)
+    name = load64(expr + 16)
     // Search local scopes
     t = lookup_local(locals, name)
     if t != 0 { return t }
@@ -760,9 +760,9 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Binary operator ---------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_BINOP {
-    op = load64(expr + 8)
-    left = load64(expr + 16)
-    right = load64(expr + 24)
+    op = load64(expr + 16)
+    left = load64(expr + 24)
+    right = load64(expr + 32)
     lt = check_expr(left, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     rt = check_expr(right, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     lt_tag = type_tag(lt)
@@ -797,8 +797,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Unary operator ------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_UNARYOP {
-    op = load64(expr + 8)
-    operand = load64(expr + 16)
+    op = load64(expr + 16)
+    operand = load64(expr + 24)
     ot = check_expr(operand, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     ot_tag = type_tag(ot)
     if op == UOP_NOT {
@@ -814,11 +814,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ If expression ---------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_IF {
-    cond = load64(expr + 8)
-    then_stmts_arr = load64(expr + 16)
-    then_expr = load64(expr + 24)
-    else_stmts_arr = load64(expr + 32)
-    else_expr = load64(expr + 40)
+    cond = load64(expr + 16)
+    then_stmts_arr = load64(expr + 24)
+    then_expr = load64(expr + 32)
+    else_stmts_arr = load64(expr + 40)
+    else_expr = load64(expr + 48)
     cond_ty = check_expr(cond, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     ct3 = type_tag(cond_ty)
     if ct3 != TY_BOOL && ct3 != TY_INT { return tc_error("if condition must be Bool or Int, got " + type_to_string(cond_ty)) }
@@ -847,8 +847,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Call ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_CALL {
-    name = load64(expr + 8)
-    args = load64(expr + 16)
+    name = load64(expr + 16)
+    args = load64(expr + 24)
     nargs = args.len()
     // ------ I/O ------------------------------------------------------------------------------------------------------------------------------------------------------------------
     if name == "print" || name == "p" {
@@ -1800,13 +1800,13 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Method call ---------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_METHOD_CALL {
-    mc_object = load64(expr + 8)
-    mc_method = as_str(load64(expr + 16))
-    mc_args = load64(expr + 24)
+    mc_object = load64(expr + 16)
+    mc_method = as_str(load64(expr + 24))
+    mc_args = load64(expr + 32)
     mc_nargs = mc_args.len()
     // Cross-module call: obj is identifier that matches a module name
     if load64(mc_object) == EX_IDENT {
-      mod_name = load64(mc_object + 8)
+      mod_name = load64(mc_object + 16)
       if mod_exports != 0 && mhas(mod_exports, mod_name) {
         exports = mget(mod_exports, mod_name)
         exp_fn_env = load64(exports + 16)
@@ -2503,8 +2503,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Field access ------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_FIELD_ACCESS {
-    object = load64(expr + 8)
-    field = load64(expr + 16)
+    object = load64(expr + 16)
+    field = load64(expr + 24)
     obj_ty = check_expr(object, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     obj_tag = type_tag(obj_ty)
     // Tuple: field is numeric index
@@ -2543,20 +2543,21 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       return make_array_type(make_type(TY_INT))
     }
     // Generic fallback: treat as no-arg method call (e.g. server.accept → server.accept())
-    synth_mc = alloc(40)
+    synth_mc = alloc(56)
     store64(synth_mc, EX_METHOD_CALL)
-    store64(synth_mc + 8, object)
-    store64(synth_mc + 16, field)
-    store64(synth_mc + 24, array<I>())
+    store64(synth_mc + 8, 56)
+    store64(synth_mc + 16, object)
+    store64(synth_mc + 24, field)
+    store64(synth_mc + 32, array<I>())
     return check_expr(synth_mc, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
   }
 
   // ------ Struct literal ------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_STRUCT_LIT {
-    sname = load64(expr + 8)
-    field_names_arr = load64(expr + 16)
+    sname = load64(expr + 16)
+    field_names_arr = load64(expr + 24)
     field_names_p = load64(field_names_arr)
-    field_values_arr = load64(expr + 24)
+    field_values_arr = load64(expr + 32)
     field_values_p = load64(field_values_arr)
     // Look up struct definition; try generic instantiation if not found
     if mhas(structs, sname) == 0 {
@@ -2601,7 +2602,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Tuple literal ---------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_TUPLE_LIT {
-    elems_arr = load64(expr + 8)
+    elems_arr = load64(expr + 16)
     elems_p = load64(elems_arr)
     num_elems = load64(elems_arr + 8)
     elem_types = array<I>()
@@ -2616,7 +2617,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Array literal ---------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_ARRAY_LIT {
-    elems_arr = load64(expr + 8)
+    elems_arr = load64(expr + 16)
     elems_p = load64(elems_arr)
     num_elems = load64(elems_arr + 8)
     if num_elems == 0 { return tc_error("empty array literal --- cannot infer element type") }
@@ -2632,8 +2633,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Match expression ------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_MATCH {
-    scrutinee = load64(expr + 8)
-    arms_arr = load64(expr + 16)
+    scrutinee = load64(expr + 16)
+    arms_arr = load64(expr + 24)
     arms_p = load64(arms_arr)
     scrutinee_ty = check_expr(scrutinee, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     // Value match: Int, String, Bool — check arm bodies only
@@ -2724,10 +2725,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Lambda ------------------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_LAMBDA {
-    params_arr = load64(expr + 8)
+    params_arr = load64(expr + 16)
     params_p = load64(params_arr)
-    ret_type_name = load64(expr + 16)
-    body_stmts_arr = load64(expr + 24)
+    ret_type_name = load64(expr + 24)
+    body_stmts_arr = load64(expr + 32)
     // Build param types and add to new scope
     push_scope(locals)
     inner_scope = locals[locals.len() - 1]
@@ -2755,8 +2756,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Spawn ---------------------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_SPAWN {
-    func_name = load64(expr + 8)
-    args_arr = load64(expr + 16)
+    func_name = load64(expr + 16)
+    args_arr = load64(expr + 24)
     args_p = load64(args_arr)
     num_args = load64(args_arr + 8)
     if mhas(fn_env, func_name) == 0 { return tc_error("undefined function '" + func_name + "' in spawn") }
@@ -2780,8 +2781,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Channel ---------------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_CHANNEL {
-    elem_type_name = load64(expr + 8)
-    capacity_expr = load64(expr + 16)
+    elem_type_name = load64(expr + 16)
+    capacity_expr = load64(expr + 24)
     // Check capacity if present
     if capacity_expr != 0 {
       cap_ty = check_expr(capacity_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -2794,16 +2795,16 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Mutex ---------------------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_MUTEX {
-    value_expr = load64(expr + 8)
+    value_expr = load64(expr + 16)
     inner = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     return make_mutex_type(inner)
   }
 
   // ------ Enum variant ------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_ENUM_VARIANT {
-    ename = load64(expr + 8)
-    vname = load64(expr + 16)
-    args_arr = load64(expr + 24)
+    ename = load64(expr + 16)
+    vname = load64(expr + 24)
+    args_arr = load64(expr + 32)
     args_p = load64(args_arr)
     num_args = load64(args_arr + 8)
     if mhas(enums, ename) == 0 { return tc_error("undefined enum '" + ename + "'") }
@@ -2826,7 +2827,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Array create ------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_ARRAY_CREATE {
-    elem_type_name = load64(expr + 8)
+    elem_type_name = load64(expr + 16)
     inner = resolve_type(elem_type_name, structs, enums, mod_exports)
     return make_array_type(inner)
   }
@@ -3284,7 +3285,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       if is_last == 1 {
         stag = load64(stmt)
         if stag == ST_EXPR {
-          expr = load64(stmt + 8)
+          expr = load64(stmt + 16)
           ety = check_expr(expr, locals, fn_env, ret_ty, structs_map, enums_map, methods_map, generic_fns, trait_registry, mod_exports)
           if types_compatible(ety, ret_ty) == 0 { tc_error("function '" + fname + "': return type mismatch: expected " + type_to_string(ret_ty) + " but got " + type_to_string(ety)) }
         } else {
@@ -3364,7 +3365,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
         if is_last == 1 {
           stag = load64(stmt)
           if stag == ST_EXPR {
-            expr = load64(stmt + 8)
+            expr = load64(stmt + 16)
             ety = check_expr(expr, locals, fn_env, mret_ty, structs_map, enums_map, methods_map, generic_fns, trait_registry, mod_exports)
             if types_compatible(ety, mret_ty) == 0 { tc_error("method '" + mname + "': return type mismatch: expected " + type_to_string(mret_ty) + " but got " + type_to_string(ety)) }
           } else {
