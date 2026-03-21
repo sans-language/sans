@@ -39,56 +39,26 @@ jobs:
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
           mkdir -p ll-output
-          # Use the freshly-built compiler to regenerate .ll files.
-          # Instead of intercepting rm during a full build (unreliable),
-          # build the compiler to a temp output — the .ll file is written
-          # before llc runs, so we capture it mid-build using a background
-          # watcher, then compile each runtime module to .ll individually.
 
-          # 1. Capture main.ll: run build in background, copy .ll before rm deletes it
-          ./compiler/main build compiler/main.sans -o /tmp/sans_rebuild &
-          PID=$!
-          # The .ll file path is output_path + ".ll"
-          LL_PATH="/tmp/sans_rebuild.ll"
-          while [ ! -f "$LL_PATH" ] && kill -0 $PID 2>/dev/null; do sleep 0.05; done
-          [ -f "$LL_PATH" ] && cp "$LL_PATH" ll-output/main.ll
-          wait $PID 2>/dev/null || true
+          # The compiler writes .ll files then deletes them via sys("rm -f ...").
+          # sys() calls libc system() → /bin/sh -c "rm -f file.ll".
+          # Replace rm with a no-op for .ll files so they survive the build.
+          mkdir -p /tmp/wrap
+          printf '#!/bin/bash\nARGS=()\nfor f in "$@"; do [[ "$f" == *.ll ]] || ARGS+=("$f"); done\n[ ${#ARGS[@]} -gt 0 ] && exec /bin/rm "${ARGS[@]}"\n' > /tmp/wrap/rm
+          chmod +x /tmp/wrap/rm
 
-          # 2. Generate runtime .ll files by building a dummy program that
-          #    links each runtime module. The compiler writes runtime .ll to
-          #    /tmp/sans_<name>_runtime.ll before llc, then deletes.
-          #    Same background + copy approach per module.
-          for mod in log result functional array_ext string_ext http server json sock curl map arena rc ssl math fs process; do
-            LL="/tmp/sans_${mod}_runtime.ll"
-            rm -f "$LL"
-          done
+          # Build with rm wrapper — .ll files won't be deleted
+          PATH="/tmp/wrap:$PATH" ./compiler/main build compiler/main.sans -o /tmp/sans_ll_gen 2>&1 || true
 
-          # Run build — runtime .ll files appear in /tmp/
-          ./compiler/main build compiler/main.sans -o /tmp/sans_rebuild2 &
-          PID=$!
-          sleep 1  # Let build start generating runtime .ll files
-          CAPTURED=0
-          while kill -0 $PID 2>/dev/null; do
-            for mod in log result functional array_ext string_ext http server json sock curl map arena rc ssl math fs process; do
-              LL="/tmp/sans_${mod}_runtime.ll"
-              DEST="ll-output/sans_${mod}_runtime.ll"
-              if [ -f "$LL" ] && [ ! -f "$DEST" ]; then
-                cp "$LL" "$DEST" 2>/dev/null && CAPTURED=$((CAPTURED+1))
-              fi
-            done
-            sleep 0.1
+          # Collect all .ll files
+          [ -f /tmp/sans_ll_gen.ll ] && cp /tmp/sans_ll_gen.ll ll-output/main.ll
+          for f in /tmp/sans_*_runtime.ll; do
+            [ -f "$f" ] && cp "$f" ll-output/
           done
-          # Final sweep for any files created just before exit
-          for mod in log result functional array_ext string_ext http server json sock curl map arena rc ssl math fs process; do
-            LL="/tmp/sans_${mod}_runtime.ll"
-            DEST="ll-output/sans_${mod}_runtime.ll"
-            [ -f "$LL" ] && [ ! -f "$DEST" ] && cp "$LL" "$DEST" 2>/dev/null
-          done
-          wait $PID 2>/dev/null || true
 
           echo "=== Captured .ll files ==="
           ls -la ll-output/
-          echo "Total: $(ls ll-output/*.ll | wc -l) files"
+          echo "Total: $(ls ll-output/*.ll 2>/dev/null | wc -l) files"
 
       - name: Upload .ll artifacts
         uses: actions/upload-artifact@v4
