@@ -627,6 +627,13 @@ parse_type_name(p:I) I {
   // Simple identifier type
   name = p_expect_ident(p)
 
+  // dyn Trait type: "dyn" followed by trait name
+  if name == "dyn" {
+    trait_name = p_expect_ident(p)
+    result = "dyn " + trait_name
+    return ptr(result)
+  }
+
   // Check for parameterized type: Name<T1 T2 ...>
   if p_at(p, TK_LT) == 1 {
     p_advance(p)  // consume <
