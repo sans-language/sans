@@ -3941,8 +3941,9 @@ compile_inst(cg:I inst:I) I {
     ok_from = cg_current_block(cg)
     ok_r = cg_fresh_reg(cg)
     emit(cg, "  " + ok_r + " = call i64 @sans_result_ok(i64 " + new_val + ")")
+    emit_scope_track(cg, ok_r, 4)
     emit(cg, "  br label %" + merge_lbl)
-    // Err path: propagate original
+    // Err path: propagate original (already scope-tracked, don't re-track)
     emit(cg, err_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -3951,7 +3952,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + ok_r + ", %" + ok_from + "], [" + res_val + ", %" + err_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
   if op == IR_RESULT_AND_THEN {
@@ -3979,7 +3979,7 @@ compile_inst(cg:I inst:I) I {
     ok_r = cg_get_val(cg, dest)
     ok_from = cg_current_block(cg)
     emit(cg, "  br label %" + merge_lbl)
-    // Err path: propagate original
+    // Err path: propagate original (already scope-tracked)
     emit(cg, err_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -3988,7 +3988,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + ok_r + ", %" + ok_from + "], [" + res_val + ", %" + err_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
   if op == IR_RESULT_MAP_ERR {
@@ -4024,8 +4023,9 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + ecode + " = load i64, ptr " + cp2)
     err_r = cg_fresh_reg(cg)
     emit(cg, "  " + err_r + " = call i64 @sans_result_err(i64 " + ecode + ", i64 " + new_msg + ")")
+    emit_scope_track(cg, err_r, 4)
     emit(cg, "  br label %" + merge_lbl)
-    // Ok path: propagate original
+    // Ok path: propagate original (already scope-tracked)
     emit(cg, ok_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -4034,7 +4034,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + err_r + ", %" + err_from + "], [" + res_val + ", %" + ok_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
   if op == IR_RESULT_OR_ELSE {
@@ -4062,7 +4061,7 @@ compile_inst(cg:I inst:I) I {
     err_r = cg_get_val(cg, dest)
     err_from = cg_current_block(cg)
     emit(cg, "  br label %" + merge_lbl)
-    // Ok path: propagate original
+    // Ok path: propagate original (already scope-tracked)
     emit(cg, ok_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -4071,7 +4070,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + err_r + ", %" + err_from + "], [" + res_val + ", %" + ok_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
 
