@@ -1790,6 +1790,16 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       }
       tc_error("err() takes 1 or 2 arguments, got " + str(nargs))
     }
+    // ------ Option ----------------------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "some" {
+      if nargs != 1 { return tc_error_at(expr, "some() takes exactly 1 argument") }
+      inner_type = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_option_type(inner_type)
+    }
+    if name == "none" {
+      if nargs != 0 { return tc_error_at(expr, "none takes no arguments") }
+      return make_option_type(make_type(TY_INT))
+    }
     // ------ Map ------------------------------------------------------------------------------------------------------------------------------------------------------------------
     if name == "M" || name == "map" {
       if nargs != 0 { tc_error("map() takes 0 arguments") }

@@ -23,6 +23,7 @@ g IRTY_HTTP_SERVER = 14
 g IRTY_HTTP_REQ = 15
 g IRTY_TUPLE = 16
 g IRTY_MAP = 17
+g IRTY_OPTION = 18
 
 // ------ IrBinOp constants ------------------------------------------------------------------------------------------------------------------------------
 g IROP_ADD = 0
@@ -399,6 +400,7 @@ ty_to_irty(ty:I) I {
   else if ty == TY_HTTP_REQ { IRTY_HTTP_REQ }
   else if ty == TY_TUPLE { IRTY_TUPLE }
   else if ty == TY_MAP { IRTY_MAP }
+  else if ty == TY_OPTION { IRTY_OPTION }
   else { IRTY_INT }
 }
 
@@ -731,6 +733,10 @@ lower_call(ctx:I name:I args:I) I {
       dest
     }
   }
+
+  // ------ Option ------
+  else if name == "some" { lower_call_1(ctx, args, IR_OPTION_SOME, IRTY_OPTION) }
+  else if name == "none" { lower_call_0(ctx, IR_OPTION_NONE, IRTY_OPTION) }
 
   // ------ Map ------
   else if name == "M" { lower_call_0(ctx, IR_MAP_CREATE, IRTY_MAP) }

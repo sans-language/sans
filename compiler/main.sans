@@ -236,6 +236,7 @@ build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I module_fn_ret
            if rt_tag == TY_MAP { IRTY_MAP } else {
            if rt_tag == TY_JSON { IRTY_JSON } else {
            if rt_tag == TY_HTTP_RESP { IRTY_HTTP_RESP } else {
+           if rt_tag == TY_OPTION { IRTY_OPTION } else {
            if rt_tag == TY_RESULT { IRTY_RESULT } else {
            if rt_tag == TY_STRUCT { IRTY_STRUCT } else {
            if rt_tag == TY_ENUM { IRTY_ENUM } else {
@@ -246,7 +247,7 @@ build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I module_fn_ret
            if rt_tag == TY_JOIN_HANDLE { IRTY_JOIN_HANDLE } else {
            if rt_tag == TY_MUTEX { IRTY_MUTEX } else {
            if rt_tag == TY_TUPLE { IRTY_TUPLE } else {
-           IRTY_INT } } } } } } } } } } } } } } } } } }
+           IRTY_INT } } } } } } } } } } } } } } } } } } }
     mangled = mod_n + "__" + fname
     mset(module_fn_ret_types, mangled, irty)
     if rt_tag == TY_STRUCT {
