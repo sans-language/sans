@@ -48,9 +48,9 @@ const HOVER_DATA: Record<string, string> = {
     'json_bool': '**json_bool**(b: Bool) -> JsonValue\n\nWrap boolean as JSON value.',
     'jn': '**json_null**() -> JsonValue\n\nCreate JSON null value.',
     'json_null': '**json_null**() -> JsonValue\n\nCreate JSON null value.',
-    'jp': '**json_parse**(s: String) -> JsonValue\n\nParse JSON string. Returns null on error.',
-    'jparse': '**json_parse**(s: String) -> JsonValue\n\nParse JSON string. Returns null on error.',
-    'json_parse': '**json_parse**(s: String) -> JsonValue\n\nParse JSON string. Returns null on error.',
+    'jp': '**json_parse**(s: String) -> JsonValue\n\nParse JSON string. Handles objects, arrays, strings, integers, floats, booleans, and null. Returns null JsonValue on error.',
+    'jparse': '**json_parse**(s: String) -> JsonValue\n\nParse JSON string. Handles objects, arrays, strings, integers, floats, booleans, and null. Returns null JsonValue on error.',
+    'json_parse': '**json_parse**(s: String) -> JsonValue\n\nParse JSON string. Handles objects, arrays, strings, integers, floats, booleans, and null. Returns null JsonValue on error.',
     'jfy': '**json_stringify**(v: JsonValue) -> String\n\nSerialize JSON value to compact string.',
     'jstringify': '**json_stringify**(v: JsonValue) -> String\n\nSerialize JSON value to compact string.',
     'json_stringify': '**json_stringify**(v: JsonValue) -> String\n\nSerialize JSON value to compact string.',
@@ -281,8 +281,8 @@ const HOVER_DATA: Record<string, string> = {
     'sleep': '**sleep**(ms: Int) -> Int\n\nPause execution for `ms` milliseconds.\n\nUsage: `sleep(1000)  // sleep 1 second`',
     'time': '**time**() -> Int\n\nGet current Unix timestamp in seconds.\n\nUsage: `t = time()`',
     'now': '**now**() -> Int\n\nAlias for `time()`. Get current Unix timestamp.\n\nUsage: `t = now()`',
-    'random': '**random**(max: Int) -> Int\n\nReturn random integer in [0..max).\n\nUsage: `random(100)  // 0-99`',
-    'rand': '**rand**(max: Int) -> Int\n\nAlias for `random()`. Return random integer in [0..max).\n\nUsage: `rand(6)  // 0-5`',
+    'random': '**random**(max: Int) -> Int\n\nReturn cryptographically seeded random integer in [0..max).\n\nUsage: `random(100)  // 0-99`',
+    'rand': '**rand**(max: Int) -> Int\n\nAlias for `random()`. Return cryptographically seeded random integer in [0..max).\n\nUsage: `rand(6)  // 0-5`',
     'print_err': '**print_err**(value: String) -> Int\n\nPrint to stderr.\n\nUsage: `print_err("error occurred")`',
 
     // Function pointers

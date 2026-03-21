@@ -76,7 +76,7 @@ range(a b)                              I I -> Array<I> [a..b)
 stof(s)           string_to_float(s)    S -> F
 sleep(ms)                               I -> I (pause ms)
 time()/now()                            -> I (unix timestamp)
-random(max)/rand(max)                   I -> I [0..max)
+random(max)/rand(max)                   I -> I [0..max) — cryptographically seeded
 fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I
@@ -94,7 +94,7 @@ js(s)             json_string(s)        S -> JsonValue
 ji(n)             json_int(n)           I -> JsonValue
 jb(b)             json_bool(b)          B -> JsonValue
 jn()              json_null()           -> JsonValue
-jp(s)             json_parse(s)         S -> JsonValue
+jp(s)             json_parse(s)         S -> JsonValue — handles int/float/string/bool/null/object/array
 jfy(v)            json_stringify(v)     JsonValue -> S
 hg(url)           http_get(url)         S -> HttpResponse
 hp(url body ct)   http_post(u b c)      S S S -> HttpResponse
@@ -225,7 +225,7 @@ f = |x:I| I { x * 2 }           // assign to variable
 f(5)                             // call: 10
 a.map(|x:I| I { x * 2 })        // pass to map
 offset = 10
-g = |x:I| I { x + offset }      // implicit capture
+g = |x:I| I { x + offset }      // implicit capture (up to 8 vars)
 g(5)                             // 15
 ```
 
@@ -270,6 +270,14 @@ idx/index_of  pl/pad_left  pr/pad_right  ti/to_int  fm/flat_map
 gidx/get_index  gs/get_string  geti/get_int  gb/get_bool  typeof/type_of
 cl/content_length  rj/respond_json
 getenv/genv  remove/rm  listdir/ls  sh/shell  J=JsonValue
+
+## Compiler Diagnostics
+```
+file.sans:12:5: error: undefined variable 'foo'   // file:line:col: severity: msg
+    foo + 1
+    ^                                              // caret points to token
+```
+Multiple errors reported per build. Warnings also emitted (build continues).
 
 ## Package Manager
 ```
