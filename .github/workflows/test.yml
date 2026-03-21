@@ -37,23 +37,69 @@ jobs:
           sudo apt-get install -y llvm-17 libcurl4-openssl-dev libssl-dev pkg-config zlib1g-dev
 
       - name: Download bootstrap compiler
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/${{ matrix.bootstrap_binary }}.tar.gz" | tar xz
+          # Use v0.4.0 as bootstrap — same as release workflow.
+          # Later versions may have scope GC bugs that cause segfaults.
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
+          else
+            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-linux-x86_64.tar.gz" | tar xz
+          fi
           chmod +x sans
           mv sans sans-bootstrap
           ./sans-bootstrap --version
 
-      - name: Build compiler from source (macOS)
-        if: runner.os == 'macOS'
+      - name: Build compiler from source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
-          ./sans-bootstrap build compiler/main.sans
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          else
+            export PATH="/usr/lib/llvm-17/bin:$PATH"
+          fi
 
-      - name: Build compiler from source (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          export PATH="/usr/lib/llvm-17/bin:$PATH"
-          ./sans-bootstrap build compiler/main.sans
+          # Try direct build. If bootstrap segfaults (AST layout changes, new
+          # builtins, etc.), fall back to multi-stage bootstrap — same strategy
+          # as release.yml.
+          if ./sans-bootstrap build compiler/main.sans 2>&1; then
+            echo "=== Direct build succeeded ==="
+          else
+            echo "=== Multi-stage bootstrap ==="
+            # Stage 1: v0.4.0 bootstrap -> v0.4.0 source (known good)
+            echo "Stage 1: v0.4.0 bootstrap -> v0.4.0 source"
+            mkdir -p /tmp/prev-src
+            curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/v0.4.0.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
+            ./sans-bootstrap build /tmp/prev-src/compiler/main.sans
+            mv /tmp/prev-src/compiler/main /tmp/sans-stage1
+            rm -rf /tmp/prev-src
+
+            # Stage 2: stage1 -> current source (strip builtins v0.4.0 doesn't know)
+            echo "Stage 2: stage1 -> current source (stripped)"
+            cp compiler/main.sans compiler/main.sans.bak
+            if [ "${{ runner.os }}" = "macOS" ]; then
+              sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
+              sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
+              sed -i '' 's/scope_disable()/0/' compiler/main.sans
+              sed -i '' 's/sh("brew[^"]*")/""/' compiler/main.sans
+              sed -i '' 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
+            else
+              sed -i 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
+              sed -i 's/pkg_main(argv)/0/' compiler/main.sans
+              sed -i 's/scope_disable()/0/' compiler/main.sans
+              sed -i 's/sh("brew[^"]*")/""/' compiler/main.sans
+              sed -i 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
+            fi
+            /tmp/sans-stage1 build compiler/main.sans
+            mv compiler/main /tmp/sans-stage2
+            mv compiler/main.sans.bak compiler/main.sans
+
+            # Stage 3: stage2 -> full current source
+            echo "Stage 3: stage2 -> full current source"
+            /tmp/sans-stage2 build compiler/main.sans
+          fi
 
       - name: Run tests
         run: bash tests/run_tests.sh
