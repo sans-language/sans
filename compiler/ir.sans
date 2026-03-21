@@ -410,6 +410,7 @@ ty_to_irty(ty:I) I {
   else if ty == TY_TUPLE { IRTY_TUPLE }
   else if ty == TY_MAP { IRTY_MAP }
   else if ty == TY_OPTION { IRTY_OPTION }
+  else if ty == TY_DYN_TRAIT { IRTY_DYN_TRAIT }
   else { IRTY_INT }
 }
 
@@ -1004,6 +1005,12 @@ lower_call_user(ctx:I name:I args:I) I {
     ctx_set_reg_type(ctx, dest, if rt != 0 { rt } else { IRTY_INT })
     // If return type is struct, propagate struct name for field access
     if rt == IRTY_STRUCT {
+      sn_map = ctx_fn_ret_struct_names(ctx)
+      sn = mget(sn_map, name)
+      if sn != 0 { ctx_set_struct_name(ctx, dest, sn) }
+    }
+    // If return type is dyn trait, propagate struct name for dispatch
+    if rt == IRTY_DYN_TRAIT {
       sn_map = ctx_fn_ret_struct_names(ctx)
       sn = mget(sn_map, name)
       if sn != 0 { ctx_set_struct_name(ctx, dest, sn) }
@@ -2106,7 +2113,14 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     idx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, dest, obj_reg, idx_reg))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    // Check if array holds dyn trait elements
+    ag_sn = ctx_get_struct_name(ctx, obj_reg)
+    if ag_sn != 0 && ir_s(ag_sn).sw("dyn::") == 1 {
+      ctx_set_reg_type(ctx, dest, IRTY_DYN_TRAIT)
+      ctx_set_struct_name(ctx, dest, ag_sn)
+    } else {
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+    }
     dest
   }
   else if method == "set" {
@@ -2987,6 +3001,7 @@ lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
   else if obj_type == IRTY_HTTP_REQ { lower_http_req_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_RESULT { lower_result_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_OPTION { lower_option_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_DYN_TRAIT { lower_dyn_trait_method_call(ctx, obj_reg, method, args) }
   else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
 
@@ -3906,10 +3921,18 @@ lower_mutex(ctx:I expr:I) I {
 
 // ------ lower_array_create ------------------------------------------------------------------------------------------------------------------------------
 lower_array_create(ctx:I expr:I) I {
-  // elem_type_ptr = load64(expr + 16) --- used only for type tracking
+  ac_elem_type = load64(expr + 16)
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
   ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+  // Track dyn trait element type for polymorphic dispatch
+  if ac_elem_type != 0 {
+    ac_et_s = ir_s(ac_elem_type)
+    if ac_et_s.sw("dyn ") == 1 {
+      ac_tname = ac_et_s.substring(4, slen(ac_et_s))
+      ctx_set_struct_name(ctx, dest, ptr("dyn::" + ac_tname))
+    }
+  }
   dest
 }
 
@@ -3948,6 +3971,7 @@ ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
   else if type_name.sw("Option<") { IRTY_OPTION }
   else if type_name.sw("O<") { IRTY_OPTION }
   else if type_name.sw("(") { IRTY_TUPLE }
+  else if type_name.sw("dyn ") { IRTY_DYN_TRAIT }
   // Check struct/enum defs
   else if mhas(struct_defs, type_name) == 1 { IRTY_STRUCT }
   else if mhas(enum_defs, type_name) == 1 { IRTY_ENUM }
@@ -4064,6 +4088,9 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
     else if ptype.sw("Sender") { ctx_set_reg_type(ctx, arg_reg, IRTY_SENDER) }
     else if ptype.sw("Receiver") { ctx_set_reg_type(ctx, arg_reg, IRTY_RECEIVER) }
     else if ptype.sw("Mutex") { ctx_set_reg_type(ctx, arg_reg, IRTY_MUTEX) }
+    else if ptype.sw("dyn ") { ctx_set_reg_type(ctx, arg_reg, IRTY_DYN_TRAIT)
+      dyn_tname = ir_s(ptype).substring(4, slen(ptype))
+      ctx_set_struct_name(ctx, arg_reg, ptr("dyn::" + dyn_tname)) }
     else { ctx_set_reg_type(ctx, arg_reg, IRTY_INT) }
 
     param_names.push(arg_reg)
@@ -4260,6 +4287,12 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
       if rt == IRTY_STRUCT {
         mset(fn_ret_struct_names, fname, ret_type_name)
         if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ret_type_name) }
+      }
+      if rt == IRTY_DYN_TRAIT {
+        drt_tname = ir_s(ret_type_name).substring(4, slen(ret_type_name))
+        drt_sn = "dyn::" + drt_tname
+        mset(fn_ret_struct_names, fname, ptr(drt_sn))
+        if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ptr(drt_sn)) }
       }
     }
     fri = fri + 1

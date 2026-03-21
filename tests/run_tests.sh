@@ -85,6 +85,8 @@ run_test "match_guard"               "$REPO_ROOT/tests/fixtures/match_guard.sans
 run_test "method_basic"              "$REPO_ROOT/tests/fixtures/method_basic.sans"              7
 run_test "trait_impl"                "$REPO_ROOT/tests/fixtures/trait_impl.sans"                13
 run_test "trait_object_basic"        "$REPO_ROOT/tests/fixtures/trait_object_basic.sans"        0
+run_test "dyn_trait_param"           "$REPO_ROOT/tests/fixtures/dyn_trait_param.sans"           0
+run_test "dyn_trait_array"           "$REPO_ROOT/tests/fixtures/dyn_trait_array.sans"           0
 run_test "generic_identity"          "$REPO_ROOT/tests/fixtures/generic_identity.sans"          42
 run_test "generic_pair"              "$REPO_ROOT/tests/fixtures/generic_pair.sans"              17
 run_test "spawn_join"                "$REPO_ROOT/tests/fixtures/spawn_join.sans"                7
