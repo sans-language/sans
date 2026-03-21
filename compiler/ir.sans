@@ -258,7 +258,7 @@ irm_trait_registry(m:I) I = load64(m + 56)
 // offset 168: fn_param_defaults (I) --- Map: func name -> array of default expr ASTs (0 = no default)
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(176)
+  ctx = alloc(184)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -277,6 +277,7 @@ make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   store64(ctx + 120, 0)          // lambda_counter
   store64(ctx + 128, ptr(M()))   // closure_info: reg -> [lambda_name, cap0, cap1, ...] or 0 for non-capturing
   store64(ctx + 136, ptr(M()))   // fn_ret_struct_names: func name -> struct name
+  store64(ctx + 176, ptr(array<I>()))  // defer_stack: array of [fname, arg_regs_array] pairs
   ctx
 }
 
@@ -324,6 +325,23 @@ ctx_set_fn_param_defaults(ctx:I v:I) I { store64(ctx + 168, v)
   0 }
 ctx_set_lambda_counter(ctx:I v:I) I { store64(ctx + 120, v)
   0 }
+ctx_defer_stack(ctx:I) I = load64(ctx + 176)
+
+// Emit deferred calls in LIFO order before a return
+ctx_emit_defers(ctx:I) I {
+  ds = ctx_defer_stack(ctx)
+  i := ds.len() - 1
+  while i >= 0 {
+    entry = ds.get(i)
+    fname = load64(entry)
+    arg_regs = load64(entry + 8)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_call(dest, fname, arg_regs))
+    i = i - 1
+    0
+  }
+  0
+}
 ctx_fresh_lambda_id(ctx:I) I {
   n := load64(ctx + 120)
   store64(ctx + 120, n + 1)
@@ -1396,7 +1414,33 @@ lower_stmt(ctx:I stmt:I) I {
   else if tag == ST_RETURN {
     value_expr = load64(stmt + 16)
     val_reg = lower_expr(ctx, value_expr)
+    ctx_emit_defers(ctx)
     ctx_emit(ctx, ir_ret(val_reg))
+    0
+  }
+
+  // ST_DEFER
+  else if tag == ST_DEFER {
+    expr = load64(stmt + 16)
+    etag = load64(expr)
+    if etag == EX_CALL {
+      fname = load64(expr + 16)
+      args = load64(expr + 24)
+      // Evaluate arguments eagerly at defer site
+      arg_regs = array<I>()
+      dai := 0
+      while dai < args.len() {
+        arg_regs.push(lower_expr(ctx, args.get(dai)))
+        dai = dai + 1
+        0
+      }
+      // Push onto defer stack: [fname, arg_regs]
+      entry = alloc(16)
+      store64(entry, fname)
+      store64(entry + 8, ptr(arg_regs))
+      ds = ctx_defer_stack(ctx)
+      ds.push(entry)
+    }
     0
   }
 
@@ -3386,10 +3430,12 @@ lower_lambda(ctx:I expr:I) I {
       if stag == ST_EXPR {
         bexpr = load64(stmt + 16)
         reg = lower_expr(lctx, bexpr)
+        ctx_emit_defers(lctx)
         ctx_emit(lctx, ir_ret(reg))
       } else { if stag == ST_RETURN {
         val_expr = load64(stmt + 16)
         reg = lower_expr(lctx, val_expr)
+        ctx_emit_defers(lctx)
         ctx_emit(lctx, ir_ret(reg))
       } else {
         lower_stmt(lctx, stmt)
@@ -3526,6 +3572,9 @@ find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
   else if stag == ST_WHILE {
     find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
     find_captures_stmts(load64(stmt + 24), param_set, ctx, result, seen, local_set)
+  }
+  else if stag == ST_DEFER {
+    find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
   } else { 0 }
 }
 
@@ -4112,10 +4161,12 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
       if stag == ST_EXPR {
         expr = load64(stmt + 16)
         reg = lower_expr(ctx, expr)
+        ctx_emit_defers(ctx)
         ctx_emit(ctx, ir_ret(reg))
       } else { if stag == ST_RETURN {
         val_expr = load64(stmt + 16)
         reg = lower_expr(ctx, val_expr)
+        ctx_emit_defers(ctx)
         ctx_emit(ctx, ir_ret(reg))
       } else {
         lower_stmt(ctx, stmt)

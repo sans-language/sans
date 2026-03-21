@@ -817,6 +817,12 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     return 0
   }
 
+  // ST_DEFER: [tag, size, expr, line, col]
+  if tag == ST_DEFER {
+    check_expr(load64(stmt + 16), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    return 0
+  }
+
   // ST_EXPR: [tag, expr]
   if tag == ST_EXPR {
     check_expr(load64(stmt + 16), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)

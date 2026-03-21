@@ -190,6 +190,8 @@ run_test "random_real"                "$REPO_ROOT/tests/fixtures/random_real.san
 run_test "json_float"                 "$REPO_ROOT/tests/fixtures/json_float.sans"                 3
 run_test "closure_captures"          "$REPO_ROOT/tests/fixtures/closure_captures.sans"          0
 run_test "deep_recursion"            "$REPO_ROOT/tests/fixtures/deep_recursion.sans"            0
+run_test "defer_basic"               "$REPO_ROOT/tests/fixtures/defer_basic.sans"               0
+run_test "defer_early_return"        "$REPO_ROOT/tests/fixtures/defer_early_return.sans"        0
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests

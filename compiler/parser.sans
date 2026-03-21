@@ -406,6 +406,16 @@ make_st_continue(line:I col:I) I {
   n
 }
 
+make_st_defer(expr:I line:I col:I) I {
+  n = alloc(40)
+  store64(n, ST_DEFER)
+  store64(n + 8, 40)
+  store64(n + 16, expr)
+  store64(n + 24, line)
+  store64(n + 32, col)
+  n
+}
+
 make_st_let_destr(names:I value_expr:I line:I col:I) I {
   n = alloc(48)
   store64(n, ST_LET_DESTR)
@@ -893,6 +903,13 @@ parse_stmt_inner(p:I) I {
 
   // return
   if kind == TK_RETURN { return parse_return(p) }
+
+  // defer
+  if kind == TK_DEFER {
+    t_def = p_advance(p)
+    def_expr = parse_expr(p, 0)
+    return make_st_defer(def_expr, tok_line(t_def), tok_col(t_def))
+  }
 
   // if
   if kind == TK_IF { return parse_if_or_if_else(p) }

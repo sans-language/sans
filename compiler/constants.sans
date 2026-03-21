@@ -66,6 +66,7 @@ g TK_COLON_COLON = 63
 g TK_DOT = 64
 g TK_EOF = 65
 g TK_AS = 66
+g TK_DEFER = 67
 
 // Expr tags (22 total, 0-21)
 g EX_INT_LIT = 0
@@ -103,6 +104,7 @@ g ST_LET_DESTR = 7
 g ST_FOR_IN = 8
 g ST_EXPR = 9
 g ST_FOR_IN_DESTR = 10
+g ST_DEFER = 11
 
 // BinOp tags (13 total)
 g OP_ADD = 0

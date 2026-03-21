@@ -1,0 +1,17 @@
+g acc = 0
+
+add(n:I) I { acc = acc * 10 + n; 0 }
+
+helper() I {
+  defer add(1)
+  defer add(2)
+  defer add(3)
+  0
+}
+
+main() I {
+  helper()
+  // LIFO: 3 first, then 2, then 1
+  // acc = ((0*10+3)*10+2)*10+1 = 321
+  acc - 321
+}
