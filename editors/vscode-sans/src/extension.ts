@@ -126,6 +126,17 @@ const HOVER_DATA: Record<string, string> = {
     'ok': '**ok**(value: T) -> Result\\<T\\>\n\nWrap value in successful Result.',
     'err': '**err**(message: String) -> Result\\<_\\>\n**err**(code: Int, message: String) -> Result\\<_\\>\n\nCreate error Result with message. Optionally include an integer error code.\n\nUsage: `err("not found")` or `err(404 "not found")`\n\nRetrieve code with `.code()` method.',
     'code': '**code**() -> Int\n\nResult method. Get the error code from a Result. Returns 0 if no code was set.\n\nUsage: `r.code()  // 404`',
+    'and_then': '**and_then**(fn: (T) -> Result\\<U\\>) -> Result\\<U\\>\n\nResult method. Apply `fn` to the ok value where `fn` itself returns a Result. On error, returns the error unchanged. Useful for chaining fallible steps.\n\nUsage: `parse("10").and_then(|n:I| R<I> { n > 0 ? ok(n) : err("negative") })`',
+    'map_err': '**map_err**(fn: (String) -> String) -> Result\\<T\\>\n\nResult method. Transform the error message string. On ok, returns the ok unchanged.\n\nUsage: `r.map_err(|e:S| S { "context: {e}" })`',
+    'or_else': '**or_else**(fn: (String) -> Result\\<T\\>) -> Result\\<T\\>\n\nResult method. Apply `fn` to the error and return its Result. On ok, returns the ok unchanged. Useful for fallback values.\n\nUsage: `parse("").or_else(|e:S| R<I> { ok(0) })  // ok(0) as fallback`',
+
+    // Option
+    'some': '**some**(value: T) -> Option\\<T\\>\n\nCreate a Some option wrapping a value.\n\nUsage: `x = some(42)  // Some(42)`',
+    'none': '**none**() -> Option\\<T\\>\n\nCreate a None option (absence of a value).\n\nUsage: `y = none()  // None`',
+    'Option': '**Option\\<T\\>** (alias: `O<T>`) — Optional value: Some(v) or None.\n\nRuntime: 16 bytes — tag@0 (0=None, 1=Some), value@8.\n\nCreated by `some(v)` or `none()`. Also returned by `Map.get()` and `Array.find()`.\n\nMethods: `.is_some`, `.is_none`, `.unwrap()`/`!`, `.unwrap_or(default)`\n\nOperators: `opt!` (unwrap), `opt?` (propagate none)',
+    'O': '**O\\<T\\>** — Short alias for `Option<T>`. Optional value: Some or None.\n\nUsage: `find_user(id:I) O<S> = id == 1 ? some("alice") : none()`',
+    'is_some': '**is_some**() -> Bool\n\nOption method. Returns true if the option is Some.\n\nUsage: `x.is_some  // true`',
+    'is_none': '**is_none**() -> Bool\n\nOption method. Returns true if the option is None.\n\nUsage: `x.is_none  // false`',
 
     // String methods
     'substring': '**substring**(start: Int, end: Int) -> String\n\nExtract substring. Slice syntax: `s[0:5]`, `s[6:]`, `s[:5]`\n\nUsage: `"hello world"[0:5]  // "hello"`',
@@ -207,14 +218,14 @@ const HOVER_DATA: Record<string, string> = {
     'zip': '**zip**(other: Array<U>) -> Array<(T, U)>\n\nPairs elements from two arrays into tuples.\n\nUsage: `[1 2].zip([10 20])  // [(1 10) (2 20)]`',
 
     // Map
-    'map': '**M**() or **map**()\n\nCreate an empty hash map with string keys.\n\nUsage: `m = M()`\n`m.set("key" 42)`\n`m.get("key")  // 42`',
-    'M': '**M**()\n\nCreate an empty hash map (alias for map()).\n\nUsage: `m = M()`\n`m.set("x" 10)`',
+    'map': '**M\\<K,V\\>**() or **map\\<K,V\\>**()\n\nCreate an empty generic hash map. Bare `M()` defaults to `M<S,I>` (string→int).\n\nSupported key types: `S` (String), `I` (Int). Float keys are not allowed.\n\n`m.get(key)` returns `Option<V>` — use `!` or `.unwrap_or(default)` to extract.\n\nUsage: `m = M()` / `m = M<S S>()` / `m = M<I I>()`\n`m.set("key" 42)`\n`m.get("key")!  // 42`\n`m.get("missing").unwrap_or(0)  // 0`\n\nNote: Also a Result method — `r.map(fn)` transforms the ok value.',
+    'M': '**M\\<K,V\\>**()\n\nCreate an empty generic hash map. Bare `M()` defaults to `M<S,I>` (string→int).\n\nSupported variants: `M<S I>()`, `M<I I>()`, `M<I S>()`, `M<S S>()`.\n\n`m.get(key)` returns `Option<V>` — use `!` or `.unwrap_or(default)` to extract.\n\nUsage: `m = M()` `m.set("x" 10)` `m.get("x")!  // 10`',
 
     // Try operator (? is not a word token, but 'unwrap' is shown as method after desugaring)
     'is_err': '**is_err**() -> Bool\n\nCheck if Result is an error.\n\nUsage: `r.is_err()`\n\nSee also: `?` try operator — `r = may_fail()?` unwraps or early-returns error.',
     'is_ok': '**is_ok**() -> Bool\n\nCheck if Result is ok.\n\nUsage: `r.is_ok()`',
-    'unwrap': '**unwrap**() -> T\n\nUnwrap a Result, exiting on error. Shorthand: `r!`\n\nSee also: `?` try operator — `r = may_fail()?` unwraps or early-returns error.',
-    'unwrap_or': '**unwrap_or**(default: T) -> T\n\nUnwrap a Result, returning default on error.\n\nUsage: `r.unwrap_or(0)`',
+    'unwrap': '**unwrap**() -> T\n\nUnwrap a Result or Option, exiting on error/None. Shorthand: `r!`\n\nSee also: `?` try operator — `r = may_fail()?` unwraps or early-returns error/none.',
+    'unwrap_or': '**unwrap_or**(default: T) -> T\n\nUnwrap a Result or Option, returning `default` on error/None.\n\nUsage: `r.unwrap_or(0)` or `opt.unwrap_or(0)`',
     'error': '**error**() -> String\n\nGet error message from a Result.\n\nUsage: `r.error()`',
 
     // Loop control

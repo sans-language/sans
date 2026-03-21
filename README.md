@@ -72,7 +72,7 @@ main() {
 
 | Feature | Syntax |
 |---|---|
-| **Types** | `I` (Int), `F` (Float), `B` (Bool), `S` (String), `J` (Json), `M` (Map), `R<T>` (Result) |
+| **Types** | `I` (Int), `F` (Float), `B` (Bool), `S` (String), `J` (Json), `M<K,V>` (Map), `O<T>` (Option), `R<T>` (Result) |
 | **Variables** | `x = 42` (immutable) / `x := 0` (mutable) / `g x = 0` (global) |
 | **Functions** | `add(a:I b:I) I = a + b` (compact) or `fn add(a Int, b Int) Int { a + b }` — default params: `f(x:I y:I=0)` |
 | **Lambdas** | `\|x:I\| I { x * 2 }` with implicit capture from enclosing scope (up to 8 variables) |
@@ -85,7 +85,8 @@ main() {
 | **Generics** | `identity<T>(x T) T = x` — generic structs: `Pair<I S>{first: 1, second: "hi"}` |
 | **Tuples** | `(1 "hello" true)` with `.0`, `.1` access |
 | **Arrays** | `[1 2 3]` with `map`, `filter`, `any`, `find`, `enumerate`, `zip` |
-| **Maps** | `M()` with `set`, `get`, `has`, `keys`, `vals` |
+| **Option** | `Option<T>` / `O<T>` — `some(v)`, `none()`, `.is_some`, `.unwrap_or(d)`, `opt!`, `opt?` |
+| **Maps** | `M<K,V>()` (default `M<S,I>`) with `set`, `get` (returns `Option<V>`), `has`, `keys`, `vals` |
 | **String methods** | `len`, `trim`, `split`, `starts_with`, `contains`, `replace`, `[0:5]` slicing |
 | **String interpolation** | `"Hello {name}!"` with expression support `"{x + 1}"` |
 | **Modules** | `import "math"` |
@@ -103,7 +104,7 @@ main() {
 | **Streaming** | `respond_stream(status)`, `stream_write`, `stream_end` |
 | **Static files** | `serve_file(req dir)` with content-type detection |
 | **Logging** | `log_debug`/`ld`, `log_info`/`li`, `log_warn`/`lw`, `log_error`/`le` |
-| **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()` |
+| **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()`, `.map()`, `.and_then()`, `.map_err()`, `.or_else()` |
 | **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator |
 | **Diagnostics** | `file:line:col: error: message` with source context, caret, multi-error reporting, and warnings |
 

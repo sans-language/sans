@@ -32,16 +32,17 @@ main() {
 | `Bool` | `B` | Boolean (`true` / `false`) |
 | `String` | `S` | UTF-8 string |
 | `Array<T>` | — | Dynamic growable array |
-| `Map` | `M` | Hash map with string keys |
+| `Map<K,V>` | `M` | Generic hash map (default `M<S,I>`) |
+| `Option<T>` | `O<T>` | Optional value: Some or None |
 | `Result<T>` | `R<T>` | Success or error value |
 | `JsonValue` | `J` | Opaque JSON value |
-| `HttpResponse` | — | HTTP client response |
-| `HttpServer` | — | HTTP server socket |
+| `HttpResponse` | — | HTTP client response (opaque handle) |
+| `HttpServer` | — | HTTP server socket (opaque handle) |
 | `HttpRequest` | — | HTTP server request |
-| `Sender<T>` | — | Channel sender |
-| `Receiver<T>` | — | Channel receiver |
-| `Mutex<T>` | — | Mutual exclusion lock |
-| `JoinHandle` | — | Thread handle |
+| `Sender<T>` | — | Channel sender (opaque handle) |
+| `Receiver<T>` | — | Channel receiver (opaque handle) |
+| `Mutex<T>` | — | Mutual exclusion lock (opaque handle) |
+| `JoinHandle` | — | Thread handle (opaque handle) |
 
 User-defined types: `struct`, `enum`, `trait`.
 
@@ -531,6 +532,74 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `err(message)` | `(String) -> Result<_>` |
 | `err(code, message)` | `(Int, String) -> Result<_>` |
 
+### Option
+
+| Function | Signature |
+|----------|-----------|
+| `some(value)` | `(T) -> Option<T>` |
+| `none()` | `() -> Option<T>` |
+
+---
+
+## Option\<T\>
+
+`Option<T>` (short: `O<T>`) represents an optional value — either `Some(v)` or `None`. Used as the return type of operations that may produce no result (e.g. `Map.get`, `Array.find`).
+
+Runtime layout: 16 bytes — tag at offset 0 (0=None, 1=Some), value at offset 8.
+
+### Creating Options
+
+```sans
+x = some(42)       // Some(42)
+y = none()         // None
+```
+
+### Methods
+
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `is_some` | `() -> Bool` | True if Some |
+| `is_none` | `() -> Bool` | True if None |
+| `unwrap` or `!` | `() -> T` | Extract value; exits on None |
+| `unwrap_or(default)` | `(T) -> T` | Extract or return default |
+
+### Operators
+
+- `opt!` — unwrap (exits if None)
+- `opt?` — try operator: unwraps Some, or early-returns `none()` from the enclosing function
+
+### Examples
+
+```sans
+find_user(id:I) O<S> {
+    id == 1 ? some("alice") : none()
+}
+
+main() {
+    u = find_user(1)
+    u.is_some          // true
+    u!                 // "alice"
+    u.unwrap_or("unknown")  // "alice"
+
+    m = M()
+    m.set("x" 10)
+    v = m.get("x")     // Option<I>
+    v!                 // 10
+    m.get("z").unwrap_or(0)  // 0
+
+    0
+}
+```
+
+### Option with ? propagation
+
+```sans
+lookup(m:M<S I> k:S) O<I> {
+    v = m.get(k)?  // returns none() early if missing
+    some(v * 2)
+}
+```
+
 ---
 
 ## Methods by Type
@@ -593,18 +662,18 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 |--------|-----------|
 | `to_str` / `to_string` | `() -> String` |
 
-### Map
+### Map\<K,V\>
 
 | Method | Signature |
 |--------|-----------|
-| `get(key)` | `(String) -> Int` |
-| `set(key, value)` | `(String, Int) -> Int` |
-| `has(key)` | `(String) -> Bool` |
+| `get(key)` | `(K) -> Option<V>` |
+| `set(key, value)` | `(K, V) -> Int` |
+| `has(key)` | `(K) -> Bool` |
 | `len` | `() -> Int` |
-| `keys` | `() -> Array<String>` |
-| `vals` | `() -> Array<Int>` |
-| `delete(key)` | `(String) -> Int` |
-| `entries` | `() -> Array<(String, Int)>` |
+| `keys` | `() -> Array<K>` |
+| `vals` | `() -> Array<V>` |
+| `delete(key)` | `(K) -> Int` |
+| `entries` | `() -> Array<(K, V)>` |
 
 ### JsonValue
 
@@ -666,6 +735,45 @@ Explicit Map built-ins. Use these when a Map is stored as Int (e.g. from `load64
 | `unwrap_or(default)` | `(T) -> T` | |
 | `error` | `() -> String` | Error message |
 | `code` | `() -> Int` | Error code (0 if not set) |
+| `map(fn)` | `((T) -> U) -> Result<U>` | Transform ok value |
+| `and_then(fn)` | `((T) -> Result<U>) -> Result<U>` | Chain fallible operations |
+| `map_err(fn)` | `((String) -> String) -> Result<T>` | Transform error message |
+| `or_else(fn)` | `((String) -> Result<T>) -> Result<T>` | Recover from error |
+
+#### Result Combinators
+
+`map(fn)` applies `fn` to the ok value and wraps the result in a new `ok`. On error, returns the error unchanged.
+
+`and_then(fn)` applies `fn` to the ok value where `fn` itself returns a `Result`. Useful for chaining fallible steps. On error, returns the error unchanged.
+
+`map_err(fn)` transforms the error message string. On ok, returns the ok unchanged.
+
+`or_else(fn)` applies `fn` to the error message and returns its `Result`. On ok, returns the ok unchanged.
+
+```sans
+parse(s:S) R<I> = s == "" ? err("empty") : ok(stoi(s))
+
+// map: transform ok value
+parse("42").map(|n:I| I { n * 2 })   // ok(84)
+
+// and_then: chain fallible operations
+parse("10").and_then(|n:I| R<I> { n > 0 ? ok(n) : err("negative") })
+
+// map_err: rewrite error message
+parse("").map_err(|e:S| S { "parse failed: {e}" })
+
+// or_else: recover from error
+parse("").or_else(|e:S| R<I> { ok(0) })  // ok(0) as fallback
+```
+
+### Option\<T\>
+
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `is_some` | `() -> Bool` | |
+| `is_none` | `() -> Bool` | |
+| `unwrap` or `!` | `() -> T` | Exits on None |
+| `unwrap_or(default)` | `(T) -> T` | |
 
 ### Concurrency Types
 
@@ -772,17 +880,33 @@ a.zip(b).map(|t:I| I { t })      // [(1 10) (2 20) (3 30)]
 
 ## Map
 
-Hash map with string keys and integer values. Constructor: `M()` or `map()`.
+Generic hash map. The type parameter specifies key and value types: `M<K V>`. Bare `M()` defaults to `M<S I>` (string keys, integer values).
+
+Supported key types: `S` (String), `I` (Int). Float keys are not allowed.
+
+### Constructors
+
+```sans
+m = M()            // M<S I> — string keys, int values
+m = M<S I>()       // explicit string→int
+m = M<I I>()       // int→int
+m = M<I S>()       // int→string
+m = M<S S>()       // string→string
+```
 
 ### Methods
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `set(key, val)` | `(S, I) -> I` | Set key-value pair |
-| `get(key)` | `(S) -> I` | Get value, 0 if missing |
-| `has(key)` | `(S) -> B` | Check if key exists |
+| `set(key, val)` | `(K, V) -> I` | Set key-value pair |
+| `get(key)` | `(K) -> Option<V>` | Get value — returns `Some(v)` or `None` |
+| `has(key)` | `(K) -> B` | Check if key exists |
 | `len()` | `() -> I` | Number of entries |
-| `keys()` | `() -> [S]` | Array of all keys |
-| `vals()` | `() -> [I]` | Array of all values |
+| `keys()` | `() -> [K]` | Array of all keys |
+| `vals()` | `() -> [V]` | Array of all values |
+| `delete(key)` | `(K) -> I` | Remove key |
+| `entries` | `() -> [(K V)]` | Array of key-value tuples |
+
+**Breaking change (v0.7.1):** `m.get(key)` now returns `Option<V>` instead of a raw value. Use `!`, `.unwrap()`, or `.unwrap_or(default)` to extract.
 
 ### Examples
 
@@ -790,10 +914,16 @@ Hash map with string keys and integer values. Constructor: `M()` or `map()`.
 m = M()
 m.set("x" 10)
 m.set("y" 20)
-m.get("x")       // 10
-m.has("z")        // false
-m.len()           // 2
-m.keys()          // ["x" "y"]
+m.get("x")!          // 10 (unwrap)
+m.get("z").unwrap_or(0)  // 0 (missing key)
+m.has("z")           // false
+m.len()              // 2
+m.keys()             // ["x" "y"]
+
+// Int keys
+counts = M<I I>()
+counts.set(42 1)
+counts.get(42)!      // 1
 ```
 
 ---
