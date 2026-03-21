@@ -1274,15 +1274,15 @@ parse_atom(p:I) I {
           if p_at(p, TK_COMMA) == 1 { p_advance(p) }
         }
         p_expect(p, TK_GT)
+        // Build mangled name: Pair$$I$$S or M$$I$$I
+        mangled := name
+        gtai := 0
+        while gtai < gen_type_args.len() {
+          mangled = mangled + "$$" + mangle_type_arg(gen_type_args[gtai])
+          gtai += 1
+          0
+        }
         if p_at(p, TK_LBRACE) == 1 {
-          // Build mangled name: Pair$$I$$S or Box$$Pair$$I$$I (nested)
-          mangled := name
-          gtai := 0
-          while gtai < gen_type_args.len() {
-            mangled = mangled + "$$" + mangle_type_arg(gen_type_args[gtai])
-            gtai += 1
-            0
-          }
           p_advance(p)  // consume {
           gfield_names = array<I>()
           gfield_values = array<I>()
@@ -1296,6 +1296,13 @@ parse_atom(p:I) I {
           }
           p_expect(p, TK_RBRACE)
           return make_struct_lit(mangled, gfield_names, gfield_values, 0, 0)
+        }
+        // Generic function call: Name<T1 T2>(args)
+        if p_at(p, TK_LPAREN) == 1 {
+          p_advance(p)  // consume (
+          gc_args = parse_call_args(p)
+          p_expect(p, TK_RPAREN)
+          return make_call(ptr(mangled), gc_args, id_line, id_col)
         }
       }
     }

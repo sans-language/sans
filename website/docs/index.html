@@ -38,6 +38,7 @@
         <li><a href="#traits">Traits</a></li>
         <li><a href="#lambdas">Lambdas</a></li>
         <li><a href="#errors">Error Handling</a></li>
+        <li><a href="#option">Option</a></li>
         <li><a href="#modules">Modules</a></li>
         <li><a href="#package-manager">Package Manager</a></li>
         <li><a href="#concurrency">Concurrency</a></li>
@@ -67,16 +68,17 @@
         <tr><td><code>Bool</code></td><td><code>B</code></td><td>Boolean (<code>true</code> / <code>false</code>)</td></tr>
         <tr><td><code>String</code></td><td><code>S</code></td><td>UTF-8 string</td></tr>
         <tr><td><code>Array&lt;T&gt;</code></td><td>&mdash;</td><td>Dynamic growable array</td></tr>
-        <tr><td><code>Map</code></td><td><code>M</code></td><td>Hash map with string keys</td></tr>
+        <tr><td><code>Map&lt;K,V&gt;</code></td><td><code>M</code></td><td>Generic hash map (default <code>M&lt;S,I&gt;</code>)</td></tr>
+        <tr><td><code>Option&lt;T&gt;</code></td><td><code>O&lt;T&gt;</code></td><td>Optional value: Some or None</td></tr>
         <tr><td><code>Result&lt;T&gt;</code></td><td><code>R&lt;T&gt;</code></td><td>Success or error value</td></tr>
         <tr><td><code>JsonValue</code></td><td><code>J</code></td><td>Opaque JSON value</td></tr>
-        <tr><td><code>HttpResponse</code></td><td>&mdash;</td><td>HTTP client response</td></tr>
-        <tr><td><code>HttpServer</code></td><td>&mdash;</td><td>HTTP server socket</td></tr>
+        <tr><td><code>HttpResponse</code></td><td>&mdash;</td><td>HTTP client response (opaque handle)</td></tr>
+        <tr><td><code>HttpServer</code></td><td>&mdash;</td><td>HTTP server socket (opaque handle)</td></tr>
         <tr><td><code>HttpRequest</code></td><td>&mdash;</td><td>HTTP server request</td></tr>
-        <tr><td><code>Sender&lt;T&gt;</code></td><td>&mdash;</td><td>Channel sender</td></tr>
-        <tr><td><code>Receiver&lt;T&gt;</code></td><td>&mdash;</td><td>Channel receiver</td></tr>
-        <tr><td><code>Mutex&lt;T&gt;</code></td><td>&mdash;</td><td>Mutual exclusion lock</td></tr>
-        <tr><td><code>JoinHandle</code></td><td>&mdash;</td><td>Thread handle</td></tr>
+        <tr><td><code>Sender&lt;T&gt;</code></td><td>&mdash;</td><td>Channel sender (opaque handle)</td></tr>
+        <tr><td><code>Receiver&lt;T&gt;</code></td><td>&mdash;</td><td>Channel receiver (opaque handle)</td></tr>
+        <tr><td><code>Mutex&lt;T&gt;</code></td><td>&mdash;</td><td>Mutual exclusion lock (opaque handle)</td></tr>
+        <tr><td><code>JoinHandle</code></td><td>&mdash;</td><td>Thread handle (opaque handle)</td></tr>
       </tbody>
     </table>
     <p>User-defined types: <code>struct</code>, <code>enum</code>, <code>trait</code>.</p>
@@ -217,25 +219,30 @@ m.<span class="fn">delete</span>(<span class="str">"key"</span>)                
     </table>
 
     <h2 id="maps">Maps</h2>
-    <p>Hash map with string keys. Constructor: <code>M()</code> or <code>map()</code>.</p>
-    <pre><code>m = <span class="fn">M</span>()
+    <p>Generic hash map. The type parameter specifies key and value types. Bare <code>M()</code> defaults to <code>M&lt;S,I&gt;</code> (string keys, integer values). Supported key types: <code>S</code> (String), <code>I</code> (Int). Float keys are not allowed.</p>
+    <pre><code>m = <span class="fn">M</span>()                   <span class="comment">// M&lt;S I&gt; — default</span>
+m = <span class="fn">M</span>&lt;<span class="type">S S</span>&gt;()              <span class="comment">// string→string</span>
+m = <span class="fn">M</span>&lt;<span class="type">I I</span>&gt;()              <span class="comment">// int→int</span>
 m.<span class="fn">set</span>(<span class="str">"x"</span> <span class="num">10</span>)
-m.<span class="fn">set</span>(<span class="str">"y"</span> <span class="num">20</span>)
-m.<span class="fn">get</span>(<span class="str">"x"</span>)       <span class="comment">// 10</span>
-m.<span class="fn">has</span>(<span class="str">"z"</span>)       <span class="comment">// false</span>
-m.<span class="fn">len</span>()           <span class="comment">// 2</span>
-m.<span class="fn">keys</span>()          <span class="comment">// ["x" "y"]</span></code></pre>
+m.<span class="fn">get</span>(<span class="str">"x"</span>)!              <span class="comment">// 10 (unwrap Option)</span>
+m.<span class="fn">get</span>(<span class="str">"z"</span>).<span class="fn">unwrap_or</span>(<span class="num">0</span>) <span class="comment">// 0 (missing key)</span>
+m.<span class="fn">has</span>(<span class="str">"z"</span>)               <span class="comment">// false</span>
+m.<span class="fn">len</span>()                  <span class="comment">// 1</span>
+m.<span class="fn">keys</span>()                 <span class="comment">// ["x"]</span></code></pre>
+    <p><strong>Breaking change (v0.7.1):</strong> <code>m.get(key)</code> now returns <code>Option&lt;V&gt;</code> instead of a raw value. Use <code>!</code>, <code>.unwrap()</code>, or <code>.unwrap_or(default)</code> to extract the value.</p>
 
     <h3>Map Methods</h3>
     <table>
       <thead><tr><th>Method</th><th>Signature</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td><code>set(key, val)</code></td><td><code>(S, I) -&gt; I</code></td><td>Set key-value pair</td></tr>
-        <tr><td><code>get(key)</code></td><td><code>(S) -&gt; I</code></td><td>Get value, 0 if missing</td></tr>
-        <tr><td><code>has(key)</code></td><td><code>(S) -&gt; B</code></td><td>Check if key exists</td></tr>
+        <tr><td><code>set(key, val)</code></td><td><code>(K, V) -&gt; I</code></td><td>Set key-value pair</td></tr>
+        <tr><td><code>get(key)</code></td><td><code>(K) -&gt; Option&lt;V&gt;</code></td><td>Get value — Some(v) or None</td></tr>
+        <tr><td><code>has(key)</code></td><td><code>(K) -&gt; B</code></td><td>Check if key exists</td></tr>
         <tr><td><code>len()</code></td><td><code>() -&gt; I</code></td><td>Number of entries</td></tr>
-        <tr><td><code>keys()</code></td><td><code>() -&gt; [S]</code></td><td>Array of all keys</td></tr>
-        <tr><td><code>vals()</code></td><td><code>() -&gt; [I]</code></td><td>Array of all values</td></tr>
+        <tr><td><code>keys()</code></td><td><code>() -&gt; [K]</code></td><td>Array of all keys</td></tr>
+        <tr><td><code>vals()</code></td><td><code>() -&gt; [V]</code></td><td>Array of all values</td></tr>
+        <tr><td><code>delete(key)</code></td><td><code>(K) -&gt; I</code></td><td>Remove key</td></tr>
+        <tr><td><code>entries</code></td><td><code>() -&gt; [(K V)]</code></td><td>Key-value tuples</td></tr>
       </tbody>
     </table>
 
@@ -355,7 +362,7 @@ scaled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span 
 r.<span class="fn">code</span>()                    <span class="comment">// get error code (0 if not set)</span></code></pre>
 
     <h3>Error Propagation (<code>?</code> operator)</h3>
-    <p>The <code>?</code> operator unwraps a <code>Result&lt;T&gt;</code> or early-returns the error:</p>
+    <p>The <code>?</code> operator unwraps a <code>Result&lt;T&gt;</code> or early-returns the error. On <code>Option&lt;T&gt;</code>, it unwraps Some or early-returns <code>none()</code>.</p>
     <pre><code><span class="fn">safe_div</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; {
   b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div by zero"</span>) : <span class="fn">ok</span>(a / b)
 }
@@ -364,7 +371,37 @@ r.<span class="fn">code</span>()                    <span class="comment">// get
   r = <span class="fn">safe_div</span>(x <span class="num">2</span>)?    <span class="comment">// unwraps ok(5), or returns err early</span>
   <span class="fn">ok</span>(r + <span class="num">1</span>)
 }</code></pre>
-    <p><code>x?</code> desugars to: <code>if x.is_err() { return x }</code> followed by <code>x!</code> (unwrap).</p>
+    <p><code>x?</code> desugars to: <code>if x.is_err() { return x }</code> followed by <code>x!</code> (unwrap) for Result; and to early-return <code>none()</code> for Option.</p>
+
+    <h3>Result Combinators</h3>
+    <p>Chain Result operations without manual error checks:</p>
+    <pre><code><span class="fn">parse</span>(s:<span class="type">S</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; = s == <span class="str">""</span> ? <span class="fn">err</span>(<span class="str">"empty"</span>) : <span class="fn">ok</span>(<span class="fn">stoi</span>(s))
+
+<span class="fn">parse</span>(<span class="str">"42"</span>).<span class="fn">map</span>(|n:<span class="type">I</span>| <span class="type">I</span> { n * <span class="num">2</span> })         <span class="comment">// ok(84)</span>
+<span class="fn">parse</span>(<span class="str">"10"</span>).<span class="fn">and_then</span>(|n:<span class="type">I</span>| <span class="type">R</span>&lt;<span class="type">I</span>&gt; { n &gt; <span class="num">0</span> ? <span class="fn">ok</span>(n) : <span class="fn">err</span>(<span class="str">"neg"</span>) })
+<span class="fn">parse</span>(<span class="str">""</span>).<span class="fn">map_err</span>(|e:<span class="type">S</span>| <span class="type">S</span> { <span class="str">"parse failed: {e}"</span> })
+<span class="fn">parse</span>(<span class="str">""</span>).<span class="fn">or_else</span>(|e:<span class="type">S</span>| <span class="type">R</span>&lt;<span class="type">I</span>&gt; { <span class="fn">ok</span>(<span class="num">0</span>) })   <span class="comment">// ok(0) fallback</span></code></pre>
+
+    <h2 id="option">Option</h2>
+    <p><code>Option&lt;T&gt;</code> (short: <code>O&lt;T&gt;</code>) represents an optional value. Used by <code>Map.get</code> and <code>Array.find</code>. Runtime layout: 16 bytes (tag@0, value@8).</p>
+    <pre><code>x = <span class="fn">some</span>(<span class="num">42</span>)                 <span class="comment">// Some(42)</span>
+y = <span class="fn">none</span>()                    <span class="comment">// None</span>
+x.<span class="fn">is_some</span>                     <span class="comment">// true</span>
+x!                             <span class="comment">// 42 (unwrap, exits on None)</span>
+x.<span class="fn">unwrap_or</span>(<span class="num">0</span>)               <span class="comment">// 42</span>
+<span class="fn">none</span>().<span class="fn">unwrap_or</span>(<span class="num">99</span>)          <span class="comment">// 99</span>
+
+<span class="comment">// Map.get returns Option</span>
+m = <span class="fn">M</span>()
+m.<span class="fn">set</span>(<span class="str">"x"</span> <span class="num">10</span>)
+m.<span class="fn">get</span>(<span class="str">"x"</span>)!                  <span class="comment">// 10</span>
+m.<span class="fn">get</span>(<span class="str">"z"</span>).<span class="fn">unwrap_or</span>(<span class="num">0</span>)     <span class="comment">// 0 (missing)</span>
+
+<span class="comment">// ? propagation</span>
+<span class="fn">lookup</span>(m:<span class="type">M</span>&lt;<span class="type">S I</span>&gt; k:<span class="type">S</span>) <span class="type">O</span>&lt;<span class="type">I</span>&gt; {
+    v = m.<span class="fn">get</span>(k)?              <span class="comment">// returns none() early if missing</span>
+    <span class="fn">some</span>(v * <span class="num">2</span>)
+}</code></pre>
 
     <h2 id="modules">Modules</h2>
     <pre><code><span class="comment">// math.sans</span>
@@ -815,6 +852,17 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
       </tbody>
     </table>
 
+    <h3>Option&lt;T&gt;</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Signature</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>is_some</code></td><td><code>() -&gt; Bool</code></td><td></td></tr>
+        <tr><td><code>is_none</code></td><td><code>() -&gt; Bool</code></td><td></td></tr>
+        <tr><td><code>unwrap</code> or <code>!</code></td><td><code>() -&gt; T</code></td><td>Exits on None</td></tr>
+        <tr><td><code>unwrap_or(default)</code></td><td><code>(T) -&gt; T</code></td><td></td></tr>
+      </tbody>
+    </table>
+
     <h3>Result&lt;T&gt;</h3>
     <table>
       <thead><tr><th>Method</th><th>Signature</th><th>Notes</th></tr></thead>
@@ -825,6 +873,10 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
         <tr><td><code>unwrap_or(default)</code></td><td><code>(T) -&gt; T</code></td><td></td></tr>
         <tr><td><code>error</code></td><td><code>() -&gt; String</code></td><td>Error message</td></tr>
         <tr><td><code>code</code></td><td><code>() -&gt; Int</code></td><td>Error code (0 if not set)</td></tr>
+        <tr><td><code>map(fn)</code></td><td><code>((T) -&gt; U) -&gt; Result&lt;U&gt;</code></td><td>Transform ok value</td></tr>
+        <tr><td><code>and_then(fn)</code></td><td><code>((T) -&gt; Result&lt;U&gt;) -&gt; Result&lt;U&gt;</code></td><td>Chain fallible operations</td></tr>
+        <tr><td><code>map_err(fn)</code></td><td><code>((String) -&gt; String) -&gt; Result&lt;T&gt;</code></td><td>Transform error message</td></tr>
+        <tr><td><code>or_else(fn)</code></td><td><code>((String) -&gt; Result&lt;T&gt;) -&gt; Result&lt;T&gt;</code></td><td>Recover from error</td></tr>
       </tbody>
     </table>
 

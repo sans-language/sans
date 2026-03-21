@@ -1,0 +1,27 @@
+main() I {
+  // M<S I> default (backward compat)
+  m1 = M()
+  m1.set("a", 10)
+  v1 = m1.get("a")!
+
+  // M<I I> integer keys
+  m2 = M<I I>()
+  m2.set(1, 100)
+  m2.set(2, 200)
+  v2 = m2.get(1)!
+  v3 = m2.get(2)!
+
+  // has/len
+  h1 = m2.has(1)
+  h2 = m2.has(99)
+  l = m2.len()
+
+  // delete
+  m2.delete(2)
+  l2 = m2.len()
+
+  // verify: v1=10, v2=100, v3=200, h1=1, h2=0, l=2, l2=1
+  result = v1 + v2 + v3 + h1 * 1000 + h2 + l * 100 + l2 * 10
+  // 10 + 100 + 200 + 1000 + 0 + 200 + 10 = 1520
+  result - 1520
+}

@@ -233,9 +233,10 @@ build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I module_fn_ret
            if rt_tag == TY_BOOL { IRTY_BOOL } else {
            if rt_tag == TY_STRING { IRTY_STR } else {
            if rt_tag == TY_ARRAY { IRTY_ARRAY } else {
-           if rt_tag == TY_MAP { IRTY_MAP } else {
+           if rt_tag == TY_MAP { if type_inner(ret_type) != 0 && type_tag(type_inner(ret_type)) == TY_INT { IRTY_MAP_INT } else { IRTY_MAP } } else {
            if rt_tag == TY_JSON { IRTY_JSON } else {
            if rt_tag == TY_HTTP_RESP { IRTY_HTTP_RESP } else {
+           if rt_tag == TY_OPTION { IRTY_OPTION } else {
            if rt_tag == TY_RESULT { IRTY_RESULT } else {
            if rt_tag == TY_STRUCT { IRTY_STRUCT } else {
            if rt_tag == TY_ENUM { IRTY_ENUM } else {
@@ -246,7 +247,7 @@ build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I module_fn_ret
            if rt_tag == TY_JOIN_HANDLE { IRTY_JOIN_HANDLE } else {
            if rt_tag == TY_MUTEX { IRTY_MUTEX } else {
            if rt_tag == TY_TUPLE { IRTY_TUPLE } else {
-           IRTY_INT } } } } } } } } } } } } } } } } } }
+           IRTY_INT } } } } } } } } } } } } } } } } } } }
     mangled = mod_n + "__" + fname
     mset(module_fn_ret_types, mangled, irty)
     if rt_tag == TY_STRUCT {
@@ -420,7 +421,9 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("server")
   runtime_modules.push("json")
   runtime_modules.push("sock")
-  runtime_modules.push("curl")
+  // curl temporarily disabled — crashes in codegen when compiled by bootstrapped binary
+  // runtime_modules.push("curl")
+  runtime_modules.push("option")
   runtime_modules.push("map")
   runtime_modules.push("arena")
   runtime_modules.push("rc")

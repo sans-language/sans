@@ -91,7 +91,7 @@ pkg_resolve_deps(manifest_path: S requester: S) I {
     qi = qi + 1
 
     if resolved.has(url) {
-      ex = resolved.get(url)
+      ex = resolved.get(url)!
       if ex != ver {
         p("ERROR: conflict " + url + ": " + req + " wants " + ver + ", have " + ex)
         exit(1)

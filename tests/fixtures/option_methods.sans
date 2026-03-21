@@ -1,0 +1,11 @@
+main() I {
+  a = some(42)
+  b = none()
+
+  x = a.unwrap()
+  y = b.unwrap_or(99)
+  s1 = a.is_some()
+  s2 = b.is_none()
+  // x=42, y=99, s1=1, s2=1 → sum=143
+  x + y + s1 + s2 - 143
+}

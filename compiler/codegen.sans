@@ -512,6 +512,14 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_result_unwrap_or(i64, i64)")
   emit(cg, "declare i64 @sans_result_code(i64)")
 
+  // ------ Sans runtime: Option (declared only — defined in runtime/option.sans) ------
+  emit(cg, "declare i64 @sans_option_some(i64)")
+  emit(cg, "declare i64 @sans_option_none()")
+  emit(cg, "declare i64 @sans_option_is_some(i64)")
+  emit(cg, "declare i64 @sans_option_is_none(i64)")
+  emit(cg, "declare i64 @sans_option_unwrap(i64)")
+  emit(cg, "declare i64 @sans_option_unwrap_or(i64, i64)")
+
   // ------ Sans runtime: Logging ------
   emit(cg, "declare i64 @sans_log_debug(i64)")
   emit(cg, "declare i64 @sans_log_info(i64)")
@@ -532,6 +540,11 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_map_len(i64)")
   emit(cg, "declare i64 @sans_map_keys(i64)")
   emit(cg, "declare i64 @sans_map_vals(i64)")
+  emit(cg, "declare i64 @sans_map_set_int(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_map_get_int(i64, i64)")
+  emit(cg, "declare i64 @sans_map_has_int(i64, i64)")
+  emit(cg, "declare i64 @sans_map_keys_int(i64)")
+  emit(cg, "declare i64 @sans_map_delete_int(i64, i64)")
 
   // ------ Sans runtime: Arena ------
   emit(cg, "declare i64 @sans_arena_begin()")
@@ -720,6 +733,71 @@ compile_http_accept(cg:I inst:I) I {
   emit(cg, "  " + r + " = phi i64 [" + r_ssl + ", %" + ssl_lbl + "], [" + r_plain + ", %" + plain_lbl + "]")
   cg_set_val(cg, dest, r)
   cg_set_current_block(cg, merge_lbl)
+  0
+}
+
+// map.get() returning Option --- calls has/get then wraps in Some/None
+compile_map_get_opt(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  m_val = cg_get_val(cg, ir_field(inst, 16))
+  k_val = cg_get_val(cg, ir_field(inst, 24))
+  uid = cg_label_id(cg)
+  has_r = cg_fresh_reg(cg)
+  emit(cg, "  " + has_r + " = call i64 @sans_map_has(i64 " + m_val + ", i64 " + k_val + ")")
+  cmp_r = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp_r + " = icmp ne i64 " + has_r + ", 0")
+  found_lbl = "mgo_found_" + uid
+  miss_lbl = "mgo_miss_" + uid
+  merge_lbl = "mgo_merge_" + uid
+  emit(cg, "  br i1 " + cmp_r + ", label %" + found_lbl + ", label %" + miss_lbl)
+  emit(cg, found_lbl + ":")
+  raw_r = cg_fresh_reg(cg)
+  emit(cg, "  " + raw_r + " = call i64 @sans_map_get(i64 " + m_val + ", i64 " + k_val + ")")
+  some_r = cg_fresh_reg(cg)
+  emit(cg, "  " + some_r + " = call i64 @sans_option_some(i64 " + raw_r + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, miss_lbl + ":")
+  none_r = cg_fresh_reg(cg)
+  emit(cg, "  " + none_r + " = call i64 @sans_option_none()")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, merge_lbl + ":")
+  phi_r = cg_fresh_reg(cg)
+  emit(cg, "  " + phi_r + " = phi i64 [" + some_r + ", %" + found_lbl + "], [" + none_r + ", %" + miss_lbl + "]")
+  cg_set_val(cg, dest, phi_r)
+  cg_set_current_block(cg, merge_lbl)
+  emit_scope_track(cg, phi_r, 6)
+  0
+}
+
+compile_map_get_opt_int(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  m_val = cg_get_val(cg, ir_field(inst, 16))
+  k_val = cg_get_val(cg, ir_field(inst, 24))
+  uid = cg_label_id(cg)
+  has_r = cg_fresh_reg(cg)
+  emit(cg, "  " + has_r + " = call i64 @sans_map_has_int(i64 " + m_val + ", i64 " + k_val + ")")
+  cmp_r = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp_r + " = icmp ne i64 " + has_r + ", 0")
+  found_lbl = "mgoi_found_" + uid
+  miss_lbl = "mgoi_miss_" + uid
+  merge_lbl = "mgoi_merge_" + uid
+  emit(cg, "  br i1 " + cmp_r + ", label %" + found_lbl + ", label %" + miss_lbl)
+  emit(cg, found_lbl + ":")
+  raw_r = cg_fresh_reg(cg)
+  emit(cg, "  " + raw_r + " = call i64 @sans_map_get_int(i64 " + m_val + ", i64 " + k_val + ")")
+  some_r = cg_fresh_reg(cg)
+  emit(cg, "  " + some_r + " = call i64 @sans_option_some(i64 " + raw_r + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, miss_lbl + ":")
+  none_r = cg_fresh_reg(cg)
+  emit(cg, "  " + none_r + " = call i64 @sans_option_none()")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, merge_lbl + ":")
+  phi_r = cg_fresh_reg(cg)
+  emit(cg, "  " + phi_r + " = phi i64 [" + some_r + ", %" + found_lbl + "], [" + none_r + ", %" + miss_lbl + "]")
+  cg_set_val(cg, dest, phi_r)
+  cg_set_current_block(cg, merge_lbl)
+  emit_scope_track(cg, phi_r, 6)
   0
 }
 
@@ -1176,6 +1254,7 @@ emit_closure_aware_call1(cg:I dest:I fp_val:S arg:S) I {
   result = cg_fresh_reg(cg)
   emit(cg, "  " + result + " = phi i64 [" + r_d + ", %" + lbl_dir + "], [" + r_c0 + ", %" + lbl_c0 + "], [" + r_c1 + ", %" + lbl_c1 + "], [" + r_c2 + ", %" + lbl_c2 + "], [" + r_c3 + ", %" + lbl_c3 + "], [" + r_c4 + ", %" + lbl_c4 + "], [" + r_c5 + ", %" + lbl_c5 + "], [" + r_c6 + ", %" + lbl_c6 + "], [" + r_c7 + ", %" + lbl_c7 + "], [" + r_c8 + ", %" + lbl_c8 + "]")
   cg_set_val(cg, dest, result)
+  cg_set_current_block(cg, lbl_merge)
   0
 }
 
@@ -1861,9 +1940,11 @@ compile_inst(cg:I inst:I) I {
           stag := 0
           if frt == IRTY_ARRAY { stag = 1 }
           else if frt == IRTY_MAP { stag = 2 }
+          else if frt == IRTY_MAP_INT { stag = 2 }
           else if frt == IRTY_JSON { stag = 3 }
           else if frt == IRTY_RESULT { stag = 4 }
           else if frt == IRTY_STR { stag = 5 }
+          else if frt == IRTY_OPTION { stag = 6 }
           emit_scope_track(cg, r, stag)
         }
       }
@@ -3733,6 +3814,184 @@ compile_inst(cg:I inst:I) I {
   if op == IR_RESULT_ERROR { return compile_rt1(cg, inst, "sans_result_error") }
   if op == IR_RESULT_CODE { return compile_rt1(cg, inst, "sans_result_code") }
 
+  // ------ Result combinators (265-268) --- inline codegen with closure dispatch ------
+  if op == IR_RESULT_MAP {
+    // map(fn): if ok, call fn(value) and wrap in ok(); if err, propagate
+    res_val = cg_get_val(cg, ir_field(inst, 16))
+    fn_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    // Load tag (offset 0)
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + res_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    is_ok = cg_fresh_reg(cg)
+    emit(cg, "  " + is_ok + " = icmp eq i64 " + tag + ", 0")
+    ok_lbl = "rmap_ok_" + uid
+    err_lbl = "rmap_err_" + uid
+    merge_lbl = "rmap_merge_" + uid
+    emit(cg, "  br i1 " + is_ok + ", label %" + ok_lbl + ", label %" + err_lbl)
+    // Ok path: load value at offset 8, call closure, wrap in ok()
+    emit(cg, ok_lbl + ":")
+    vp = cg_fresh_reg(cg)
+    emit(cg, "  " + vp + " = getelementptr i64, ptr " + rp + ", i64 1")
+    val = cg_fresh_reg(cg)
+    emit(cg, "  " + val + " = load i64, ptr " + vp)
+    emit_closure_aware_call1(cg, dest, fn_val, val)
+    new_val = cg_get_val(cg, dest)
+    ok_from = cg_current_block(cg)
+    ok_r = cg_fresh_reg(cg)
+    emit(cg, "  " + ok_r + " = call i64 @sans_result_ok(i64 " + new_val + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    // Err path: propagate original
+    emit(cg, err_lbl + ":")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    phi_r = cg_fresh_reg(cg)
+    emit(cg, "  " + phi_r + " = phi i64 [" + ok_r + ", %" + ok_from + "], [" + res_val + ", %" + err_lbl + "]")
+    cg_set_val(cg, dest, phi_r)
+    cg_set_current_block(cg, merge_lbl)
+    emit_scope_track(cg, phi_r, 4)
+    return 0
+  }
+  if op == IR_RESULT_AND_THEN {
+    // and_then(fn): if ok, call fn(value) which returns Result; if err, propagate
+    res_val = cg_get_val(cg, ir_field(inst, 16))
+    fn_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + res_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    is_ok = cg_fresh_reg(cg)
+    emit(cg, "  " + is_ok + " = icmp eq i64 " + tag + ", 0")
+    ok_lbl = "rat_ok_" + uid
+    err_lbl = "rat_err_" + uid
+    merge_lbl = "rat_merge_" + uid
+    emit(cg, "  br i1 " + is_ok + ", label %" + ok_lbl + ", label %" + err_lbl)
+    // Ok path: load value, call closure (returns Result directly)
+    emit(cg, ok_lbl + ":")
+    vp = cg_fresh_reg(cg)
+    emit(cg, "  " + vp + " = getelementptr i64, ptr " + rp + ", i64 1")
+    val = cg_fresh_reg(cg)
+    emit(cg, "  " + val + " = load i64, ptr " + vp)
+    emit_closure_aware_call1(cg, dest, fn_val, val)
+    ok_r = cg_get_val(cg, dest)
+    ok_from = cg_current_block(cg)
+    emit(cg, "  br label %" + merge_lbl)
+    // Err path: propagate original
+    emit(cg, err_lbl + ":")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    phi_r = cg_fresh_reg(cg)
+    emit(cg, "  " + phi_r + " = phi i64 [" + ok_r + ", %" + ok_from + "], [" + res_val + ", %" + err_lbl + "]")
+    cg_set_val(cg, dest, phi_r)
+    cg_set_current_block(cg, merge_lbl)
+    emit_scope_track(cg, phi_r, 4)
+    return 0
+  }
+  if op == IR_RESULT_MAP_ERR {
+    // map_err(fn): if err, call fn(error_msg) and create new err; if ok, propagate
+    res_val = cg_get_val(cg, ir_field(inst, 16))
+    fn_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + res_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    is_err = cg_fresh_reg(cg)
+    emit(cg, "  " + is_err + " = icmp eq i64 " + tag + ", 1")
+    err_lbl = "rme_err_" + uid
+    ok_lbl = "rme_ok_" + uid
+    merge_lbl = "rme_merge_" + uid
+    emit(cg, "  br i1 " + is_err + ", label %" + err_lbl + ", label %" + ok_lbl)
+    // Err path: load error_msg at offset 16, call closure, create new err result
+    emit(cg, err_lbl + ":")
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i64, ptr " + rp + ", i64 2")
+    emsg = cg_fresh_reg(cg)
+    emit(cg, "  " + emsg + " = load i64, ptr " + ep)
+    emit_closure_aware_call1(cg, dest, fn_val, emsg)
+    new_msg = cg_get_val(cg, dest)
+    err_from = cg_current_block(cg)
+    // Load error_code at offset 24 — need to re-derive rp since we're in a new block after closure call
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + res_val + " to ptr")
+    cp2 = cg_fresh_reg(cg)
+    emit(cg, "  " + cp2 + " = getelementptr i64, ptr " + cp + ", i64 3")
+    ecode = cg_fresh_reg(cg)
+    emit(cg, "  " + ecode + " = load i64, ptr " + cp2)
+    err_r = cg_fresh_reg(cg)
+    emit(cg, "  " + err_r + " = call i64 @sans_result_err(i64 " + ecode + ", i64 " + new_msg + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    // Ok path: propagate original
+    emit(cg, ok_lbl + ":")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    phi_r = cg_fresh_reg(cg)
+    emit(cg, "  " + phi_r + " = phi i64 [" + err_r + ", %" + err_from + "], [" + res_val + ", %" + ok_lbl + "]")
+    cg_set_val(cg, dest, phi_r)
+    cg_set_current_block(cg, merge_lbl)
+    emit_scope_track(cg, phi_r, 4)
+    return 0
+  }
+  if op == IR_RESULT_OR_ELSE {
+    // or_else(fn): if err, call fn(error_msg) which returns Result; if ok, propagate
+    res_val = cg_get_val(cg, ir_field(inst, 16))
+    fn_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + res_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    is_err = cg_fresh_reg(cg)
+    emit(cg, "  " + is_err + " = icmp eq i64 " + tag + ", 1")
+    err_lbl = "roe_err_" + uid
+    ok_lbl = "roe_ok_" + uid
+    merge_lbl = "roe_merge_" + uid
+    emit(cg, "  br i1 " + is_err + ", label %" + err_lbl + ", label %" + ok_lbl)
+    // Err path: load error_msg at offset 16, call closure (returns Result directly)
+    emit(cg, err_lbl + ":")
+    ep = cg_fresh_reg(cg)
+    emit(cg, "  " + ep + " = getelementptr i64, ptr " + rp + ", i64 2")
+    emsg = cg_fresh_reg(cg)
+    emit(cg, "  " + emsg + " = load i64, ptr " + ep)
+    emit_closure_aware_call1(cg, dest, fn_val, emsg)
+    err_r = cg_get_val(cg, dest)
+    err_from = cg_current_block(cg)
+    emit(cg, "  br label %" + merge_lbl)
+    // Ok path: propagate original
+    emit(cg, ok_lbl + ":")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    phi_r = cg_fresh_reg(cg)
+    emit(cg, "  " + phi_r + " = phi i64 [" + err_r + ", %" + err_from + "], [" + res_val + ", %" + ok_lbl + "]")
+    cg_set_val(cg, dest, phi_r)
+    cg_set_current_block(cg, merge_lbl)
+    emit_scope_track(cg, phi_r, 4)
+    return 0
+  }
+
+  // ------ Option (258-263) --- runtime calls ------
+  if op == IR_OPTION_SOME {
+    compile_rt1(cg, inst, "sans_option_some")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 6)
+    return 0
+  }
+  if op == IR_OPTION_NONE {
+    compile_rt0(cg, inst, "sans_option_none")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 6)
+    return 0
+  }
+  if op == IR_OPTION_IS_SOME { return compile_rt1(cg, inst, "sans_option_is_some") }
+  if op == IR_OPTION_IS_NONE { return compile_rt1(cg, inst, "sans_option_is_none") }
+  if op == IR_OPTION_UNWRAP { return compile_rt1(cg, inst, "sans_option_unwrap") }
+  if op == IR_OPTION_UNWRAP_OR { return compile_rt2(cg, inst, "sans_option_unwrap_or") }
+
   // ------ Logging (119-125) --- runtime calls ------
   if op == IR_LOG_DEBUG { return compile_rt1(cg, inst, "sans_log_debug") }
   if op == IR_LOG_INFO { return compile_rt1(cg, inst, "sans_log_info") }
@@ -4026,12 +4285,27 @@ compile_inst(cg:I inst:I) I {
     emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 2)
     return 0
   }
+  if op == IR_MAP_CREATE_INT {
+    compile_rt0(cg, inst, "sans_map_create")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 2)
+    return 0
+  }
   if op == IR_MAP_GET { return compile_rt2(cg, inst, "sans_map_get") }
+  if op == IR_MAP_GET_OPT { return compile_map_get_opt(cg, inst) }
+  if op == IR_MAP_GET_OPT_INT { return compile_map_get_opt_int(cg, inst) }
   if op == IR_MAP_SET { return compile_rt3(cg, inst, "sans_map_set") }
+  if op == IR_MAP_SET_INT { return compile_rt3(cg, inst, "sans_map_set_int") }
   if op == IR_MAP_HAS { return compile_rt2(cg, inst, "sans_map_has") }
+  if op == IR_MAP_HAS_INT { return compile_rt2(cg, inst, "sans_map_has_int") }
   if op == IR_MAP_LEN { return compile_rt1(cg, inst, "sans_map_len") }
+  if op == IR_MAP_GET_INT { return compile_rt2(cg, inst, "sans_map_get_int") }
   if op == IR_MAP_KEYS {
     compile_rt1(cg, inst, "sans_map_keys")
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 1)
+    return 0
+  }
+  if op == IR_MAP_KEYS_INT {
+    compile_rt1(cg, inst, "sans_map_keys_int")
     emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 1)
     return 0
   }
@@ -4186,6 +4460,10 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_MAP_DELETE {
     compile_rt2(cg, inst, "sans_map_delete")
+    return 0
+  }
+  if op == IR_MAP_DELETE_INT {
+    compile_rt2(cg, inst, "sans_map_delete_int")
     return 0
   }
   if op == IR_STRING_CHAR_AT {

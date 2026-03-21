@@ -1,0 +1,5 @@
+main() I {
+  a = some(42)
+  b = none()
+  1
+}

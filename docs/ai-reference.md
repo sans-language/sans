@@ -3,10 +3,11 @@
 Compact reference for LLM context injection. Use short aliases.
 
 ## Types
-`I`=Int `F`=Float `B`=Bool `S`=String `J`=JsonValue `R<T>`=Result<T>
-Array<T> Map(`M`) HttpResponse HttpServer HttpRequest
+`I`=Int `F`=Float `B`=Bool `S`=String `J`=JsonValue `R<T>`=Result<T> `O<T>`=Option<T>
+Array<T> Map<K V>(`M`) HttpResponse HttpServer HttpRequest
 Sender<T> Receiver<T> Mutex<T> JoinHandle
 Tuple: `(I S B)` — heterogeneous fixed-size collection
+Note: HttpResponse HttpServer Sender Receiver Mutex JoinHandle are distinct opaque handles (not interchangeable with I)
 
 ## Syntax
 ```
@@ -123,6 +124,13 @@ ll(level)         log_set_level(n)      I -> I
 ok(v)                                   T -> R<T>
 err(msg)                                S -> R<_>
 err(code msg)                           I S -> R<_> (error with code)
+some(v)                                 T -> O<T>
+none()                                  -> O<T>
+// Result combinators
+r.map(|v:T| U { ... })                 R<T> -> R<U>  (transform ok value)
+r.and_then(|v:T| R<U> { ... })         R<T> -> R<U>  (chain fallible fn)
+r.map_err(|e:S| S { ... })             R<T> -> R<T>  (transform err msg)
+r.or_else(|e:S| R<T> { ... })          R<T> -> R<T>  (recover from err)
 
 // Low-level primitives (pointers as I)
 alloc(n)                                I -> I (malloc)
@@ -203,7 +211,9 @@ args()                                  -> [S] (command-line args)
 ## Methods
 ```
 Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f) any(f) find(f) enumerate zip(b) sort reverse join(sep) slice(s e) reduce(init f) each(f)/for_each(f) flat_map(f) sum min max flat
-Map:       set(k v) get(k) has(k) len keys vals delete(k) entries
+Map<K V>:  set(k v) get(k)->O<V> has(k) len keys vals delete(k) entries  // bare M() = M<S I>
+           M<S I>() M<I I>() M<I S>() M<S S>()  // int keys use multiplicative hash; float keys disallowed
+           BREAKING(v0.7.1): get() returns O<V> — use ! or .unwrap_or(d) to extract
 String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s) char_at(i)/get(i) repeat(n) to_int pad_left(w ch) pad_right(w ch) bytes
 Int:       to_str/to_string
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
@@ -211,7 +221,8 @@ HttpResponse: status body header(n) ok
 HttpServer:   accept
 HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length cookie(name) form(name) respond(status body) respond(status body ct) respond_json(status body) respond_stream(status) is_ws_upgrade upgrade_ws
               // respond auto-gzips when: body>=1024B + Accept-Encoding:gzip + compressible ct; opt-out: set_header("X-No-Compress" "1")
-Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error code
+Option<T>:    is_some is_none unwrap/! unwrap_or(d)  // v? = propagate none; v! = unwrap or exit
+Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error code map(f) and_then(f) map_err(f) or_else(f)
 Sender<T>:    send(v)
 Receiver<T>:  recv
 Mutex<T>:     lock unlock(v)
@@ -231,13 +242,34 @@ g(5)                             // 15
 
 ## Map
 ```
-m = M()                    // create empty map
+m = M()                    // M<S I> — string→int (default)
+m = M<S S>()               // string→string
+m = M<I I>()               // int→int
 m.set("key" 42)            // set key-value
-m.get("key")               // get value (0 if missing)
+m.get("key")               // O<I> — Some(v) or None
+m.get("key")!              // unwrap (exits if missing)
+m.get("key").unwrap_or(0)  // default if missing
 m.has("key")               // B — key exists?
 m.len()                    // I — entry count
 m.keys()                   // [S] — all keys
 m.vals()                   // [I] — all values
+```
+
+## Option
+```
+x = some(42)               // O<I> — Some(42)
+y = none()                 // O<I> — None
+x.is_some                  // true
+x.is_none                  // false
+x!                         // 42 (unwrap, exits on None)
+x.unwrap_or(0)             // 42
+none().unwrap_or(99)       // 99
+
+// ? operator — propagates none from enclosing fn
+lookup(m:M<S I> k:S) O<I> {
+    v = m.get(k)?          // returns none() early if missing
+    some(v * 2)
+}
 ```
 
 ## Iterator Chains
@@ -254,7 +286,7 @@ a.zip(b)                         // [(I I)] — paired tuples
 `== != < > <= >=` comparison (works on I F S B)
 `&& || !` boolean
 `= := += -= *= /= %=` assignment
-`?` try (on R<T>: unwrap or early-return err)
+`?` try (on R<T>: unwrap or early-return err; on O<T>: unwrap or early-return none())
 
 ## Builtin Names (user-defined functions take precedence)
 User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check` and all others listed above.
