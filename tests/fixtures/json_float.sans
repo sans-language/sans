@@ -1,0 +1,8 @@
+main() I {
+  j = json_parse("{\"pi\":3.14,\"e\":2.718,\"big\":1.5e2}")
+  s = json_stringify(j)
+  ok1 = s.contains("3.14") ? 1 : 0
+  ok2 = s.contains("2.718") ? 1 : 0
+  ok3 = s.contains("150") ? 1 : 0
+  ok1 + ok2 + ok3
+}

@@ -21,6 +21,12 @@ sans_json_int(n:I) I {
   v
 }
 
+sans_json_float(bits:I) I {
+  v = sans_json_alloc(6)
+  store64(v + 8, bits)
+  v
+}
+
 sans_json_string(s:I) I {
   v = sans_json_alloc(3)
   len = slen(s)
@@ -691,6 +697,13 @@ sans_json_sb_append_int(cx:I n:I) I {
   0
 }
 
+sans_json_sb_append_float(cx:I bits:I) I {
+  s = ftos(bits)
+  sans_json_sb_append_str(cx, s)
+  dealloc(s)
+  0
+}
+
 sans_json_sb_append_uint(cx:I n:I) I {
   sans_json_sb_ensure(cx, 20)
   sb_buf = load64(cx)
@@ -776,7 +789,12 @@ sans_json_stringify_value(cx:I v:I) I {
             if tag == 5 {
               sans_json_stringify_object(cx, v)
             } else {
-              sans_json_sb_append_null(cx)
+              if tag == 6 {
+                bits = load64(v + 8)
+                sans_json_sb_append_float(cx, bits)
+              } else {
+                sans_json_sb_append_null(cx)
+              }
             }
           }
         }
@@ -1123,11 +1141,42 @@ sans_json_p_skip_exp(px:I) I {
   0
 }
 
+sans_json_p_has_frac_or_exp(px:I start:I end:I) I {
+  src = load64(px)
+  pos := start
+  found := 0
+  while pos < end {
+    c = load8(src + pos)
+    if c == 46 { found = 1 } else { if c == 101 { found = 1 } else { if c == 69 { found = 1 } else { 0 } } }
+    pos = pos + 1
+    0
+  }
+  found
+}
+
+sans_json_p_substr_buf(px:I start:I end:I) I {
+  src = load64(px)
+  len = end - start
+  buf = alloc(len + 1)
+  mcpy(buf, src + start, len)
+  store8(buf + len, 0)
+  buf
+}
+
 sans_json_p_make_number(px:I start:I end:I) I {
-  n = sans_json_p_atoi(px, start, end)
-  v = sans_json_p_node(px, 2)
-  store64(v + 8, n)
-  v
+  if sans_json_p_has_frac_or_exp(px, start, end) != 0 {
+    buf = sans_json_p_substr_buf(px, start, end)
+    bits = stof(buf)
+    dealloc(buf)
+    v = sans_json_p_node(px, 6)
+    store64(v + 8, bits)
+    v
+  } else {
+    n = sans_json_p_atoi(px, start, end)
+    v = sans_json_p_node(px, 2)
+    store64(v + 8, n)
+    v
+  }
 }
 
 sans_json_p_atoi(px:I start:I end:I) I {
