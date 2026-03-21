@@ -2384,6 +2384,29 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       }
       return tc_error("Result has no method '" + mc_method + "'")
     }
+    // ------ Option methods ------------------------------------------------------------------------------------------------------------------------
+    if ot == TY_OPTION {
+      if mc_method == "is_some" {
+        if mc_nargs != 0 { tc_error("is_some() takes no arguments") }
+        return make_type(TY_BOOL)
+      }
+      if mc_method == "is_none" {
+        if mc_nargs != 0 { tc_error("is_none() takes no arguments") }
+        return make_type(TY_BOOL)
+      }
+      if mc_method == "unwrap" {
+        if mc_nargs != 0 { tc_error("unwrap() takes no arguments") }
+        return type_inner(obj_ty)
+      }
+      if mc_method == "unwrap_or" {
+        if mc_nargs != 1 { tc_error("unwrap_or() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        inner = type_inner(obj_ty)
+        if type_eq(at, inner) == 0 { tc_error("unwrap_or() default must be " + type_to_string(inner) + ", got " + type_to_string(at)) }
+        return inner
+      }
+      return tc_error("Option has no method '" + mc_method + "'")
+    }
     // ------ JsonValue methods ------------------------------------------------------------------------------------------------------------------------
     if ot == TY_JSON {
       if mc_method == "get" {

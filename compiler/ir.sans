@@ -1788,6 +1788,11 @@ lower_method_call(ctx:I expr:I) I {
     lower_result_method(ctx, obj_reg, method, args)
   }
 
+  // ------ Option methods ------
+  else if obj_type == IRTY_OPTION {
+    lower_option_method(ctx, obj_reg, method, args)
+  }
+
   // ------ Int methods (opaque pointers --- arrays, maps, strings stored as i64) ------
   else if obj_type == IRTY_INT {
     // Dispatch common methods for Int-typed values
@@ -2683,6 +2688,37 @@ lower_result_method(ctx:I obj_reg:I method:I args:I) I {
   }
 }
 
+// ------ lower_option_method ---------------------------------------------------------------------------------------------------------------------------
+lower_option_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "is_some" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_OPTION_IS_SOME, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "is_none" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_OPTION_IS_NONE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "unwrap" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_OPTION_UNWRAP, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "unwrap_or" {
+    default_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_OPTION_UNWRAP_OR, dest, obj_reg, default_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
 // ------ lower_field_access ------------------------------------------------------------------------------------------------------------------------------
 lower_field_access(ctx:I expr:I) I {
   object = load64(expr + 16)
@@ -2793,6 +2829,7 @@ lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
   }
   else if obj_type == IRTY_HTTP_REQ { lower_http_req_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_RESULT { lower_result_method(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_OPTION { lower_option_method(ctx, obj_reg, method, args) }
   else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
 
