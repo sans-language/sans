@@ -97,21 +97,37 @@ jobs:
             echo "Stage 1: v0.4.0 bootstrap -> v0.4.0 source"
             mkdir -p /tmp/prev-src
             curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/v0.4.0.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
-            ./sans build /tmp/prev-src/compiler/main.sans
+            cp ./sans /tmp/prev-src/sans-bootstrap
+            # Build FROM the v0.4.0 directory so the compiler uses v0.4.0's runtime
+            # (not CWD's runtime which has builtins like stof that v0.4.0 doesn't know)
+            cd /tmp/prev-src
+            ./sans-bootstrap build compiler/main.sans
+            cd -
             mv /tmp/prev-src/compiler/main /tmp/sans-stage1
             rm -rf /tmp/prev-src
 
             echo "Stage 2: stage1 -> current source (strip builtins v0.4.0 doesn't know)"
             cp compiler/main.sans compiler/main.sans.bak
+            cp runtime/json.sans runtime/json.sans.bak
+            cp runtime/math.sans runtime/math.sans.bak
             sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
             sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
             sed -i '' 's/scope_disable()/0/' compiler/main.sans
-            # Strip builtins added after v0.4.0 that appear in main.sans
+            # Strip builtins added after v0.4.0 that appear in main.sans and runtime
             sed -i '' 's/sh("brew[^"]*")/""/' compiler/main.sans
             sed -i '' 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
+            sed -i '' 's/getenv([^)]*)/""/' compiler/main.sans
+            sed -i '' 's/sh("uname -s")/""/' compiler/main.sans
+            # Strip stof/ftos from runtime (added in v0.7.0, unknown to v0.4.0-era compiler)
+            sed -i '' 's/stof(buf)/0/' runtime/json.sans
+            sed -i '' 's/ftos(bits)/"0"/' runtime/json.sans
+            # Strip LCG random (uses time() which may not be available)
+            sed -i '' 's/sans_rand_state = time()/sans_rand_state = 12345/' runtime/math.sans 2>/dev/null || true
             /tmp/sans-stage1 build compiler/main.sans
             mv compiler/main /tmp/sans-stage2
             mv compiler/main.sans.bak compiler/main.sans
+            mv runtime/json.sans.bak runtime/json.sans
+            mv runtime/math.sans.bak runtime/math.sans
 
             echo "Stage 3: stage2 -> full current source"
             /tmp/sans-stage2 build compiler/main.sans
