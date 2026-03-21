@@ -512,7 +512,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_result_unwrap_or(i64, i64)")
   emit(cg, "declare i64 @sans_result_code(i64)")
 
-  // ------ Sans runtime: Option ------
+  // ------ Sans runtime: Option (declared only — defined in runtime/option.sans) ------
   emit(cg, "declare i64 @sans_option_some(i64)")
   emit(cg, "declare i64 @sans_option_none()")
   emit(cg, "declare i64 @sans_option_is_some(i64)")
