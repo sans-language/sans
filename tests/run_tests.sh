@@ -119,6 +119,8 @@ run_test "result_error_code"          "$REPO_ROOT/tests/fixtures/result_error_co
 run_test "result_map"                "$REPO_ROOT/tests/fixtures/result_map.sans"                0
 run_test "option_basic"              "$REPO_ROOT/tests/fixtures/option_basic.sans"              1
 run_test "option_methods"            "$REPO_ROOT/tests/fixtures/option_methods.sans"            0
+run_test "option_unwrap_bang"        "$REPO_ROOT/tests/fixtures/option_unwrap_bang.sans"        42
+run_test "option_try"                "$REPO_ROOT/tests/fixtures/option_try.sans"                0
 run_test "float_basic"               "$REPO_ROOT/tests/fixtures/float_basic.sans"               12
 run_test "string_methods"            "$REPO_ROOT/tests/fixtures/string_methods.sans"            17
 run_test "string_ends_with"          "$REPO_ROOT/tests/fixtures/string_ends_with.sans"          2

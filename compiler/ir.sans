@@ -2720,7 +2720,7 @@ lower_option_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
     dest
   }
-  else if method == "is_none" {
+  else if method == "is_none" || method == "is_err" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_OPTION_IS_NONE, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_BOOL)
@@ -3810,6 +3810,8 @@ ir_type_for_return(type_name:I struct_defs:I enum_defs:I) I {
   else if type_name.sw("Mutex") { IRTY_MUTEX }
   else if type_name.sw("Result<") { IRTY_RESULT }
   else if type_name.sw("R<") { IRTY_RESULT }
+  else if type_name.sw("Option<") { IRTY_OPTION }
+  else if type_name.sw("O<") { IRTY_OPTION }
   else if type_name.sw("(") { IRTY_TUPLE }
   // Check struct/enum defs
   else if mhas(struct_defs, type_name) == 1 { IRTY_STRUCT }

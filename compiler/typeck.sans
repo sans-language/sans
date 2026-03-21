@@ -2420,7 +2420,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         if mc_nargs != 0 { tc_error("is_some() takes no arguments") }
         return make_type(TY_BOOL)
       }
-      if mc_method == "is_none" {
+      if mc_method == "is_none" || mc_method == "is_err" {
         if mc_nargs != 0 { tc_error("is_none() takes no arguments") }
         return make_type(TY_BOOL)
       }

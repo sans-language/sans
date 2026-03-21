@@ -1,0 +1,16 @@
+get_value(flag:I) O<I> {
+  if flag == 1 { some(42) } else { none() }
+}
+
+try_get(flag:I) O<I> {
+  v = get_value(flag)?
+  some(v + 1)
+}
+
+main() I {
+  a = try_get(1)
+  b = try_get(0)
+  x = a!
+  y = b.is_none()
+  x + y - 44
+}
