@@ -45,6 +45,15 @@ make_result_type(inner:I) I {
   t
 }
 
+make_option_type(inner:I) I {
+  t = alloc(32)
+  store64(t, TY_OPTION)
+  store64(t + 8, inner)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
 make_sender_type(inner:I) I {
   t = alloc(32)
   store64(t, TY_SENDER)
@@ -272,7 +281,8 @@ type_eq(a:I b:I) I {
      ta == TY_RESULT_ERR { return 1 }
   // Parameterized types with inner: compare inner recursively
   if ta == TY_ARRAY || ta == TY_RESULT || ta == TY_SENDER ||
-     ta == TY_RECEIVER || ta == TY_MUTEX { return type_eq(type_inner(a), type_inner(b)) }
+     ta == TY_RECEIVER || ta == TY_MUTEX ||
+     ta == TY_OPTION { return type_eq(type_inner(a), type_inner(b)) }
   // Tuple: compare all element types
   if ta == TY_TUPLE {
     elems_a = type_data2(a)
@@ -453,6 +463,18 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
     return make_mutex_type(resolve_type(inner_name, structs, enums, mod_exports))
   }
 
+  // Option<T>
+  if name.sw("Option<") && char_at(name, len - 1) == 62 {
+    inner_name = name.substring(7, len - 1)
+    return make_option_type(resolve_type(inner_name, structs, enums, mod_exports))
+  }
+
+  // O<T> (short Option)
+  if name.sw("O<") && char_at(name, len - 1) == 62 {
+    inner_name = name.substring(2, len - 1)
+    return make_option_type(resolve_type(inner_name, structs, enums, mod_exports))
+  }
+
   // Fn (bare function type)
   if name == "Fn" || name.sw("Fn(") { return make_type(TY_FN) }
 
@@ -512,6 +534,7 @@ type_to_string(t:I) S {
   if tag == TY_SENDER { return "Sender<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_RECEIVER { return "Receiver<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_MUTEX { return "Mutex<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_OPTION { return "Option<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_STRUCT { return type_data(t) }
   if tag == TY_ENUM { return type_data(t) }
   if tag == TY_TUPLE {
