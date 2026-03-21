@@ -7,99 +7,91 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            platform: macos-arm64
-            bootstrap_binary: sans-macos-arm64
-          - os: ubuntu-latest
-            platform: linux-x86_64
-            bootstrap_binary: sans-linux-x86_64
-
+  test-macos:
+    name: Test (macOS ARM64)
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install LLVM 17 (macOS)
-        if: runner.os == 'macOS'
+      - name: Install LLVM 17
         run: brew install llvm@17
 
-      - name: Install LLVM 17 and dependencies (Ubuntu)
-        if: runner.os == 'Linux'
+      - name: Download bootstrap compiler
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use v0.6.1 as bootstrap — recent enough to know all current builtins.
+          # v0.4.0 is too old (missing getenv, stof, etc.)
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.6.1/sans-macos-arm64.tar.gz" | tar xz
+          chmod +x sans
+          mv sans sans-bootstrap
+          ./sans-bootstrap --version
+
+      - name: Build compiler
+        run: |
+          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          ./sans-bootstrap build compiler/main.sans
+
+      - name: Run tests
+        run: bash tests/run_tests.sh
+
+      - name: Generate .ll files for Linux cross-build
+        run: |
+          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          # The compiler deletes .ll files after llc runs. Intercept rm to
+          # copy .ll files before deletion — same technique as release.yml.
+          mkdir -p ll-output /tmp/wrap
+          printf '#!/bin/bash\nfor f in "$@"; do [[ "$f" == *.ll ]] && cp "$f" '"$(pwd)"'/ll-output/ 2>/dev/null; done\nexec /bin/rm "$@"\n' > /tmp/wrap/rm
+          chmod +x /tmp/wrap/rm
+          PATH="/tmp/wrap:$PATH" ./compiler/main build compiler/main.sans 2>&1 || true
+          echo "Generated .ll files:"
+          ls -la ll-output/
+
+      - name: Upload .ll artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
+
+  test-linux:
+    name: Test (Linux x86_64)
+    needs: test-macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install LLVM 17 and dependencies
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/keyrings/llvm.asc
           echo "deb [signed-by=/etc/apt/keyrings/llvm.asc] http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
           sudo apt-get update
           sudo apt-get install -y llvm-17 libcurl4-openssl-dev libssl-dev pkg-config zlib1g-dev
 
-      - name: Download bootstrap compiler
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download .ll artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
+
+      - name: Compile from LLVM IR
         run: |
-          # Use v0.4.0 as bootstrap — same as release workflow.
-          # Later versions may have scope GC bugs that cause segfaults.
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
-          else
-            curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-linux-x86_64.tar.gz" | tar xz
-          fi
-          chmod +x sans
-          mv sans sans-bootstrap
-          ./sans-bootstrap --version
-
-      - name: Build compiler from source
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
-          else
-            export PATH="/usr/lib/llvm-17/bin:$PATH"
-          fi
-
-          # Try direct build. If bootstrap segfaults (AST layout changes, new
-          # builtins, etc.), fall back to multi-stage bootstrap — same strategy
-          # as release.yml.
-          if ./sans-bootstrap build compiler/main.sans 2>&1; then
-            echo "=== Direct build succeeded ==="
-          else
-            echo "=== Multi-stage bootstrap ==="
-            # Stage 1: v0.4.0 bootstrap -> v0.4.0 source (known good)
-            echo "Stage 1: v0.4.0 bootstrap -> v0.4.0 source"
-            mkdir -p /tmp/prev-src
-            curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/v0.4.0.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
-            ./sans-bootstrap build /tmp/prev-src/compiler/main.sans
-            mv /tmp/prev-src/compiler/main /tmp/sans-stage1
-            rm -rf /tmp/prev-src
-
-            # Stage 2: stage1 -> current source (strip builtins v0.4.0 doesn't know)
-            echo "Stage 2: stage1 -> current source (stripped)"
-            cp compiler/main.sans compiler/main.sans.bak
-            if [ "${{ runner.os }}" = "macOS" ]; then
-              sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
-              sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
-              sed -i '' 's/scope_disable()/0/' compiler/main.sans
-              sed -i '' 's/sh("brew[^"]*")/""/' compiler/main.sans
-              sed -i '' 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
-            else
-              sed -i 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
-              sed -i 's/pkg_main(argv)/0/' compiler/main.sans
-              sed -i 's/scope_disable()/0/' compiler/main.sans
-              sed -i 's/sh("brew[^"]*")/""/' compiler/main.sans
-              sed -i 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
-            fi
-            /tmp/sans-stage1 build compiler/main.sans
-            mv compiler/main /tmp/sans-stage2
-            mv compiler/main.sans.bak compiler/main.sans
-
-            # Stage 3: stage2 -> full current source
-            echo "Stage 3: stage2 -> full current source"
-            /tmp/sans-stage2 build compiler/main.sans
-          fi
+          export PATH="/usr/lib/llvm-17/bin:$PATH"
+          echo "=== .ll files ==="
+          ls -la ll-output/
+          # Compile main .ll to object
+          llc -filetype=obj -O2 --relocation-model=pic -o main.o ll-output/main.ll
+          # Compile each runtime .ll to object
+          RUNTIME_OBJS=""
+          for ll in ll-output/sans_*_runtime.ll; do
+            base=$(basename "$ll" .ll)
+            llc -filetype=obj -O2 --relocation-model=pic -o "/tmp/${base}.o" "$ll"
+            RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
+          done
+          # Link — same flags as release.yml
+          cc -no-pie main.o $RUNTIME_OBJS \
+            -lcurl -lz $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') \
+            -o compiler/main
+          chmod +x compiler/main
 
       - name: Run tests
         run: bash tests/run_tests.sh
