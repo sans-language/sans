@@ -333,9 +333,7 @@ type_eq(a:I b:I) I {
 is_i64_compat(t:I) I {
   tag = type_tag(t)
   if tag == TY_INT || tag == TY_FLOAT || tag == TY_STRING || tag == TY_BOOL || tag == TY_ARRAY ||
-     tag == TY_MAP || tag == TY_FN || tag == TY_JSON || tag == TY_HTTP_RESP ||
-     tag == TY_HTTP_SERVER || tag == TY_HTTP_REQ || tag == TY_JOIN_HANDLE ||
-     tag == TY_SENDER || tag == TY_RECEIVER || tag == TY_MUTEX { return 1 }
+     tag == TY_MAP || tag == TY_FN || tag == TY_RESULT || tag == TY_OPTION || tag == TY_JSON { return 1 }
   0
 }
 
