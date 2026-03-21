@@ -372,6 +372,8 @@ build_step8(program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_
   main_struct_defs = irm_struct_defs(main_ir)
   merged = make_ir_module(all_functions, all_globals, main_struct_defs)
   store64(merged + 24, all_ginits)
+  store64(merged + 48, irm_trait_impls(main_ir))
+  store64(merged + 56, irm_trait_registry(main_ir))
   g_merged = merged
   // Run codegen and link in the SAME scope to prevent scope GC from freeing IR data
   g_ll = g_out + ".ll"

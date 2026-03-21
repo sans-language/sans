@@ -1,0 +1,32 @@
+trait Valued {
+    fn value(self) Int
+}
+
+struct Point {
+    a Int,
+    b Int,
+}
+
+struct Single {
+    c Int,
+}
+
+impl Valued for Point {
+    fn value(self) Int {
+        self.a + self.b
+    }
+}
+
+impl Valued for Single {
+    fn value(self) Int {
+        self.c
+    }
+}
+
+fn main() Int {
+    let p = Point { a: 5, b: 8 }
+    let s = Single { c: 17 }
+    let dp = p as dyn Valued
+    let ds = s as dyn Valued
+    dp.value() + ds.value() - 30
+}

@@ -5,6 +5,10 @@ import "ir"
 // Used to skip scope instrumentation in runtime modules (avoids double-definition of sans_scope_track)
 g cg_is_runtime_flag = 0
 g cg_fn_ret_types = 0
+g cg_trait_impls = 0
+g cg_trait_registry = 0
+
+cg_str(v:I) S = v
 
 // ------ Codegen state layout (80 bytes) ---------------------------------------------------------------------------------------
 // offset 0:  lines        --- Array<I> of string pointers (LLVM IR lines)
@@ -1758,6 +1762,72 @@ emit_closure_aware_call3(cg:I dest:I fp_val:S a1:S a2:S a3:S) I {
 }
 
 // ------ Compile a single IR instruction to LLVM IR text ---------------------------------------
+
+compile_dyn_trait_create(cg:I inst:I) I {
+  dtc_dest = ir_dest(inst)
+  dtc_src_val = cg_get_val(cg, ir_field(inst, 16))
+  dtc_type_name = ir_field(inst, 24)
+  dtc_trait_name = ir_field(inst, 32)
+  dtc_fp = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_fp + " = call ptr @malloc(i64 16)")
+  emit(cg, "  store i64 " + dtc_src_val + ", ptr " + dtc_fp)
+  dtc_vt_name = cg_str(dtc_type_name) + "." + cg_str(dtc_trait_name)
+  dtc_vt_ref = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_vt_ref + " = ptrtoint ptr @vtable." + dtc_vt_name + " to i64")
+  dtc_vt_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_vt_gep + " = getelementptr i8, ptr " + dtc_fp + ", i64 8")
+  emit(cg, "  store i64 " + dtc_vt_ref + ", ptr " + dtc_vt_gep)
+  dtc_r = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_r + " = ptrtoint ptr " + dtc_fp + " to i64")
+  cg_set_val(cg, dtc_dest, dtc_r)
+  emit_scope_track(cg, dtc_r, 7)
+  0
+}
+
+// Helper: look up method index in trait registry by comparing method names
+// Build arg string for dyn trait call: "i64 data, i64 arg0, i64 arg1, ..."
+build_dyn_call_args(cg:I data_val:S args:I) S {
+  result := "i64 " + data_val
+  nargs = args.len()
+  ai := 0
+  while ai < nargs {
+    result = result + ", i64 " + cg_get_val(cg, args.get(ai))
+    ai += 1
+  }
+  result
+}
+
+dyn_lookup_method_idx(trait_name:I method_name:I) I {
+  0
+}
+
+compile_dyn_trait_call(cg:I inst:I) I {
+  dtcl_dest = ir_dest(inst)
+  dtcl_obj_val = cg_get_val(cg, ir_field(inst, 16))
+  dtcl_method_name = ir_field(inst, 24)
+  dtcl_args = ir_field(inst, 32)
+  dtcl_trait_name = ir_field(inst, 40)
+  dtcl_method_idx = dyn_lookup_method_idx(dtcl_trait_name, dtcl_method_name)
+  dtcl_fp = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_fp + " = inttoptr i64 " + dtcl_obj_val + " to ptr")
+  dtcl_data = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_data + " = load i64, ptr " + dtcl_fp)
+  dtcl_vgep = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_vgep + " = getelementptr i8, ptr " + dtcl_fp + ", i64 8")
+  dtcl_vi64 = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_vi64 + " = load i64, ptr " + dtcl_vgep)
+  dtcl_vptr = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_vptr + " = inttoptr i64 " + dtcl_vi64 + " to ptr")
+  dtcl_fgep = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_fgep + " = getelementptr ptr, ptr " + dtcl_vptr + ", i64 " + str(dtcl_method_idx))
+  dtcl_fptr = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_fptr + " = load ptr, ptr " + dtcl_fgep)
+  dtcl_arg_str = build_dyn_call_args(cg, dtcl_data, dtcl_args)
+  dtcl_r = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_r + " = call i64 " + dtcl_fptr + "(" + dtcl_arg_str + ")")
+  cg_set_val(cg, dtcl_dest, dtcl_r)
+  0
+}
 
 compile_inst(cg:I inst:I) I {
   op = ir_op(inst)
@@ -4740,6 +4810,9 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
+  if op == IR_DYN_TRAIT_CREATE { return compile_dyn_trait_create(cg, inst) }
+  if op == IR_DYN_TRAIT_CALL { return compile_dyn_trait_call(cg, inst) }
+
   // Unknown opcode --- emit comment
   emit(cg, "  ; unknown opcode " + str(op))
   0
@@ -4999,6 +5072,52 @@ compile_to_ll_runtime(module:I output_path:S) I {
   cg
 }
 
+// Emit vtable globals for dyn Trait dispatch
+emit_vtables(cg:I module:I) I {
+  ti = irm_trait_impls(module)
+  if ti == 0 { return 0 }
+  ti_keys = ti.keys()
+  ki := 0
+  while ki < ti_keys.len() {
+    tk = ti_keys.get(ki)
+    tk_s = cg_str(tk)
+    vtable_methods = mget(ti, tk)
+    vt_p = load64(vtable_methods)
+    num_m = load64(vtable_methods + 8)
+    if num_m > 0 {
+      // Build vtable name: @vtable.TypeName.TraitName (replace :: with .)
+      cc_pos := -1
+      tki := 0
+      tk_len = slen(tk_s)
+      while tki < tk_len - 1 {
+        if char_at(tk_s, tki) == 58 && char_at(tk_s, tki + 1) == 58 {
+          cc_pos = tki
+          tki = tk_len
+        }
+        tki += 1
+      }
+      vt_name := ""
+      if cc_pos >= 0 {
+        vt_name = tk_s.substring(0, cc_pos) + "." + tk_s.substring(cc_pos + 2, tk_len)
+      } else {
+        vt_name = tk_s
+      }
+      // Build constant array
+      entries_str := ""
+      ei := 0
+      while ei < num_m {
+        if ei > 0 { entries_str = entries_str + ", " }
+        fn_name = cg_str(load64(vt_p + ei * 8))
+        entries_str = entries_str + "ptr @" + fn_name
+        ei += 1
+      }
+      emit(cg, "@vtable." + vt_name + " = private constant [" + str(num_m) + " x ptr] [" + entries_str + "]")
+    }
+    ki += 1
+  }
+  0
+}
+
 compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   cg = make_codegen()
 
@@ -5029,6 +5148,9 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   // 3. Emit global variable declarations
   emit_globals(cg, module)
 
+  // 3b. Emit vtable globals for dyn Trait
+  emit_vtables(cg, module)
+
   // 4. Skip function declarations --- LLVM IR doesn't require forward decls
   emit(cg, "")
 
@@ -5041,6 +5163,8 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   // Set global is_runtime flag so emit_function_body can skip scope instrumentation
   cg_is_runtime_flag = is_runtime
   cg_fn_ret_types = irm_fn_ret_types(module)
+  cg_trait_impls = irm_trait_impls(module)
+  cg_trait_registry = irm_trait_registry(module)
 
   // 6. Second pass: compile each function body (streaming to file)
   i = 0

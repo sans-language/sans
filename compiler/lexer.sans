@@ -174,6 +174,7 @@ lx_ident(lx:I src:S) I {
   if text == "g" { kind = TK_GLOBAL }
   if text == "break" { kind = TK_BREAK }
   if text == "continue" { kind = TK_CONTINUE }
+  if text == "as" { kind = TK_AS }
 
   if kind == TK_IDENT { make_token(TK_IDENT, ptr(text), line, col) } else { make_token(kind, 0, line, col) }
 }

@@ -84,6 +84,7 @@ run_test "enum_data"                 "$REPO_ROOT/tests/fixtures/enum_data.sans" 
 run_test "match_guard"               "$REPO_ROOT/tests/fixtures/match_guard.sans"               120
 run_test "method_basic"              "$REPO_ROOT/tests/fixtures/method_basic.sans"              7
 run_test "trait_impl"                "$REPO_ROOT/tests/fixtures/trait_impl.sans"                13
+run_test "trait_object_basic"        "$REPO_ROOT/tests/fixtures/trait_object_basic.sans"        0
 run_test "generic_identity"          "$REPO_ROOT/tests/fixtures/generic_identity.sans"          42
 run_test "generic_pair"              "$REPO_ROOT/tests/fixtures/generic_pair.sans"              17
 run_test "spawn_join"                "$REPO_ROOT/tests/fixtures/spawn_join.sans"                7

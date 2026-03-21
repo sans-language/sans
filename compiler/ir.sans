@@ -25,6 +25,10 @@ g IRTY_TUPLE = 16
 g IRTY_MAP = 17
 g IRTY_OPTION = 18
 g IRTY_MAP_INT = 19
+g IRTY_DYN_TRAIT = 20
+
+// Global: dyn trait create info - maps dest reg name to "TypeName::TraitName"
+g ir_dyn_create_info = 0
 
 // ------ IrBinOp constants ------------------------------------------------------------------------------------------------------------------------------
 g IROP_ADD = 0
@@ -212,13 +216,15 @@ irf_param_sizes(f:I) I = load64(f + 32)
 // offset 32: fn_ret_types (I) --- Map: func name -> IrType tag
 
 make_ir_module(funcs:I globals:I struct_defs:I) I {
-  m = alloc(48)
+  m = alloc(64)
   store64(m, funcs)
   store64(m + 8, globals)
   store64(m + 16, struct_defs)
   store64(m + 24, M())  // global_init_values map (name -> i64)
   store64(m + 32, M())  // fn_ret_types
   store64(m + 40, M())  // fn_ret_struct_names (for cross-module struct field access)
+  store64(m + 48, 0)    // trait_impls map
+  store64(m + 56, 0)    // trait_registry
   m
 }
 
@@ -227,6 +233,8 @@ irm_globals(m:I) I = load64(m + 8)
 irm_struct_defs(m:I) I = load64(m + 16)
 irm_global_inits(m:I) I = load64(m + 24)
 irm_fn_ret_types(m:I) I = load64(m + 32)
+irm_trait_impls(m:I) I = load64(m + 48)
+irm_trait_registry(m:I) I = load64(m + 56)
 
 // ------ Lowering Context (112 bytes) ---------------------------------------------------------------------------------------------
 // offset 0:  instructions (I) --- Array of instruction pointers
@@ -1268,6 +1276,25 @@ lower_expr(ctx:I expr:I) I {
     lower_array_create(ctx, expr)
   }
 
+  // ------ EX_AS_DYN ------
+  else if tag == EX_AS_DYN {
+    src_expr = load64(expr + 16)
+    trait_name = load64(expr + 24)
+    src_reg = lower_expr(ctx, src_expr)
+    type_name = ctx_get_struct_name(ctx, src_reg)
+    dest = ctx_fresh_reg(ctx)
+    inst = alloc(40)
+    store64(inst, IR_DYN_TRAIT_CREATE)
+    store64(inst + 8, dest)
+    store64(inst + 16, src_reg)
+    store64(inst + 24, type_name)
+    store64(inst + 32, trait_name)
+    ctx_emit(ctx, inst)
+    ctx_set_reg_type(ctx, dest, IRTY_DYN_TRAIT)
+    ctx_set_struct_name(ctx, dest, ptr("dyn::" + ir_s(trait_name)))
+    dest
+  }
+
   // Unknown tag --- fallback
   else {
     dest = ctx_fresh_reg(ctx)
@@ -1989,8 +2016,45 @@ lower_method_call(ctx:I expr:I) I {
     } else { lower_method_fallback(ctx, obj_reg, method, args) }
   }
 
+  // ------ Dyn trait method dispatch ------
+  else if obj_type == IRTY_DYN_TRAIT {
+    lower_dyn_trait_method_call(ctx, obj_reg, method, args)
+  }
+
   // ------ Struct/Enum user-defined methods (fallback) ------
   else { lower_method_fallback(ctx, obj_reg, method, args) }
+}
+
+// Extract trait name from "dyn::TraitName" tracking string
+extract_dyn_trait_name(sn:I) S {
+  if sn == 0 { return "" }
+  sn_s = ir_s(sn)
+  sn_len = slen(sn_s)
+  if sn_len > 5 { sn_s.substring(5, sn_len) } else { "" }
+}
+
+// Lower a method call on a dyn Trait object
+lower_dyn_trait_method_call(ctx:I obj_reg:I method:I args:I) I {
+  dyn_sn = ctx_get_struct_name(ctx, obj_reg)
+  dyn_trait_name = extract_dyn_trait_name(dyn_sn)
+  dyn_arg_regs = array<I>()
+  dyn_ai := 0
+  while dyn_ai < args.len() {
+    dyn_arg_regs.push(lower_expr(ctx, args.get(dyn_ai)))
+    dyn_ai += 1
+    0
+  }
+  dest = ctx_fresh_reg(ctx)
+  inst = alloc(48)
+  store64(inst, IR_DYN_TRAIT_CALL)
+  store64(inst + 8, dest)
+  store64(inst + 16, obj_reg)
+  store64(inst + 24, method)
+  store64(inst + 32, ptr(dyn_arg_regs))
+  store64(inst + 40, ptr(dyn_trait_name))
+  ctx_emit(ctx, inst)
+  ctx_set_reg_type(ctx, dest, IRTY_INT)
+  dest
 }
 
 // ------ lower_method_fallback (user-defined struct/enum methods) ------------
@@ -4491,9 +4555,58 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     0
   }
 
+  // 6b. Build trait_impls map for codegen vtable emission
+  ir_trait_impls = M()
+  ir_trait_registry = M()
+  prog_traits = load64(program + 40)
+  tci := 0
+  while tci < prog_traits.len() {
+    tdef = prog_traits.get(tci)
+    tname = load64(tdef)
+    tmethods_src = load64(tdef + 8)
+    tm_names = array<I>()
+    tmi := 0
+    while tmi < tmethods_src.len() {
+      tmsig = tmethods_src.get(tmi)
+      tm_names.push(load64(tmsig))
+      tmi += 1
+    }
+    mset(ir_trait_registry, tname, ptr(tm_names))
+    tci += 1
+  }
+  ii2 := 0
+  while ii2 < prog_impls.len() {
+    impl_block2 = prog_impls.get(ii2)
+    impl_tn = load64(impl_block2)
+    impl_tt = load64(impl_block2 + 8)
+    if impl_tn != 0 && mhas(ir_trait_registry, impl_tn) {
+      trait_mnames = mget(ir_trait_registry, impl_tn)
+      vtable_entries = array<I>()
+      vmi := 0
+      trait_mnames_p = load64(trait_mnames)
+      num_trait_m = load64(trait_mnames + 8)
+      while vmi < num_trait_m {
+        vt_tm_name = load64(trait_mnames_p + vmi * 8)
+        vt_mangled := ""
+        if module_name != 0 {
+          vt_mangled = ir_s(module_name) + "__" + ir_s(impl_tt) + "__" + ir_s(vt_tm_name)
+        } else {
+          vt_mangled = ir_s(impl_tt) + "_" + ir_s(vt_tm_name)
+        }
+        vtable_entries.push(ptr(vt_mangled))
+        vmi += 1
+      }
+      vt_key = ir_s(impl_tt) + "::" + ir_s(impl_tn)
+      mset(ir_trait_impls, ptr(vt_key), ptr(vtable_entries))
+    }
+    ii2 += 1
+  }
+
   // 7. Build and return IrModule
   mod = make_ir_module(ir_functions, globals_arr, struct_defs)
   store64(mod + 24, global_init_vals)
   store64(mod + 32, fn_ret_types)
+  store64(mod + 48, ir_trait_impls)
+  store64(mod + 56, ir_trait_registry)
   mod
 }

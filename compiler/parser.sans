@@ -320,6 +320,17 @@ make_array_create(elem_type_ptr:I line:I col:I) I {
   n
 }
 
+make_as_dyn(src_expr:I trait_name:I line:I col:I) I {
+  n = alloc(48)
+  store64(n, EX_AS_DYN)
+  store64(n + 8, 48)
+  store64(n + 16, src_expr)
+  store64(n + 24, trait_name)
+  store64(n + 32, line)
+  store64(n + 40, col)
+  n
+}
+
 // Stmt nodes
 make_st_let(name_ptr:I mutable:I type_ptr:I value_expr:I line:I col:I) I {
   n = alloc(64)
@@ -1126,6 +1137,21 @@ parse_expr(p:I min_bp:I) I {
       p_advance(p)  // consume !
       unwrap_args = array<I>()
       lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args, 0, 0)
+      continue
+    }
+
+    // Postfix as: expr as dyn Trait
+    if kind == TK_AS {
+      p_advance(p)  // consume as
+      // Expect "dyn" identifier followed by trait name
+      dyn_name = p_expect_ident(p)
+      if dyn_name == "dyn" {
+        trait_name = p_expect_ident(p)
+        lhs = make_as_dyn(lhs, trait_name, 0, 0)
+      } else {
+        print("parse error: expected 'dyn' after 'as'\n")
+        exit(1)
+      }
       continue
     }
 
