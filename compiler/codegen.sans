@@ -488,6 +488,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_array_filter(i64, i64)")
   emit(cg, "declare i64 @sans_array_any(i64, i64)")
   emit(cg, "declare i64 @sans_array_find(i64, i64)")
+  emit(cg, "declare i64 @sans_array_find_raw(i64, i64, i64)")
   emit(cg, "declare i64 @sans_array_enumerate(i64)")
   emit(cg, "declare i64 @sans_array_zip(i64, i64)")
   emit(cg, "declare i64 @sans_array_contains(i64, i64)")
@@ -2526,13 +2527,41 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ------ IR_ARRAY_FIND (44): call i64 @sans_array_find(i64, i64) ------
+  // ------ IR_ARRAY_FIND (44): call sans_array_find_raw, wrap result in Option<T> ------
   if op == IR_ARRAY_FIND {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
-    r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = call i64 @sans_array_find(i64 " + a1 + ", i64 " + a2 + ")")
-    cg_set_val(cg, dest, r)
+    uid = cg_label_id(cg)
+    // allocate stack slot for the found flag
+    has_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + has_ptr + " = alloca i64")
+    emit(cg, "  store i64 0, ptr " + has_ptr)
+    has_ptr_i = cg_fresh_reg(cg)
+    emit(cg, "  " + has_ptr_i + " = ptrtoint ptr " + has_ptr + " to i64")
+    raw_r = cg_fresh_reg(cg)
+    emit(cg, "  " + raw_r + " = call i64 @sans_array_find_raw(i64 " + a1 + ", i64 " + a2 + ", i64 " + has_ptr_i + ")")
+    has_r = cg_fresh_reg(cg)
+    emit(cg, "  " + has_r + " = load i64, ptr " + has_ptr)
+    cmp_r = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp_r + " = icmp ne i64 " + has_r + ", 0")
+    found_lbl = "afo_found_" + uid
+    miss_lbl = "afo_miss_" + uid
+    merge_lbl = "afo_merge_" + uid
+    emit(cg, "  br i1 " + cmp_r + ", label %" + found_lbl + ", label %" + miss_lbl)
+    emit(cg, found_lbl + ":")
+    some_r = cg_fresh_reg(cg)
+    emit(cg, "  " + some_r + " = call i64 @sans_option_some(i64 " + raw_r + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    emit(cg, miss_lbl + ":")
+    none_r = cg_fresh_reg(cg)
+    emit(cg, "  " + none_r + " = call i64 @sans_option_none()")
+    emit(cg, "  br label %" + merge_lbl)
+    emit(cg, merge_lbl + ":")
+    phi_r = cg_fresh_reg(cg)
+    emit(cg, "  " + phi_r + " = phi i64 [" + some_r + ", %" + found_lbl + "], [" + none_r + ", %" + miss_lbl + "]")
+    cg_set_val(cg, dest, phi_r)
+    cg_set_current_block(cg, merge_lbl)
+    emit_scope_track(cg, phi_r, 6)
     return 0
   }
 

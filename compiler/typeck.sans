@@ -2248,7 +2248,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
           fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
           if fn_plen == 1 && type_eq(load64(fn_params_d), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL {
-            return arr_inner
+            return make_option_type(arr_inner)
           }
         }
         return tc_error("find() requires a function (" + type_to_string(arr_inner) + ") -> Bool, got " + type_to_string(at))

@@ -1,4 +1,4 @@
 main() I {
   a = [10 20 30 40 50]
-  a.find(|x:I| B { x > 25 })
+  a.find(|x:I| B { x > 25 })!
 }

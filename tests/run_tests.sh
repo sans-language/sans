@@ -148,6 +148,7 @@ run_test "lambda_capture"            "$REPO_ROOT/tests/fixtures/lambda_capture.s
 run_test "nested_lambda"             "$REPO_ROOT/tests/fixtures/nested_lambda.sans"             15
 run_test "array_any"                 "$REPO_ROOT/tests/fixtures/array_any.sans"                 1
 run_test "array_find"                "$REPO_ROOT/tests/fixtures/array_find.sans"                30
+run_test "array_find_option"         "$REPO_ROOT/tests/fixtures/array_find_option.sans"         0
 run_test "array_enumerate"           "$REPO_ROOT/tests/fixtures/array_enumerate.sans"           32
 run_test "array_zip"                 "$REPO_ROOT/tests/fixtures/array_zip.sans"                 22
 run_test "string_slice"              "$REPO_ROOT/tests/fixtures/string_slice.sans"              10
