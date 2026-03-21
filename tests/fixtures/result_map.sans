@@ -1,0 +1,31 @@
+double(x:I) R<I> { ok(x * 2) }
+
+main() I {
+  // map: ok path transforms value, err path propagates
+  r1 = ok(21).map(|x:I| I { x * 2 })
+  r2 = err("bad").map(|x:I| I { x * 2 })
+  v1 = r1.unwrap()
+  v2 = r2.is_err()
+
+  // and_then: ok path calls fn returning Result
+  r3 = ok(5).and_then(|x:I| R<I> { ok(x * 3) })
+  r4 = err("fail").and_then(|x:I| R<I> { ok(x * 3) })
+  v3 = r3.unwrap()
+  v4 = r4.is_err()
+
+  // map_err: err path transforms error, ok path propagates
+  r5 = err("old").map_err(|e:S| S { "new" })
+  r6 = ok(7).map_err(|e:S| S { "new" })
+  v5 = r5.is_err()
+  v6 = r6.unwrap()
+
+  // or_else: err path calls fn returning Result, ok path propagates
+  r7 = err("x").or_else(|e:S| R<I> { ok(99) })
+  r8 = ok(11).or_else(|e:S| R<I> { ok(99) })
+  v7 = r7.unwrap()
+  v8 = r8.unwrap()
+
+  // v1=42, v2=1, v3=15, v4=1, v5=1, v6=7, v7=99, v8=11
+  // sum = 42+1+15+1+1+7+99+11 = 177
+  v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8 - 177
+}

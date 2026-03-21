@@ -2380,6 +2380,38 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         if mc_nargs != 0 { tc_error("code() takes no arguments") }
         return make_type(TY_INT)
       }
+      if mc_method == "map" {
+        if mc_nargs != 1 { return tc_error("map() takes 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_ret = type_data2(at)
+          return make_result_type(fn_ret)
+        }
+        return tc_error("map() requires a function argument")
+      }
+      if mc_method == "and_then" {
+        if mc_nargs != 1 { return tc_error("and_then() takes 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_ret = type_data2(at)
+          if type_tag(fn_ret) == TY_RESULT { return fn_ret }
+        }
+        return tc_error("and_then() requires a function returning Result")
+      }
+      if mc_method == "map_err" {
+        if mc_nargs != 1 { return tc_error("map_err() takes 1 argument") }
+        check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        return obj_ty
+      }
+      if mc_method == "or_else" {
+        if mc_nargs != 1 { return tc_error("or_else() takes 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_ret = type_data2(at)
+          if type_tag(fn_ret) == TY_RESULT { return fn_ret }
+        }
+        return tc_error("or_else() requires a function returning Result")
+      }
       return tc_error("Result has no method '" + mc_method + "'")
     }
     // ------ Option methods ------------------------------------------------------------------------------------------------------------------------
