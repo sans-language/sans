@@ -2357,8 +2357,8 @@ lower_map_method(ctx:I obj_reg:I method:I args:I) I {
   if method == "get" {
     key_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_inst2(IR_MAP_GET, dest, obj_reg, key_reg))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    ctx_emit(ctx, ir_inst2(IR_MAP_GET_OPT, dest, obj_reg, key_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_OPTION)
     dest
   }
   else if method == "set" {

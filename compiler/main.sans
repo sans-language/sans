@@ -423,6 +423,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("sock")
   // curl temporarily disabled — crashes in codegen when compiled by bootstrapped binary
   // runtime_modules.push("curl")
+  runtime_modules.push("option")
   runtime_modules.push("map")
   runtime_modules.push("arena")
   runtime_modules.push("rc")
@@ -430,7 +431,6 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("math")
   runtime_modules.push("fs")
   runtime_modules.push("process")
-  runtime_modules.push("option")
 
   runtime_o_paths = array<I>()
   ri := 0

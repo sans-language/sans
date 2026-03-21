@@ -1,0 +1,13 @@
+main() I {
+  m = M()
+  m.set("a" 10)
+  m.set("b" 20)
+
+  v1 = m.get("a")
+  v2 = m.get("missing")
+  x = v1.unwrap()
+  y = v2.unwrap_or(99)
+  z = v2.is_none()
+
+  x + y + z - 110
+}

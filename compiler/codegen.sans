@@ -731,6 +731,39 @@ compile_http_accept(cg:I inst:I) I {
   0
 }
 
+// map.get() returning Option --- calls has/get then wraps in Some/None
+compile_map_get_opt(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  m_val = cg_get_val(cg, ir_field(inst, 16))
+  k_val = cg_get_val(cg, ir_field(inst, 24))
+  uid = cg_label_id(cg)
+  has_r = cg_fresh_reg(cg)
+  emit(cg, "  " + has_r + " = call i64 @sans_map_has(i64 " + m_val + ", i64 " + k_val + ")")
+  cmp_r = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp_r + " = icmp ne i64 " + has_r + ", 0")
+  found_lbl = "mgo_found_" + uid
+  miss_lbl = "mgo_miss_" + uid
+  merge_lbl = "mgo_merge_" + uid
+  emit(cg, "  br i1 " + cmp_r + ", label %" + found_lbl + ", label %" + miss_lbl)
+  emit(cg, found_lbl + ":")
+  raw_r = cg_fresh_reg(cg)
+  emit(cg, "  " + raw_r + " = call i64 @sans_map_get(i64 " + m_val + ", i64 " + k_val + ")")
+  some_r = cg_fresh_reg(cg)
+  emit(cg, "  " + some_r + " = call i64 @sans_option_some(i64 " + raw_r + ")")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, miss_lbl + ":")
+  none_r = cg_fresh_reg(cg)
+  emit(cg, "  " + none_r + " = call i64 @sans_option_none()")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, merge_lbl + ":")
+  phi_r = cg_fresh_reg(cg)
+  emit(cg, "  " + phi_r + " = phi i64 [" + some_r + ", %" + found_lbl + "], [" + none_r + ", %" + miss_lbl + "]")
+  cg_set_val(cg, dest, phi_r)
+  cg_set_current_block(cg, merge_lbl)
+  emit_scope_track(cg, phi_r, 6)
+  0
+}
+
 // req.respond() --- check if request has SSL at offset 48
 // If non-zero: call sans_https_respond, else call sans_http_respond
 compile_http_respond(cg:I req_v:S status_v:S body_v:S ct_v:S) I {
@@ -4052,6 +4085,7 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
   if op == IR_MAP_GET { return compile_rt2(cg, inst, "sans_map_get") }
+  if op == IR_MAP_GET_OPT { return compile_map_get_opt(cg, inst) }
   if op == IR_MAP_SET { return compile_rt3(cg, inst, "sans_map_set") }
   if op == IR_MAP_HAS { return compile_rt2(cg, inst, "sans_map_has") }
   if op == IR_MAP_LEN { return compile_rt1(cg, inst, "sans_map_len") }

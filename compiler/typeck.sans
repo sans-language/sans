@@ -2311,7 +2311,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         if mc_nargs != 1 { tc_error("get() takes exactly 1 argument") }
         at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
         if is_i64_compat(at) != 1 { tc_error("get() key must be String, got " + type_to_string(at)) }
-        return make_type(TY_INT)
+        return make_option_type(make_type(TY_INT))
       }
       if mc_method == "set" {
         if mc_nargs != 2 { tc_error("set() takes exactly 2 arguments (key, value)") }
