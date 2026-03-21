@@ -10,6 +10,12 @@ sans_max(a:I b:I) I {
   if a > b { a } else { b }
 }
 
+g sans_rand_state = 0
+
 sans_random(max:I) I {
-  if max <= 0 { 0 } else { max / 2 }
+  if max <= 0 { 0 } else {
+    if sans_rand_state == 0 { sans_rand_state = time() + 1 }
+    sans_rand_state = (sans_rand_state * 1103515245 + 12345) % 2147483647
+    sans_rand_state % max
+  }
 }

@@ -175,6 +175,7 @@ run_test "generic_nested"             "$REPO_ROOT/tests/fixtures/generic_nested.
 run_test "json_keys"                  "$REPO_ROOT/tests/fixtures/json_keys.sans"                  0
 run_test "json_fn_return"             "$REPO_ROOT/tests/fixtures/json_fn_return.sans"             0
 run_test "pkg_validate"               "$REPO_ROOT/tests/fixtures/pkg_validate.sans"               0
+run_test "random_real"                "$REPO_ROOT/tests/fixtures/random_real.sans"                0
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests
