@@ -421,7 +421,8 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("server")
   runtime_modules.push("json")
   runtime_modules.push("sock")
-  runtime_modules.push("curl")
+  // curl temporarily disabled — crashes in codegen when compiled by bootstrapped binary
+  // runtime_modules.push("curl")
   runtime_modules.push("map")
   runtime_modules.push("arena")
   runtime_modules.push("rc")
