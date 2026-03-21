@@ -54,10 +54,11 @@ jobs:
 
       - name: Run tests
         run: |
-          # Use bootstrap binary for tests — the freshly-built compiler has a
-          # bootstrap chain issue (v0.6.1 bootstrap + v0.7.0 AST offset changes
-          # produce a binary where scope_disable doesn't work correctly).
-          bash tests/run_tests.sh ./sans-bootstrap
+          # Use the freshly-built compiler for tests — it knows all new
+          # builtins (some/none, M<K V>, Result combinators).
+          # The curl runtime is temporarily disabled (bootstrap codegen bug),
+          # so curl-dependent tests will fail.
+          bash tests/run_tests.sh ./compiler/main
 
       - name: Upload .ll artifacts
         uses: actions/upload-artifact@v4
