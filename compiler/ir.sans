@@ -3097,6 +3097,10 @@ lower_lambda(ctx:I expr:I) I {
     0
   }
   captures = find_captures_in_stmts(body_stmts, param_name_set, ctx)
+  if captures.len() > 8 {
+    p("error: closure has " + itos(captures.len()) + " captures, max supported is 8")
+    exit(1)
+  }
 
   // Create a new lowering context for the lambda body
   lctx = make_lower_ctx(ctx_struct_defs(ctx), ctx_enum_defs(ctx), ctx_fn_ret_types(ctx), ctx_global_names(ctx))

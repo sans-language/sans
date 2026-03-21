@@ -1,0 +1,14 @@
+main() I {
+  a = 10
+  b = 20
+  c = 30
+  arr = [1 2 3]
+  result = arr.map(|x:I| I { x + a + b + c })
+  sum := 0
+  i := 0
+  while i < result.len() {
+    sum += result[i]
+    i += 1
+  }
+  sum - 186
+}
