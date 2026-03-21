@@ -38,35 +38,27 @@ jobs:
       - name: Generate .ll files for Linux cross-build
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
-          # The compiler deletes .ll files after llc runs via sys("rm -f ...").
-          # sys() calls libc system() which spawns /bin/sh -c "rm ...", inheriting
-          # our PATH. Wrap rm to copy .ll files before deleting.
           mkdir -p ll-output /tmp/wrap
-          cat > /tmp/wrap/rm << 'WRAPPER'
-          #!/bin/bash
-          for f in "$@"; do
-            [[ "$f" == *.ll ]] && cp "$f" "$SANS_LL_OUTPUT/" 2>/dev/null
-          done
-          exec /bin/rm "$@"
-          WRAPPER
+          # Wrap rm to copy .ll files before deleting — same as release.yml.
+          # Use a clean script without leading whitespace.
+          printf '#!/bin/bash\nfor f in "$@"; do [[ "$f" == *.ll ]] && cp "$f" '"$(pwd)"'/ll-output/ 2>/dev/null; done\nexec /bin/rm "$@"\n' > /tmp/wrap/rm
           chmod +x /tmp/wrap/rm
-          export SANS_LL_OUTPUT="$(pwd)/ll-output"
-          export PATH="/tmp/wrap:$PATH"
-          ./compiler/main build compiler/main.sans 2>&1 || true
-          echo "Generated .ll files:"
+          PATH="/tmp/wrap:$PATH" ./compiler/main build compiler/main.sans 2>&1 || true
+          echo "=== Captured .ll files ==="
           ls -la ll-output/
-          # If main.ll wasn't captured (sys() might bypass PATH), generate it
+          # Verify all expected files are present
+          EXPECTED_COUNT=11  # main.ll + 10 runtime .ll files (some modules share)
+          ACTUAL_COUNT=$(ls ll-output/*.ll 2>/dev/null | wc -l)
+          echo "Captured $ACTUAL_COUNT .ll files"
           if [ ! -f ll-output/main.ll ]; then
-            echo "main.ll not captured by wrapper, re-generating..."
-            # The compiler writes main.ll then immediately runs llc and rm.
-            # Run build in background, watch for the file, copy it.
+            echo "WARN: main.ll missing — retrying with background capture..."
             ./compiler/main build compiler/main.sans &
-            BUILD_PID=$!
-            while [ ! -f compiler/main.ll ] && kill -0 $BUILD_PID 2>/dev/null; do sleep 0.01; done
+            PID=$!
+            while [ ! -f compiler/main.ll ] && kill -0 $PID 2>/dev/null; do sleep 0.01; done
             [ -f compiler/main.ll ] && cp compiler/main.ll ll-output/
-            wait $BUILD_PID 2>/dev/null || true
-            ls -la ll-output/
+            wait $PID 2>/dev/null || true
           fi
+          ls -la ll-output/
 
       - name: Upload .ll artifacts
         uses: actions/upload-artifact@v4
@@ -99,18 +91,19 @@ jobs:
           export PATH="/usr/lib/llvm-17/bin:$PATH"
           echo "=== .ll files ==="
           ls -la ll-output/
-          # Compile main .ll to object
-          llc -filetype=obj -O2 --relocation-model=pic -o main.o ll-output/main.ll
-          # Compile each runtime .ll to object
-          RUNTIME_OBJS=""
-          for ll in ll-output/sans_*_runtime.ll; do
+          # Compile ALL .ll files to .o
+          OBJ_FILES=""
+          for ll in ll-output/*.ll; do
             base=$(basename "$ll" .ll)
+            echo "Compiling: $ll -> /tmp/${base}.o"
             llc -filetype=obj -O2 --relocation-model=pic -o "/tmp/${base}.o" "$ll"
-            RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
+            OBJ_FILES="$OBJ_FILES /tmp/${base}.o"
           done
+          echo "Linking: $OBJ_FILES"
           # Link — same flags as release.yml
-          cc -no-pie main.o $RUNTIME_OBJS \
+          cc -no-pie $OBJ_FILES \
             -lcurl -lz $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') \
+            -lpthread -lm \
             -o compiler/main
           chmod +x compiler/main
 
