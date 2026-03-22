@@ -1,0 +1,6 @@
+// expect-error: argument
+add(a:I b:I) I = a + b
+main() I {
+  x = add(1 2 3)
+  x
+}

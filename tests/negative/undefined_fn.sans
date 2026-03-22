@@ -1,0 +1,5 @@
+// expect-error: undefined
+main() I {
+  x = does_not_exist(42)
+  x
+}

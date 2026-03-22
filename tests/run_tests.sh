@@ -17,6 +17,41 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 PASS=0
 FAIL=0
 SKIP=0
+NEG_PASS=0
+NEG_FAIL=0
+
+run_negative_test() {
+    local label="$1"
+    local fixture="$2"
+    local expected_error="${3:-}"
+
+    # Check fixture exists
+    if [ ! -e "$fixture" ]; then
+        echo -e "  ${YELLOW}SKIP${NC}  $label (fixture not found: $fixture)"
+        ((SKIP++)) || true
+        return
+    fi
+
+    build_exit=0
+    output=$("$SANS" build "$fixture" -o "/tmp/sans_neg_$$_${label}" 2>&1) || build_exit=$?
+    rm -f "/tmp/sans_neg_$$_${label}"
+
+    if [ "$build_exit" -eq 0 ]; then
+        echo -e "  ${RED}✗${NC}  $label (expected compilation to fail but it succeeded)"
+        ((NEG_FAIL++)) || true
+        return
+    fi
+
+    if [ -n "$expected_error" ] && ! echo "$output" | grep -qi "$expected_error"; then
+        echo -e "  ${RED}✗${NC}  $label (expected error containing: $expected_error)"
+        echo "     got: $(echo "$output" | tail -3)"
+        ((NEG_FAIL++)) || true
+        return
+    fi
+
+    echo -e "  ${GREEN}✓${NC}  $label (correctly rejected)"
+    ((NEG_PASS++)) || true
+}
 
 run_test() {
     local label="$1"
@@ -195,6 +230,8 @@ run_test "closure_captures"          "$REPO_ROOT/tests/fixtures/closure_captures
 run_test "deep_recursion"            "$REPO_ROOT/tests/fixtures/deep_recursion.sans"            0
 run_test "defer_basic"               "$REPO_ROOT/tests/fixtures/defer_basic.sans"               0
 run_test "defer_early_return"        "$REPO_ROOT/tests/fixtures/defer_early_return.sans"        0
+run_test "basic_test"                "$REPO_ROOT/tests/fixtures/basic_test.sans"                0
+run_test "math_test"                 "$REPO_ROOT/tests/fixtures/math_test.sans"                 0
 
 # ---------------------------------------------------------------------------
 # Directory-based (multi-module) tests
@@ -209,13 +246,32 @@ run_test "visibility_pub"     "$REPO_ROOT/tests/fixtures/visibility_pub/main.san
 run_test "import_alias"       "$REPO_ROOT/tests/fixtures/import_alias/main.sans"        14
 
 # ---------------------------------------------------------------------------
+# Negative tests (expected to fail compilation)
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "Negative tests (expected compile failures)"
+echo "----------------------------------------"
+
+run_negative_test "neg_undefined_var"        "$REPO_ROOT/tests/negative/undefined_var.sans"        "undefined variable"
+run_negative_test "neg_undefined_var2"       "$REPO_ROOT/tests/negative/undefined_var2.sans"       "undefined variable"
+run_negative_test "neg_undefined_fn"         "$REPO_ROOT/tests/negative/undefined_fn.sans"         "undefined function"
+run_negative_test "neg_wrong_arg_count"      "$REPO_ROOT/tests/negative/wrong_arg_count.sans"      "argument"
+run_negative_test "neg_return_type_mismatch" "$REPO_ROOT/tests/negative/return_type_mismatch.sans" "undefined"
+run_negative_test "neg_parse_error"          "$REPO_ROOT/tests/negative/parse_error.sans"          "PARSE ERR"
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
 TOTAL=$((PASS + FAIL + SKIP))
+NEG_TOTAL=$((NEG_PASS + NEG_FAIL))
+GRAND_TOTAL=$((TOTAL + NEG_TOTAL))
 echo "----------------------------------------"
 echo -e "${GREEN}$PASS${NC}/$TOTAL tests passed  (${SKIP} skipped, ${FAIL} failed)"
+echo -e "${GREEN}$NEG_PASS${NC}/$NEG_TOTAL negative tests passed  (${NEG_FAIL} failed)"
+echo -e "Grand total: $((PASS + NEG_PASS))/$GRAND_TOTAL"
 
-if [ "$FAIL" -gt 0 ]; then
+if [ "$FAIL" -gt 0 ] || [ "$NEG_FAIL" -gt 0 ]; then
     exit 1
 fi

@@ -505,6 +505,57 @@ do_link(ll_path:S output_path:S source_path:S) I {
   0
 }
 
+// ------ Test Runner -----------------------------------------------------------------------------------------------------------------------------------------
+
+test_main(dir:S) I {
+  // Discover *_test.sans files via shell
+  listing = sh("ls " + dir + "/*_test.sans 2>/dev/null || true")
+  if slen(listing) < 2 {
+    p("no *_test.sans files found in " + dir)
+    exit(1)
+  }
+  // Split listing by newlines
+  files = listing.trim().split("\n")
+  total = files.len()
+  passed := 0
+  failed := 0
+  i := 0
+  p("sans test: " + str(total) + " test file(s) in " + dir)
+  p("----------------------------------------")
+  while i < total {
+    file = files.get(i)
+    if slen(file) > 0 {
+      tmp = "/tmp/sans_test_" + str(time()) + "_" + str(i)
+      // Compile
+      build_out = sh("sans build '" + file + "' -o '" + tmp + "' 2>&1 || echo 'SANS_BUILD_FAIL'")
+      if build_out.contains("SANS_BUILD_FAIL") == 1 {
+        p("  FAIL  " + file + " (compile error)")
+        failed = failed + 1
+      } else {
+        // Run
+        run_out = sh(tmp + " 2>&1; echo $?")
+        run_lines = run_out.trim().split("\n")
+        exit_line = run_lines.get(run_lines.len() - 1)
+        rc = stoi(exit_line)
+        if rc == 0 {
+          p("  OK    " + file)
+          passed = passed + 1
+        } else {
+          p("  FAIL  " + file + " (exit " + str(rc) + ")")
+          failed = failed + 1
+        }
+      }
+      sys("rm -f '" + tmp + "'")
+    }
+    i = i + 1
+    0
+  }
+  p("----------------------------------------")
+  p(str(passed) + "/" + str(total) + " passed, " + str(failed) + " failed")
+  if failed > 0 { exit(1) }
+  0
+}
+
 // ------ Main Entry Point ------------------------------------------------------------------------------------------------------------------------------------
 
 main() I {
@@ -512,7 +563,7 @@ main() I {
   argc = argv.len()
 
   if argc < 2 {
-    p("usage: sans <build|run> <file.sans>")
+    p("usage: sans <build|run|test> <file.sans|dir>")
     exit(1)
   }
 
@@ -528,8 +579,14 @@ main() I {
     exit(0)
   }
 
+  if cmd == "test" {
+    test_dir = if argc >= 3 { argv.get(2) } else { "." }
+    test_main(test_dir)
+    exit(0)
+  }
+
   if argc < 3 {
-    p("usage: sans <build|run> <file.sans>")
+    p("usage: sans <build|run|test> <file.sans|dir>")
     exit(1)
   }
 
