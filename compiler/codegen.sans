@@ -5169,6 +5169,106 @@ emit_sans_args(cg:I) I {
   0
 }
 
+// ------ Dead Code Elimination: build live function set -----------------------------------------------------------------------------------------
+// Returns a Map of live function names (name -> 1).
+// Seeds from "main", then transitively marks all called functions.
+// Also seeds vtable method functions so dyn trait dispatch works.
+// For runtime modules, returns 0 (meaning: all functions are live).
+
+dce_build_live_set(module:I) I {
+  funcs = irm_functions(module)
+  nf = funcs.len()
+
+  // Build call graph: fn_name -> list of callees
+  calls_map = M()
+  fi := 0
+  while fi < nf {
+    cur_fn = funcs.get(fi)
+    fname = irf_name(cur_fn)
+    callees = array<I>()
+    mset(calls_map, fname, callees)
+    instrs = irf_instrs(cur_fn)
+    ni = instrs.len()
+    ii := 0
+    while ii < ni {
+      inst = instrs.get(ii)
+      op = ir_op(inst)
+      if op == IR_CALL {
+        callee_name = ir_field(inst, 16)
+        callees.push(callee_name)
+      }
+      if op == IR_FPTR_NAMED {
+        // Function pointer reference: add as callee so it's marked live
+        fptr_name = ir_field(inst, 16)
+        callees.push(fptr_name)
+      }
+      if op == IR_FN_REF {
+        // Lambda/function reference: add as callee
+        fnref_name = ir_field(inst, 16)
+        callees.push(fnref_name)
+      }
+      ii = ii + 1
+      0
+    }
+    fi = fi + 1
+    0
+  }
+
+  // Seed live set: start with "main"
+  live = M()
+  worklist = array<I>()
+  mset(live, "main", 1)
+  worklist.push("main")
+
+  // Also seed vtable methods (needed for dyn trait dispatch)
+  ti = irm_trait_impls(module)
+  if ti != 0 {
+    ti_keys = ti.keys()
+    tki := 0
+    while tki < ti_keys.len() {
+      tk = ti_keys.get(tki)
+      vtable_methods = mget(ti, tk)
+      vt_p = load64(vtable_methods)
+      num_m = load64(vtable_methods + 8)
+      vmi := 0
+      while vmi < num_m {
+        vt_fn = load64(vt_p + vmi * 8)
+        if mhas(live, vt_fn) == 0 {
+          mset(live, vt_fn, 1)
+          worklist.push(vt_fn)
+        }
+        vmi = vmi + 1
+        0
+      }
+      tki = tki + 1
+      0
+    }
+  }
+
+  // Worklist: transitively mark callees
+  wi := 0
+  while wi < worklist.len() {
+    fn_name = worklist.get(wi)
+    if mhas(calls_map, fn_name) {
+      callees = mget(calls_map, fn_name)
+      ci := 0
+      while ci < callees.len() {
+        callee = callees.get(ci)
+        if mhas(live, callee) == 0 {
+          mset(live, callee, 1)
+          worklist.push(callee)
+        }
+        ci = ci + 1
+        0
+      }
+    }
+    wi = wi + 1
+    0
+  }
+
+  live
+}
+
 // ------ Top-level entry point ---------------------------------------------------------------------------------------------------------------
 
 compile_to_ll(module:I output_path:S) I {
@@ -5275,25 +5375,34 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   cg_trait_impls = irm_trait_impls(module)
   cg_trait_registry = irm_trait_registry(module)
 
+  // DCE: build live function set (skip for runtime modules — all fns are live there)
+  live_fns := 0
+  if is_runtime == 0 {
+    live_fns = dce_build_live_set(module)
+  }
+
   // 6. Second pass: compile each function body (streaming to file)
   i = 0
   while i < nf {
     f_cur = funcs.get(i)
-    emit_function_body(cg, f_cur)
-
-    // On last function: flush buffer + write string constants
-    if i == nf - 1 {
-      cg_flush(cg)
-      // Write string constants
-      sc_lines = cg_string_const_lines(cg)
-      sci := 0
-      while sci < sc_lines.len() {
-        fa(output_path, sc_lines.get(sci) + "\n")
-        sci = sci + 1
-        0
-      }
+    // DCE: skip functions not reachable from main (user code only)
+    should_skip := 0
+    if live_fns != 0 {
+      cur_fname = irf_name(f_cur)
+      if mhas(live_fns, cur_fname) == 0 { should_skip = 1 }
     }
+    if should_skip == 0 { emit_function_body(cg, f_cur) }
     i = i + 1
+    0
+  }
+
+  // Flush remaining buffer and write string constants
+  cg_flush(cg)
+  sc_lines = cg_string_const_lines(cg)
+  sci := 0
+  while sci < sc_lines.len() {
+    fa(output_path, sc_lines.get(sci) + "\n")
+    sci = sci + 1
     0
   }
   0

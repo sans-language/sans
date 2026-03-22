@@ -460,6 +460,48 @@ is_arith_op(op:I) I {
   if op >= OP_ADD { if op <= OP_MOD { 1 } else { 0 } } else { 0 }
 }
 
+// ------ lower_binop_maybe_fold ---------------------------------------------------------------------------------------------------------------------------
+// Constant fold integer arithmetic if both operands are integer literals.
+// Falls through to normal lowering otherwise.
+lower_binop_maybe_fold(ctx:I op:I left:I right:I) I {
+  left_tag = load64(left)
+  right_tag = load64(right)
+  // Only fold integer arithmetic ops (not comparisons, which would need bool result)
+  can_fold = left_tag == EX_INT_LIT && right_tag == EX_INT_LIT
+  if can_fold && (op == OP_ADD || op == OP_SUB || op == OP_MUL) {
+    lval = load64(left + 16)
+    rval = load64(right + 16)
+    folded := 0
+    if op == OP_ADD { folded = lval + rval }
+    else if op == OP_SUB { folded = lval - rval }
+    else { folded = lval * rval }
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, folded))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } else if can_fold && op == OP_DIV && load64(right + 16) != 0 {
+    lval = load64(left + 16)
+    rval = load64(right + 16)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, lval / rval))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } else if can_fold && op == OP_MOD && load64(right + 16) != 0 {
+    lval = load64(left + 16)
+    rval = load64(right + 16)
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(dest, lval % rval))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  } else {
+    left_reg = lower_expr(ctx, left)
+    right_reg = lower_expr(ctx, right)
+    left_type = ctx_get_reg_type(ctx, left_reg)
+    right_type = ctx_get_reg_type(ctx, right_reg)
+    lower_binop_normal(ctx, op, left_reg, right_reg, left_type, right_type)
+  }
+}
+
 // ------ lower_binop_normal ------------------------------------------------------------------------------------------------------------------------------
 // Handle non-short-circuit binary operators after both sides evaluated.
 lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I {
@@ -1187,12 +1229,8 @@ lower_expr(ctx:I expr:I) I {
       ctx_set_reg_type(ctx, dest, IRTY_BOOL)
       dest
     } else {
-      // Non-short-circuit: evaluate both sides
-      left_reg = lower_expr(ctx, left)
-      right_reg = lower_expr(ctx, right)
-      left_type = ctx_get_reg_type(ctx, left_reg)
-      right_type = ctx_get_reg_type(ctx, right_reg)
-      lower_binop_normal(ctx, op, left_reg, right_reg, left_type, right_type)
+      // Non-short-circuit: evaluate both sides (with constant folding for int literals)
+      lower_binop_maybe_fold(ctx, op, left, right)
     }
   }
 
