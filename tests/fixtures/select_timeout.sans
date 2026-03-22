@@ -1,0 +1,13 @@
+fn main() Int {
+  let (tx, rx) = channel<Int>()
+  result := 0
+  select {
+    v = rx.recv() => {
+      result = v
+    }
+    timeout(100) => {
+      result = 99
+    }
+  }
+  result
+}

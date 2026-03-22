@@ -95,6 +95,9 @@ run_test "spawn_channel"             "$REPO_ROOT/tests/fixtures/spawn_channel.sa
 run_test "mutex_basic"               "$REPO_ROOT/tests/fixtures/mutex_basic.sans"               15
 run_test "mutex_threaded"            "$REPO_ROOT/tests/fixtures/mutex_threaded.sans"            1
 run_test "channel_bounded"           "$REPO_ROOT/tests/fixtures/channel_bounded.sans"           30
+run_test "select_basic"              "$REPO_ROOT/tests/fixtures/select_basic.sans"              42
+run_test "select_timeout"            "$REPO_ROOT/tests/fixtures/select_timeout.sans"            99
+run_test "select_multi"              "$REPO_ROOT/tests/fixtures/select_multi.sans"              10
 run_test "array_basic"               "$REPO_ROOT/tests/fixtures/array_basic.sans"               28
 run_test "array_literal"             "$REPO_ROOT/tests/fixtures/array_literal.sans"             63
 run_test "array_param"               "$REPO_ROOT/tests/fixtures/array_param.sans"               70

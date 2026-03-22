@@ -1522,6 +1522,11 @@ lower_stmt(ctx:I stmt:I) I {
     lower_for_in_destr(ctx, stmt)
   }
 
+  // ST_SELECT --- channel select with polling
+  else if tag == ST_SELECT {
+    lower_select(ctx, stmt)
+  }
+
   // Unknown statement --- skip
   else { 0 }
 }
@@ -1733,6 +1738,132 @@ lower_for_in_destr(ctx:I stmt:I) I {
   ctx_emit(ctx, ir_label(end_label))
   ctx_set_break_label(ctx, old_break)
   ctx_set_continue_label(ctx, old_continue)
+  0
+}
+
+// ------ lower_select (channel select with polling) ---------------------------------------------------------------------------
+lower_select(ctx:I stmt:I) I {
+  // Layout: [tag, size, cases_arr, line, col]
+  cases_arr = load64(stmt + 16)
+  cases_p = load64(cases_arr)
+  ncases = load64(cases_arr + 8)
+
+  // Get start time in milliseconds for timeout checking
+  start_reg = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_TIME_MS, start_reg))
+  ctx_set_reg_type(ctx, start_reg, IRTY_INT)
+
+  // Create labels
+  loop_label = ctx_fresh_label(ctx)
+  end_label = ctx_fresh_label(ctx)
+  sleep_label = ctx_fresh_label(ctx)
+
+  // Save and set break label
+  old_break = ctx_break_label(ctx)
+  ctx_set_break_label(ctx, end_label)
+
+  // Start polling loop
+  ctx_emit(ctx, ir_jump(loop_label))
+  ctx_emit(ctx, ir_label(loop_label))
+
+  // For each recv case: try_recv, if success branch to case body
+  sci := 0
+  while sci < ncases {
+    sc = load64(cases_p + sci * 8)
+    sc_kind = load64(sc)
+
+    if sc_kind == 0 {
+      // Recv case: extract channel object from the method call expr
+      ch_expr = load64(sc + 8)
+      // ch_expr is a method call: [EX_METHOD_CALL, size, object, method, args, line, col]
+      ch_object = load64(ch_expr + 16)
+      ch_reg = lower_expr(ctx, ch_object)
+
+      // Allocate a stack slot for try_recv output
+      out_ptr = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_alloca(out_ptr))
+
+      // Call try_recv: returns 1 if value received
+      try_result = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_CHANNEL_TRY_RECV, try_result, ch_reg, out_ptr))
+      ctx_set_reg_type(ctx, try_result, IRTY_INT)
+
+      // Check if received
+      one_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(one_reg, 1))
+      ctx_set_reg_type(ctx, one_reg, IRTY_INT)
+      got_it = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_cmpop(got_it, IRCMP_EQ, try_result, one_reg))
+      ctx_set_reg_type(ctx, got_it, IRTY_BOOL)
+
+      case_label = ctx_fresh_label(ctx)
+      next_label = ctx_fresh_label(ctx)
+      ctx_emit(ctx, ir_branch(got_it, case_label, next_label))
+      ctx_emit(ctx, ir_label(case_label))
+
+      // Load received value from out_ptr
+      val_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_load(val_reg, out_ptr))
+      ctx_set_reg_type(ctx, val_reg, IRTY_INT)
+
+      // Bind variable if present
+      var_name = load64(sc + 16)
+      if var_name != 0 {
+        ctx_set_local(ctx, var_name, val_reg)
+      }
+
+      // Lower body statements
+      body_stmts = load64(sc + 24)
+      lower_stmts(ctx, body_stmts)
+
+      // Break out of loop
+      ctx_emit(ctx, ir_jump(end_label))
+      ctx_emit(ctx, ir_label(next_label))
+    } else {
+      // Timeout case: check elapsed time
+      timeout_expr = load64(sc + 32)
+      ms_reg = lower_expr(ctx, timeout_expr)
+
+      now_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst0(IR_TIME_MS, now_reg))
+      ctx_set_reg_type(ctx, now_reg, IRTY_INT)
+
+      elapsed = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_binop(elapsed, IROP_SUB, now_reg, start_reg))
+      ctx_set_reg_type(ctx, elapsed, IRTY_INT)
+
+      timed_out = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_cmpop(timed_out, IRCMP_GTEQ, elapsed, ms_reg))
+      ctx_set_reg_type(ctx, timed_out, IRTY_BOOL)
+
+      timeout_body_label = ctx_fresh_label(ctx)
+      timeout_next_label = ctx_fresh_label(ctx)
+      ctx_emit(ctx, ir_branch(timed_out, timeout_body_label, timeout_next_label))
+      ctx_emit(ctx, ir_label(timeout_body_label))
+
+      body_stmts = load64(sc + 24)
+      lower_stmts(ctx, body_stmts)
+
+      ctx_emit(ctx, ir_jump(end_label))
+      ctx_emit(ctx, ir_label(timeout_next_label))
+    }
+
+    sci += 1
+    0
+  }
+
+  // No case ready: sleep 1ms and loop back
+  ctx_emit(ctx, ir_jump(sleep_label))
+  ctx_emit(ctx, ir_label(sleep_label))
+  sleep_ms = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_const(sleep_ms, 1))
+  ctx_set_reg_type(ctx, sleep_ms, IRTY_INT)
+  ctx_emit(ctx, ir_inst1(IR_SLEEP, ctx_fresh_reg(ctx), sleep_ms))
+  ctx_emit(ctx, ir_jump(loop_label))
+
+  // End label
+  ctx_emit(ctx, ir_label(end_label))
+  ctx_set_break_label(ctx, old_break)
   0
 }
 
@@ -3575,6 +3706,25 @@ find_captures_stmt(stmt:I param_set:I ctx:I result:I seen:I local_set:I) I {
   }
   else if stag == ST_DEFER {
     find_captures_expr(load64(stmt + 16), param_set, ctx, result, seen, local_set)
+  }
+  else if stag == ST_SELECT {
+    cases_arr = load64(stmt + 16)
+    cases_p = load64(cases_arr)
+    ncases = load64(cases_arr + 8)
+    fci := 0
+    while fci < ncases {
+      sc = load64(cases_p + fci * 8)
+      sc_kind = load64(sc)
+      if sc_kind == 0 {
+        find_captures_expr(load64(sc + 8), param_set, ctx, result, seen, local_set)
+      } else {
+        find_captures_expr(load64(sc + 32), param_set, ctx, result, seen, local_set)
+      }
+      find_captures_stmts(load64(sc + 24), param_set, ctx, result, seen, local_set)
+      fci += 1
+      0
+    }
+    0
   } else { 0 }
 }
 

@@ -416,6 +416,28 @@ make_st_defer(expr:I line:I col:I) I {
   n
 }
 
+make_st_select(cases:I line:I col:I) I {
+  n = alloc(40)
+  store64(n, ST_SELECT)
+  store64(n + 8, 40)
+  store64(n + 16, ptr(cases))
+  store64(n + 24, line)
+  store64(n + 32, col)
+  n
+}
+
+// Select case: [kind@0, channel_expr@8, var_name@16, body_stmts@24, timeout_expr@32]
+// kind: 0 = recv, 1 = timeout
+make_select_case(kind:I ch_expr:I var_name:I body:I timeout_expr:I) I {
+  n = alloc(40)
+  store64(n, kind)
+  store64(n + 8, ch_expr)
+  store64(n + 16, var_name)
+  store64(n + 24, ptr(body))
+  store64(n + 32, timeout_expr)
+  n
+}
+
 make_st_let_destr(names:I value_expr:I line:I col:I) I {
   n = alloc(48)
   store64(n, ST_LET_DESTR)
@@ -911,6 +933,9 @@ parse_stmt_inner(p:I) I {
     return make_st_defer(def_expr, tok_line(t_def), tok_col(t_def))
   }
 
+  // select
+  if kind == TK_SELECT { return parse_select_stmt(p) }
+
   // if
   if kind == TK_IF { return parse_if_or_if_else(p) }
 
@@ -1077,6 +1102,62 @@ parse_while_stmt(p:I) I {
   body = parse_body(p)
   p_expect(p, TK_RBRACE)
   make_st_while(cond, body, w_line, w_col)
+}
+
+// ------ Select statement ---------------------------------------------------------------------------------------------------------------------------------------
+// select { v = ch.recv() => body, timeout(ms) => body }
+parse_select_stmt(p:I) I {
+  s_tok = p_peek(p)
+  s_line = tok_line(s_tok)
+  s_col = tok_col(s_tok)
+  p_expect(p, TK_SELECT)
+  p_expect(p, TK_LBRACE)
+  cases = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    c = parse_select_case(p)
+    cases.push(c)
+  }
+  p_expect(p, TK_RBRACE)
+  make_st_select(cases, s_line, s_col)
+}
+
+parse_select_body(p:I) [I] {
+  if p_at(p, TK_LBRACE) == 1 {
+    p_advance(p)
+    body = parse_body(p)
+    p_expect(p, TK_RBRACE)
+    return body
+  }
+  expr = parse_expr(p, 0)
+  body = array<I>()
+  body.push(make_st_expr(expr, 0, 0))
+  body
+}
+
+parse_select_case(p:I) I {
+  // Check for timeout(ms) => body
+  if p_peek_kind(p) == TK_IDENT && tok_val(p_peek(p)) == "timeout" {
+    p_advance(p)
+    p_expect(p, TK_LPAREN)
+    ms_expr = parse_expr(p, 0)
+    p_expect(p, TK_RPAREN)
+    p_expect(p, TK_FAT_ARROW)
+    body = parse_select_body(p)
+    return make_select_case(1, 0, 0, body, ms_expr)
+  }
+  // recv case: [var =] expr.recv() => body
+  // Check for binding: ident = expr.recv()
+  var_name := 0
+  if p_peek_kind(p) == TK_IDENT && p_peek_kind_at(p, 1) == TK_EQ {
+    var_name = tok_val(p_peek(p))
+    p_advance(p)
+    p_advance(p)
+  }
+  // Parse channel expression (should be expr.recv())
+  ch_expr = parse_expr(p, 0)
+  p_expect(p, TK_FAT_ARROW)
+  body = parse_select_body(p)
+  make_select_case(0, ch_expr, var_name, body, 0)
 }
 
 // ------ Return statement ---------------------------------------------------------------------------------------------------------------------------------------

@@ -817,6 +817,45 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     return 0
   }
 
+  // ST_SELECT: [tag, size, cases_arr, line, col]
+  if tag == ST_SELECT {
+    cases_arr = load64(stmt + 16)
+    cases_p = load64(cases_arr)
+    ncases = load64(cases_arr + 8)
+    sci := 0
+    while sci < ncases {
+      sc = load64(cases_p + sci * 8)
+      sc_kind = load64(sc)
+      if sc_kind == 0 {
+        // recv case: check the channel expr (method call)
+        ch_expr = load64(sc + 8)
+        recv_ty = check_expr(ch_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        // If there's a binding variable, add it to scope
+        vn = load64(sc + 16)
+        if vn != 0 {
+          scope = locals[locals.len() - 1]
+          mset(scope, vn, recv_ty)
+        }
+        // Check body statements
+        body_arr = load64(sc + 24)
+        body_len = if body_arr != 0 { load64(body_arr + 8) } else { 0 }
+        body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
+        check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      } else {
+        // timeout case: check the ms expression
+        timeout_expr = load64(sc + 32)
+        check_expr(timeout_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        // Check body statements
+        body_arr = load64(sc + 24)
+        body_len = if body_arr != 0 { load64(body_arr + 8) } else { 0 }
+        body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
+        check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      }
+      sci += 1
+    }
+    return 0
+  }
+
   // ST_DEFER: [tag, size, expr, line, col]
   if tag == ST_DEFER {
     check_expr(load64(stmt + 16), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)

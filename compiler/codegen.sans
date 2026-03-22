@@ -7,6 +7,7 @@ g cg_is_runtime_flag = 0
 g cg_fn_ret_types = 0
 g cg_trait_impls = 0
 g cg_trait_registry = 0
+g cg_timeval_buf = 0
 
 cg_str(v:I) S = v
 
@@ -319,6 +320,7 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
+  emit(cg, "declare i32 @gettimeofday(ptr, ptr)")
   emit(cg, "declare void @srand(i32)")
   emit(cg, "declare i32 @rand()")
   emit(cg, "declare double @strtod(ptr, ptr)")
@@ -410,6 +412,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
+  emit(cg, "declare i32 @gettimeofday(ptr, ptr)")
   emit(cg, "declare void @srand(i32)")
   emit(cg, "declare i32 @rand()")
   emit(cg, "declare double @strtod(ptr, ptr)")
@@ -3778,6 +3781,107 @@ compile_inst(cg:I inst:I) I {
     cg_set_current_block(cg, lbl_read)
     return 0
   }
+  if op == IR_CHANNEL_TRY_RECV {
+    // Layout: [op, dest, rx_reg, out_ptr_reg]
+    // Returns 1 if value received (stored at out_ptr), 0 if empty
+    rx_val = cg_get_val(cg, ir_field(inst, 16))
+    out_ptr_val = cg_get_val(cg, ir_field(inst, 24))
+    lid = cg_label_id(cg)
+    lbl_has = "tryrecv_has_" + lid
+    lbl_empty = "tryrecv_empty_" + lid
+    lbl_end = "tryrecv_end_" + lid
+    // inttoptr rx to channel pointer
+    chanp = cg_fresh_reg(cg)
+    emit(cg, "  " + chanp + " = inttoptr i64 " + rx_val + " to ptr")
+    // Lock mutex at offset 5
+    mtx = cg_fresh_reg(cg)
+    emit(cg, "  " + mtx + " = getelementptr i64, ptr " + chanp + ", i64 5")
+    ml = cg_fresh_reg(cg)
+    emit(cg, "  " + ml + " = call i32 @pthread_mutex_lock(ptr " + mtx + ")")
+    // Load count
+    cnt_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cnt_p + " = getelementptr i64, ptr " + chanp + ", i64 2")
+    count = cg_fresh_reg(cg)
+    emit(cg, "  " + count + " = load i64, ptr " + cnt_p)
+    // Check if count > 0
+    has_data = cg_fresh_reg(cg)
+    emit(cg, "  " + has_data + " = icmp sgt i64 " + count + ", 0")
+    emit(cg, "  br i1 " + has_data + ", label %" + lbl_has + ", label %" + lbl_empty)
+    // Has data: dequeue
+    emit(cg, lbl_has + ":")
+    head_p = cg_fresh_reg(cg)
+    emit(cg, "  " + head_p + " = getelementptr i64, ptr " + chanp + ", i64 3")
+    head = cg_fresh_reg(cg)
+    emit(cg, "  " + head + " = load i64, ptr " + head_p)
+    buf_i = cg_fresh_reg(cg)
+    emit(cg, "  " + buf_i + " = load i64, ptr " + chanp)
+    bufp = cg_fresh_reg(cg)
+    emit(cg, "  " + bufp + " = inttoptr i64 " + buf_i + " to ptr")
+    slot = cg_fresh_reg(cg)
+    emit(cg, "  " + slot + " = getelementptr i64, ptr " + bufp + ", i64 " + head)
+    val = cg_fresh_reg(cg)
+    emit(cg, "  " + val + " = load i64, ptr " + slot)
+    // Store value at out_ptr
+    outp = cg_fresh_reg(cg)
+    emit(cg, "  " + outp + " = inttoptr i64 " + out_ptr_val + " to ptr")
+    emit(cg, "  store i64 " + val + ", ptr " + outp)
+    // head = (head + 1) % capacity
+    cap_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cap_p + " = getelementptr i64, ptr " + chanp + ", i64 1")
+    cap = cg_fresh_reg(cg)
+    emit(cg, "  " + cap + " = load i64, ptr " + cap_p)
+    h1 = cg_fresh_reg(cg)
+    emit(cg, "  " + h1 + " = add i64 " + head + ", 1")
+    nh = cg_fresh_reg(cg)
+    emit(cg, "  " + nh + " = srem i64 " + h1 + ", " + cap)
+    emit(cg, "  store i64 " + nh + ", ptr " + head_p)
+    // count -= 1
+    nc = cg_fresh_reg(cg)
+    emit(cg, "  " + nc + " = sub i64 " + count + ", 1")
+    emit(cg, "  store i64 " + nc + ", ptr " + cnt_p)
+    // Signal send condvar at offset 19
+    snd = cg_fresh_reg(cg)
+    emit(cg, "  " + snd + " = getelementptr i64, ptr " + chanp + ", i64 19")
+    cs = cg_fresh_reg(cg)
+    emit(cg, "  " + cs + " = call i32 @pthread_cond_signal(ptr " + snd + ")")
+    // Unlock mutex
+    mu1 = cg_fresh_reg(cg)
+    emit(cg, "  " + mu1 + " = call i32 @pthread_mutex_unlock(ptr " + mtx + ")")
+    emit(cg, "  br label %" + lbl_end)
+    // Empty: unlock and return 0
+    emit(cg, lbl_empty + ":")
+    mu2 = cg_fresh_reg(cg)
+    emit(cg, "  " + mu2 + " = call i32 @pthread_mutex_unlock(ptr " + mtx + ")")
+    emit(cg, "  br label %" + lbl_end)
+    // End: phi for result
+    emit(cg, lbl_end + ":")
+    result = cg_fresh_reg(cg)
+    emit(cg, "  " + result + " = phi i64 [ 1, %" + lbl_has + " ], [ 0, %" + lbl_empty + " ]")
+    cg_set_val(cg, dest, result)
+    cg_set_current_block(cg, lbl_end)
+    return 0
+  }
+  if op == IR_TIME_MS {
+    // Uses pre-allocated [2 x i64] buffer from entry block (cg_timeval_buf)
+    gv = cg_fresh_reg(cg)
+    emit(cg, "  " + gv + " = call i32 @gettimeofday(ptr " + cg_timeval_buf + ", ptr null)")
+    // Load tv_sec (i64 at offset 0) and tv_usec (i64 at offset 8)
+    sec = cg_fresh_reg(cg)
+    emit(cg, "  " + sec + " = load i64, ptr " + cg_timeval_buf)
+    usec_p = cg_fresh_reg(cg)
+    emit(cg, "  " + usec_p + " = getelementptr i64, ptr " + cg_timeval_buf + ", i64 1")
+    usec = cg_fresh_reg(cg)
+    emit(cg, "  " + usec + " = load i64, ptr " + usec_p)
+    // ms = sec * 1000 + usec / 1000
+    s_ms = cg_fresh_reg(cg)
+    emit(cg, "  " + s_ms + " = mul i64 " + sec + ", 1000")
+    u_ms = cg_fresh_reg(cg)
+    emit(cg, "  " + u_ms + " = sdiv i64 " + usec + ", 1000")
+    total = cg_fresh_reg(cg)
+    emit(cg, "  " + total + " = add i64 " + s_ms + ", " + u_ms)
+    cg_set_val(cg, dest, total)
+    return 0
+  }
   if op == IR_MUTEX_CREATE {
     // [op, dest, value_reg]: malloc 72 bytes, init mutex, store value
     val = cg_get_val(cg, ir_field(inst, 16))
@@ -4893,6 +4997,7 @@ emit_function_body(cg:I func:I) I {
   emit(cg, "entry:")
 
   // Reset per-function state
+  cg_timeval_buf = 0
   cg_set_reg_counter(cg, 0)
   // Skip dealloc - may cause heap corruption with map internals
   store64(cg + 40, M())   // reg_map
@@ -4936,6 +5041,12 @@ emit_function_body(cg:I func:I) I {
       emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
       cg_set_val(cg, ir_dest(ainst), r)
       cg_set_ptr(cg, ir_dest(ainst))
+    }
+    if aop == IR_TIME_MS && cg_timeval_buf == 0 {
+      // Pre-allocate 16-byte timeval buffer in entry block for gettimeofday
+      tvp = cg_fresh_reg(cg)
+      emit(cg, "  " + tvp + " = alloca [2 x i64]")
+      cg_timeval_buf = tvp
     }
     aj = aj + 1
     0
