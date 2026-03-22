@@ -205,6 +205,8 @@ run_test "import_nested"  "$REPO_ROOT/tests/fixtures/import_nested/main.sans"  1
 run_test "import_chain"   "$REPO_ROOT/tests/fixtures/import_chain/main.sans"   13
 run_test "import_struct"  "$REPO_ROOT/tests/fixtures/import_struct/main.sans"  22
 run_test "lambda_cross_module" "$REPO_ROOT/tests/fixtures/lambda_cross_module/main.sans" 15
+run_test "visibility_pub"     "$REPO_ROOT/tests/fixtures/visibility_pub/main.sans"      17
+run_test "import_alias"       "$REPO_ROOT/tests/fixtures/import_alias/main.sans"        14
 
 # ---------------------------------------------------------------------------
 # Summary

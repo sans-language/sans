@@ -501,15 +501,20 @@ make_type_param(name:I bound:I) I {
 }
 
 make_function(name:I params:I ret_type:I body:I type_params:I is_method:I) I {
-  n = alloc(48)
+  n = alloc(56)
   store64(n, name)
   store64(n + 8, ptr(params))
   store64(n + 16, ret_type)
   store64(n + 24, ptr(body))
   store64(n + 32, ptr(type_params))
   store64(n + 40, is_method)
+  store64(n + 48, 0)  // is_pub (default 0)
   n
 }
+
+fn_set_pub(f:I) I { store64(f + 48, 1)
+  0 }
+fn_is_pub(f:I) I = load64(f + 48)
 
 make_struct_def(name:I fields:I) I {
   n = alloc(24)
@@ -1823,7 +1828,7 @@ desugar_interp_string(p:I parts_ptr:I) I {
 }
 
 // ------ Function parsing ---------------------------------------------------------------------------------------------------------------------------------------
-parse_function(p:I) I {
+parse_function_inner(p:I is_pub:I) I {
   // fn keyword is optional
   if p_at(p, TK_FN) == 1 { p_advance(p) }
 
@@ -1848,15 +1853,22 @@ parse_function(p:I) I {
     expr = parse_expr(p, 0)
     body = array<I>()
     body.push(make_st_expr(expr, 0, 0))
-    return make_function(name, params, ret_type, body, type_params, 0)
+    f = make_function(name, params, ret_type, body, type_params, 0)
+    if is_pub == 1 { fn_set_pub(f) }
+    return f
   }
 
   p_expect(p, TK_LBRACE)
   body = parse_body(p)
   p_expect(p, TK_RBRACE)
 
-  make_function(name, params, ret_type, body, type_params, 0)
+  f = make_function(name, params, ret_type, body, type_params, 0)
+  if is_pub == 1 { fn_set_pub(f) }
+  f
 }
+
+parse_function(p:I) I = parse_function_inner(p, 0)
+parse_pub_function(p:I) I = parse_function_inner(p, 1)
 
 // ------ Method parsing (within impl block) ---------------------------------------------------------------------------------
 parse_method(p:I target_type:I) I {
@@ -2046,12 +2058,31 @@ parse_impl_block(p:I) I {
 }
 
 // ------ Import parsing ---------------------------------------------------------------------------------------------------------------------------------------------
+// Returns an import node: 16 bytes [path:I, alias:I]
+// alias is 0 if no alias was specified
+make_import_node(path:I alias:I) I {
+  n = alloc(16)
+  store64(n, path)
+  store64(n + 8, alias)
+  n
+}
+
+imp_get_path(n:I) I = load64(n)
+imp_get_alias(n:I) I = load64(n + 8)
+
 parse_import(p:I) I {
   p_expect(p, TK_IMPORT)
   t = p_peek(p)
   if tok_kind(t) == TK_STRING_LIT {
     p_advance(p)
-    tok_val(t)  // return the string pointer (import path)
+    path = tok_val(t)
+    // Check for 'as alias'
+    alias := 0
+    if p_at(p, TK_AS) == 1 {
+      p_advance(p)  // consume 'as'
+      alias = p_expect_ident(p)
+    }
+    make_import_node(path, alias)
   } else {
     print("parse error: expected string literal after import\n")
     exit(1)
@@ -2093,6 +2124,10 @@ parse_program(p:I) I {
       traits.push(parse_trait_def(p))
     } else { if kind == TK_IMPL {
       impls.push(parse_impl_block(p))
+    } else { if kind == TK_PUB {
+      // pub modifier: consume it, then parse function
+      p_advance(p)
+      functions.push(parse_pub_function(p))
     } else { if kind == TK_FN {
       functions.push(parse_function(p))
     } else { if kind == TK_IDENT {
@@ -2111,7 +2146,7 @@ parse_program(p:I) I {
       print(kind)
       print("\n")
       exit(1)
-    } } } } } } } }
+    } } } } } } } } }
   }
 
   make_program(imports, globals, functions, structs, enums, traits, impls)

@@ -1,0 +1,2 @@
+pub add(a:I b:I) I = a + b
+pub mul(a:I b:I) I = a * b

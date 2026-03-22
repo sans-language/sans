@@ -4612,7 +4612,9 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     mfrt_keys = module_fn_ret_types.keys()
     imp_ii := 0
     while imp_ii < prog_imports.len() {
-      imp_raw = prog_imports.get(imp_ii)
+      imp_node = prog_imports.get(imp_ii)
+      // Import nodes: [path:I, alias:I] — extract path at offset 0
+      imp_raw = load64(imp_node)
       // Extract short module name: "models/user" -> "user"
       imp_slash := -1
       imp_si := 0

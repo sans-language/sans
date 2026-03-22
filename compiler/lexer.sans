@@ -177,6 +177,7 @@ lx_ident(lx:I src:S) I {
   if text == "as" { kind = TK_AS }
   if text == "defer" { kind = TK_DEFER }
   if text == "select" { kind = TK_SELECT }
+  if text == "pub" { kind = TK_PUB }
 
   if kind == TK_IDENT { make_token(TK_IDENT, ptr(text), line, col) } else { make_token(kind, 0, line, col) }
 }

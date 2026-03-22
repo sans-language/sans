@@ -2093,6 +2093,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         exports = mget(mod_exports, mod_name)
         exp_fn_env = load64(exports + 16)
         if exp_fn_env != 0 && mhas(exp_fn_env, func_name) {
+          check_pub_access(exports, func_name, mod_name, expr)
           sig = mget(exp_fn_env, func_name)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
@@ -2177,6 +2178,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         exports = mget(mod_exports, mod_name)
         exp_fn_env = load64(exports + 16)
         if exp_fn_env != 0 && mhas(exp_fn_env, mc_method) {
+          check_pub_access(exports, mc_method, mod_name, mc_object)
           sig = mget(exp_fn_env, mc_method)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
@@ -3253,18 +3255,49 @@ make_fn_sig(params_ptr:I ret_type:I required_count:I) I {
   sig
 }
 
-// ------ make_mod_exports: create ModuleExports (32 bytes) ------------------------------------
+// ------ make_mod_exports: create ModuleExports (40 bytes) ------------------------------------
 // offset 0: structs_map
 // offset 8: enums_map
 // offset 16: fn_env_map
 // offset 24: globals_map (name -> Type ptr)
-make_mod_exports(structs_m:I enums_m:I fn_env_m:I globals_m:I) I {
-  e = alloc(32)
+// offset 32: pub_fns_map (name -> 1 if pub; 0 means no pub functions = all exported)
+make_mod_exports(structs_m:I enums_m:I fn_env_m:I globals_m:I pub_fns_m:I) I {
+  e = alloc(40)
   store64(e, structs_m)
   store64(e + 8, enums_m)
   store64(e + 16, fn_env_m)
   store64(e + 24, globals_m)
+  store64(e + 32, pub_fns_m)
   e
+}
+
+// ------ build_pub_fns: scan function nodes for pub flag, return pub_fns map or 0 --------
+build_pub_fns(funcs_p:I num_funcs:I) I {
+  pub_fns = map()
+  has_any := 0
+  i := 0
+  while i < num_funcs {
+    func = load64(funcs_p + i * 8)
+    fname = load64(func)
+    if load64(func + 48) == 1 {
+      mset(pub_fns, fname, 1)
+      has_any = 1
+    }
+    i += 1
+  }
+  if has_any == 1 { pub_fns } else { 0 }
+}
+
+// ------ check_pub_visibility: warn if accessing non-pub function cross-module --------
+check_pub_access(exports:I func_name:S mod_name:S expr:I) I {
+  pub_fns = load64(exports + 32)
+  // If pub_fns is 0, module has no pub functions — all are exported (backward compat)
+  if pub_fns != 0 {
+    if mhas(pub_fns, func_name) == 0 {
+      tc_warn_at(expr, "function '" + func_name + "' in module '" + mod_name + "' is not marked pub and will become private in a future version")
+    }
+  }
+  0
 }
 
 // ------ Dyn trait method dispatch type checking (extracted to avoid SSA issues) --------
@@ -3865,7 +3898,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
   // Emit any collected diagnostics (exits if errors)
   tc_emit_diags()
 
-  make_mod_exports(structs_map, enums_map, fn_exports, global_types)
+  make_mod_exports(structs_map, enums_map, fn_exports, global_types, build_pub_fns(funcs_p, num_funcs))
 }
 
 // ------ check: top-level type checking entry point ---------------------------------------------------------

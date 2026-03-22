@@ -1,0 +1,7 @@
+import "mathlib" as m
+
+main() I {
+  x = m.add(3, 4)
+  y = m.mul(x, 2)
+  y
+}
