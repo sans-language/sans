@@ -1,0 +1,9 @@
+// since: 0.7.3
+main() I {
+  a = some(42)
+  b = none()
+  x = a!
+  y = b.unwrap_or(10)
+  z = a.is_some()
+  x + y + z
+}

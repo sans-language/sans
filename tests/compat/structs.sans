@@ -1,0 +1,6 @@
+// since: 0.7.3
+struct Point { x I, y I }
+main() I {
+  p = Point { x: 3, y: 4 }
+  p.x + p.y
+}

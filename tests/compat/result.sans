@@ -1,0 +1,8 @@
+// since: 0.7.3
+get(flag:I) R<I> { flag == 1 ? ok(42) : err("no") }
+main() I {
+  a = get(1)!
+  b = get(0).unwrap_or(99)
+  c = get(1).map(|x:I| I { x + 1 }).unwrap()
+  a + b + c - 184
+}

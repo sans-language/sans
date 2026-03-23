@@ -445,6 +445,21 @@ run_test "warnings_test"     "$REPO_ROOT/tests/fixtures/warnings_test.sans"     
 run_test "unreachable_test"  "$REPO_ROOT/tests/fixtures/unreachable_test.sans"         10
 
 # ---------------------------------------------------------------------------
+# Compatibility tests (frozen — must pass on all future versions)
+# ---------------------------------------------------------------------------
+
+run_test "compat_types"       "$REPO_ROOT/tests/compat/types.sans"       47
+run_test "compat_structs"     "$REPO_ROOT/tests/compat/structs.sans"     7
+run_test "compat_enums"       "$REPO_ROOT/tests/compat/enums.sans"       2
+run_test "compat_closures"    "$REPO_ROOT/tests/compat/closures.sans"    42
+run_test "compat_result"      "$REPO_ROOT/tests/compat/result.sans"      0
+run_test "compat_option"      "$REPO_ROOT/tests/compat/option.sans"      53
+run_test "compat_channels"    "$REPO_ROOT/tests/compat/channels.sans"    42
+run_test "compat_collections" "$REPO_ROOT/tests/compat/collections.sans" 65
+run_test "compat_defer"       "$REPO_ROOT/tests/compat/defer.sans"       0
+run_test "compat_traits"      "$REPO_ROOT/tests/compat/traits.sans"      42
+
+# ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)
 # ---------------------------------------------------------------------------
 
