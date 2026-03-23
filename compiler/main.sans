@@ -504,7 +504,7 @@ main() I {
   cmd = argv.get(1)
 
   if cmd == "--version" || cmd == "-V" {
-    p("sans 0.7.2-rc7")
+    p("sans 0.7.2-rc8")
     exit(0)
   }
 
