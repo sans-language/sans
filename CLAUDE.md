@@ -96,7 +96,7 @@ The release workflow (`.github/workflows/release.yml`) automatically:
 
 The CLI `sans --version` reads the hardcoded version string in `compiler/main.sans`.
 
-**Current version: `0.7.2-rc10`**
+**Current version: `0.7.2-rc11`**
 
 ## Rules
 - **NEVER commit compiled binaries** (.o files, executables, Mach-O binaries). Use .gitignore to prevent this.
