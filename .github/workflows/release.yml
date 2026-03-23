@@ -97,16 +97,8 @@ jobs:
             echo "Stage 1: v0.4.0 bootstrap -> v0.4.0 source"
             mkdir -p /tmp/prev-src
             curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/v0.4.0.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
-            echo "=== v0.4.0 source contents ==="
-            ls /tmp/prev-src/runtime/ | head -5
-            echo "=== v0.4.0 json.sans has stof? ==="
-            grep -c "stof" /tmp/prev-src/runtime/json.sans || echo "no stof in v0.4.0 json.sans"
             cp ./sans /tmp/prev-src/sans-bootstrap
-            # Build FROM the v0.4.0 directory so the compiler uses v0.4.0's runtime
-            # (not CWD's runtime which has builtins like stof that v0.4.0 doesn't know)
             cd /tmp/prev-src
-            echo "CWD after cd: $(pwd)"
-            echo "runtime/log.sans exists: $(test -f runtime/log.sans && echo yes || echo no)"
             ./sans-bootstrap build compiler/main.sans
             cd -
             mv /tmp/prev-src/compiler/main /tmp/sans-stage1
@@ -123,7 +115,7 @@ jobs:
             sed -i '' 's/sh("brew[^"]*")/""/' compiler/main.sans
             sed -i '' 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
             sed -i '' 's/getenv([^)]*)/""/' compiler/main.sans
-            sed -i '' 's/sh("uname -s")/""/' compiler/main.sans
+            sed -i '' 's/sh("uname -s")/"Darwin"/' compiler/main.sans
             # Strip stof/ftos from runtime (added in v0.7.0, unknown to v0.4.0-era compiler)
             sed -i '' 's/stof(buf)/0/' runtime/json.sans
             sed -i '' 's/ftos(bits)/"0"/' runtime/json.sans
