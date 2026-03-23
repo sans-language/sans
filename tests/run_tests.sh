@@ -206,6 +206,9 @@ run_test "scope_basic"               "$REPO_ROOT/tests/fixtures/scope_basic.sans
 run_test "scope_typed"               "$REPO_ROOT/tests/fixtures/scope_typed.sans"               99
 run_test "scope_nested_calls"        "$REPO_ROOT/tests/fixtures/scope_nested_calls.sans"        60
 run_test "scope_string"              "$REPO_ROOT/tests/fixtures/scope_string.sans"              0
+run_test "loop_scope_basic"          "$REPO_ROOT/tests/fixtures/loop_scope_basic.sans"          30
+run_test "loop_scope_escape"         "$REPO_ROOT/tests/fixtures/loop_scope_escape.sans"         6
+run_test "loop_scope_nested"         "$REPO_ROOT/tests/fixtures/loop_scope_nested.sans"         27
 run_test "range_basic"               "$REPO_ROOT/tests/fixtures/range_basic.sans"               35
 run_test "array_sort"                "$REPO_ROOT/tests/fixtures/array_sort.sans"                55
 run_test "string_upper_lower"        "$REPO_ROOT/tests/fixtures/string_upper_lower.sans"        7

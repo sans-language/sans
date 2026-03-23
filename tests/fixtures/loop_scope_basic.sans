@@ -1,0 +1,11 @@
+// Test loop scope: allocations in loop freed per iteration
+main() I {
+  i := 0
+  total := 0
+  while i < 5 {
+    s = "item_" + str(i)
+    total += slen(s)
+    i += 1
+  }
+  total
+}
