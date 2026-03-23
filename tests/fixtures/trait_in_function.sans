@@ -1,0 +1,18 @@
+trait Num {
+  fn get(self) Int
+}
+
+struct Val { n Int }
+
+impl Num for Val {
+  fn get(self) Int { self.n }
+}
+
+fn double_val(v dyn Num) Int {
+  v.get() * 2
+}
+
+main() I {
+  a = Val { n: 21 }
+  double_val(a as dyn Num)
+}

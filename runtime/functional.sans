@@ -57,6 +57,28 @@ sans_array_any(arr:I fn_p:I) I {
   result
 }
 
+sans_array_find_raw(arr:I fn_p:I has_out:I) I {
+  data = load64(arr)
+  len = load64(arr + 8)
+  i := 0
+  result := 0
+  found := 0
+  while i < len {
+    elem = load64(data + i * 8)
+    if fcall(fn_p, elem) != 0 {
+      result = elem
+      found = 1
+      i = len
+      0
+    } else {
+      i += 1
+      0
+    }
+  }
+  store64(has_out, found)
+  result
+}
+
 sans_array_find(arr:I fn_p:I) I {
   data = load64(arr)
   len = load64(arr + 8)

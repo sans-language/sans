@@ -1,0 +1,7 @@
+double(x:I) = x * 2
+triple(x:I) = x * 3
+add(a:I b:I) = a + b
+
+main() I {
+  add(double(7) triple(4)) - 26 + 42
+}

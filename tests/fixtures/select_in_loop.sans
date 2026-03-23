@@ -1,0 +1,10 @@
+// Test while loop accumulation
+main() I {
+  total := 0
+  i := 1
+  while i <= 10 {
+    total += i
+    i += 1
+  }
+  total - 10
+}

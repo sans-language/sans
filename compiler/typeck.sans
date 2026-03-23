@@ -54,6 +54,15 @@ make_option_type(inner:I) I {
   t
 }
 
+make_dyn_trait_type(trait_name:I) I {
+  t = alloc(32)
+  store64(t, TY_DYN_TRAIT)
+  store64(t + 8, trait_name)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
 make_map_type(key_type:I val_type:I) I {
   t = alloc(32)
   store64(t, TY_MAP)
@@ -308,6 +317,10 @@ type_eq(a:I b:I) I {
     }
     return 1
   }
+  // Dyn trait: compare trait name strings
+  if ta == TY_DYN_TRAIT {
+    return if as_str(type_inner(a)) == as_str(type_inner(b)) { 1 } else { 0 }
+  }
   // Struct/Enum: compare names (use string comparison, not pointer)
   if ta == TY_STRUCT || ta == TY_ENUM {
     sname_a = type_data_s(a)
@@ -342,7 +355,8 @@ type_eq(a:I b:I) I {
 is_i64_compat(t:I) I {
   tag = type_tag(t)
   if tag == TY_INT || tag == TY_FLOAT || tag == TY_STRING || tag == TY_BOOL || tag == TY_ARRAY ||
-     tag == TY_MAP || tag == TY_FN || tag == TY_RESULT || tag == TY_OPTION || tag == TY_JSON { return 1 }
+     tag == TY_MAP || tag == TY_FN || tag == TY_RESULT || tag == TY_OPTION || tag == TY_JSON ||
+     tag == TY_DYN_TRAIT { return 1 }
   0
 }
 
@@ -508,6 +522,12 @@ resolve_type(name:S structs:I enums:I mod_exports:I) I {
     return make_option_type(resolve_type(inner_name, structs, enums, mod_exports))
   }
 
+  // dyn Trait
+  if name.sw("dyn ") {
+    trait_name = name.substring(4, len)
+    return make_dyn_trait_type(ptr(trait_name))
+  }
+
   // Fn (bare function type)
   if name == "Fn" || name.sw("Fn(") { return make_type(TY_FN) }
 
@@ -575,6 +595,7 @@ type_to_string(t:I) S {
   if tag == TY_RECEIVER { return "Receiver<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_MUTEX { return "Mutex<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_OPTION { return "Option<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_DYN_TRAIT { return "dyn " + type_inner(t) }
   if tag == TY_STRUCT { return type_data(t) }
   if tag == TY_ENUM { return type_data(t) }
   if tag == TY_TUPLE {
@@ -793,6 +814,51 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     pop_scope(locals)
+    return 0
+  }
+
+  // ST_SELECT: [tag, size, cases_arr, line, col]
+  if tag == ST_SELECT {
+    cases_arr = load64(stmt + 16)
+    cases_p = load64(cases_arr)
+    ncases = load64(cases_arr + 8)
+    sci := 0
+    while sci < ncases {
+      sc = load64(cases_p + sci * 8)
+      sc_kind = load64(sc)
+      if sc_kind == 0 {
+        // recv case: check the channel expr (method call)
+        ch_expr = load64(sc + 8)
+        recv_ty = check_expr(ch_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        // If there's a binding variable, add it to scope
+        vn = load64(sc + 16)
+        if vn != 0 {
+          scope = locals[locals.len() - 1]
+          mset(scope, vn, recv_ty)
+        }
+        // Check body statements
+        body_arr = load64(sc + 24)
+        body_len = if body_arr != 0 { load64(body_arr + 8) } else { 0 }
+        body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
+        check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      } else {
+        // timeout case: check the ms expression
+        timeout_expr = load64(sc + 32)
+        check_expr(timeout_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        // Check body statements
+        body_arr = load64(sc + 24)
+        body_len = if body_arr != 0 { load64(body_arr + 8) } else { 0 }
+        body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
+        check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      }
+      sci += 1
+    }
+    return 0
+  }
+
+  // ST_DEFER: [tag, size, expr, line, col]
+  if tag == ST_DEFER {
+    check_expr(load64(stmt + 16), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     return 0
   }
 
@@ -2027,6 +2093,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         exports = mget(mod_exports, mod_name)
         exp_fn_env = load64(exports + 16)
         if exp_fn_env != 0 && mhas(exp_fn_env, func_name) {
+          check_pub_access(exports, func_name, mod_name, expr)
           sig = mget(exp_fn_env, func_name)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
@@ -2111,6 +2178,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         exports = mget(mod_exports, mod_name)
         exp_fn_env = load64(exports + 16)
         if exp_fn_env != 0 && mhas(exp_fn_env, mc_method) {
+          check_pub_access(exports, mc_method, mod_name, mc_object)
           sig = mget(exp_fn_env, mc_method)
           sig_params = load64(sig)
           sig_ret = load64(sig + 8)
@@ -2248,7 +2316,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
           fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
           if fn_plen == 1 && type_eq(load64(fn_params_d), arr_inner) == 1 && type_tag(fn_ret) == TY_BOOL {
-            return arr_inner
+            return make_option_type(arr_inner)
           }
         }
         return tc_error("find() requires a function (" + type_to_string(arr_inner) + ") -> Bool, got " + type_to_string(at))
@@ -2696,6 +2764,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         return make_type(TY_INT)
       }
       return tc_error("HttpRequest has no method '" + mc_method + "'")
+    }
+    // ------ Dyn trait method dispatch -----------------------------------------------------------------------
+    if ot == TY_DYN_TRAIT {
+      return check_dyn_trait_method(obj_ty, mc_method, mc_nargs, mc_args, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     }
     // ------ User-defined methods (struct/enum) ---------------------------------------------------------------------
     if ot == TY_STRUCT || ot == TY_ENUM {
@@ -3150,6 +3222,24 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     return make_array_type(inner)
   }
 
+  if tag == EX_AS_DYN {
+    src_expr2 = load64(expr + 16)
+    asd_trait_name = load64(expr + 24)
+    asd_src_ty = check_expr(src_expr2, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    asd_src_tag = type_tag(asd_src_ty)
+    if asd_src_tag == TY_STRUCT || asd_src_tag == TY_ENUM {
+      asd_src_name = type_data(asd_src_ty)
+      asd_impl_key = as_str(asd_src_name) + "::" + as_str(asd_trait_name)
+      if mhas(traits, "$$trait_impls$$") == 1 {
+        asd_ti_map = mget(traits, "$$trait_impls$$")
+        if mhas(asd_ti_map, asd_impl_key) == 0 {
+          tc_error("type '" + asd_src_name + "' does not implement trait '" + asd_trait_name + "'")
+        }
+      }
+    }
+    return make_dyn_trait_type(asd_trait_name)
+  }
+
   tc_error("check_expr: unknown expression tag " + str(tag))
 }
 
@@ -3165,18 +3255,79 @@ make_fn_sig(params_ptr:I ret_type:I required_count:I) I {
   sig
 }
 
-// ------ make_mod_exports: create ModuleExports (32 bytes) ------------------------------------
+// ------ make_mod_exports: create ModuleExports (40 bytes) ------------------------------------
 // offset 0: structs_map
 // offset 8: enums_map
 // offset 16: fn_env_map
 // offset 24: globals_map (name -> Type ptr)
-make_mod_exports(structs_m:I enums_m:I fn_env_m:I globals_m:I) I {
-  e = alloc(32)
+// offset 32: pub_fns_map (name -> 1 if pub; 0 means no pub functions = all exported)
+make_mod_exports(structs_m:I enums_m:I fn_env_m:I globals_m:I pub_fns_m:I) I {
+  e = alloc(40)
   store64(e, structs_m)
   store64(e + 8, enums_m)
   store64(e + 16, fn_env_m)
   store64(e + 24, globals_m)
+  store64(e + 32, pub_fns_m)
   e
+}
+
+// ------ build_pub_fns: scan function nodes for pub flag, return pub_fns map or 0 --------
+build_pub_fns(funcs_p:I num_funcs:I) I {
+  pub_fns = map()
+  has_any := 0
+  i := 0
+  while i < num_funcs {
+    func = load64(funcs_p + i * 8)
+    fname = load64(func)
+    if load64(func + 48) == 1 {
+      mset(pub_fns, fname, 1)
+      has_any = 1
+    }
+    i += 1
+  }
+  if has_any == 1 { pub_fns } else { 0 }
+}
+
+// ------ check_pub_visibility: warn if accessing non-pub function cross-module --------
+check_pub_access(exports:I func_name:S mod_name:S expr:I) I {
+  pub_fns = load64(exports + 32)
+  // If pub_fns is 0, module has no pub functions — all are exported (backward compat)
+  if pub_fns != 0 {
+    if mhas(pub_fns, func_name) == 0 {
+      tc_warn_at(expr, "function '" + func_name + "' in module '" + mod_name + "' is not marked pub and will become private in a future version")
+    }
+  }
+  0
+}
+
+// ------ Dyn trait method dispatch type checking (extracted to avoid SSA issues) --------
+check_dyn_trait_method(obj_ty:I method:I nargs:I mc_args:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
+  dyn_trait_name = type_inner(obj_ty)
+  if mhas(traits, dyn_trait_name) {
+    dyn_tmethods_arr = mget(traits, dyn_trait_name)
+    dyn_tmethods_p = load64(dyn_tmethods_arr)
+    dyn_num_tmethods = load64(dyn_tmethods_arr + 8)
+    dyn_tmi := 0
+    while dyn_tmi < dyn_num_tmethods {
+      dyn_tm = load64(dyn_tmethods_p + dyn_tmi * 8)
+      dyn_tm_name = load64(dyn_tm)
+      if as_str(dyn_tm_name) == as_str(method) {
+        dyn_tm_ret = load64(dyn_tm + 16)
+        dyn_tm_params_arr = load64(dyn_tm + 8)
+        dyn_num_tparams = load64(dyn_tm_params_arr + 8)
+        if nargs != dyn_num_tparams { tc_error("method '" + method + "' on dyn " + dyn_trait_name + " expects " + str(dyn_num_tparams) + " arg(s) but got " + str(nargs)) }
+        dyn_ci := 0
+        while dyn_ci < nargs {
+          dyn_actual = check_expr(mc_args[dyn_ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          dyn_ci += 1
+        }
+        return dyn_tm_ret
+      }
+      dyn_tmi += 1
+    }
+    return tc_error("trait '" + dyn_trait_name + "' has no method '" + method + "'")
+  }
+  tc_error("unknown trait '" + dyn_trait_name + "'")
 }
 
 // ------ check_inner: shared implementation for check/check_module ------------
@@ -3187,6 +3338,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
   fn_env = map()
   methods_map = map()
   trait_registry = map()
+  trait_impls_map = map()
+  trait_method_index = map()
   generic_fns = map()
 
   // ------ Pass 0: inject imported module exports ---------------------------------------------------------------
@@ -3349,6 +3502,14 @@ check_inner(program:I mod_exports:I require_main:I) I {
       tmi += 1
     }
     mset(trait_registry, tname, ptr(tmethods_arr))
+    tmi2 := 0
+    while tmi2 < tmethods_arr.len() {
+      tm_e = tmethods_arr.get(tmi2)
+      tm_n = load64(tm_e)
+      tmi_key = as_str(tname) + "." + as_str(tm_n)
+      mset(trait_method_index, tmi_key, tmi2)
+      tmi2 += 1
+    }
     ti += 1
   }
 
@@ -3412,6 +3573,20 @@ check_inner(program:I mod_exports:I require_main:I) I {
       if found == 0 { tc_error("impl " + impl_trait_name + " for " + impl_target_type + " is missing method '" + tm_name + "'") }
       tmi += 1
       }
+      ti_key = as_str(impl_target_type) + "::" + as_str(impl_trait_name)
+      ti_methods = array<I>()
+      ti_mi := 0
+      while ti_mi < num_impl_methods {
+        ti_mdef = load64(impl_methods_p + ti_mi * 8)
+        ti_mname = load64(ti_mdef)
+        ti_mangled = as_str(impl_target_type) + "_" + as_str(ti_mname)
+        ti_entry = alloc(16)
+        store64(ti_entry, ti_mname)
+        store64(ti_entry + 8, ptr(ti_mangled))
+        ti_methods.push(ti_entry)
+        ti_mi += 1
+      }
+      mset(trait_impls_map, ti_key, ptr(ti_methods))
     }
 
     // Check if this is a generic impl (has type params at offset 24)
@@ -3474,6 +3649,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
     }
     ii += 1
   }
+
+  mset(trait_registry, "$$trait_impls$$", trait_impls_map)
+  mset(trait_registry, "$$trait_method_index$$", trait_method_index)
 
   // ------ Pass 1: collect function signatures ---------------------------------------------------------------------------
   funcs_arr = load64(program + 16)
@@ -3720,7 +3898,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
   // Emit any collected diagnostics (exits if errors)
   tc_emit_diags()
 
-  make_mod_exports(structs_map, enums_map, fn_exports, global_types)
+  make_mod_exports(structs_map, enums_map, fn_exports, global_types, build_pub_fns(funcs_p, num_funcs))
 }
 
 // ------ check: top-level type checking entry point ---------------------------------------------------------

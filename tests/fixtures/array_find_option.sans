@@ -1,0 +1,8 @@
+main() I {
+  arr = [10 20 30 40 50]
+  found = arr.find(|x:I| B { x > 25 })
+  missing = arr.find(|x:I| B { x > 100 })
+  v = found!
+  m = missing.is_none()
+  v + m - 31
+}

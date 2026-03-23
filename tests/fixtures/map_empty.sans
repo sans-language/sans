@@ -1,0 +1,6 @@
+main() I {
+  m = M()
+  l = m.len()
+  h = m.has("x") ? 1 : 0
+  l + h + 42
+}

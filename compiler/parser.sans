@@ -320,6 +320,17 @@ make_array_create(elem_type_ptr:I line:I col:I) I {
   n
 }
 
+make_as_dyn(src_expr:I trait_name:I line:I col:I) I {
+  n = alloc(48)
+  store64(n, EX_AS_DYN)
+  store64(n + 8, 48)
+  store64(n + 16, src_expr)
+  store64(n + 24, trait_name)
+  store64(n + 32, line)
+  store64(n + 40, col)
+  n
+}
+
 // Stmt nodes
 make_st_let(name_ptr:I mutable:I type_ptr:I value_expr:I line:I col:I) I {
   n = alloc(64)
@@ -395,6 +406,38 @@ make_st_continue(line:I col:I) I {
   n
 }
 
+make_st_defer(expr:I line:I col:I) I {
+  n = alloc(40)
+  store64(n, ST_DEFER)
+  store64(n + 8, 40)
+  store64(n + 16, expr)
+  store64(n + 24, line)
+  store64(n + 32, col)
+  n
+}
+
+make_st_select(cases:I line:I col:I) I {
+  n = alloc(40)
+  store64(n, ST_SELECT)
+  store64(n + 8, 40)
+  store64(n + 16, ptr(cases))
+  store64(n + 24, line)
+  store64(n + 32, col)
+  n
+}
+
+// Select case: [kind@0, channel_expr@8, var_name@16, body_stmts@24, timeout_expr@32]
+// kind: 0 = recv, 1 = timeout
+make_select_case(kind:I ch_expr:I var_name:I body:I timeout_expr:I) I {
+  n = alloc(40)
+  store64(n, kind)
+  store64(n + 8, ch_expr)
+  store64(n + 16, var_name)
+  store64(n + 24, ptr(body))
+  store64(n + 32, timeout_expr)
+  n
+}
+
 make_st_let_destr(names:I value_expr:I line:I col:I) I {
   n = alloc(48)
   store64(n, ST_LET_DESTR)
@@ -458,15 +501,20 @@ make_type_param(name:I bound:I) I {
 }
 
 make_function(name:I params:I ret_type:I body:I type_params:I is_method:I) I {
-  n = alloc(48)
+  n = alloc(56)
   store64(n, name)
   store64(n + 8, ptr(params))
   store64(n + 16, ret_type)
   store64(n + 24, ptr(body))
   store64(n + 32, ptr(type_params))
   store64(n + 40, is_method)
+  store64(n + 48, 0)  // is_pub (default 0)
   n
 }
+
+fn_set_pub(f:I) I { store64(f + 48, 1)
+  0 }
+fn_is_pub(f:I) I = load64(f + 48)
 
 make_struct_def(name:I fields:I) I {
   n = alloc(24)
@@ -615,6 +663,13 @@ parse_type_name(p:I) I {
 
   // Simple identifier type
   name = p_expect_ident(p)
+
+  // dyn Trait type: "dyn" followed by trait name
+  if name == "dyn" {
+    trait_name = p_expect_ident(p)
+    result = "dyn " + trait_name
+    return ptr(result)
+  }
 
   // Check for parameterized type: Name<T1 T2 ...>
   if p_at(p, TK_LT) == 1 {
@@ -876,6 +931,16 @@ parse_stmt_inner(p:I) I {
   // return
   if kind == TK_RETURN { return parse_return(p) }
 
+  // defer
+  if kind == TK_DEFER {
+    t_def = p_advance(p)
+    def_expr = parse_expr(p, 0)
+    return make_st_defer(def_expr, tok_line(t_def), tok_col(t_def))
+  }
+
+  // select
+  if kind == TK_SELECT { return parse_select_stmt(p) }
+
   // if
   if kind == TK_IF { return parse_if_or_if_else(p) }
 
@@ -1044,6 +1109,62 @@ parse_while_stmt(p:I) I {
   make_st_while(cond, body, w_line, w_col)
 }
 
+// ------ Select statement ---------------------------------------------------------------------------------------------------------------------------------------
+// select { v = ch.recv() => body, timeout(ms) => body }
+parse_select_stmt(p:I) I {
+  s_tok = p_peek(p)
+  s_line = tok_line(s_tok)
+  s_col = tok_col(s_tok)
+  p_expect(p, TK_SELECT)
+  p_expect(p, TK_LBRACE)
+  cases = array<I>()
+  while p_at(p, TK_RBRACE) == 0 && p_at(p, TK_EOF) == 0 {
+    c = parse_select_case(p)
+    cases.push(c)
+  }
+  p_expect(p, TK_RBRACE)
+  make_st_select(cases, s_line, s_col)
+}
+
+parse_select_body(p:I) [I] {
+  if p_at(p, TK_LBRACE) == 1 {
+    p_advance(p)
+    body = parse_body(p)
+    p_expect(p, TK_RBRACE)
+    return body
+  }
+  expr = parse_expr(p, 0)
+  body = array<I>()
+  body.push(make_st_expr(expr, 0, 0))
+  body
+}
+
+parse_select_case(p:I) I {
+  // Check for timeout(ms) => body
+  if p_peek_kind(p) == TK_IDENT && tok_val(p_peek(p)) == "timeout" {
+    p_advance(p)
+    p_expect(p, TK_LPAREN)
+    ms_expr = parse_expr(p, 0)
+    p_expect(p, TK_RPAREN)
+    p_expect(p, TK_FAT_ARROW)
+    body = parse_select_body(p)
+    return make_select_case(1, 0, 0, body, ms_expr)
+  }
+  // recv case: [var =] expr.recv() => body
+  // Check for binding: ident = expr.recv()
+  var_name := 0
+  if p_peek_kind(p) == TK_IDENT && p_peek_kind_at(p, 1) == TK_EQ {
+    var_name = tok_val(p_peek(p))
+    p_advance(p)
+    p_advance(p)
+  }
+  // Parse channel expression (should be expr.recv())
+  ch_expr = parse_expr(p, 0)
+  p_expect(p, TK_FAT_ARROW)
+  body = parse_select_body(p)
+  make_select_case(0, ch_expr, var_name, body, 0)
+}
+
 // ------ Return statement ---------------------------------------------------------------------------------------------------------------------------------------
 parse_return(p:I) I {
   ret_tok = p_peek(p)
@@ -1126,6 +1247,21 @@ parse_expr(p:I min_bp:I) I {
       p_advance(p)  // consume !
       unwrap_args = array<I>()
       lhs = make_method_call(lhs, ptr("unwrap"), unwrap_args, 0, 0)
+      continue
+    }
+
+    // Postfix as: expr as dyn Trait
+    if kind == TK_AS {
+      p_advance(p)  // consume as
+      // Expect "dyn" identifier followed by trait name
+      dyn_name = p_expect_ident(p)
+      if dyn_name == "dyn" {
+        trait_name = p_expect_ident(p)
+        lhs = make_as_dyn(lhs, trait_name, 0, 0)
+      } else {
+        print("parse error: expected 'dyn' after 'as'\n")
+        exit(1)
+      }
       continue
     }
 
@@ -1692,7 +1828,7 @@ desugar_interp_string(p:I parts_ptr:I) I {
 }
 
 // ------ Function parsing ---------------------------------------------------------------------------------------------------------------------------------------
-parse_function(p:I) I {
+parse_function_inner(p:I is_pub:I) I {
   // fn keyword is optional
   if p_at(p, TK_FN) == 1 { p_advance(p) }
 
@@ -1717,15 +1853,22 @@ parse_function(p:I) I {
     expr = parse_expr(p, 0)
     body = array<I>()
     body.push(make_st_expr(expr, 0, 0))
-    return make_function(name, params, ret_type, body, type_params, 0)
+    f = make_function(name, params, ret_type, body, type_params, 0)
+    if is_pub == 1 { fn_set_pub(f) }
+    return f
   }
 
   p_expect(p, TK_LBRACE)
   body = parse_body(p)
   p_expect(p, TK_RBRACE)
 
-  make_function(name, params, ret_type, body, type_params, 0)
+  f = make_function(name, params, ret_type, body, type_params, 0)
+  if is_pub == 1 { fn_set_pub(f) }
+  f
 }
+
+parse_function(p:I) I = parse_function_inner(p, 0)
+parse_pub_function(p:I) I = parse_function_inner(p, 1)
 
 // ------ Method parsing (within impl block) ---------------------------------------------------------------------------------
 parse_method(p:I target_type:I) I {
@@ -1915,12 +2058,31 @@ parse_impl_block(p:I) I {
 }
 
 // ------ Import parsing ---------------------------------------------------------------------------------------------------------------------------------------------
+// Returns an import node: 16 bytes [path:I, alias:I]
+// alias is 0 if no alias was specified
+make_import_node(path:I alias:I) I {
+  n = alloc(16)
+  store64(n, path)
+  store64(n + 8, alias)
+  n
+}
+
+imp_get_path(n:I) I = load64(n)
+imp_get_alias(n:I) I = load64(n + 8)
+
 parse_import(p:I) I {
   p_expect(p, TK_IMPORT)
   t = p_peek(p)
   if tok_kind(t) == TK_STRING_LIT {
     p_advance(p)
-    tok_val(t)  // return the string pointer (import path)
+    path = tok_val(t)
+    // Check for 'as alias'
+    alias := 0
+    if p_at(p, TK_AS) == 1 {
+      p_advance(p)  // consume 'as'
+      alias = p_expect_ident(p)
+    }
+    make_import_node(path, alias)
   } else {
     print("parse error: expected string literal after import\n")
     exit(1)
@@ -1962,6 +2124,10 @@ parse_program(p:I) I {
       traits.push(parse_trait_def(p))
     } else { if kind == TK_IMPL {
       impls.push(parse_impl_block(p))
+    } else { if kind == TK_PUB {
+      // pub modifier: consume it, then parse function
+      p_advance(p)
+      functions.push(parse_pub_function(p))
     } else { if kind == TK_FN {
       functions.push(parse_function(p))
     } else { if kind == TK_IDENT {
@@ -1980,7 +2146,7 @@ parse_program(p:I) I {
       print(kind)
       print("\n")
       exit(1)
-    } } } } } } } }
+    } } } } } } } } }
   }
 
   make_program(imports, globals, functions, structs, enums, traits, impls)

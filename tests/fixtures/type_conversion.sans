@@ -1,0 +1,8 @@
+main() I {
+  a = 42
+  s = int_to_string(a)
+  n = string_to_int(s)
+  f = int_to_float(a)
+  i = float_to_int(f)
+  n + i - 42
+}

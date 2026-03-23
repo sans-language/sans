@@ -1,0 +1,14 @@
+trait Describable {
+  fn code(self) Int
+}
+
+struct Item { id Int, count Int }
+
+impl Describable for Item {
+  fn code(self) Int { self.id * 10 + self.count }
+}
+
+main() I {
+  it = Item { id: 3, count: 7 }
+  it.code()
+}

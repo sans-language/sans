@@ -82,9 +82,10 @@ main() {
 | **Structs** | `struct Point { x I, y I }` — generic: `struct Pair<A B> { first A, second B }` |
 | **Enums** | `enum Color { Red, Green, Blue(I) }` |
 | **Traits** | `trait Display { fn show(self) I }` |
+| **Trait objects** | `x as dyn Trait` — dynamic dispatch via vtable; `dyn Trait` as parameter/variable type |
 | **Generics** | `identity<T>(x T) T = x` — generic structs: `Pair<I S>{first: 1, second: "hi"}` |
 | **Tuples** | `(1 "hello" true)` with `.0`, `.1` access |
-| **Arrays** | `[1 2 3]` with `map`, `filter`, `any`, `find`, `enumerate`, `zip` |
+| **Arrays** | `[1 2 3]` with `map`, `filter`, `any`, `find` (returns `Option<T>`), `enumerate`, `zip` |
 | **Option** | `Option<T>` / `O<T>` — `some(v)`, `none()`, `.is_some`, `.unwrap_or(d)`, `opt!`, `opt?` |
 | **Maps** | `M<K,V>()` (default `M<S,I>`) with `set`, `get` (returns `Option<V>`), `has`, `keys`, `vals` |
 | **String methods** | `len`, `trim`, `split`, `starts_with`, `contains`, `replace`, `[0:5]` slicing |

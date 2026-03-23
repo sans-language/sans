@@ -1,0 +1,5 @@
+// expect-error: argument
+foo(a:I b:I c:I) I { a + b + c }
+main() I {
+  foo(1)
+}

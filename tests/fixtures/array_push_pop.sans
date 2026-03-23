@@ -1,0 +1,8 @@
+main() I {
+  a = array<I>()
+  a.push(10)
+  a.push(20)
+  a.push(30)
+  v = a.pop()
+  a.len() + v
+}

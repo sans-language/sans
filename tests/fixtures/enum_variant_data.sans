@@ -1,0 +1,12 @@
+enum Shape {
+  Circle(Int),
+  Rect(Int, Int),
+}
+
+main() I {
+  s = Shape::Circle(42)
+  match s {
+    Shape::Circle(r) => r,
+    Shape::Rect(w, h) => w * h,
+  }
+}

@@ -1,0 +1,9 @@
+main() I {
+  m = M()
+  m.set("x" 10)
+  m.set("y" 20)
+  a = m.has("x") ? 1 : 0
+  b = m.has("y") ? 1 : 0
+  c = m.has("z") ? 1 : 0
+  a * 100 + b * 10 + c
+}

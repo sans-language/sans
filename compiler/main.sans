@@ -70,26 +70,31 @@ strip_ext(path:S) S {
   if len > 5 { path.substring(0, len - 5) } else { path }
 }
 
-// ------ ResolvedModule (24 bytes) ---------------------------------------------------------------------------------------------------------
+// ------ ResolvedModule (32 bytes) ---------------------------------------------------------------------------------------------------------
 // offset 0:  name (I) --- module name string
 // offset 8:  path (I) --- full file path string
 // offset 16: program (I) --- parsed Program pointer
+// offset 24: alias (I) --- alias string (0 if none)
 
 make_resolved_module(name:S path:S program:I) I {
-  m = alloc(24)
+  m = alloc(32)
   store64(m, name)
   store64(m + 8, path)
   store64(m + 16, program)
+  store64(m + 24, 0)
   m
 }
 
 rm_name(m:I) S = load64(m)
 rm_path(m:I) S = load64(m + 8)
 rm_program(m:I) I = load64(m + 16)
+rm_alias(m:I) I = load64(m + 24)
+rm_set_alias(m:I a:I) I { store64(m + 24, a)
+  0 }
 
 // ------ Import Resolution ---------------------------------------------------------------------------------------------------------------------------------
 
-resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
+resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I alias:I) I {
   // Resolve path relative to base_dir
   file_path = base_dir + "/" + import_path + ".sans"
 
@@ -117,9 +122,10 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   num_imports = imports_arr.len()
   ii := 0
   while ii < num_imports {
-    sub_path_ptr = imports_arr.get(ii)
-    sub_path = sub_path_ptr
-    resolve_import(sub_path, base_dir, resolved, visited, in_progress)
+    sub_node = imports_arr.get(ii)
+    sub_path = imp_get_path(sub_node)
+    sub_alias = imp_get_alias(sub_node)
+    resolve_import(sub_path, base_dir, resolved, visited, in_progress, sub_alias)
     ii = ii + 1
     0
   }
@@ -128,7 +134,9 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I) I {
   mset(visited, file_path, 1)
 
   name = mod_name_of(import_path)
-  resolved.push(make_resolved_module(name, file_path, program))
+  rm = make_resolved_module(name, file_path, program)
+  if alias != 0 { rm_set_alias(rm, alias) }
+  resolved.push(rm)
   0
 }
 
@@ -149,9 +157,10 @@ resolve_imports(entry_path:S) I {
   num_imports = imports_arr.len()
   ii := 0
   while ii < num_imports {
-    import_path_ptr = imports_arr.get(ii)
-    import_path = import_path_ptr
-    resolve_import(import_path, base_dir, resolved, visited, in_progress)
+    imp_node = imports_arr.get(ii)
+    imp_path = imp_get_path(imp_node)
+    imp_alias = imp_get_alias(imp_node)
+    resolve_import(imp_path, base_dir, resolved, visited, in_progress, imp_alias)
     ii = ii + 1
     0
   }
@@ -187,6 +196,11 @@ build_step3(modules:I program:I output_path:I source_path:I) I {
     tc_has_source = 1
     exports = check_module(mod_prog, mod_exports)
     mset(mod_exports, mod_n, exports)
+    // If module has an alias, also register exports under the alias
+    mod_alias = rm_alias(mod)
+    if mod_alias != 0 {
+      mset(mod_exports, mod_alias, exports)
+    }
     i = i + 1
     wfd(2, ".")
   }
@@ -372,6 +386,8 @@ build_step8(program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_
   main_struct_defs = irm_struct_defs(main_ir)
   merged = make_ir_module(all_functions, all_globals, main_struct_defs)
   store64(merged + 24, all_ginits)
+  store64(merged + 48, irm_trait_impls(main_ir))
+  store64(merged + 56, irm_trait_registry(main_ir))
   g_merged = merged
   // Run codegen and link in the SAME scope to prevent scope GC from freeing IR data
   g_ll = g_out + ".ll"
@@ -421,8 +437,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("server")
   runtime_modules.push("json")
   runtime_modules.push("sock")
-  // curl temporarily disabled — crashes in codegen when compiled by bootstrapped binary
-  // runtime_modules.push("curl")
+  runtime_modules.push("curl")
   runtime_modules.push("option")
   runtime_modules.push("map")
   runtime_modules.push("arena")
@@ -490,6 +505,57 @@ do_link(ll_path:S output_path:S source_path:S) I {
   0
 }
 
+// ------ Test Runner -----------------------------------------------------------------------------------------------------------------------------------------
+
+test_main(dir:S) I {
+  // Discover *_test.sans files via shell
+  listing = sh("ls " + dir + "/*_test.sans 2>/dev/null || true")
+  if slen(listing) < 2 {
+    p("no *_test.sans files found in " + dir)
+    exit(1)
+  }
+  // Split listing by newlines
+  files = listing.trim().split("\n")
+  total = files.len()
+  passed := 0
+  failed := 0
+  i := 0
+  p("sans test: " + str(total) + " test file(s) in " + dir)
+  p("----------------------------------------")
+  while i < total {
+    file = files.get(i)
+    if slen(file) > 0 {
+      tmp = "/tmp/sans_test_" + str(time()) + "_" + str(i)
+      // Compile
+      build_out = sh("sans build '" + file + "' -o '" + tmp + "' 2>&1 || echo 'SANS_BUILD_FAIL'")
+      if build_out.contains("SANS_BUILD_FAIL") == 1 {
+        p("  FAIL  " + file + " (compile error)")
+        failed = failed + 1
+      } else {
+        // Run
+        run_out = sh(tmp + " 2>&1; echo $?")
+        run_lines = run_out.trim().split("\n")
+        exit_line = run_lines.get(run_lines.len() - 1)
+        rc = stoi(exit_line)
+        if rc == 0 {
+          p("  OK    " + file)
+          passed = passed + 1
+        } else {
+          p("  FAIL  " + file + " (exit " + str(rc) + ")")
+          failed = failed + 1
+        }
+      }
+      sys("rm -f '" + tmp + "'")
+    }
+    i = i + 1
+    0
+  }
+  p("----------------------------------------")
+  p(str(passed) + "/" + str(total) + " passed, " + str(failed) + " failed")
+  if failed > 0 { exit(1) }
+  0
+}
+
 // ------ Main Entry Point ------------------------------------------------------------------------------------------------------------------------------------
 
 main() I {
@@ -497,7 +563,7 @@ main() I {
   argc = argv.len()
 
   if argc < 2 {
-    p("usage: sans <build|run> <file.sans>")
+    p("usage: sans <build|run|test> <file.sans|dir>")
     exit(1)
   }
 
@@ -513,8 +579,14 @@ main() I {
     exit(0)
   }
 
+  if cmd == "test" {
+    test_dir = if argc >= 3 { argv.get(2) } else { "." }
+    test_main(test_dir)
+    exit(0)
+  }
+
   if argc < 3 {
-    p("usage: sans <build|run> <file.sans>")
+    p("usage: sans <build|run|test> <file.sans|dir>")
     exit(1)
   }
 

@@ -213,7 +213,7 @@ const HOVER_DATA: Record<string, string> = {
 
     // Iterator chain methods
     'any': '**any**(predicate: (T) -> Bool) -> Bool\n\nReturns true if any element satisfies the predicate.\n\nUsage: `[1 2 3].any(|x:I| B { x > 2 })  // true`',
-    'find': '**find**(predicate: (T) -> Bool) -> T\n\nReturns first element matching predicate, or 0 if none found.\n\nUsage: `[10 20 30].find(|x:I| B { x > 15 })  // 20`',
+    'find': '**find**(predicate: (T) -> Bool) -> Option\\<T\\>\n\nReturns first element matching predicate as `Some(v)`, or `None` if not found. **Breaking change in v0.7.2**: previously returned `T` (or `0`). Use `!` or `.unwrap_or(default)` to extract.\n\nUsage: `[10 20 30].find(|x:I| B { x > 15 })!  // 20`\n`[10 20 30].find(|x:I| B { x > 100 }).unwrap_or(0)  // 0`',
     'enumerate': '**enumerate**() -> Array<(Int, T)>\n\nReturns array of (index, value) tuples.\n\nUsage: `[10 20 30].enumerate()  // [(0 10) (1 20) (2 30)]`',
     'zip': '**zip**(other: Array<U>) -> Array<(T, U)>\n\nPairs elements from two arrays into tuples.\n\nUsage: `[1 2].zip([10 20])  // [(1 10) (2 20)]`',
 
@@ -279,6 +279,10 @@ const HOVER_DATA: Record<string, string> = {
 
     // Generic structs
     'struct': '**struct** — Define a struct type\n\nUsage: `struct Point { x I, y I }`\n\nGeneric: `struct Pair<A B> { first A, second B }`\n`Pair<I S>{ first: 1, second: "hi" }`',
+
+    // Trait objects
+    'dyn': '**dyn** TraitName — Trait object type\n\nCreates a dynamically-dispatched fat pointer (data ptr + vtable ptr, 16 bytes heap-allocated). Use `expr as dyn Trait` to coerce a concrete struct. Use `dyn Trait` as a parameter or variable type.\n\nUsage: `v = x as dyn Valued`\n`show(v dyn Valued) I { v.value() }`\n\nLimitations: no trait inheritance, no default implementations, no associated types.',
+    'as': '**as** — Trait object coercion\n\nCoerces a concrete struct to a `dyn Trait` fat pointer for dynamic dispatch.\n\nUsage: `v = x as dyn Valued  // coerce Num to dyn Valued`\n`show(x as dyn Valued)      // pass as dyn Trait argument`',
 
     // Math
     'abs': '**abs**(n: Int) -> Int\n\nReturn absolute value.\n\nUsage: `abs(-5)  // 5`',

@@ -1,0 +1,6 @@
+main() I {
+  j = jo()
+  j.set("name" js("Sans"))
+  j.set("version" ji(1))
+  j.get("version").get_int()
+}

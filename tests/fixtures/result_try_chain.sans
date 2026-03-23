@@ -1,0 +1,13 @@
+step1(x:I) R<I> { ok(x + 10) }
+step2(x:I) R<I> { ok(x * 2) }
+
+compute(x:I) R<I> {
+  a = step1(x)?
+  b = step2(a)?
+  ok(b)
+}
+
+main() I {
+  r = compute(5)
+  r!
+}

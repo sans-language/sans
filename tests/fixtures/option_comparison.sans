@@ -1,0 +1,10 @@
+main() I {
+  a = some(42)
+  b = none()
+  s1 = a.is_some()
+  s2 = a.is_none()
+  s3 = b.is_some()
+  s4 = b.is_none()
+  // 1 + 0 + 0 + 1 = 2
+  s1 + s2 + s3 + s4
+}

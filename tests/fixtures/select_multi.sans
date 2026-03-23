@@ -1,0 +1,32 @@
+fn send_second(tx Sender<Int>) Int {
+  sleep(50)
+  tx.send(20)
+  0
+}
+
+fn send_first(tx Sender<Int>) Int {
+  tx.send(10)
+  0
+}
+
+fn main() Int {
+  let (tx1, rx1) = channel<Int>()
+  let (tx2, rx2) = channel<Int>()
+  let h1 = spawn send_second(tx1)
+  let h2 = spawn send_first(tx2)
+  result := 0
+  select {
+    v = rx1.recv() => {
+      result = v
+    }
+    v = rx2.recv() => {
+      result = v
+    }
+    timeout(5000) => {
+      result = 0 - 1
+    }
+  }
+  h1.join()
+  h2.join()
+  result
+}

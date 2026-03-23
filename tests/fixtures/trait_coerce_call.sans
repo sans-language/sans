@@ -1,0 +1,15 @@
+trait HasVal {
+  fn val(self) Int
+}
+
+struct A { x Int }
+
+impl HasVal for A {
+  fn val(self) Int { self.x }
+}
+
+main() I {
+  a = A { x: 42 }
+  d = a as dyn HasVal
+  d.val()
+}

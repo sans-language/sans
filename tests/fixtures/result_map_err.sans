@@ -1,0 +1,7 @@
+main() I {
+  r1 = err("old").map_err(|e:S| S { "new" })
+  r2 = ok(10).map_err(|e:S| S { "new" })
+  a = r1.is_err() ? 1 : 0
+  b = r2!
+  a + b
+}

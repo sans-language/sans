@@ -1,0 +1,8 @@
+greet(name:S) S {
+  "hello " + name
+}
+
+main() I {
+  s = greet("world")
+  s.len()
+}

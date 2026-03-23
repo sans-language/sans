@@ -1,0 +1,9 @@
+main() I {
+  m = M<I I>()
+  i := 0
+  while i < 50 {
+    m.set(i i * 2)
+    i += 1
+  }
+  m.len() + m.get(25)!
+}

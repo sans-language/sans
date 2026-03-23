@@ -1,0 +1,38 @@
+trait Valued {
+    fn value(self) Int
+}
+
+struct Cat {
+    x Int,
+}
+
+struct Dog {
+    y Int,
+}
+
+impl Valued for Cat {
+    fn value(self) Int {
+        self.x
+    }
+}
+
+impl Valued for Dog {
+    fn value(self) Int {
+        self.y
+    }
+}
+
+fn main() Int {
+    let items = array<dyn Valued>()
+    items.push(Cat { x: 10 } as dyn Valued)
+    items.push(Dog { y: 20 } as dyn Valued)
+
+    sum := 0
+    i := 0
+    while i < items.len() {
+        sum = sum + items[i].value()
+        i = i + 1
+        0
+    }
+    sum - 30
+}

@@ -1,4 +1,4 @@
-// Token types (66 total, 0-65)
+// Token types (70 total, 0-69)
 g TK_INT_LIT = 0
 g TK_FLOAT_LIT = 1
 g TK_STRING_LIT = 2
@@ -65,6 +65,10 @@ g TK_COLON = 62
 g TK_COLON_COLON = 63
 g TK_DOT = 64
 g TK_EOF = 65
+g TK_AS = 66
+g TK_DEFER = 67
+g TK_SELECT = 68
+g TK_PUB = 69
 
 // Expr tags (22 total, 0-21)
 g EX_INT_LIT = 0
@@ -88,6 +92,7 @@ g EX_CHANNEL = 17
 g EX_MUTEX = 18
 g EX_ENUM_VARIANT = 19
 g EX_ARRAY_CREATE = 20
+g EX_AS_DYN = 21
 
 // Stmt tags (10 total, 0-9)
 g ST_LET = 0
@@ -101,6 +106,8 @@ g ST_LET_DESTR = 7
 g ST_FOR_IN = 8
 g ST_EXPR = 9
 g ST_FOR_IN_DESTR = 10
+g ST_DEFER = 11
+g ST_SELECT = 12
 
 // BinOp tags (13 total)
 g OP_ADD = 0
@@ -144,6 +151,7 @@ g TY_SENDER = 18
 g TY_RECEIVER = 19
 g TY_MUTEX = 20
 g TY_OPTION = 21
+g TY_DYN_TRAIT = 22
 
 // IR opcodes (173 total, 0-172)
 g IR_CONST = 0
@@ -421,6 +429,10 @@ g IR_MAP_HAS_INT = 272
 g IR_MAP_DELETE_INT = 273
 g IR_MAP_KEYS_INT = 274
 g IR_MAP_GET_OPT_INT = 275
+g IR_DYN_TRAIT_CREATE = 276
+g IR_DYN_TRAIT_CALL = 277
+g IR_CHANNEL_TRY_RECV = 278
+g IR_TIME_MS = 279
 
 g IR_RC_ALLOC = 212
 g IR_RC_RETAIN = 213
@@ -435,6 +447,7 @@ g SCOPE_TAG_JSON = 3
 g SCOPE_TAG_RESULT = 4
 g SCOPE_TAG_STRING = 5
 g SCOPE_TAG_OPTION = 6
+g SCOPE_TAG_DYN_TRAIT = 7
 
 // Diagnostic severity tags
 g DIAG_ERROR = 0

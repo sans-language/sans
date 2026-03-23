@@ -1,0 +1,7 @@
+main() I {
+  m = M<I I>()
+  m.set(1 10)
+  m.set(2 20)
+  m.set(3 30)
+  m.get(1)! + m.get(2)! + m.get(3)!
+}

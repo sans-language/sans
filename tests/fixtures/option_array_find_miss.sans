@@ -1,0 +1,5 @@
+main() I {
+  a = [1 2 3 4 5]
+  r = a.find(|x:I| B { x > 100 })
+  r.is_none() ? 1 : 0
+}

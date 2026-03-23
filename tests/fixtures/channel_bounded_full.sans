@@ -1,0 +1,10 @@
+fn main() Int {
+  let (tx, rx) = channel<Int>(3)
+  tx.send(1)
+  tx.send(2)
+  tx.send(3)
+  a = rx.recv()
+  b = rx.recv()
+  c = rx.recv()
+  a + b + c
+}

@@ -1,0 +1,9 @@
+import "utils"
+
+main() I {
+  // This calls a pub function - no warning
+  x = utils.add(3, 4)
+  // This calls a non-pub function - should warn but still work
+  y = utils.helper(5)
+  x + y
+}

@@ -1,0 +1,14 @@
+struct User {
+  name S,
+  age I,
+}
+
+find_user(id:I) O<I> {
+  id == 1 ? some(25) : none()
+}
+
+main() I {
+  a = find_user(1)
+  b = find_user(99)
+  a! + b.unwrap_or(0)
+}

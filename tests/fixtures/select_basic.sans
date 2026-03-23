@@ -1,0 +1,20 @@
+fn send_val(tx Sender<Int>) Int {
+  tx.send(42)
+  0
+}
+
+fn main() Int {
+  let (tx, rx) = channel<Int>()
+  let h = spawn send_val(tx)
+  result := 0
+  select {
+    v = rx.recv() => {
+      result = v
+    }
+    timeout(5000) => {
+      result = 0 - 1
+    }
+  }
+  h.join()
+  result
+}

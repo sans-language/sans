@@ -44,7 +44,7 @@ main() {
 | `Mutex<T>` | — | Mutual exclusion lock (opaque handle) |
 | `JoinHandle` | — | Thread handle (opaque handle) |
 
-User-defined types: `struct`, `enum`, `trait`.
+User-defined types: `struct`, `enum`, `trait`. Trait objects: `dyn TraitName`.
 
 ---
 
@@ -618,7 +618,7 @@ lookup(m:M<S I> k:S) O<I> {
 | `map(fn)` | `((T) -> U) -> Array<U>` | Transform elements |
 | `filter(fn)` | `((T) -> Bool) -> Array<T>` | Filter elements |
 | `any(fn)` | `((T) -> Bool) -> Bool` | True if any element matches |
-| `find(fn)` | `((T) -> Bool) -> T` | First match, or 0 |
+| `find(fn)` | `((T) -> Bool) -> Option<T>` | First match, or None |
 | `enumerate` | `() -> Array<(Int, T)>` | Index-value tuples |
 | `zip(other)` | `(Array<U>) -> Array<(T, U)>` | Paired tuples |
 | `sort` | `() -> Array<T>` | In-place sort (integers) |
@@ -855,7 +855,7 @@ a.map(|x:I| I { x * 2 }).filter(|x:I| B { x > 3 })
 
 ### New Methods
 - `.any(f)` — returns `B`, true if any element satisfies predicate
-- `.find(f)` — returns first element matching predicate, or 0
+- `.find(f)` — returns `Option<T>`, first match or None (breaking change in v0.7.2: was `T`)
 - `.enumerate()` — returns array of `(index value)` tuples
 - `.zip(other)` — returns array of `(a_elem b_elem)` tuples
 
@@ -863,8 +863,10 @@ a.map(|x:I| I { x * 2 }).filter(|x:I| B { x > 3 })
 
 ```sans
 nums = [1 2 3 4 5]
-nums.any(|x:I| B { x > 3 })     // true
-nums.find(|x:I| B { x > 10 })   // 0 (not found)
+nums.any(|x:I| B { x > 3 })              // true
+nums.find(|x:I| B { x > 10 })            // None
+nums.find(|x:I| B { x > 3 })!            // 4 (unwrap)
+nums.find(|x:I| B { x > 3 }).unwrap_or(0) // 4
 
 pairs = nums.enumerate()
 t = pairs.get(2)                  // (2 3)
@@ -991,6 +993,38 @@ impl Describable for Point {
 
 identity<T>(x T) T = x
 ```
+
+## Trait Objects (`dyn Trait`)
+
+Trait objects enable dynamic dispatch through a vtable. Use `dyn TraitName` as a type and `expr as dyn TraitName` to coerce a concrete struct into a trait object.
+
+```sans
+trait Valued {
+    fn value(self) I
+}
+
+struct Num { n I }
+impl Valued for Num {
+    fn value(self) I { self.n }
+}
+
+// Coerce concrete struct to trait object
+x = Num{ n: 42 }
+v = x as dyn Valued    // fat pointer: (data ptr, vtable ptr)
+v.value()              // 42 — dispatched via vtable
+
+// Use dyn Trait as parameter type
+show(v dyn Valued) I { v.value() }
+show(x as dyn Valued) // 42
+
+// Polymorphic collections
+items = [x1 as dyn Valued  x2 as dyn Valued]
+for item in items { p(str(item.value())) }
+```
+
+**Runtime layout:** 16-byte heap-allocated fat pointer — data pointer at offset 0, vtable pointer at offset 8.
+
+**Limitations:** No trait inheritance, no default implementations, no associated types, no generic bounds on trait objects.
 
 ## Modules
 

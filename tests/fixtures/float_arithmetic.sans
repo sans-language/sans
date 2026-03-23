@@ -1,0 +1,8 @@
+main() I {
+  a = 10.5
+  b = 3.5
+  sum = a + b
+  diff = a - b
+  n = float_to_int(sum) + float_to_int(diff)
+  n
+}

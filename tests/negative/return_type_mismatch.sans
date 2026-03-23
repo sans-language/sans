@@ -1,0 +1,5 @@
+// expect-error: undefined
+main() I {
+  x = no_such_module.call()
+  x
+}

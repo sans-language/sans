@@ -1,0 +1,11 @@
+// Test mutex basic lock/unlock
+fn main() Int {
+  let m = mutex(0)
+  v1 = m.lock()
+  m.unlock(v1 + 10)
+  v2 = m.lock()
+  m.unlock(v2 + 20)
+  v3 = m.lock()
+  m.unlock(v3)
+  v3
+}

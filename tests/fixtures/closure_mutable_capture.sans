@@ -1,0 +1,7 @@
+main() I {
+  offset = 10
+  f = |x:I| I { x + offset }
+  a = f(5)
+  b = f(20)
+  a + b
+}

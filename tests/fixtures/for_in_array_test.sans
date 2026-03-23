@@ -1,0 +1,6 @@
+main() I {
+  a = [10 20 30]
+  sum := 0
+  for x in a { sum += x }
+  sum
+}

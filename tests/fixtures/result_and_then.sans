@@ -1,0 +1,6 @@
+double(x:I) R<I> { ok(x * 2) }
+
+main() I {
+  r = ok(5).and_then(|x:I| R<I> { ok(x + 10) })
+  r!
+}

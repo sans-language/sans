@@ -1,0 +1,21 @@
+g acc = 0
+
+mark(n:I) I { acc = acc * 10 + n; 0 }
+
+inner() I {
+  defer mark(2)
+  mark(1)
+}
+
+outer() I {
+  defer mark(4)
+  inner()
+  mark(3)
+}
+
+main() I {
+  outer()
+  // inner: mark(1) -> acc=1, defer mark(2) -> acc=12
+  // outer: mark(3) -> acc=123, defer mark(4) -> acc=1234
+  acc - 1234
+}

@@ -1,0 +1,8 @@
+fact(n:I) I {
+  n <= 1 ? 1 : n * fact(n - 1)
+}
+
+main() I {
+  // 5! = 120
+  fact(5)
+}

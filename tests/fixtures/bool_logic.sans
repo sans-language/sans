@@ -1,0 +1,8 @@
+main() I {
+  a = true
+  b = false
+  x = a && b ? 1 : 0
+  y = a || b ? 1 : 0
+  z = !b ? 1 : 0
+  x * 100 + y * 10 + z
+}

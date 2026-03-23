@@ -1,0 +1,6 @@
+// expect-error: undefined
+main() I {
+  a = [1 2 3]
+  a.nonexistent()
+  0
+}

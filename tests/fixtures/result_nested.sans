@@ -1,0 +1,11 @@
+inner() R<I> { ok(21) }
+
+outer() R<I> {
+  v = inner()?
+  ok(v * 2)
+}
+
+main() I {
+  r = outer()
+  r!
+}

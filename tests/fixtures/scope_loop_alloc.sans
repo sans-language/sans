@@ -1,0 +1,15 @@
+make_buf(val:I) I {
+  buf = alloc(8)
+  store64(buf val)
+  load64(buf)
+}
+
+main() I {
+  total := 0
+  i := 0
+  while i < 10 {
+    total += make_buf(i)
+    i += 1
+  }
+  total
+}

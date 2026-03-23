@@ -1,0 +1,13 @@
+classify(x:I) I {
+  match x {
+    1 => 10
+    2 => 20
+    3 => 30
+    4 => 40
+    _ => 0
+  }
+}
+
+main() I {
+  classify(1) + classify(3) - classify(2)
+}

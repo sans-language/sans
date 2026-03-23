@@ -1,0 +1,7 @@
+// Test nested option - some wrapping some
+main() I {
+  a = some(42)
+  b = some(10)
+  c = none()
+  a! + b! + c.unwrap_or(0)
+}

@@ -1,0 +1,5 @@
+// expect-error: undefined variable
+main() I {
+  z = abc_not_defined + 42
+  z
+}

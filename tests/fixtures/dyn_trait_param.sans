@@ -1,0 +1,35 @@
+trait Valued {
+    fn value(self) Int
+}
+
+struct Cat {
+    x Int,
+}
+
+struct Dog {
+    y Int,
+}
+
+impl Valued for Cat {
+    fn value(self) Int {
+        self.x
+    }
+}
+
+impl Valued for Dog {
+    fn value(self) Int {
+        self.y
+    }
+}
+
+fn dispatch(obj:dyn Valued) Int {
+    obj.value()
+}
+
+fn main() Int {
+    let a = Cat { x: 10 }
+    let b = Dog { y: 32 }
+    let da = a as dyn Valued
+    let db = b as dyn Valued
+    dispatch(da) + dispatch(db) - 42
+}

@@ -1,0 +1,6 @@
+// Basic test: verifies assertions via exit code
+main() I {
+  x = 2 + 3
+  // exit 0 = pass
+  if x == 5 { 0 } else { 1 }
+}

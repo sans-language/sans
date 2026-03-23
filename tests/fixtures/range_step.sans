@@ -1,0 +1,6 @@
+main() I {
+  a = range(5 10)
+  sum := 0
+  for x in a { sum += x }
+  sum
+}

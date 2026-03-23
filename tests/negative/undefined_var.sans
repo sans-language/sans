@@ -1,0 +1,5 @@
+// expect-error: undefined
+main() I {
+  x = y + 1
+  x
+}

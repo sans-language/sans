@@ -1,0 +1,27 @@
+trait HasVal {
+  fn val(self) Int
+}
+
+struct X { n Int }
+struct Y { n Int }
+
+impl HasVal for X {
+  fn val(self) Int { self.n }
+}
+
+impl HasVal for Y {
+  fn val(self) Int { self.n * 2 }
+}
+
+main() I {
+  items = array<dyn HasVal>()
+  items.push(X { n: 5 } as dyn HasVal)
+  items.push(Y { n: 10 } as dyn HasVal)
+  sum := 0
+  i := 0
+  while i < items.len() {
+    sum += items[i].val()
+    i += 1
+  }
+  sum
+}

@@ -1,0 +1,14 @@
+g acc = 0
+
+cleanup() I { acc = acc + 100; 0 }
+
+work() I {
+  defer cleanup()
+  acc = acc + 5
+  0
+}
+
+main() I {
+  work()
+  acc
+}

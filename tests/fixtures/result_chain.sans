@@ -1,0 +1,4 @@
+main() I {
+  r = ok(5).map(|x:I| I { x * 2 }).and_then(|x:I| R<I> { ok(x + 3) })
+  r!
+}

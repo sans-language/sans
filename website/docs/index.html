@@ -36,6 +36,7 @@
         <li><a href="#generic-structs">Generic Structs</a></li>
         <li><a href="#enums">Enums</a></li>
         <li><a href="#traits">Traits</a></li>
+        <li><a href="#trait-objects">Trait Objects</a></li>
         <li><a href="#lambdas">Lambdas</a></li>
         <li><a href="#errors">Error Handling</a></li>
         <li><a href="#option">Option</a></li>
@@ -81,7 +82,7 @@
         <tr><td><code>JoinHandle</code></td><td>&mdash;</td><td>Thread handle (opaque handle)</td></tr>
       </tbody>
     </table>
-    <p>User-defined types: <code>struct</code>, <code>enum</code>, <code>trait</code>.</p>
+    <p>User-defined types: <code>struct</code>, <code>enum</code>, <code>trait</code>. Trait objects: <code>dyn TraitName</code>.</p>
 
     <h2 id="variables">Variable Declaration</h2>
     <pre><code>x = <span class="num">42</span>              <span class="comment">// immutable (type inferred)</span>
@@ -329,6 +330,30 @@ t = <span class="type">Triple</span>&lt;<span class="type">I</span> <span class=
 }
 
 <span class="fn">identity</span>&lt;T&gt;(x <span class="type">T</span>) <span class="type">T</span> = x</code></pre>
+
+    <h2 id="trait-objects">Trait Objects (<code>dyn Trait</code>)</h2>
+    <p>Trait objects enable dynamic dispatch through a vtable. Use <code>dyn TraitName</code> as a type and <code>expr as dyn TraitName</code> to coerce a concrete struct. Runtime layout: 16-byte heap-allocated fat pointer (data ptr + vtable ptr).</p>
+    <pre><code><span class="kw">trait</span> <span class="type">Valued</span> {
+    <span class="kw">fn</span> <span class="fn">value</span>(self) <span class="type">I</span>
+}
+
+<span class="kw">struct</span> <span class="type">Num</span> { n <span class="type">I</span> }
+<span class="kw">impl</span> <span class="type">Valued</span> <span class="kw">for</span> <span class="type">Num</span> {
+    <span class="kw">fn</span> <span class="fn">value</span>(self) <span class="type">I</span> { self.n }
+}
+
+x = <span class="type">Num</span>{ n: <span class="num">42</span> }
+v = x <span class="kw">as</span> <span class="kw">dyn</span> <span class="type">Valued</span>   <span class="comment">// coerce to trait object</span>
+v.<span class="fn">value</span>()               <span class="comment">// 42 — vtable dispatch</span>
+
+<span class="comment">// dyn Trait as parameter type</span>
+<span class="fn">show</span>(v <span class="kw">dyn</span> <span class="type">Valued</span>) <span class="type">I</span> { v.<span class="fn">value</span>() }
+<span class="fn">show</span>(x <span class="kw">as</span> <span class="kw">dyn</span> <span class="type">Valued</span>)  <span class="comment">// 42</span>
+
+<span class="comment">// Polymorphic collections</span>
+items = [x1 <span class="kw">as</span> <span class="kw">dyn</span> <span class="type">Valued</span>  x2 <span class="kw">as</span> <span class="kw">dyn</span> <span class="type">Valued</span>]
+<span class="kw">for</span> item <span class="kw">in</span> items { <span class="fn">p</span>(<span class="fn">str</span>(item.<span class="fn">value</span>())) }</code></pre>
+    <p>Limitations: no trait inheritance, no default implementations, no associated types, no generic bounds.</p>
 
     <h2 id="lambdas">Lambdas &amp; Closures</h2>
     <p>Lambda expressions are anonymous functions. They implicitly capture variables from their enclosing scope (up to 8 captured variables per closure).</p>
@@ -780,7 +805,7 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
         <tr><td><code>map(fn)</code></td><td><code>((T) -&gt; U) -&gt; Array&lt;U&gt;</code></td><td>Transform elements</td></tr>
         <tr><td><code>filter(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; Array&lt;T&gt;</code></td><td>Filter elements</td></tr>
         <tr><td><code>any(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; Bool</code></td><td>True if any element matches</td></tr>
-        <tr><td><code>find(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; T</code></td><td>First match, or 0</td></tr>
+        <tr><td><code>find(fn)</code></td><td><code>((T) -&gt; Bool) -&gt; Option&lt;T&gt;</code></td><td>First match, or None</td></tr>
         <tr><td><code>enumerate</code></td><td><code>() -&gt; Array&lt;(Int, T)&gt;</code></td><td>Index-value tuples</td></tr>
         <tr><td><code>zip(other)</code></td><td><code>(Array&lt;U&gt;) -&gt; Array&lt;(T, U)&gt;</code></td><td>Paired tuples</td></tr>
       </tbody>

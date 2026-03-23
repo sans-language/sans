@@ -1,0 +1,6 @@
+main() I {
+  a = "hello"
+  b = "hi"
+  c = "a"
+  a.len() + b.len() + c.len()
+}

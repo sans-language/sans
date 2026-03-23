@@ -1,0 +1,12 @@
+lookup(m:I k:S) O<I> {
+  m.get(k)?
+  some(0)
+}
+
+main() I {
+  m = M()
+  m.set("x" 7)
+  a = m.get("x").unwrap_or(0)
+  b = m.get("y").unwrap_or(50)
+  a + b
+}

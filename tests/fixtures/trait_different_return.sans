@@ -1,0 +1,14 @@
+trait Info {
+  fn count(self) Int
+}
+
+struct Bag { items Int }
+
+impl Info for Bag {
+  fn count(self) Int { self.items }
+}
+
+main() I {
+  b = Bag { items: 42 }
+  b.count()
+}

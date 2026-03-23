@@ -1,0 +1,9 @@
+main() I {
+  m = M()
+  m.set("x" 1)
+  m.set("y" 2)
+  m.set("z" 3)
+  k = m.keys()
+  v = m.vals()
+  k.len() + v.len()
+}

@@ -1,0 +1,5 @@
+main() I {
+  s = "ab"
+  r = s.repeat(3)
+  r.len()
+}

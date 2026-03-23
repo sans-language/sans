@@ -1,0 +1,5 @@
+// expect-error: undefined
+main() I {
+  x = nonexistent_function(42)
+  x
+}

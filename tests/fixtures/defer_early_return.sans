@@ -1,0 +1,16 @@
+g acc = 0
+
+add(n:I) I { acc = acc + n; 0 }
+
+helper(flag:I) I {
+  defer add(10)
+  if flag == 1 { return 0 } else { 0 }
+  defer add(20)
+  0
+}
+
+main() I {
+  helper(1)
+  // Only first defer runs (early return before second defer)
+  acc - 10
+}

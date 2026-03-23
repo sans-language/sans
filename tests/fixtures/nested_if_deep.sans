@@ -1,0 +1,10 @@
+main() I {
+  x = 10
+  if x > 5 {
+    if x > 8 {
+      if x > 9 {
+        42
+      } else { 2 }
+    } else { 1 }
+  } else { 0 }
+}

@@ -1,0 +1,17 @@
+trait HasX { fn get_x(self) Int }
+trait HasY { fn get_y(self) Int }
+
+struct Point { x Int, y Int }
+
+impl HasX for Point {
+  fn get_x(self) Int { self.x }
+}
+
+impl HasY for Point {
+  fn get_y(self) Int { self.y }
+}
+
+main() I {
+  p = Point { x: 10, y: 32 }
+  p.get_x() + p.get_y()
+}

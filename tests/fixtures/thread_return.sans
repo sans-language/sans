@@ -1,0 +1,8 @@
+// Test recursion returning values
+fib(n:I) I {
+  if n <= 1 { n } else { fib(n - 1) + fib(n - 2) }
+}
+
+main() I {
+  fib(8)
+}

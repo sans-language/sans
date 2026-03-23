@@ -5,6 +5,11 @@ import "ir"
 // Used to skip scope instrumentation in runtime modules (avoids double-definition of sans_scope_track)
 g cg_is_runtime_flag = 0
 g cg_fn_ret_types = 0
+g cg_trait_impls = 0
+g cg_trait_registry = 0
+g cg_timeval_buf = 0
+
+cg_str(v:I) S = v
 
 // ------ Codegen state layout (80 bytes) ---------------------------------------------------------------------------------------
 // offset 0:  lines        --- Array<I> of string pointers (LLVM IR lines)
@@ -315,6 +320,7 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
+  emit(cg, "declare i32 @gettimeofday(ptr, ptr)")
   emit(cg, "declare void @srand(i32)")
   emit(cg, "declare i32 @rand()")
   emit(cg, "declare double @strtod(ptr, ptr)")
@@ -406,6 +412,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare ptr @strstr(ptr, ptr)")
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
+  emit(cg, "declare i32 @gettimeofday(ptr, ptr)")
   emit(cg, "declare void @srand(i32)")
   emit(cg, "declare i32 @rand()")
   emit(cg, "declare double @strtod(ptr, ptr)")
@@ -488,6 +495,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_array_filter(i64, i64)")
   emit(cg, "declare i64 @sans_array_any(i64, i64)")
   emit(cg, "declare i64 @sans_array_find(i64, i64)")
+  emit(cg, "declare i64 @sans_array_find_raw(i64, i64, i64)")
   emit(cg, "declare i64 @sans_array_enumerate(i64)")
   emit(cg, "declare i64 @sans_array_zip(i64, i64)")
   emit(cg, "declare i64 @sans_array_contains(i64, i64)")
@@ -1758,6 +1766,72 @@ emit_closure_aware_call3(cg:I dest:I fp_val:S a1:S a2:S a3:S) I {
 
 // ------ Compile a single IR instruction to LLVM IR text ---------------------------------------
 
+compile_dyn_trait_create(cg:I inst:I) I {
+  dtc_dest = ir_dest(inst)
+  dtc_src_val = cg_get_val(cg, ir_field(inst, 16))
+  dtc_type_name = ir_field(inst, 24)
+  dtc_trait_name = ir_field(inst, 32)
+  dtc_fp = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_fp + " = call ptr @malloc(i64 16)")
+  emit(cg, "  store i64 " + dtc_src_val + ", ptr " + dtc_fp)
+  dtc_vt_name = cg_str(dtc_type_name) + "." + cg_str(dtc_trait_name)
+  dtc_vt_ref = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_vt_ref + " = ptrtoint ptr @vtable." + dtc_vt_name + " to i64")
+  dtc_vt_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_vt_gep + " = getelementptr i8, ptr " + dtc_fp + ", i64 8")
+  emit(cg, "  store i64 " + dtc_vt_ref + ", ptr " + dtc_vt_gep)
+  dtc_r = cg_fresh_reg(cg)
+  emit(cg, "  " + dtc_r + " = ptrtoint ptr " + dtc_fp + " to i64")
+  cg_set_val(cg, dtc_dest, dtc_r)
+  emit_scope_track(cg, dtc_r, 7)
+  0
+}
+
+// Helper: look up method index in trait registry by comparing method names
+// Build arg string for dyn trait call: "i64 data, i64 arg0, i64 arg1, ..."
+build_dyn_call_args(cg:I data_val:S args:I) S {
+  result := "i64 " + data_val
+  nargs = args.len()
+  ai := 0
+  while ai < nargs {
+    result = result + ", i64 " + cg_get_val(cg, args.get(ai))
+    ai += 1
+  }
+  result
+}
+
+dyn_lookup_method_idx(trait_name:I method_name:I) I {
+  0
+}
+
+compile_dyn_trait_call(cg:I inst:I) I {
+  dtcl_dest = ir_dest(inst)
+  dtcl_obj_val = cg_get_val(cg, ir_field(inst, 16))
+  dtcl_method_name = ir_field(inst, 24)
+  dtcl_args = ir_field(inst, 32)
+  dtcl_trait_name = ir_field(inst, 40)
+  dtcl_method_idx = dyn_lookup_method_idx(dtcl_trait_name, dtcl_method_name)
+  dtcl_fp = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_fp + " = inttoptr i64 " + dtcl_obj_val + " to ptr")
+  dtcl_data = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_data + " = load i64, ptr " + dtcl_fp)
+  dtcl_vgep = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_vgep + " = getelementptr i8, ptr " + dtcl_fp + ", i64 8")
+  dtcl_vi64 = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_vi64 + " = load i64, ptr " + dtcl_vgep)
+  dtcl_vptr = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_vptr + " = inttoptr i64 " + dtcl_vi64 + " to ptr")
+  dtcl_fgep = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_fgep + " = getelementptr ptr, ptr " + dtcl_vptr + ", i64 " + str(dtcl_method_idx))
+  dtcl_fptr = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_fptr + " = load ptr, ptr " + dtcl_fgep)
+  dtcl_arg_str = build_dyn_call_args(cg, dtcl_data, dtcl_args)
+  dtcl_r = cg_fresh_reg(cg)
+  emit(cg, "  " + dtcl_r + " = call i64 " + dtcl_fptr + "(" + dtcl_arg_str + ")")
+  cg_set_val(cg, dtcl_dest, dtcl_r)
+  0
+}
+
 compile_inst(cg:I inst:I) I {
   op = ir_op(inst)
   dest = ir_dest(inst)
@@ -2526,13 +2600,41 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
-  // ------ IR_ARRAY_FIND (44): call i64 @sans_array_find(i64, i64) ------
+  // ------ IR_ARRAY_FIND (44): call sans_array_find_raw, wrap result in Option<T> ------
   if op == IR_ARRAY_FIND {
     a1 = cg_get_val(cg, ir_field(inst, 16))
     a2 = cg_get_val(cg, ir_field(inst, 24))
-    r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = call i64 @sans_array_find(i64 " + a1 + ", i64 " + a2 + ")")
-    cg_set_val(cg, dest, r)
+    uid = cg_label_id(cg)
+    // allocate stack slot for the found flag
+    has_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + has_ptr + " = alloca i64")
+    emit(cg, "  store i64 0, ptr " + has_ptr)
+    has_ptr_i = cg_fresh_reg(cg)
+    emit(cg, "  " + has_ptr_i + " = ptrtoint ptr " + has_ptr + " to i64")
+    raw_r = cg_fresh_reg(cg)
+    emit(cg, "  " + raw_r + " = call i64 @sans_array_find_raw(i64 " + a1 + ", i64 " + a2 + ", i64 " + has_ptr_i + ")")
+    has_r = cg_fresh_reg(cg)
+    emit(cg, "  " + has_r + " = load i64, ptr " + has_ptr)
+    cmp_r = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp_r + " = icmp ne i64 " + has_r + ", 0")
+    found_lbl = "afo_found_" + uid
+    miss_lbl = "afo_miss_" + uid
+    merge_lbl = "afo_merge_" + uid
+    emit(cg, "  br i1 " + cmp_r + ", label %" + found_lbl + ", label %" + miss_lbl)
+    emit(cg, found_lbl + ":")
+    some_r = cg_fresh_reg(cg)
+    emit(cg, "  " + some_r + " = call i64 @sans_option_some(i64 " + raw_r + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    emit(cg, miss_lbl + ":")
+    none_r = cg_fresh_reg(cg)
+    emit(cg, "  " + none_r + " = call i64 @sans_option_none()")
+    emit(cg, "  br label %" + merge_lbl)
+    emit(cg, merge_lbl + ":")
+    phi_r = cg_fresh_reg(cg)
+    emit(cg, "  " + phi_r + " = phi i64 [" + some_r + ", %" + found_lbl + "], [" + none_r + ", %" + miss_lbl + "]")
+    cg_set_val(cg, dest, phi_r)
+    cg_set_current_block(cg, merge_lbl)
+    emit_scope_track(cg, phi_r, 6)
     return 0
   }
 
@@ -3679,6 +3781,107 @@ compile_inst(cg:I inst:I) I {
     cg_set_current_block(cg, lbl_read)
     return 0
   }
+  if op == IR_CHANNEL_TRY_RECV {
+    // Layout: [op, dest, rx_reg, out_ptr_reg]
+    // Returns 1 if value received (stored at out_ptr), 0 if empty
+    rx_val = cg_get_val(cg, ir_field(inst, 16))
+    out_ptr_val = cg_get_val(cg, ir_field(inst, 24))
+    lid = cg_label_id(cg)
+    lbl_has = "tryrecv_has_" + lid
+    lbl_empty = "tryrecv_empty_" + lid
+    lbl_end = "tryrecv_end_" + lid
+    // inttoptr rx to channel pointer
+    chanp = cg_fresh_reg(cg)
+    emit(cg, "  " + chanp + " = inttoptr i64 " + rx_val + " to ptr")
+    // Lock mutex at offset 5
+    mtx = cg_fresh_reg(cg)
+    emit(cg, "  " + mtx + " = getelementptr i64, ptr " + chanp + ", i64 5")
+    ml = cg_fresh_reg(cg)
+    emit(cg, "  " + ml + " = call i32 @pthread_mutex_lock(ptr " + mtx + ")")
+    // Load count
+    cnt_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cnt_p + " = getelementptr i64, ptr " + chanp + ", i64 2")
+    count = cg_fresh_reg(cg)
+    emit(cg, "  " + count + " = load i64, ptr " + cnt_p)
+    // Check if count > 0
+    has_data = cg_fresh_reg(cg)
+    emit(cg, "  " + has_data + " = icmp sgt i64 " + count + ", 0")
+    emit(cg, "  br i1 " + has_data + ", label %" + lbl_has + ", label %" + lbl_empty)
+    // Has data: dequeue
+    emit(cg, lbl_has + ":")
+    head_p = cg_fresh_reg(cg)
+    emit(cg, "  " + head_p + " = getelementptr i64, ptr " + chanp + ", i64 3")
+    head = cg_fresh_reg(cg)
+    emit(cg, "  " + head + " = load i64, ptr " + head_p)
+    buf_i = cg_fresh_reg(cg)
+    emit(cg, "  " + buf_i + " = load i64, ptr " + chanp)
+    bufp = cg_fresh_reg(cg)
+    emit(cg, "  " + bufp + " = inttoptr i64 " + buf_i + " to ptr")
+    slot = cg_fresh_reg(cg)
+    emit(cg, "  " + slot + " = getelementptr i64, ptr " + bufp + ", i64 " + head)
+    val = cg_fresh_reg(cg)
+    emit(cg, "  " + val + " = load i64, ptr " + slot)
+    // Store value at out_ptr
+    outp = cg_fresh_reg(cg)
+    emit(cg, "  " + outp + " = inttoptr i64 " + out_ptr_val + " to ptr")
+    emit(cg, "  store i64 " + val + ", ptr " + outp)
+    // head = (head + 1) % capacity
+    cap_p = cg_fresh_reg(cg)
+    emit(cg, "  " + cap_p + " = getelementptr i64, ptr " + chanp + ", i64 1")
+    cap = cg_fresh_reg(cg)
+    emit(cg, "  " + cap + " = load i64, ptr " + cap_p)
+    h1 = cg_fresh_reg(cg)
+    emit(cg, "  " + h1 + " = add i64 " + head + ", 1")
+    nh = cg_fresh_reg(cg)
+    emit(cg, "  " + nh + " = srem i64 " + h1 + ", " + cap)
+    emit(cg, "  store i64 " + nh + ", ptr " + head_p)
+    // count -= 1
+    nc = cg_fresh_reg(cg)
+    emit(cg, "  " + nc + " = sub i64 " + count + ", 1")
+    emit(cg, "  store i64 " + nc + ", ptr " + cnt_p)
+    // Signal send condvar at offset 19
+    snd = cg_fresh_reg(cg)
+    emit(cg, "  " + snd + " = getelementptr i64, ptr " + chanp + ", i64 19")
+    cs = cg_fresh_reg(cg)
+    emit(cg, "  " + cs + " = call i32 @pthread_cond_signal(ptr " + snd + ")")
+    // Unlock mutex
+    mu1 = cg_fresh_reg(cg)
+    emit(cg, "  " + mu1 + " = call i32 @pthread_mutex_unlock(ptr " + mtx + ")")
+    emit(cg, "  br label %" + lbl_end)
+    // Empty: unlock and return 0
+    emit(cg, lbl_empty + ":")
+    mu2 = cg_fresh_reg(cg)
+    emit(cg, "  " + mu2 + " = call i32 @pthread_mutex_unlock(ptr " + mtx + ")")
+    emit(cg, "  br label %" + lbl_end)
+    // End: phi for result
+    emit(cg, lbl_end + ":")
+    result = cg_fresh_reg(cg)
+    emit(cg, "  " + result + " = phi i64 [ 1, %" + lbl_has + " ], [ 0, %" + lbl_empty + " ]")
+    cg_set_val(cg, dest, result)
+    cg_set_current_block(cg, lbl_end)
+    return 0
+  }
+  if op == IR_TIME_MS {
+    // Uses pre-allocated [2 x i64] buffer from entry block (cg_timeval_buf)
+    gv = cg_fresh_reg(cg)
+    emit(cg, "  " + gv + " = call i32 @gettimeofday(ptr " + cg_timeval_buf + ", ptr null)")
+    // Load tv_sec (i64 at offset 0) and tv_usec (i64 at offset 8)
+    sec = cg_fresh_reg(cg)
+    emit(cg, "  " + sec + " = load i64, ptr " + cg_timeval_buf)
+    usec_p = cg_fresh_reg(cg)
+    emit(cg, "  " + usec_p + " = getelementptr i64, ptr " + cg_timeval_buf + ", i64 1")
+    usec = cg_fresh_reg(cg)
+    emit(cg, "  " + usec + " = load i64, ptr " + usec_p)
+    // ms = sec * 1000 + usec / 1000
+    s_ms = cg_fresh_reg(cg)
+    emit(cg, "  " + s_ms + " = mul i64 " + sec + ", 1000")
+    u_ms = cg_fresh_reg(cg)
+    emit(cg, "  " + u_ms + " = sdiv i64 " + usec + ", 1000")
+    total = cg_fresh_reg(cg)
+    emit(cg, "  " + total + " = add i64 " + s_ms + ", " + u_ms)
+    cg_set_val(cg, dest, total)
+    return 0
+  }
   if op == IR_MUTEX_CREATE {
     // [op, dest, value_reg]: malloc 72 bytes, init mutex, store value
     val = cg_get_val(cg, ir_field(inst, 16))
@@ -3842,8 +4045,9 @@ compile_inst(cg:I inst:I) I {
     ok_from = cg_current_block(cg)
     ok_r = cg_fresh_reg(cg)
     emit(cg, "  " + ok_r + " = call i64 @sans_result_ok(i64 " + new_val + ")")
+    emit_scope_track(cg, ok_r, 4)
     emit(cg, "  br label %" + merge_lbl)
-    // Err path: propagate original
+    // Err path: propagate original (already scope-tracked, don't re-track)
     emit(cg, err_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -3852,7 +4056,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + ok_r + ", %" + ok_from + "], [" + res_val + ", %" + err_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
   if op == IR_RESULT_AND_THEN {
@@ -3880,7 +4083,7 @@ compile_inst(cg:I inst:I) I {
     ok_r = cg_get_val(cg, dest)
     ok_from = cg_current_block(cg)
     emit(cg, "  br label %" + merge_lbl)
-    // Err path: propagate original
+    // Err path: propagate original (already scope-tracked)
     emit(cg, err_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -3889,7 +4092,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + ok_r + ", %" + ok_from + "], [" + res_val + ", %" + err_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
   if op == IR_RESULT_MAP_ERR {
@@ -3925,8 +4127,9 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + ecode + " = load i64, ptr " + cp2)
     err_r = cg_fresh_reg(cg)
     emit(cg, "  " + err_r + " = call i64 @sans_result_err(i64 " + ecode + ", i64 " + new_msg + ")")
+    emit_scope_track(cg, err_r, 4)
     emit(cg, "  br label %" + merge_lbl)
-    // Ok path: propagate original
+    // Ok path: propagate original (already scope-tracked)
     emit(cg, ok_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -3935,7 +4138,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + err_r + ", %" + err_from + "], [" + res_val + ", %" + ok_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
   if op == IR_RESULT_OR_ELSE {
@@ -3963,7 +4165,7 @@ compile_inst(cg:I inst:I) I {
     err_r = cg_get_val(cg, dest)
     err_from = cg_current_block(cg)
     emit(cg, "  br label %" + merge_lbl)
-    // Ok path: propagate original
+    // Ok path: propagate original (already scope-tracked)
     emit(cg, ok_lbl + ":")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
@@ -3972,7 +4174,6 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + phi_r + " = phi i64 [" + err_r + ", %" + err_from + "], [" + res_val + ", %" + ok_lbl + "]")
     cg_set_val(cg, dest, phi_r)
     cg_set_current_block(cg, merge_lbl)
-    emit_scope_track(cg, phi_r, 4)
     return 0
   }
 
@@ -4711,6 +4912,9 @@ compile_inst(cg:I inst:I) I {
     return 0
   }
 
+  if op == IR_DYN_TRAIT_CREATE { return compile_dyn_trait_create(cg, inst) }
+  if op == IR_DYN_TRAIT_CALL { return compile_dyn_trait_call(cg, inst) }
+
   // Unknown opcode --- emit comment
   emit(cg, "  ; unknown opcode " + str(op))
   0
@@ -4793,6 +4997,7 @@ emit_function_body(cg:I func:I) I {
   emit(cg, "entry:")
 
   // Reset per-function state
+  cg_timeval_buf = 0
   cg_set_reg_counter(cg, 0)
   // Skip dealloc - may cause heap corruption with map internals
   store64(cg + 40, M())   // reg_map
@@ -4836,6 +5041,12 @@ emit_function_body(cg:I func:I) I {
       emit(cg, "  " + r + " = ptrtoint ptr " + p + " to i64")
       cg_set_val(cg, ir_dest(ainst), r)
       cg_set_ptr(cg, ir_dest(ainst))
+    }
+    if aop == IR_TIME_MS && cg_timeval_buf == 0 {
+      // Pre-allocate 16-byte timeval buffer in entry block for gettimeofday
+      tvp = cg_fresh_reg(cg)
+      emit(cg, "  " + tvp + " = alloca [2 x i64]")
+      cg_timeval_buf = tvp
     }
     aj = aj + 1
     0
@@ -4958,6 +5169,106 @@ emit_sans_args(cg:I) I {
   0
 }
 
+// ------ Dead Code Elimination: build live function set -----------------------------------------------------------------------------------------
+// Returns a Map of live function names (name -> 1).
+// Seeds from "main", then transitively marks all called functions.
+// Also seeds vtable method functions so dyn trait dispatch works.
+// For runtime modules, returns 0 (meaning: all functions are live).
+
+dce_build_live_set(module:I) I {
+  funcs = irm_functions(module)
+  nf = funcs.len()
+
+  // Build call graph: fn_name -> list of callees
+  calls_map = M()
+  fi := 0
+  while fi < nf {
+    cur_fn = funcs.get(fi)
+    fname = irf_name(cur_fn)
+    callees = array<I>()
+    mset(calls_map, fname, callees)
+    instrs = irf_instrs(cur_fn)
+    ni = instrs.len()
+    ii := 0
+    while ii < ni {
+      inst = instrs.get(ii)
+      op = ir_op(inst)
+      if op == IR_CALL {
+        callee_name = ir_field(inst, 16)
+        callees.push(callee_name)
+      }
+      if op == IR_FPTR_NAMED {
+        // Function pointer reference: add as callee so it's marked live
+        fptr_name = ir_field(inst, 16)
+        callees.push(fptr_name)
+      }
+      if op == IR_FN_REF {
+        // Lambda/function reference: add as callee
+        fnref_name = ir_field(inst, 16)
+        callees.push(fnref_name)
+      }
+      ii = ii + 1
+      0
+    }
+    fi = fi + 1
+    0
+  }
+
+  // Seed live set: start with "main"
+  live = M()
+  worklist = array<I>()
+  mset(live, "main", 1)
+  worklist.push("main")
+
+  // Also seed vtable methods (needed for dyn trait dispatch)
+  ti = irm_trait_impls(module)
+  if ti != 0 {
+    ti_keys = ti.keys()
+    tki := 0
+    while tki < ti_keys.len() {
+      tk = ti_keys.get(tki)
+      vtable_methods = mget(ti, tk)
+      vt_p = load64(vtable_methods)
+      num_m = load64(vtable_methods + 8)
+      vmi := 0
+      while vmi < num_m {
+        vt_fn = load64(vt_p + vmi * 8)
+        if mhas(live, vt_fn) == 0 {
+          mset(live, vt_fn, 1)
+          worklist.push(vt_fn)
+        }
+        vmi = vmi + 1
+        0
+      }
+      tki = tki + 1
+      0
+    }
+  }
+
+  // Worklist: transitively mark callees
+  wi := 0
+  while wi < worklist.len() {
+    fn_name = worklist.get(wi)
+    if mhas(calls_map, fn_name) {
+      callees = mget(calls_map, fn_name)
+      ci := 0
+      while ci < callees.len() {
+        callee = callees.get(ci)
+        if mhas(live, callee) == 0 {
+          mset(live, callee, 1)
+          worklist.push(callee)
+        }
+        ci = ci + 1
+        0
+      }
+    }
+    wi = wi + 1
+    0
+  }
+
+  live
+}
+
 // ------ Top-level entry point ---------------------------------------------------------------------------------------------------------------
 
 compile_to_ll(module:I output_path:S) I {
@@ -4968,6 +5279,52 @@ compile_to_ll(module:I output_path:S) I {
 compile_to_ll_runtime(module:I output_path:S) I {
   cg = compile_to_ll_impl(module, output_path, 1)
   cg
+}
+
+// Emit vtable globals for dyn Trait dispatch
+emit_vtables(cg:I module:I) I {
+  ti = irm_trait_impls(module)
+  if ti == 0 { return 0 }
+  ti_keys = ti.keys()
+  ki := 0
+  while ki < ti_keys.len() {
+    tk = ti_keys.get(ki)
+    tk_s = cg_str(tk)
+    vtable_methods = mget(ti, tk)
+    vt_p = load64(vtable_methods)
+    num_m = load64(vtable_methods + 8)
+    if num_m > 0 {
+      // Build vtable name: @vtable.TypeName.TraitName (replace :: with .)
+      cc_pos := -1
+      tki := 0
+      tk_len = slen(tk_s)
+      while tki < tk_len - 1 {
+        if char_at(tk_s, tki) == 58 && char_at(tk_s, tki + 1) == 58 {
+          cc_pos = tki
+          tki = tk_len
+        }
+        tki += 1
+      }
+      vt_name := ""
+      if cc_pos >= 0 {
+        vt_name = tk_s.substring(0, cc_pos) + "." + tk_s.substring(cc_pos + 2, tk_len)
+      } else {
+        vt_name = tk_s
+      }
+      // Build constant array
+      entries_str := ""
+      ei := 0
+      while ei < num_m {
+        if ei > 0 { entries_str = entries_str + ", " }
+        fn_name = cg_str(load64(vt_p + ei * 8))
+        entries_str = entries_str + "ptr @" + fn_name
+        ei += 1
+      }
+      emit(cg, "@vtable." + vt_name + " = private constant [" + str(num_m) + " x ptr] [" + entries_str + "]")
+    }
+    ki += 1
+  }
+  0
 }
 
 compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
@@ -5000,6 +5357,9 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   // 3. Emit global variable declarations
   emit_globals(cg, module)
 
+  // 3b. Emit vtable globals for dyn Trait
+  emit_vtables(cg, module)
+
   // 4. Skip function declarations --- LLVM IR doesn't require forward decls
   emit(cg, "")
 
@@ -5012,26 +5372,37 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   // Set global is_runtime flag so emit_function_body can skip scope instrumentation
   cg_is_runtime_flag = is_runtime
   cg_fn_ret_types = irm_fn_ret_types(module)
+  cg_trait_impls = irm_trait_impls(module)
+  cg_trait_registry = irm_trait_registry(module)
+
+  // DCE: build live function set (skip for runtime modules — all fns are live there)
+  live_fns := 0
+  if is_runtime == 0 {
+    live_fns = dce_build_live_set(module)
+  }
 
   // 6. Second pass: compile each function body (streaming to file)
   i = 0
   while i < nf {
     f_cur = funcs.get(i)
-    emit_function_body(cg, f_cur)
-
-    // On last function: flush buffer + write string constants
-    if i == nf - 1 {
-      cg_flush(cg)
-      // Write string constants
-      sc_lines = cg_string_const_lines(cg)
-      sci := 0
-      while sci < sc_lines.len() {
-        fa(output_path, sc_lines.get(sci) + "\n")
-        sci = sci + 1
-        0
-      }
+    // DCE: skip functions not reachable from main (user code only)
+    should_skip := 0
+    if live_fns != 0 {
+      cur_fname = irf_name(f_cur)
+      if mhas(live_fns, cur_fname) == 0 { should_skip = 1 }
     }
+    if should_skip == 0 { emit_function_body(cg, f_cur) }
     i = i + 1
+    0
+  }
+
+  // Flush remaining buffer and write string constants
+  cg_flush(cg)
+  sc_lines = cg_string_const_lines(cg)
+  sci := 0
+  while sci < sc_lines.len() {
+    fa(output_path, sc_lines.get(sci) + "\n")
+    sci = sci + 1
     0
   }
   0

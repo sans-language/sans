@@ -1,0 +1,11 @@
+g total = 0
+
+add(n:I) I { total = total + n; 0 }
+
+main() I {
+  x = 10
+  defer add(x)
+  y = 20
+  defer add(y)
+  total
+}

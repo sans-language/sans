@@ -20,9 +20,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use v0.6.1 as bootstrap — recent enough to know all current builtins.
-          # v0.4.0 is too old (missing getenv, stof, etc.)
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.6.1/sans-macos-arm64.tar.gz" | tar xz
+          # Use v0.7.0 as bootstrap (latest release) — knows all current builtins.
+          # v0.4.0 is too old (missing getenv, stof, scope_disable, etc.)
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/sans-macos-arm64.tar.gz" | tar xz
           chmod +x sans
           mv sans sans-bootstrap
           ./sans-bootstrap --version

@@ -1,0 +1,8 @@
+// Test closures assigned to variables and called
+main() I {
+  double = |x:I| I { x * 2 }
+  triple = |x:I| I { x * 3 }
+  a = double(10)
+  b = triple(10)
+  a + b - 8
+}

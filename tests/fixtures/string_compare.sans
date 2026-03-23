@@ -1,0 +1,8 @@
+main() I {
+  a = "hello"
+  b = "hello"
+  c = "world"
+  x = a == b ? 1 : 0
+  y = a == c ? 1 : 0
+  x * 10 + y
+}
