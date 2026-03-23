@@ -31,6 +31,7 @@ sans_rc_count(ptr:I) I {
 g rc_alloc_head = 0
 g rc_scope_head = 0
 g rc_scope_disabled = 0
+g rc_kept_head = 0
 
 sans_scope_track(ptr:I tag:I) I {
   if rc_scope_disabled != 0 { return ptr }
@@ -133,25 +134,71 @@ scope_free(ptr:I tag:I) I {
   0
 }
 
+scope_find_tag(ptr:I) I {
+  // Search both the remaining alloc list and the already-kept list
+  tn := rc_alloc_head
+  while tn != 0 {
+    if load64(tn) == ptr { return load64(tn + 8) }
+    tn = load64(tn + 16)
+  }
+  tn = rc_kept_head
+  while tn != 0 {
+    if load64(tn) == ptr { return load64(tn + 8) }
+    tn = load64(tn + 16)
+  }
+  0 - 1
+}
+
 scope_should_keep(ptr:I keep:I) I {
   if ptr == keep { return 1 }
   if keep == 0 { return 0 }
-  // Check if keep is an array (tag==1) and ptr is one of its elements
-  // Walk tracking list to find keep's tag
-  tn := rc_alloc_head
-  keep_tag := -1
-  while tn != 0 {
-    if load64(tn) == keep { keep_tag = load64(tn + 8) }
-    tn = load64(tn + 16)
-  }
+  keep_tag = scope_find_tag(keep)
+  // Array (tag 1): check elements and recurse into tracked children
   if keep_tag == 1 {
     arr_data = load64(keep)
     arr_len = load64(keep + 8)
     ei := 0
     while ei < arr_len {
-      if load64(arr_data + ei * 8) == ptr { return 1 }
+      elem = load64(arr_data + ei * 8)
+      if elem == ptr { return 1 }
+      if scope_should_keep(ptr, elem) == 1 { return 1 }
       ei += 1
       0
+    }
+  }
+  // Map (tag 2): check values and recurse into tracked children
+  if keep_tag == 2 {
+    hashes = load64(keep)
+    vals = load64(keep + 16)
+    cap = load64(keep + 32)
+    mi := 0
+    while mi < cap {
+      h = load64(hashes + mi * 8)
+      if h != 0 {
+        val = load64(vals + mi * 8)
+        if val == ptr { return 1 }
+        if scope_should_keep(ptr, val) == 1 { return 1 }
+      }
+      mi += 1
+      0
+    }
+  }
+  // Result (tag 4): check ok value at offset 8
+  if keep_tag == 4 {
+    tag = load64(keep)
+    if tag == 0 {
+      val = load64(keep + 8)
+      if val == ptr { return 1 }
+      if scope_should_keep(ptr, val) == 1 { return 1 }
+    }
+  }
+  // Option (tag 6): check some value at offset 8
+  if keep_tag == 6 {
+    tag = load64(keep)
+    if tag == 1 {
+      val = load64(keep + 8)
+      if val == ptr { return 1 }
+      if scope_should_keep(ptr, val) == 1 { return 1 }
     }
   }
   0
@@ -165,7 +212,7 @@ sans_scope_exit(keep:I) I {
     rc_scope_head = load64(rc_scope_head + 8)
     dealloc(old_frame)
 
-    kept_head := 0
+    rc_kept_head = 0
     kept_tail := 0
     while rc_alloc_head != watermark {
       node = rc_alloc_head
@@ -174,8 +221,8 @@ sans_scope_exit(keep:I) I {
       next = load64(node + 16)
       if scope_should_keep(ptr, keep) == 1 {
         store64(node + 16, 0)
-        if kept_head == 0 {
-          kept_head = node
+        if rc_kept_head == 0 {
+          rc_kept_head = node
           kept_tail = node
         } else {
           store64(kept_tail + 16, node)
@@ -188,10 +235,11 @@ sans_scope_exit(keep:I) I {
       rc_alloc_head = next
     }
 
-    if kept_head != 0 {
+    if rc_kept_head != 0 {
       store64(kept_tail + 16, rc_alloc_head)
-      rc_alloc_head = kept_head
+      rc_alloc_head = rc_kept_head
     }
+    rc_kept_head = 0
   }
   0
 }

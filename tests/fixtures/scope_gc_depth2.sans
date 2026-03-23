@@ -1,0 +1,12 @@
+make_nested() [S] {
+  a = "hel" + "lo"
+  b = "wor" + "ld"
+  inner = [a b]
+  inner
+}
+
+main() I {
+  result = make_nested()
+  s = result[0]
+  slen(s)
+}

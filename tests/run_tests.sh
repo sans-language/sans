@@ -386,6 +386,8 @@ run_test "scope_loop_alloc"          "$REPO_ROOT/tests/fixtures/scope_loop_alloc
 run_test "scope_option_return"       "$REPO_ROOT/tests/fixtures/scope_option_return.sans"       10
 run_test "scope_result_return"       "$REPO_ROOT/tests/fixtures/scope_result_return.sans"       21
 run_test "scope_multiple_returns"    "$REPO_ROOT/tests/fixtures/scope_multiple_returns.sans"    42
+run_test "scope_gc_depth2"           "$REPO_ROOT/tests/fixtures/scope_gc_depth2.sans"           5
+run_test "scope_gc_nested_array"     "$REPO_ROOT/tests/fixtures/scope_gc_nested_array.sans"     10
 
 # ---------------------------------------------------------------------------
 # Concurrency (non-spawn)
