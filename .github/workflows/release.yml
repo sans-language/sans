@@ -78,8 +78,20 @@ jobs:
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
           echo "=== Bootstrap version ==="
           ./sans --version
-          echo "=== Building compiler ==="
-          ./sans build compiler/main.sans
+          echo "=== Building compiler (with .ll capture for Linux) ==="
+          # Capture .ll files during THIS build (bootstrap can compile all modules).
+          # The rm wrapper skips .ll file deletion so they survive.
+          mkdir -p ll-output /tmp/wrap
+          printf '#!/bin/bash\nARGS=()\nfor f in "$@"; do [[ "$f" == *.ll ]] || ARGS+=("$f"); done\n[ ${#ARGS[@]} -gt 0 ] && exec /bin/rm "${ARGS[@]}"\n' > /tmp/wrap/rm
+          chmod +x /tmp/wrap/rm
+          PATH="/tmp/wrap:$PATH" ./sans build compiler/main.sans
+          # Collect .ll files
+          [ -f compiler/main.ll ] && mv compiler/main.ll ll-output/main.ll
+          for f in /tmp/sans_*_runtime.ll; do
+            [ -f "$f" ] && cp "$f" ll-output/
+          done
+          echo "=== Captured .ll files ==="
+          ls -la ll-output/
           echo "=== Verify compiler built ==="
           ls -la compiler/main
           ./compiler/main --version
@@ -117,22 +129,6 @@ jobs:
           ./compiler/main build /tmp/smoke.sans
           /tmp/smoke
           echo "Smoke test passed"
-
-      - name: Generate .ll files for Linux cross-build
-        run: |
-          export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
-          # Use the freshly built compiler (no hardcoded target triple).
-          # The compiler deletes .ll files after llc runs. Replace rm with
-          # a script that copies .ll files before deleting them.
-          mkdir -p ll-output /tmp/wrap
-          printf '#!/bin/bash\nfor f in "$@"; do [[ "$f" == *.ll ]] && cp "$f" '"$(pwd)"'/ll-output/ 2>/dev/null; done\nexec /bin/rm "$@"\n' > /tmp/wrap/rm
-          chmod +x /tmp/wrap/rm
-          # Build to a temp output — do NOT overwrite compiler/main (the release binary)
-          PATH="/tmp/wrap:$PATH" ./compiler/main build compiler/main.sans -o /tmp/sans_ll_gen 2>&1 || true
-          # Rename the main .ll to what the Linux step expects
-          [ -f ll-output/sans_ll_gen.ll ] && mv ll-output/sans_ll_gen.ll ll-output/main.ll
-          echo "Generated .ll files:"
-          ls -la ll-output/
 
       - name: Upload .ll artifacts
         uses: actions/upload-artifact@v4
