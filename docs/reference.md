@@ -1070,6 +1070,30 @@ main() {
 }
 ```
 
+### Module Re-exports
+
+Use `pub import` to re-export all public symbols from another module. Downstream consumers see a single clean API without needing to know about internal module structure.
+
+```sans
+// impl.sans
+pub add(a:I b:I) I = a + b
+pub sub(a:I b:I) I = a - b
+helper() I = 42        // not pub — not re-exported
+
+// facade.sans
+pub import "impl"      // re-exports add and sub
+
+// main.sans
+import "facade"
+main() I {
+  p(facade.add(1 2))   // 3
+  p(facade.sub(5 3))   // 2
+  0
+}
+```
+
+Only symbols marked `pub` in the source module are re-exported. Non-pub symbols remain private.
+
 ## Package Manager
 
 Sans includes a built-in package manager accessed via `sans pkg`. Packages are git repositories fetched by version tag.

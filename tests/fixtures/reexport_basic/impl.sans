@@ -1,0 +1,3 @@
+pub add(a:I b:I) I = a + b
+pub sub(a:I b:I) I = a - b
+helper() I = 42

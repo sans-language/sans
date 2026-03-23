@@ -1,0 +1,5 @@
+import "facade"
+main() I {
+  p(facade.helper())
+  0
+}

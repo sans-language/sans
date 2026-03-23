@@ -38,6 +38,7 @@ let (a, b) = (10 20)      // tuple destructuring
 """multi\nline"""           // multiline string
 -x                         // negation
 import "mod"               // module import
+pub import "mod"           // re-export mod's pub symbols
 struct S { x I, y I }      // struct
 struct Pair<A B> { a A, b B }             // generic struct
 Pair<I S>{ a: 1, b: "hi" }               // generic struct instantiation

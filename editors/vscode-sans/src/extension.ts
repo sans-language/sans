@@ -401,7 +401,7 @@ const HOVER_DATA: Record<string, string> = {
     // Keywords
     'defer': '**defer** statement\n\nDefer execution of a statement until the end of the current scope.\n\nUsage: `defer close(fd)`',
     'select': '**select** { ... }\n\nMultiplex over multiple channel operations. Picks the first ready channel.\n\nUsage:\n```\nselect {\n  v = rx.recv() => handle(v)\n  timeout 1000 => p("timeout")\n}\n```',
-    'pub': '**pub** keyword\n\nMark a function or global as public (exported from module).\n\nUsage: `pub f(x:I) = x*2`',
+    'pub': '**pub** keyword\n\nMark a function or global as public (exported from module).\nAlso used with `import` to re-export a module\'s public symbols.\n\nUsage: `pub f(x:I) = x*2`\nRe-export: `pub import "mod"` — all pub symbols from mod become pub in current module.',
 };
 
 export function activate(context: vscode.ExtensionContext) {

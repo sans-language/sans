@@ -2061,14 +2061,18 @@ parse_impl_block(p:I) I {
 // Returns an import node: 16 bytes [path:I, alias:I]
 // alias is 0 if no alias was specified
 make_import_node(path:I alias:I) I {
-  n = alloc(16)
+  n = alloc(24)
   store64(n, path)
   store64(n + 8, alias)
+  store64(n + 16, 0)
   n
 }
 
 imp_get_path(n:I) I = load64(n)
 imp_get_alias(n:I) I = load64(n + 8)
+imp_is_pub(n:I) I = load64(n + 16)
+imp_set_pub(n:I) I { store64(n + 16, 1)
+  0 }
 
 parse_import(p:I) I {
   p_expect(p, TK_IMPORT)
@@ -2099,6 +2103,18 @@ parse_global_def(p:I) I {
   make_global_def(name, value, 0)
 }
 
+// ------ Parse pub item: either pub import or pub function ------------------
+parse_pub_item(p:I imports:I functions:I) I {
+  if p_peek_kind(p) == TK_IMPORT {
+    node = parse_import(p)
+    imp_set_pub(node)
+    imports.push(node)
+    return 0
+  }
+  functions.push(parse_pub_function(p))
+  0
+}
+
 // ------ Top-level program parsing ------------------------------------------------------------------------------------------------------------
 parse_program(p:I) I {
   imports = array<I>()
@@ -2125,9 +2141,9 @@ parse_program(p:I) I {
     } else { if kind == TK_IMPL {
       impls.push(parse_impl_block(p))
     } else { if kind == TK_PUB {
-      // pub modifier: consume it, then parse function
+      // pub modifier: check if next token is import (pub import) or function
       p_advance(p)
-      functions.push(parse_pub_function(p))
+      parse_pub_item(p, imports, functions)
     } else { if kind == TK_FN {
       functions.push(parse_function(p))
     } else { if kind == TK_IDENT {

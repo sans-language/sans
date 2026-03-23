@@ -441,6 +441,7 @@ run_test "import_struct"  "$REPO_ROOT/tests/fixtures/import_struct/main.sans"  2
 run_test "lambda_cross_module" "$REPO_ROOT/tests/fixtures/lambda_cross_module/main.sans" 15
 run_test "visibility_pub"     "$REPO_ROOT/tests/fixtures/visibility_pub/main.sans"      17
 run_test "import_alias"       "$REPO_ROOT/tests/fixtures/import_alias/main.sans"        14
+run_test "reexport_basic"    "$REPO_ROOT/tests/fixtures/reexport_basic/main.sans"     0
 run_test "warnings_test"     "$REPO_ROOT/tests/fixtures/warnings_test.sans"            42
 run_test "unreachable_test"  "$REPO_ROOT/tests/fixtures/unreachable_test.sans"         10
 
@@ -494,6 +495,7 @@ run_negative_test "neg_undefined_var3"       "$REPO_ROOT/tests/negative/undefine
 run_negative_test "neg_bad_enum_variant"     "$REPO_ROOT/tests/negative/bad_enum_variant.sans"      "undefined"
 run_negative_test "neg_no_main"              "$REPO_ROOT/tests/negative/no_main.sans"               ""
 run_negative_test "neg_generic_too_deep"     "$REPO_ROOT/tests/negative/generic_too_deep.sans"      "generic instantiation depth exceeded"
+run_negative_test "neg_reexport_private"    "$REPO_ROOT/tests/negative/reexport_private/main.sans"  "undefined"
 
 # ---------------------------------------------------------------------------
 # Summary
