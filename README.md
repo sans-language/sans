@@ -90,7 +90,7 @@ main() {
 | **Maps** | `M<K,V>()` (default `M<S,I>`) with `set`, `get` (returns `Option<V>`), `has`, `keys`, `vals` |
 | **String methods** | `len`, `trim`, `split`, `starts_with`, `contains`, `replace`, `[0:5]` slicing |
 | **String interpolation** | `"Hello {name}!"` with expression support `"{x + 1}"` |
-| **Modules** | `import "math"` |
+| **Modules** | `import "math"`, `pub import "mod"` (re-exports) |
 | **Package Manager** | `sans pkg init`, `sans pkg add <url>`, `sans pkg install`, `sans pkg remove <url>` |
 | **Concurrency** | `spawn`, channels (`channel<I>()`, `send`, `recv`), `mutex` |
 | **File I/O** | `file_read`/`fr`, `file_write`/`fw`, `file_exists`/`fe` |
