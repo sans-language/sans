@@ -1535,6 +1535,13 @@ lower_stmt(ctx:I stmt:I) I {
     value_expr = load64(stmt + 16)
     val_reg = lower_expr(ctx, value_expr)
     ctx_emit_defers(ctx)
+    // Pop loop scope frames before function-level scope_exit (emitted by codegen for IR_RET)
+    rl_depth := ctx_loop_depth(ctx)
+    while rl_depth > 0 {
+      rsx_d = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, rsx_d))
+      rl_depth -= 1
+    }
     ctx_emit(ctx, ir_ret(val_reg))
     0
   }
