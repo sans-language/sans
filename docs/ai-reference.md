@@ -34,6 +34,8 @@ s[6:]                      // slice to end
 s[:5]                      // slice from start
 match x { 1 => "a", 2 => "b", _ => "c" }  // value match (int/string)
 match x { n if n > 0 => n, _ => 0 }       // match guard (binding + condition)
+match pt { Point { x, y } => x + y }     // struct destructuring in match
+match pr { (a, b) => a + b }             // tuple destructuring in match
 let (a, b) = (10 20)      // tuple destructuring
 """multi\nline"""           // multiline string
 -x                         // negation

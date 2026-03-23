@@ -157,6 +157,16 @@ match x {
     _ => "zero",
 }
 
+// Struct destructuring in match
+match pt {
+    Point { x, y } => x + y,
+}
+
+// Tuple destructuring in match
+match pair {
+    (a, b) => a + b,
+}
+
 // For-loop destructuring (tuples)
 for (k v) in m.entries() {
     p("{k}: {str(v)}")
@@ -1280,6 +1290,36 @@ describe(s:S) S = match s {
 ```
 
 Guards are checked after the pattern matches. If the guard is false, the next arm is tried.
+
+---
+
+## Struct Destructuring in Match
+
+Match arms can destructure struct values by field name:
+
+```sans
+struct Point { x:I y:I }
+
+describe(p:Point) I = match p {
+    Point { x, y } => x + y,
+}
+```
+
+Each field name in the pattern becomes a local binding with the field's value and type. The field names must match actual fields of the struct; unknown fields produce a compile error.
+
+---
+
+## Tuple Destructuring in Match
+
+Match arms can destructure tuple values by element position:
+
+```sans
+add(pair:(I I)) I = match pair {
+    (a, b) => a + b,
+}
+```
+
+The number of bindings in the pattern must match the tuple arity. Each binding receives the corresponding tuple element's value and type. Arity mismatches produce a compile error.
 
 ---
 

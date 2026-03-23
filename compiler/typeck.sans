@@ -3155,6 +3155,106 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       }
       return if result_ty != 0 { result_ty } else { make_type(TY_INT) }
     }
+    // Struct destructuring match
+    if st == TY_STRUCT {
+      sname = type_data(scrutinee_ty)
+      fields_map = type_data2(scrutinee_ty)
+      num_arms = load64(arms_arr + 8)
+      result_ty := 0
+      ai := 0
+      while ai < num_arms {
+        arm = load64(arms_p + ai * 8)
+        arm_body = load64(arm + 8)
+        arm_pat = load64(arm)
+        arm_pat_type = load64(arm_pat + 24)
+        if arm_pat_type == 5 {
+          // Struct pattern: validate field names and bind types
+          pat_fields = load64(arm_pat + 16)
+          pat_fields_p = load64(pat_fields)
+          pat_fields_len = load64(pat_fields + 8)
+          push_scope(locals)
+          inner_scope = locals[locals.len() - 1]
+          pfi := 0
+          while pfi < pat_fields_len {
+            fname = load64(pat_fields_p + pfi * 8)
+            if fields_map == 0 || mhas(fields_map, fname) == 0 { return tc_error("no field '" + fname + "' on struct '" + sname + "'") }
+            ftype = mget(fields_map, fname)
+            mset(inner_scope, fname, ftype)
+            pfi += 1
+          }
+          arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          pop_scope(locals)
+          if result_ty == 0 { result_ty = arm_ty }
+        } else if arm_pat_type == 3 {
+          // Wildcard in struct match
+          arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          if result_ty == 0 { result_ty = arm_ty }
+        } else if arm_pat_type == 4 {
+          // Binding pattern in struct match
+          push_scope(locals)
+          bind_name = load64(arm_pat + 8)
+          inner_scope2 = locals[locals.len() - 1]
+          mset(inner_scope2, bind_name, scrutinee_ty)
+          arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          pop_scope(locals)
+          if result_ty == 0 { result_ty = arm_ty }
+        }
+        ai += 1
+      }
+      return if result_ty != 0 { result_ty } else { make_type(TY_INT) }
+    }
+    // Tuple destructuring match
+    if st == TY_TUPLE {
+      tuple_elems = type_data2(scrutinee_ty)
+      tuple_elems_p = load64(tuple_elems)
+      tuple_elems_len = load64(tuple_elems + 8)
+      num_arms = load64(arms_arr + 8)
+      result_ty := 0
+      ai := 0
+      while ai < num_arms {
+        arm = load64(arms_p + ai * 8)
+        arm_body = load64(arm + 8)
+        arm_pat = load64(arm)
+        arm_pat_type = load64(arm_pat + 24)
+        if arm_pat_type == 6 {
+          // Tuple pattern: validate arity and bind element types
+          sub_pats = load64(arm_pat + 16)
+          sub_pats_p = load64(sub_pats)
+          sub_pats_len = load64(sub_pats + 8)
+          if sub_pats_len != tuple_elems_len { return tc_error("tuple pattern has " + str(sub_pats_len) + " element(s) but scrutinee has " + str(tuple_elems_len)) }
+          push_scope(locals)
+          inner_scope = locals[locals.len() - 1]
+          tpi := 0
+          while tpi < sub_pats_len {
+            sub_pat = load64(sub_pats_p + tpi * 8)
+            sub_pat_type = load64(sub_pat + 24)
+            if sub_pat_type == 4 {
+              // Binding sub-pattern
+              bind_name = load64(sub_pat + 8)
+              elem_ty = load64(tuple_elems_p + tpi * 8)
+              mset(inner_scope, bind_name, elem_ty)
+            }
+            tpi += 1
+          }
+          arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          pop_scope(locals)
+          if result_ty == 0 { result_ty = arm_ty }
+        } else if arm_pat_type == 3 {
+          arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          if result_ty == 0 { result_ty = arm_ty }
+        } else if arm_pat_type == 4 {
+          push_scope(locals)
+          bind_name = load64(arm_pat + 8)
+          inner_scope2 = locals[locals.len() - 1]
+          mset(inner_scope2, bind_name, scrutinee_ty)
+          arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          pop_scope(locals)
+          if result_ty == 0 { result_ty = arm_ty }
+        }
+        ai += 1
+      }
+      return if result_ty != 0 { result_ty } else { make_type(TY_INT) }
+    }
     if st != TY_ENUM { return tc_error("match scrutinee must be an enum, Int, or String, got " + type_to_string(scrutinee_ty)) }
     enum_name_s = type_data_s(scrutinee_ty)
     // Get enum variants from enums map

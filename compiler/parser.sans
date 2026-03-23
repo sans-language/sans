@@ -1696,6 +1696,19 @@ parse_match_arm(p:I) I {
 
 parse_pattern(p:I) I {
   kind = p_peek_kind(p)
+  // Tuple destructuring pattern: (a, b, c)
+  if kind == TK_LPAREN {
+    p_advance(p)
+    sub_pats = array<I>()
+    while p_at(p, TK_RPAREN) == 0 {
+      sub_pats.push(parse_pattern(p))
+      if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+    }
+    p_expect(p, TK_RPAREN)
+    pat = make_pattern(0, 0, sub_pats)
+    store64(pat + 24, 6)  // pat_type = 6 (tuple)
+    return pat
+  }
   // Integer literal pattern
   if kind == TK_INT_LIT {
     t = p_advance(p)
@@ -1733,6 +1746,21 @@ parse_pattern(p:I) I {
       p_advance(p)
       pat = make_pattern(0, name, array<I>())
       store64(pat + 24, 4)
+      return pat
+    }
+    // Struct destructuring pattern: Name { field1, field2 }
+    if p_peek_kind_at(p, 1) == TK_LBRACE {
+      struct_name = p_expect_ident(p)
+      p_expect(p, TK_LBRACE)
+      fields = array<I>()
+      while p_at(p, TK_RBRACE) == 0 {
+        field = p_expect_ident(p)
+        fields.push(field)
+        if p_at(p, TK_COMMA) == 1 { p_advance(p) }
+      }
+      p_expect(p, TK_RBRACE)
+      pat = make_pattern(struct_name, 0, fields)
+      store64(pat + 24, 5)  // pat_type = 5 (struct)
       return pat
     }
     // Check for enum pattern: Name::Variant

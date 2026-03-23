@@ -1,0 +1,10 @@
+add(pair:(I I)) I {
+  match pair {
+    (a, b) => a + b
+  }
+}
+
+main() I {
+  p(add((3 4)))
+  0
+}

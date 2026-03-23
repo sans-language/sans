@@ -3506,6 +3506,69 @@ lower_match_value(ctx:I scrutinee_reg:I arms:I) I {
       ctx_emit(ctx, ir_store(result_ptr, body_reg))
       ctx_emit(ctx, ir_jump(merge_label))
       ctx_emit(ctx, ir_label(next_label))
+    } else if pat_type == 5 {
+      // Struct destructuring pattern: extract fields by name
+      struct_name = ctx_get_struct_name(ctx, scrutinee_reg)
+      sd = ctx_struct_defs(ctx)
+      struct_fields = if struct_name != 0 && mhas(sd, struct_name) { mget(sd, struct_name) } else { 0 }
+      num_fields = if struct_fields != 0 { struct_fields.len() } else { 1 }
+      // Build field index map
+      fi_map = M()
+      if struct_fields != 0 {
+        fk := 0
+        while fk < struct_fields.len() {
+          mset(fi_map, struct_fields.get(fk), fk + 1)
+          fk = fk + 1
+          0
+        }
+        0
+      }
+      pat_bindings = load64(pattern + 16)
+      pat_bindings_p = load64(pat_bindings)
+      pat_bindings_len = load64(pat_bindings + 8)
+      bi := 0
+      while bi < pat_bindings_len {
+        fname = load64(pat_bindings_p + bi * 8)
+        fidx := bi
+        looked = mget(fi_map, fname)
+        if looked != 0 { fidx = looked - 1 }
+        field_reg = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_field_load(field_reg, scrutinee_reg, fidx, num_fields))
+        ctx_set_reg_type(ctx, field_reg, IRTY_INT)
+        ctx_set_local(ctx, fname, field_reg)
+        bi = bi + 1
+        0
+      }
+      ctx_emit(ctx, ir_jump(arm_label))
+      ctx_emit(ctx, ir_label(arm_label))
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+    } else if pat_type == 6 {
+      // Tuple destructuring pattern: extract elements by index
+      sub_pats = load64(pattern + 16)
+      sub_pats_p = load64(sub_pats)
+      sub_pats_len = load64(sub_pats + 8)
+      ti := 0
+      while ti < sub_pats_len {
+        sub_pat = load64(sub_pats_p + ti * 8)
+        sub_pat_type = load64(sub_pat + 24)
+        if sub_pat_type == 4 {
+          // Binding sub-pattern: extract element and bind
+          bind_name = load64(sub_pat + 8)
+          elem_reg = ctx_fresh_reg(ctx)
+          ctx_emit(ctx, ir_field_load(elem_reg, scrutinee_reg, ti, sub_pats_len))
+          ctx_set_reg_type(ctx, elem_reg, IRTY_INT)
+          ctx_set_local(ctx, bind_name, elem_reg)
+        }
+        ti = ti + 1
+        0
+      }
+      ctx_emit(ctx, ir_jump(arm_label))
+      ctx_emit(ctx, ir_label(arm_label))
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
     }
     i = i + 1
     0

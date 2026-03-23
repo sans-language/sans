@@ -341,6 +341,8 @@ run_test "for_in_range_test"         "$REPO_ROOT/tests/fixtures/for_in_range_tes
 run_test "ternary_nested"            "$REPO_ROOT/tests/fixtures/ternary_nested.sans"            42
 run_test "match_wildcard"            "$REPO_ROOT/tests/fixtures/match_wildcard.sans"            42
 run_test "match_multiple"            "$REPO_ROOT/tests/fixtures/match_multiple.sans"            20
+run_test "match_struct_destruct"     "$REPO_ROOT/tests/fixtures/match_struct_destruct.sans"     0
+run_test "match_tuple_destruct"      "$REPO_ROOT/tests/fixtures/match_tuple_destruct.sans"      0
 run_test "if_else_chain"             "$REPO_ROOT/tests/fixtures/if_else_chain.sans"             175
 run_test "early_return"              "$REPO_ROOT/tests/fixtures/early_return.sans"              42
 
@@ -495,6 +497,8 @@ run_negative_test "neg_undefined_var3"       "$REPO_ROOT/tests/negative/undefine
 run_negative_test "neg_bad_enum_variant"     "$REPO_ROOT/tests/negative/bad_enum_variant.sans"      "undefined"
 run_negative_test "neg_no_main"              "$REPO_ROOT/tests/negative/no_main.sans"               ""
 run_negative_test "neg_generic_too_deep"     "$REPO_ROOT/tests/negative/generic_too_deep.sans"      "generic instantiation depth exceeded"
+run_negative_test "neg_match_struct_bad_field" "$REPO_ROOT/tests/negative/match_struct_bad_field.sans" "no field"
+run_negative_test "neg_match_tuple_arity"    "$REPO_ROOT/tests/negative/match_tuple_arity.sans"    "tuple pattern"
 run_negative_test "neg_reexport_private"    "$REPO_ROOT/tests/negative/reexport_private/main.sans"  "undefined"
 
 # ---------------------------------------------------------------------------
