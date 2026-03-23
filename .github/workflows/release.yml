@@ -129,6 +129,8 @@ jobs:
           chmod +x /tmp/wrap/rm
           # Build to a temp output — do NOT overwrite compiler/main (the release binary)
           PATH="/tmp/wrap:$PATH" ./compiler/main build compiler/main.sans -o /tmp/sans_ll_gen 2>&1 || true
+          # Rename the main .ll to what the Linux step expects
+          [ -f ll-output/sans_ll_gen.ll ] && mv ll-output/sans_ll_gen.ll ll-output/main.ll
           echo "Generated .ll files:"
           ls -la ll-output/
 
