@@ -67,82 +67,16 @@ jobs:
 
       - name: Download bootstrap compiler
         run: |
-          # Always use v0.4.0 as bootstrap — later versions may have scope GC
-          # bugs that cause segfaults when compiling large codebases.
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.4.0/sans-macos-arm64.tar.gz" | tar xz
+          # Use v0.6.1 as bootstrap — it knows all builtins needed to compile
+          # the current source directly. No multi-stage bootstrap needed.
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.6.1/sans-macos-arm64.tar.gz" | tar xz
           chmod +x sans
           ./sans --version
 
       - name: Build self-hosted compiler
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
-          # Try direct build first. If the bootstrap segfaults (new builtins the
-          # old compiler can't handle), do a two-stage build: download the
-          # previous release source, build that with the bootstrap to get an
-          # intermediate compiler, then build the current source with it.
-          if ./sans build compiler/main.sans 2>&1; then
-            echo "=== Direct build succeeded ==="
-          else
-            echo "=== Multi-stage bootstrap ==="
-            # The v0.4.0 bootstrap can only compile v0.4.0 source. The current
-            # source has new builtins (getenv, mkdir, etc.) that v0.4.0 doesn't
-            # know. Three stages:
-            #   Stage 1: v0.4.0 bootstrap -> v0.4.0 source (known good)
-            #   Stage 2: stage1 compiler -> current source WITHOUT pkg.sans
-            #            (compiler modules define new builtins but don't call them)
-            #   Stage 3: stage2 compiler -> full current source (has all builtins)
-
-            echo "Stage 1: v0.4.0 bootstrap -> v0.4.0 source"
-            mkdir -p /tmp/prev-src
-            curl -fsSL "https://github.com/${{ github.repository }}/archive/refs/tags/v0.4.0.tar.gz" | tar xz -C /tmp/prev-src --strip-components=1
-            cp ./sans /tmp/prev-src/sans-bootstrap
-            cd /tmp/prev-src
-            ./sans-bootstrap build compiler/main.sans
-            cd -
-            mv /tmp/prev-src/compiler/main /tmp/sans-stage1
-            rm -rf /tmp/prev-src
-
-            echo "Stage 2: stage1 -> current source (strip builtins v0.4.0 doesn't know)"
-            cp compiler/main.sans compiler/main.sans.bak
-            cp runtime/json.sans runtime/json.sans.bak
-            cp runtime/math.sans runtime/math.sans.bak
-            sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
-            sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
-            sed -i '' 's/scope_disable()/0/' compiler/main.sans
-            # Strip curl — stage2 binary has no scope_disable so it can't compile
-            # all 18 runtime modules. Curl will be compiled in Stage 3.
-            sed -i '' 's/runtime_modules.push("curl")/0/' compiler/main.sans
-            # Strip builtins added after v0.4.0 that appear in main.sans and runtime
-            sed -i '' 's/sh("brew[^"]*")/""/' compiler/main.sans
-            sed -i '' 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
-            sed -i '' 's/getenv([^)]*)/""/' compiler/main.sans
-            sed -i '' 's/sh("uname -s")/"Darwin"/' compiler/main.sans
-            # Strip stof/ftos from runtime (added in v0.7.0, unknown to v0.4.0-era compiler)
-            sed -i '' 's/stof(buf)/0/' runtime/json.sans
-            sed -i '' 's/ftos(bits)/"0"/' runtime/json.sans
-            # Strip LCG random (uses time() which may not be available)
-            sed -i '' 's/sans_rand_state = time()/sans_rand_state = 12345/' runtime/math.sans 2>/dev/null || true
-            /tmp/sans-stage1 build compiler/main.sans
-            mv compiler/main /tmp/sans-stage2
-            mv compiler/main.sans.bak compiler/main.sans
-            mv runtime/json.sans.bak runtime/json.sans
-            mv runtime/math.sans.bak runtime/math.sans
-
-            echo "Stage 3: stage2 -> current source (curl + pkg stripped)"
-            # Stage2 has no scope_disable, so it can't compile all 18 modules.
-            # Strip curl (and pkg which depends on curl's http_get).
-            cp compiler/main.sans compiler/main.sans.bak2
-            sed -i '' 's/runtime_modules.push("curl")/0/' compiler/main.sans
-            sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
-            sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
-            /tmp/sans-stage2 build compiler/main.sans
-            mv compiler/main.sans.bak2 compiler/main.sans
-            # Now compiler/main has scope_disable working. Rebuild with curl.
-            echo "Stage 3b: stage3 -> full current source with curl"
-            ./compiler/main build compiler/main.sans
-          fi
+          ./sans build compiler/main.sans
           # Fix dylib paths for portability — use @rpath so binary works with any Homebrew prefix
           echo "=== Before rpath fix ==="
           otool -L compiler/main | grep -E "ssl|crypto"
