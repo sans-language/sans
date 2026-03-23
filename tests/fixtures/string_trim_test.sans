@@ -1,0 +1,5 @@
+main() I {
+  s = "  hello  "
+  t = s.trim()
+  t.len()
+}

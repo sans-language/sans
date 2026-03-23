@@ -1,0 +1,7 @@
+sum_to(n:I) I {
+  n <= 0 ? 0 : n + sum_to(n - 1)
+}
+
+main() I {
+  sum_to(10)
+}

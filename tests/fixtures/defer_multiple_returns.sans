@@ -1,0 +1,14 @@
+g cleaned = 0
+
+cleanup() I { cleaned = 1; 0 }
+
+work(flag:I) I {
+  defer cleanup()
+  if flag > 0 { return 10 } else { 0 }
+  20
+}
+
+main() I {
+  v = work(1)
+  v + cleaned
+}

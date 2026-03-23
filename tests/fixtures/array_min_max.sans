@@ -1,0 +1,6 @@
+main() I {
+  a = [5 1 9 3 7]
+  mn = a.min()
+  mx = a.max()
+  mn + mx
+}

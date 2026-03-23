@@ -1,0 +1,7 @@
+// Test JSON parse of object with int
+main() I {
+  s = "{\"val\":42}"
+  j = jp(s)
+  v = j.get("val")
+  v.get_int()
+}

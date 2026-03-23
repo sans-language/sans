@@ -1,0 +1,8 @@
+noop() I { 0 }
+
+main() I {
+  defer noop()
+  defer noop()
+  defer noop()
+  42
+}

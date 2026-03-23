@@ -1,0 +1,8 @@
+// Test nested function calls
+inner(x:I) I { x * 2 }
+middle(x:I) I { inner(x) + 1 }
+outer(x:I) I { middle(x) + 10 }
+
+main() I {
+  outer(5)
+}

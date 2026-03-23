@@ -1,0 +1,11 @@
+main() I {
+  m = M()
+  m.set("a" 10)
+  m.set("b" 20)
+  m.set("c" 30)
+  m.delete("b")
+  l = m.len()
+  h = m.has("b") ? 1 : 0
+  // l=2, h=0
+  l + h
+}

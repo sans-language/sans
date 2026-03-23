@@ -1,0 +1,6 @@
+// expect-error: undefined
+struct Point { x Int, y Int }
+main() I {
+  p = Point { x: 1, y: 2 }
+  p.z
+}

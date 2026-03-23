@@ -1,0 +1,6 @@
+main() I {
+  m = M<I S>()
+  m.set(1 "one")
+  m.set(2 "two")
+  m.len() + m.has(1) + m.has(3)
+}

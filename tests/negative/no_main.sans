@@ -1,0 +1,2 @@
+// expect-error: main
+foo() I { 42 }

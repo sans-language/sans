@@ -1,0 +1,7 @@
+main() I {
+  r = err(404 "not found")
+  c = r.code()
+  e = r.is_err() ? 1 : 0
+  // 404 + 1 = 405 ... mod 256 = 149
+  c - 404 + 42 + e
+}

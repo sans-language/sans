@@ -1,0 +1,9 @@
+main() I {
+  a = some(10)
+  b = some(20)
+  c = none()
+  x = a!
+  y = b.unwrap()
+  z = c.unwrap_or(12)
+  x + y + z
+}

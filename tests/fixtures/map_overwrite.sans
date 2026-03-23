@@ -1,0 +1,6 @@
+main() I {
+  m = M()
+  m.set("a" 10)
+  m.set("a" 42)
+  m.get("a")!
+}

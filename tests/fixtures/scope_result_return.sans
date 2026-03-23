@@ -1,0 +1,8 @@
+safe_div(a:I b:I) R<I> {
+  b == 0 ? err("div0") : ok(a / b)
+}
+
+main() I {
+  r = safe_div(42 2)
+  r!
+}

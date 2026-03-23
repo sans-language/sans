@@ -1,0 +1,7 @@
+main() I {
+  r1 = ok(10)
+  r2 = err("bad")
+  a = r1.unwrap_or(0)
+  b = r2.unwrap_or(32)
+  a + b
+}

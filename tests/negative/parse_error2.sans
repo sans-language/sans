@@ -1,0 +1,4 @@
+// expect-error: PARSE ERR
+main() I {
+  if { 42 }
+}

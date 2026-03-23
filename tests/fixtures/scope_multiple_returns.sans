@@ -1,0 +1,21 @@
+pick(flag:I) I {
+  if flag == 1 {
+    a = array<I>()
+    a.push(10)
+    return a[0]
+  } else { 0 }
+  if flag == 2 {
+    b = array<I>()
+    b.push(20)
+    return b[0]
+  } else { 0 }
+  42
+}
+
+main() I {
+  a = pick(1)
+  b = pick(2)
+  c = pick(3)
+  // 10 + 20 + 42 = 72
+  a + b + c - 30
+}

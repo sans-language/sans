@@ -1,0 +1,4 @@
+main() I {
+  r = err("bad").or_else(|e:S| R<I> { ok(42) })
+  r!
+}

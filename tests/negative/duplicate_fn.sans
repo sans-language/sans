@@ -1,0 +1,5 @@
+// expect-error: PARSE ERR
+main() I {
+  x = (((
+  x
+}

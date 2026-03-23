@@ -1,0 +1,8 @@
+main() I {
+  a = true
+  b = false
+  // Short-circuit: b && a should be false without evaluating a
+  x = (b && a) ? 1 : 0
+  y = (a || b) ? 1 : 0
+  x + y
+}

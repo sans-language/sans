@@ -1,0 +1,13 @@
+check(x:I) I {
+  if x < 0 { return 0 } else { 0 }
+  if x > 100 { return 100 } else { 0 }
+  x
+}
+
+main() I {
+  a = check(50)
+  b = check(-5)
+  c = check(200)
+  // 50 + 0 + 100 = 150
+  a + b + c - 108
+}

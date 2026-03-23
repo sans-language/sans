@@ -1,0 +1,6 @@
+main() I {
+  a = [1 2 3 4 5]
+  has_big = a.any(|x:I| B { x > 4 })
+  has_neg = a.any(|x:I| B { x < 0 })
+  has_big + has_neg
+}

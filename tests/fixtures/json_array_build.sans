@@ -1,0 +1,7 @@
+main() I {
+  a = ja()
+  a.push(ji(10))
+  a.push(ji(20))
+  a.push(ji(30))
+  a.len()
+}

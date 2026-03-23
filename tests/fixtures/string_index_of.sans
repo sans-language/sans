@@ -1,0 +1,5 @@
+main() I {
+  s = "hello world"
+  i = s.index_of("world")
+  i
+}

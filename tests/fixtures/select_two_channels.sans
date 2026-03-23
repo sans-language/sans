@@ -1,0 +1,9 @@
+// Test channel send/recv without spawn
+fn main() Int {
+  let (tx, rx) = channel<Int>(2)
+  tx.send(17)
+  tx.send(25)
+  a = rx.recv()
+  b = rx.recv()
+  a + b
+}

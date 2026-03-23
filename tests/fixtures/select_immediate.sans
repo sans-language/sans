@@ -1,0 +1,14 @@
+fn main() Int {
+  let (tx, rx) = channel<Int>()
+  tx.send(77)
+  result := 0
+  select {
+    v = rx.recv() => {
+      result = v
+    }
+    timeout(1000) => {
+      result = 0
+    }
+  }
+  result
+}

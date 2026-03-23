@@ -1,0 +1,4 @@
+// expect-error: undefined variable
+main() I {
+  foo + bar
+}

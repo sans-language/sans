@@ -1,0 +1,9 @@
+// Test bounded channel without spawn
+fn main() Int {
+  let (tx, rx) = channel<Int>(5)
+  tx.send(10)
+  tx.send(20)
+  a = rx.recv()
+  b = rx.recv()
+  a + b
+}

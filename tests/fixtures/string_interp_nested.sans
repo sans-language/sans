@@ -1,0 +1,6 @@
+main() I {
+  name = "Sans"
+  ver = "1"
+  msg = "Hello {name} v{ver}!"
+  msg.len()
+}

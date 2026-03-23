@@ -1,0 +1,14 @@
+get_val(flag:I) O<I> {
+  flag > 0 ? some(flag * 10) : none()
+}
+
+add_one(flag:I) O<I> {
+  v = get_val(flag)?
+  some(v + 1)
+}
+
+main() I {
+  a = add_one(4)
+  b = add_one(0)
+  a! + b.is_none()
+}

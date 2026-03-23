@@ -1,0 +1,7 @@
+main() I {
+  m = M()
+  m.set("a" 10)
+  hit = m.get("a")
+  miss = m.get("zzz")
+  hit! + miss.unwrap_or(32)
+}

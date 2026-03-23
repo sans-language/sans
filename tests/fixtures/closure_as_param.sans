@@ -1,0 +1,6 @@
+// Test passing lambda directly to array methods
+main() I {
+  a = [1 2 3 4 5]
+  doubled = a.map(|x:I| I { x * 2 })
+  doubled[0] + doubled[4]
+}

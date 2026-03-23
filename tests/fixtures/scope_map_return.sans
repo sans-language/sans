@@ -1,0 +1,8 @@
+// Test map operations within a single scope
+main() I {
+  m = M()
+  m.set("a" 10)
+  m.set("b" 20)
+  m.set("c" 12)
+  m.get("a")! + m.get("b")! + m.get("c")!
+}

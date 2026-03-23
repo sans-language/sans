@@ -1,0 +1,12 @@
+make_nested() I {
+  a = array<I>()
+  a.push(1)
+  a.push(2)
+  a.push(3)
+  a
+}
+
+main() I {
+  a = make_nested()
+  a[0] + a[1] + a[2]
+}

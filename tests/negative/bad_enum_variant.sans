@@ -1,0 +1,6 @@
+// expect-error: undefined
+enum Color { Red, Green, Blue }
+main() I {
+  c = Color::Yellow
+  0
+}

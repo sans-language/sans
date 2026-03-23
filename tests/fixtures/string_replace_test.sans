@@ -1,0 +1,5 @@
+main() I {
+  s = "hello world"
+  r = s.replace("world" "sans")
+  r.len()
+}

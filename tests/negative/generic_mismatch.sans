@@ -1,0 +1,5 @@
+// expect-error: undefined function
+main() I {
+  x = totally_fake_function_xyz()
+  x
+}

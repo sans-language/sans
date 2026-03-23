@@ -1,0 +1,9 @@
+find_val(flag:I) O<I> {
+  flag > 0 ? some(flag * 2) : none()
+}
+
+main() I {
+  a = find_val(5)
+  b = find_val(0)
+  a! + b.unwrap_or(0)
+}

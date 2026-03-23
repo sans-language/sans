@@ -1,0 +1,12 @@
+g count = 0
+
+bump() I { count += 1; count }
+
+main() I {
+  bump()
+  bump()
+  bump()
+  bump()
+  bump()
+  count
+}

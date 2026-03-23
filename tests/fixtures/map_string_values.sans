@@ -1,0 +1,8 @@
+main() I {
+  m = M<S S>()
+  m.set("a" "hello")
+  m.set("b" "world")
+  h = m.has("a")
+  l = m.len()
+  h + l
+}

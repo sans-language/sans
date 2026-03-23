@@ -1,0 +1,19 @@
+trait Shape {
+  fn area(self) Int
+  fn perimeter(self) Int
+}
+
+struct Rect {
+  w Int,
+  h Int,
+}
+
+impl Shape for Rect {
+  fn area(self) Int { self.w * self.h }
+  fn perimeter(self) Int { 2 * (self.w + self.h) }
+}
+
+main() I {
+  r = Rect { w: 3, h: 4 }
+  r.area() + r.perimeter()
+}

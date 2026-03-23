@@ -1,0 +1,11 @@
+make_arr() I {
+  a = array<I>()
+  a.push(10)
+  a.push(20)
+  a
+}
+
+main() I {
+  a = make_arr()
+  a[0] + a[1]
+}

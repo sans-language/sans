@@ -1,0 +1,10 @@
+struct Counter { val Int }
+
+inc(c:I) I {
+  c + 1
+}
+
+main() I {
+  x = 42
+  inc(x)
+}

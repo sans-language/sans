@@ -1,0 +1,11 @@
+// Test Option with some/none returning different values
+get_opt(flag:I) O<I> {
+  flag > 0 ? some(flag) : none()
+}
+
+main() I {
+  a = get_opt(10)
+  b = get_opt(0)
+  c = get_opt(5)
+  a! + b.unwrap_or(0) + c!
+}

@@ -1,0 +1,11 @@
+enum Dir { Up, Down, Left, Right }
+
+main() I {
+  d = Dir::Right
+  match d {
+    Dir::Up => 1,
+    Dir::Down => 2,
+    Dir::Left => 3,
+    Dir::Right => 4,
+  }
+}

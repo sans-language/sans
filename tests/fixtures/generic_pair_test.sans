@@ -1,0 +1,6 @@
+struct Wrapper<T> { val T }
+
+main() I {
+  w = Wrapper<I> { val: 42 }
+  w.val
+}

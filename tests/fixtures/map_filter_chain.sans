@@ -1,0 +1,8 @@
+is_even(x:I) B { x % 2 == 0 }
+
+main() I {
+  a = [1 2 3 4 5 6 7 8 9 10]
+  evens = a.filter(is_even)
+  doubled = evens.map(|x:I| I { x * 2 })
+  doubled.len()
+}

@@ -1,0 +1,7 @@
+// Test closure with multiple captured variables
+main() I {
+  a = 10
+  b = 20
+  f = |x:I| I { x + a + b }
+  f(12)
+}

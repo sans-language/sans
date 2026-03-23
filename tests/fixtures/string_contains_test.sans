@@ -1,0 +1,8 @@
+bool_to_int(b:B) = b ? 1 : 0
+
+main() I {
+  s = "hello world"
+  a = bool_to_int(s.contains("world"))
+  b = bool_to_int(s.contains("xyz"))
+  a * 10 + b
+}

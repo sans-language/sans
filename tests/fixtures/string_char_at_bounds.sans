@@ -1,0 +1,7 @@
+main() I {
+  s = "abcde"
+  a = char_at(s 0)
+  b = char_at(s 4)
+  // 'a'=97, 'e'=101
+  b - a
+}

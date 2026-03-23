@@ -1,0 +1,7 @@
+main() I {
+  a = none()
+  b = none()
+  x = a.unwrap_or(10)
+  y = b.unwrap_or(33)
+  x + y
+}

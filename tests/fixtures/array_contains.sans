@@ -1,0 +1,6 @@
+main() I {
+  a = [10 20 30 40 50]
+  x = a.contains(30) ? 1 : 0
+  y = a.contains(99) ? 1 : 0
+  x * 10 + y
+}

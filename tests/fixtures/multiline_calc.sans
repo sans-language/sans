@@ -1,0 +1,11 @@
+// Test multi-step calculation
+calc(a:I b:I c:I) I {
+  x = a * b
+  y = x + c
+  z = y / 2
+  z
+}
+
+main() I {
+  calc(6 7 0)
+}

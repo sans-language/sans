@@ -1,0 +1,8 @@
+// expect-error: trait
+trait Foo { fn bar(self) Int }
+struct S { x Int }
+main() I {
+  s = S { x: 1 }
+  d = s as dyn Foo
+  d.bar()
+}

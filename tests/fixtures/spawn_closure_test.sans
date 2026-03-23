@@ -1,0 +1,6 @@
+// Test array sum and product
+main() I {
+  a = [2 3 5 7]
+  sum = a.reduce(0 |acc:I x:I| I { acc + x })
+  sum - 17 + 42
+}
