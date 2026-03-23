@@ -439,6 +439,8 @@ run_test "import_struct"  "$REPO_ROOT/tests/fixtures/import_struct/main.sans"  2
 run_test "lambda_cross_module" "$REPO_ROOT/tests/fixtures/lambda_cross_module/main.sans" 15
 run_test "visibility_pub"     "$REPO_ROOT/tests/fixtures/visibility_pub/main.sans"      17
 run_test "import_alias"       "$REPO_ROOT/tests/fixtures/import_alias/main.sans"        14
+run_test "warnings_test"     "$REPO_ROOT/tests/fixtures/warnings_test.sans"            42
+run_test "unreachable_test"  "$REPO_ROOT/tests/fixtures/unreachable_test.sans"         10
 
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)

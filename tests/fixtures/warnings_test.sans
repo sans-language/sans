@@ -1,0 +1,6 @@
+main() I {
+  x = 42
+  unused_var = 10
+  _ok = 99
+  x
+}

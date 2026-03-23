@@ -141,6 +141,9 @@ g tc_has_error = 0
 g tc_current_file = 0
 g tc_current_source = 0
 g tc_has_source = 0
+g tc_declared_vars = 0
+g tc_used_vars = 0
+g tc_warn_enabled = 0
 
 tc_init_diags() I {
   if tc_diags == 0 { tc_diags = array<I>() }
@@ -267,6 +270,25 @@ tc_warn_at(node:I msg:S) I {
   0
 }
 
+// Emit warnings for unused variables (declared but never referenced)
+tc_check_unused_vars() I {
+  if tc_declared_vars == 0 { return 0 }
+  if tc_used_vars == 0 { return 0 }
+  dkeys = tc_declared_vars.keys()
+  dki := 0
+  while dki < dkeys.len() {
+    dk = dkeys.get(dki)
+    // Skip variables starting with _ (intentionally unused)
+    if char_at(dk, 0) != 95 {
+      if mhas(tc_used_vars, dk) == 0 {
+        tc_warn_at(mget(tc_declared_vars, dk), "unused variable '" + dk + "'")
+      }
+    }
+    dki += 1
+  }
+  0
+}
+
 // Print all diagnostics and exit if any errors
 tc_emit_diags() I {
   if tc_diags == 0 { return 0 }
@@ -281,6 +303,8 @@ tc_emit_diags() I {
     i += 1
     0
   }
+  // Clear diagnostics after emitting to avoid re-printing
+  tc_diags = array<I>()
   if has_err == 1 { exit(1) }
   0
 }
@@ -675,6 +699,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Add to current scope (last Map in locals)
     scope = locals[locals.len() - 1]
     mset(scope, name, ty)
+    // Track declared variable for unused-variable warnings
+    if tc_declared_vars != 0 { mset(tc_declared_vars, name, stmt) }
     return 0
   }
 
@@ -714,6 +740,8 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       val_type = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       scope = locals[locals.len() - 1]
       mset(scope, name, val_type)
+      // Track declared variable for unused-variable warnings
+      if tc_declared_vars != 0 { mset(tc_declared_vars, name, stmt) }
       0
     }
     return 0
@@ -874,9 +902,16 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 // ------ check_stmts: type-check an array of statements ------------------------------------------
 check_stmts(stmts:I stmts_len:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I generic_fns:I traits:I mod_exports:I) I {
   if stmts == 0 { return 0 }
+  returned := 0
   i := 0
   while i < stmts_len {
-    check_stmt(load64(stmts + i * 8), locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    s = load64(stmts + i * 8)
+    if returned == 1 && tc_warn_enabled == 1 {
+      tc_warn_at(s, "unreachable code after return")
+      returned = 2
+    }
+    check_stmt(s, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    if returned == 0 && load64(s) == ST_RETURN { returned = 1 }
     i += 1
   }
   0
@@ -1069,6 +1104,8 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
   // ------ Identifier ------------------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_IDENT {
     name = load64(expr + 16)
+    // Track variable usage for unused-variable warnings
+    if tc_used_vars != 0 { mset(tc_used_vars, name, 1) }
     // Search local scopes
     t = lookup_local(locals, name)
     if t != 0 { return t }
@@ -3773,11 +3810,21 @@ check_inner(program:I mod_exports:I require_main:I) I {
       body_p = load64(body_arr2)
       body_len = load64(body_arr2 + 8)
       if body_len == 0 { tc_error("function '" + fname + "': missing return expression") }
+      // Init unused-variable tracking for this function
+      if tc_warn_enabled == 1 {
+        tc_declared_vars = map()
+        tc_used_vars = map()
+      }
       // Check all statements
+      fn_returned := 0
       bi := 0
       while bi < body_len {
       stmt = load64(body_p + bi * 8)
       is_last = bi == body_len - 1
+      if fn_returned == 1 && tc_warn_enabled == 1 {
+        tc_warn_at(stmt, "unreachable code after return")
+        fn_returned = 2
+      }
       check_stmt(stmt, locals, fn_env, ret_ty, structs_map, enums_map, methods_map, generic_fns, trait_registry, mod_exports)
       if is_last == 1 {
         stag = load64(stmt)
@@ -3791,7 +3838,14 @@ check_inner(program:I mod_exports:I require_main:I) I {
           }
         }
       }
+      if fn_returned == 0 && load64(stmt) == ST_RETURN { fn_returned = 1 }
       bi += 1
+      }
+      // Emit unused variable warnings for this function
+      if tc_warn_enabled == 1 {
+        tc_check_unused_vars()
+        tc_declared_vars = 0
+        tc_used_vars = 0
       }
       fi += 1
       0
@@ -3853,10 +3907,21 @@ check_inner(program:I mod_exports:I require_main:I) I {
 
       if mbody_len == 0 { tc_error("method '" + mname + "': missing return expression") }
 
+      // Init unused-variable tracking for this method
+      if tc_warn_enabled == 1 {
+        tc_declared_vars = map()
+        tc_used_vars = map()
+      }
+
+      m_returned := 0
       bi := 0
       while bi < mbody_len {
         stmt = load64(mbody_p + bi * 8)
         is_last = bi == mbody_len - 1
+        if m_returned == 1 && tc_warn_enabled == 1 {
+          tc_warn_at(stmt, "unreachable code after return")
+          m_returned = 2
+        }
         check_stmt(stmt, locals, fn_env, mret_ty, structs_map, enums_map, methods_map, generic_fns, trait_registry, mod_exports)
 
         if is_last == 1 {
@@ -3871,7 +3936,14 @@ check_inner(program:I mod_exports:I require_main:I) I {
             }
           }
         }
+        if m_returned == 0 && load64(stmt) == ST_RETURN { m_returned = 1 }
         bi += 1
+      }
+      // Emit unused variable warnings for this method
+      if tc_warn_enabled == 1 {
+        tc_check_unused_vars()
+        tc_declared_vars = 0
+        tc_used_vars = 0
       }
       mi += 1
     }
@@ -3903,7 +3975,10 @@ check_inner(program:I mod_exports:I require_main:I) I {
 
 // ------ check: top-level type checking entry point ---------------------------------------------------------
 check(program:I mod_exports:I) I {
-  check_inner(program, mod_exports, 1)
+  tc_warn_enabled = 1
+  r = check_inner(program, mod_exports, 1)
+  tc_warn_enabled = 0
+  r
 }
 
 // ------ check_module: type-check a library module (no main required) ---
