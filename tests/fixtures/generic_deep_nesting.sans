@@ -1,0 +1,8 @@
+struct Box<T> { val:T }
+struct Pair<A B> { fst:A snd:B }
+
+main() I {
+  x = Box<Pair<I I>> { val: Pair<I I> { fst: 1, snd: 2 } }
+  p(x.val.fst + x.val.snd)
+  0
+}

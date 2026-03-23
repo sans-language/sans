@@ -144,6 +144,7 @@ g tc_has_source = 0
 g tc_declared_vars = 0
 g tc_used_vars = 0
 g tc_warn_enabled = 0
+g mono_depth = 0
 
 tc_init_diags() I {
   if tc_diags == 0 { tc_diags = array<I>() }
@@ -934,13 +935,27 @@ find_dollar_dollar(s:I) I {
 // ------ instantiate_generic_struct: monomorphize a generic struct by mangled name ---------
 // Returns 1 if successfully instantiated, 0 otherwise
 instantiate_generic_struct(sname:I structs:I enums:I mod_exports:I) I {
+  mono_depth = mono_depth + 1
+  if mono_depth > 32 {
+    p("error: generic instantiation depth exceeded (>32 levels) for: " + as_str(sname))
+    exit(1)
+  }
   sname_s = as_str(sname)
   dollar_pos = find_dollar_dollar(sname_s)
-  if dollar_pos < 0 { return 0 }
-  if mhas(structs, "$$generics$$") == 0 { return 0 }
+  if dollar_pos < 0 {
+    mono_depth = mono_depth - 1
+    return 0
+  }
+  if mhas(structs, "$$generics$$") == 0 {
+    mono_depth = mono_depth - 1
+    return 0
+  }
   gen_templates = mget(structs, "$$generics$$")
   base_name = sname_s.substring(0, dollar_pos)
-  if mhas(gen_templates, base_name) == 0 { return 0 }
+  if mhas(gen_templates, base_name) == 0 {
+    mono_depth = mono_depth - 1
+    return 0
+  }
   tmpl = mget(gen_templates, base_name)
   // Extract type args from mangled name
   tmpl_type_params_arr = load64(tmpl + 16)
@@ -1035,6 +1050,7 @@ instantiate_generic_struct(sname:I structs:I enums:I mod_exports:I) I {
   }
   // Cache the monomorphized struct
   mset(structs, sname, inst_fields)
+  mono_depth = mono_depth - 1
   1
 }
 

@@ -462,6 +462,7 @@ run_test "compat_traits"      "$REPO_ROOT/tests/compat/traits.sans"      42
 # Assert builtins
 run_test "assert_pass"        "$REPO_ROOT/tests/fixtures/assert_pass.sans"        0
 run_test "assert_fail"        "$REPO_ROOT/tests/fixtures/assert_fail.sans"        1
+run_test "generic_deep_nesting" "$REPO_ROOT/tests/fixtures/generic_deep_nesting.sans" 0
 
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)
@@ -492,6 +493,7 @@ run_negative_test "neg_wrong_arg_count2"     "$REPO_ROOT/tests/negative/wrong_ar
 run_negative_test "neg_undefined_var3"       "$REPO_ROOT/tests/negative/undefined_var3.sans"        "undefined variable"
 run_negative_test "neg_bad_enum_variant"     "$REPO_ROOT/tests/negative/bad_enum_variant.sans"      "undefined"
 run_negative_test "neg_no_main"              "$REPO_ROOT/tests/negative/no_main.sans"               ""
+run_negative_test "neg_generic_too_deep"     "$REPO_ROOT/tests/negative/generic_too_deep.sans"      "generic instantiation depth exceeded"
 
 # ---------------------------------------------------------------------------
 # Summary
