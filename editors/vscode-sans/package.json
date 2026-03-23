@@ -2,7 +2,7 @@
   "name": "sans-lang",
   "displayName": "Sans Language",
   "description": "Syntax highlighting and hover docs for the Sans programming language",
-  "version": "0.7.2-rc4",
+  "version": "0.7.2-rc5",
   "publisher": "sans-lang",
   "engines": {
     "vscode": "^1.75.0"
