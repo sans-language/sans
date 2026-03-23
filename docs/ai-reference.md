@@ -129,6 +129,14 @@ err(msg)                                S -> R<_>
 err(code msg)                           I S -> R<_> (error with code)
 some(v)                                 T -> O<T>
 none()                                  -> O<T>
+// Assertions (line number in failure msg, exit 1 on fail)
+assert(cond)                            B -> I (fail if false)
+assert_eq(a b)                          I I -> I (fail if a != b)
+assert_ne(a b)                          I I -> I (fail if a == b)
+assert_ok(r)                            R<T> -> I (fail if err)
+assert_err(r)                           R<T> -> I (fail if ok)
+assert_some(o)                          O<T> -> I (fail if none)
+assert_none(o)                          O<T> -> I (fail if some)
 // Result combinators
 r.map(|v:T| U { ... })                 R<T> -> R<U>  (transform ok value)
 r.and_then(|v:T| R<U> { ... })         R<T> -> R<U>  (chain fallible fn)
@@ -312,7 +320,7 @@ file.sans:12:5: error: undefined variable 'foo'   // file:line:col: severity: ms
     foo + 1
     ^                                              // caret points to token
 ```
-Multiple errors reported per build. Warnings also emitted (build continues).
+Multiple errors reported per build. Warnings: unused variables, unreachable code (build continues).
 
 ## Package Manager
 ```

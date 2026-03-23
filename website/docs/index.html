@@ -44,6 +44,7 @@
         <li><a href="#package-manager">Package Manager</a></li>
         <li><a href="#concurrency">Concurrency</a></li>
         <li><a href="#builtins">Built-ins</a></li>
+        <li><a href="#assertions">Assertions</a></li>
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
         <li><a href="#internals">Internals</a></li>
@@ -620,6 +621,28 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
     </table>
     <p>Log levels: 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR</p>
 
+    <h3 id="assertions">Assertions</h3>
+    <p>Built-in assertion functions for testing. Each prints a diagnostic with the source line number on failure and exits with code 1.</p>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>assert(cond)</code></td><td><code>(Bool) -&gt; Int</code></td><td>Fail if <code>cond</code> is false (zero)</td></tr>
+        <tr><td><code>assert_eq(a, b)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>Fail if <code>a != b</code>, prints expected vs got</td></tr>
+        <tr><td><code>assert_ne(a, b)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>Fail if <code>a == b</code>, prints the equal value</td></tr>
+        <tr><td><code>assert_ok(r)</code></td><td><code>(Result&lt;T&gt;) -&gt; Int</code></td><td>Fail if <code>r</code> is an err</td></tr>
+        <tr><td><code>assert_err(r)</code></td><td><code>(Result&lt;T&gt;) -&gt; Int</code></td><td>Fail if <code>r</code> is ok</td></tr>
+        <tr><td><code>assert_some(o)</code></td><td><code>(Option&lt;T&gt;) -&gt; Int</code></td><td>Fail if <code>o</code> is none</td></tr>
+        <tr><td><code>assert_none(o)</code></td><td><code>(Option&lt;T&gt;) -&gt; Int</code></td><td>Fail if <code>o</code> is some</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="fn">assert</span>(<span class="num">1</span> == <span class="num">1</span>)
+<span class="fn">assert_eq</span>(<span class="num">42</span>, <span class="num">42</span>)
+<span class="fn">assert_ne</span>(<span class="num">1</span>, <span class="num">2</span>)
+<span class="fn">assert_ok</span>(<span class="fn">ok</span>(<span class="num">42</span>))
+<span class="fn">assert_err</span>(<span class="fn">err</span>(<span class="str">"bad"</span>))
+<span class="fn">assert_some</span>(<span class="fn">some</span>(<span class="num">1</span>))
+<span class="fn">assert_none</span>(<span class="fn">none</span>())</code></pre>
+
     <h3 id="filesystem">Filesystem &amp; Process</h3>
     <table>
       <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
@@ -935,6 +958,12 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
     foo + 1
     ^</code></pre>
     <p>The compiler collects multiple errors before exiting — all errors in a file are reported in a single pass. Warnings are also emitted for common issues and do not prevent compilation.</p>
+    <h3>Warnings</h3>
+    <p>The compiler emits warnings for:</p>
+    <ul>
+      <li><strong>Unused variables</strong> — declared but never referenced</li>
+      <li><strong>Unreachable code</strong> — statements after a <code>return</code></li>
+    </ul>
 
     <h2>Known Limitations</h2>
     <ul>

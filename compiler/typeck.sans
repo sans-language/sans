@@ -2065,6 +2065,38 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       return make_type(TY_INT)
     }
+    if name == "assert_ne" {
+      if nargs != 2 { tc_error_at(expr, "assert_ne() takes exactly 2 arguments") }
+      check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_type(TY_INT)
+    }
+    if name == "assert_ok" {
+      if nargs != 1 { tc_error_at(expr, "assert_ok() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      tt = type_tag(at)
+      if tt != TY_RESULT && tt != TY_RESULT_ERR { tc_error_at(expr, "assert_ok() requires Result, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "assert_err" {
+      if nargs != 1 { tc_error_at(expr, "assert_err() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      tt = type_tag(at)
+      if tt != TY_RESULT && tt != TY_RESULT_ERR { tc_error_at(expr, "assert_err() requires Result, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "assert_some" {
+      if nargs != 1 { tc_error_at(expr, "assert_some() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if type_tag(at) != TY_OPTION { tc_error_at(expr, "assert_some() requires Option, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "assert_none" {
+      if nargs != 1 { tc_error_at(expr, "assert_none() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if type_tag(at) != TY_OPTION { tc_error_at(expr, "assert_none() requires Option, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
     if name == "system" || name == "sys" {
       if nargs != 1 { tc_error("system() takes exactly 1 argument (cmd)") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
