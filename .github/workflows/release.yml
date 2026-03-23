@@ -130,12 +130,13 @@ jobs:
             mv runtime/json.sans.bak runtime/json.sans
             mv runtime/math.sans.bak runtime/math.sans
 
-            echo "Stage 3: stage2 -> current source (curl compiled separately)"
+            echo "Stage 3: stage2 -> current source (curl + pkg stripped)"
             # Stage2 has no scope_disable, so it can't compile all 18 modules.
-            # Strip curl, build the compiler, then the RESULT has scope_disable
-            # working and can compile curl separately for re-linking.
+            # Strip curl (and pkg which depends on curl's http_get).
             cp compiler/main.sans compiler/main.sans.bak2
             sed -i '' 's/runtime_modules.push("curl")/0/' compiler/main.sans
+            sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
+            sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
             /tmp/sans-stage2 build compiler/main.sans
             mv compiler/main.sans.bak2 compiler/main.sans
             # Now compiler/main has scope_disable working. Rebuild with curl.
