@@ -1266,6 +1266,28 @@ lower_expr(ctx:I expr:I) I {
   else if tag == EX_CALL {
     name = load64(expr + 16)
     args := load64(expr + 24)
+    // assert/assert_eq need line info from expr node
+    if name == "assert" {
+      a0 = lower_expr(ctx, args.get(0))
+      line_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_CONST, line_reg, node_line(expr)))
+      ctx_set_reg_type(ctx, line_reg, IRTY_INT)
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ASSERT, dest, a0, line_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      return dest
+    }
+    if name == "assert_eq" {
+      a0 = lower_expr(ctx, args.get(0))
+      a1 = lower_expr(ctx, args.get(1))
+      line_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst1(IR_CONST, line_reg, node_line(expr)))
+      ctx_set_reg_type(ctx, line_reg, IRTY_INT)
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst3(IR_ASSERT_EQ, dest, a0, a1, line_reg))
+      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      return dest
+    }
     lower_call(ctx, name, args)
   }
 

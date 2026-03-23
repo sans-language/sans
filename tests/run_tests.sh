@@ -459,6 +459,10 @@ run_test "compat_collections" "$REPO_ROOT/tests/compat/collections.sans" 65
 run_test "compat_defer"       "$REPO_ROOT/tests/compat/defer.sans"       0
 run_test "compat_traits"      "$REPO_ROOT/tests/compat/traits.sans"      42
 
+# Assert builtins
+run_test "assert_pass"        "$REPO_ROOT/tests/fixtures/assert_pass.sans"        0
+run_test "assert_fail"        "$REPO_ROOT/tests/fixtures/assert_fail.sans"        1
+
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)
 # ---------------------------------------------------------------------------

@@ -2054,6 +2054,17 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("exit() code must be Int, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
+    if name == "assert" {
+      if nargs != 1 { tc_error_at(expr, "assert() takes exactly 1 argument") }
+      check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_type(TY_INT)
+    }
+    if name == "assert_eq" {
+      if nargs != 2 { tc_error_at(expr, "assert_eq() takes exactly 2 arguments") }
+      check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      return make_type(TY_INT)
+    }
     if name == "system" || name == "sys" {
       if nargs != 1 { tc_error("system() takes exactly 1 argument (cmd)") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
