@@ -1,0 +1,13 @@
+main() I {
+  assert(1 == 1)
+  assert(42)
+  assert_eq(42, 42)
+  assert_eq(0, 0)
+  assert_ne(1, 2)
+  assert_ok(ok(42))
+  assert_err(err("bad"))
+  assert_some(some(1))
+  assert_none(none())
+  p("all assertions passed")
+  0
+}

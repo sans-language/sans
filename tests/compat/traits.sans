@@ -1,0 +1,9 @@
+// since: 0.7.3
+trait Valued { fn value(self) Int }
+struct A { x Int }
+impl Valued for A { fn value(self) Int { self.x } }
+main() I {
+  a = A { x: 42 }
+  d = a as dyn Valued
+  d.value()
+}

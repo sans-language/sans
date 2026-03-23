@@ -1,0 +1,9 @@
+helper() I {
+  return 10
+  y = 20
+  y
+}
+
+main() I {
+  helper()
+}

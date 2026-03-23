@@ -386,6 +386,8 @@ run_test "scope_loop_alloc"          "$REPO_ROOT/tests/fixtures/scope_loop_alloc
 run_test "scope_option_return"       "$REPO_ROOT/tests/fixtures/scope_option_return.sans"       10
 run_test "scope_result_return"       "$REPO_ROOT/tests/fixtures/scope_result_return.sans"       21
 run_test "scope_multiple_returns"    "$REPO_ROOT/tests/fixtures/scope_multiple_returns.sans"    42
+run_test "scope_gc_depth2"           "$REPO_ROOT/tests/fixtures/scope_gc_depth2.sans"           5
+run_test "scope_gc_nested_array"     "$REPO_ROOT/tests/fixtures/scope_gc_nested_array.sans"     10
 
 # ---------------------------------------------------------------------------
 # Concurrency (non-spawn)
@@ -439,6 +441,27 @@ run_test "import_struct"  "$REPO_ROOT/tests/fixtures/import_struct/main.sans"  2
 run_test "lambda_cross_module" "$REPO_ROOT/tests/fixtures/lambda_cross_module/main.sans" 15
 run_test "visibility_pub"     "$REPO_ROOT/tests/fixtures/visibility_pub/main.sans"      17
 run_test "import_alias"       "$REPO_ROOT/tests/fixtures/import_alias/main.sans"        14
+run_test "warnings_test"     "$REPO_ROOT/tests/fixtures/warnings_test.sans"            42
+run_test "unreachable_test"  "$REPO_ROOT/tests/fixtures/unreachable_test.sans"         10
+
+# ---------------------------------------------------------------------------
+# Compatibility tests (frozen — must pass on all future versions)
+# ---------------------------------------------------------------------------
+
+run_test "compat_types"       "$REPO_ROOT/tests/compat/types.sans"       47
+run_test "compat_structs"     "$REPO_ROOT/tests/compat/structs.sans"     7
+run_test "compat_enums"       "$REPO_ROOT/tests/compat/enums.sans"       2
+run_test "compat_closures"    "$REPO_ROOT/tests/compat/closures.sans"    42
+run_test "compat_result"      "$REPO_ROOT/tests/compat/result.sans"      0
+run_test "compat_option"      "$REPO_ROOT/tests/compat/option.sans"      53
+run_test "compat_channels"    "$REPO_ROOT/tests/compat/channels.sans"    42
+run_test "compat_collections" "$REPO_ROOT/tests/compat/collections.sans" 65
+run_test "compat_defer"       "$REPO_ROOT/tests/compat/defer.sans"       0
+run_test "compat_traits"      "$REPO_ROOT/tests/compat/traits.sans"      42
+
+# Assert builtins
+run_test "assert_pass"        "$REPO_ROOT/tests/fixtures/assert_pass.sans"        0
+run_test "assert_fail"        "$REPO_ROOT/tests/fixtures/assert_fail.sans"        1
 
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)

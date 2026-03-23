@@ -1,0 +1,6 @@
+// since: 0.7.3
+main() I {
+  let (tx, rx) = channel<Int>(1)
+  tx.send(42)
+  rx.recv()
+}

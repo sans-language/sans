@@ -939,6 +939,69 @@ cg_fmode_a(cg:I) S {
   name
 }
 
+cg_fmt_assert(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_assert") { return mget(pool, "__fmt_assert") }
+  name = "@fmt.assert"
+  mset(pool, "__fmt_assert", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [30 x i8] c\"assertion failed at line %ld\\0A\\00\"")
+  name
+}
+
+cg_fmt_assert_eq(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_assert_eq") { return mget(pool, "__fmt_assert_eq") }
+  name = "@fmt.assert_eq"
+  mset(pool, "__fmt_assert_eq", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [53 x i8] c\"assert_eq failed: expected %ld, got %ld at line %ld\\0A\\00\"")
+  name
+}
+
+cg_fmt_assert_ne(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_assert_ne") { return mget(pool, "__fmt_assert_ne") }
+  name = "@fmt.assert_ne"
+  mset(pool, "__fmt_assert_ne", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [53 x i8] c\"assert_ne failed: values are equal: %ld at line %ld\\0A\\00\"")
+  name
+}
+
+cg_fmt_assert_ok(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_assert_ok") { return mget(pool, "__fmt_assert_ok") }
+  name = "@fmt.assert_ok"
+  mset(pool, "__fmt_assert_ok", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [39 x i8] c\"assert_ok failed: got err at line %ld\\0A\\00\"")
+  name
+}
+
+cg_fmt_assert_err(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_assert_err") { return mget(pool, "__fmt_assert_err") }
+  name = "@fmt.assert_err"
+  mset(pool, "__fmt_assert_err", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [39 x i8] c\"assert_err failed: got ok at line %ld\\0A\\00\"")
+  name
+}
+
+cg_fmt_assert_some(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_assert_some") { return mget(pool, "__fmt_assert_some") }
+  name = "@fmt.assert_some"
+  mset(pool, "__fmt_assert_some", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [42 x i8] c\"assert_some failed: got none at line %ld\\0A\\00\"")
+  name
+}
+
+cg_fmt_assert_none(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_assert_none") { return mget(pool, "__fmt_assert_none") }
+  name = "@fmt.assert_none"
+  mset(pool, "__fmt_assert_none", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [42 x i8] c\"assert_none failed: got some at line %ld\\0A\\00\"")
+  name
+}
+
 // Generate a unique label suffix from a separate label counter
 // (must NOT consume SSA register numbers)
 cg_label_id(cg:I) S {
@@ -4701,6 +4764,164 @@ compile_inst(cg:I inst:I) I {
   if op == IR_EXIT {
     val = cg_get_val(cg, ir_field(inst, 16))
     emit(cg, "  call void @exit(i64 " + val + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_ASSERT {
+    cond_val = cg_get_val(cg, ir_field(inst, 16))
+    line_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    fail_lbl = "assert_fail_" + uid
+    ok_lbl = "assert_ok_" + uid
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp eq i64 " + cond_val + ", 0")
+    emit(cg, "  br i1 " + cmp + ", label %" + fail_lbl + ", label %" + ok_lbl)
+    emit(cg, fail_lbl + ":")
+    fmt = cg_fmt_assert(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + line_val + ")")
+    emit(cg, "  call void @exit(i64 1)")
+    emit(cg, "  unreachable")
+    emit(cg, ok_lbl + ":")
+    cg_set_current_block(cg, ok_lbl)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_ASSERT_EQ {
+    a_val = cg_get_val(cg, ir_field(inst, 16))
+    b_val = cg_get_val(cg, ir_field(inst, 24))
+    line_val = cg_get_val(cg, ir_field(inst, 32))
+    uid = cg_label_id(cg)
+    fail_lbl = "aeq_fail_" + uid
+    ok_lbl = "aeq_ok_" + uid
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp ne i64 " + a_val + ", " + b_val)
+    emit(cg, "  br i1 " + cmp + ", label %" + fail_lbl + ", label %" + ok_lbl)
+    emit(cg, fail_lbl + ":")
+    fmt = cg_fmt_assert_eq(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + a_val + ", i64 " + b_val + ", i64 " + line_val + ")")
+    emit(cg, "  call void @exit(i64 1)")
+    emit(cg, "  unreachable")
+    emit(cg, ok_lbl + ":")
+    cg_set_current_block(cg, ok_lbl)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_ASSERT_NE {
+    a_val = cg_get_val(cg, ir_field(inst, 16))
+    b_val = cg_get_val(cg, ir_field(inst, 24))
+    line_val = cg_get_val(cg, ir_field(inst, 32))
+    uid = cg_label_id(cg)
+    fail_lbl = "ane_fail_" + uid
+    ok_lbl = "ane_ok_" + uid
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp eq i64 " + a_val + ", " + b_val)
+    emit(cg, "  br i1 " + cmp + ", label %" + fail_lbl + ", label %" + ok_lbl)
+    emit(cg, fail_lbl + ":")
+    fmt = cg_fmt_assert_ne(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + a_val + ", i64 " + line_val + ")")
+    emit(cg, "  call void @exit(i64 1)")
+    emit(cg, "  unreachable")
+    emit(cg, ok_lbl + ":")
+    cg_set_current_block(cg, ok_lbl)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_ASSERT_OK {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    line_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    fail_lbl = "aok_fail_" + uid
+    ok_lbl = "aok_ok_" + uid
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + ptr_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp ne i64 " + tag + ", 0")
+    emit(cg, "  br i1 " + cmp + ", label %" + fail_lbl + ", label %" + ok_lbl)
+    emit(cg, fail_lbl + ":")
+    fmt = cg_fmt_assert_ok(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + line_val + ")")
+    emit(cg, "  call void @exit(i64 1)")
+    emit(cg, "  unreachable")
+    emit(cg, ok_lbl + ":")
+    cg_set_current_block(cg, ok_lbl)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_ASSERT_ERR {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    line_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    fail_lbl = "aerr_fail_" + uid
+    ok_lbl = "aerr_ok_" + uid
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + ptr_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp ne i64 " + tag + ", 1")
+    emit(cg, "  br i1 " + cmp + ", label %" + fail_lbl + ", label %" + ok_lbl)
+    emit(cg, fail_lbl + ":")
+    fmt = cg_fmt_assert_err(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + line_val + ")")
+    emit(cg, "  call void @exit(i64 1)")
+    emit(cg, "  unreachable")
+    emit(cg, ok_lbl + ":")
+    cg_set_current_block(cg, ok_lbl)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_ASSERT_SOME {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    line_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    fail_lbl = "asome_fail_" + uid
+    ok_lbl = "asome_ok_" + uid
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + ptr_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp ne i64 " + tag + ", 1")
+    emit(cg, "  br i1 " + cmp + ", label %" + fail_lbl + ", label %" + ok_lbl)
+    emit(cg, fail_lbl + ":")
+    fmt = cg_fmt_assert_some(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + line_val + ")")
+    emit(cg, "  call void @exit(i64 1)")
+    emit(cg, "  unreachable")
+    emit(cg, ok_lbl + ":")
+    cg_set_current_block(cg, ok_lbl)
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_ASSERT_NONE {
+    ptr_val = cg_get_val(cg, ir_field(inst, 16))
+    line_val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    fail_lbl = "anone_fail_" + uid
+    ok_lbl = "anone_ok_" + uid
+    rp = cg_fresh_reg(cg)
+    emit(cg, "  " + rp + " = inttoptr i64 " + ptr_val + " to ptr")
+    tag = cg_fresh_reg(cg)
+    emit(cg, "  " + tag + " = load i64, ptr " + rp)
+    cmp = cg_fresh_reg(cg)
+    emit(cg, "  " + cmp + " = icmp ne i64 " + tag + ", 0")
+    emit(cg, "  br i1 " + cmp + ", label %" + fail_lbl + ", label %" + ok_lbl)
+    emit(cg, fail_lbl + ":")
+    fmt = cg_fmt_assert_none(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", i64 " + line_val + ")")
+    emit(cg, "  call void @exit(i64 1)")
+    emit(cg, "  unreachable")
+    emit(cg, ok_lbl + ":")
+    cg_set_current_block(cg, ok_lbl)
     cg_set_val(cg, dest, "0")
     return 0
   }

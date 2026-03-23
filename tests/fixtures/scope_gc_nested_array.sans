@@ -1,0 +1,13 @@
+make_pair() [S] {
+  a = "abc" + "de"
+  b = "fg" + "hij"
+  arr = [a b]
+  arr
+}
+
+main() I {
+  result = make_pair()
+  s1 = result[0]
+  s2 = result[1]
+  slen(s1) + slen(s2)
+}

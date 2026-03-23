@@ -224,6 +224,35 @@ String comparison (`==`, `!=`) is supported.
 | `time()` / `now()` | `() -> Int` | Current Unix timestamp (seconds) |
 | `random(max)` / `rand(max)` | `(Int) -> Int` | Cryptographically seeded random integer in `[0, max)` |
 
+### Assertions
+
+Built-in assertion functions for testing. Each prints a diagnostic with the source line number on failure and exits with code 1.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `assert(cond)` | `(Bool) -> Int` | Fail if `cond` is false (zero) |
+| `assert_eq(a, b)` | `(Int, Int) -> Int` | Fail if `a != b`, prints expected vs got |
+| `assert_ne(a, b)` | `(Int, Int) -> Int` | Fail if `a == b`, prints the equal value |
+| `assert_ok(r)` | `(Result<T>) -> Int` | Fail if `r` is an err |
+| `assert_err(r)` | `(Result<T>) -> Int` | Fail if `r` is ok |
+| `assert_some(o)` | `(Option<T>) -> Int` | Fail if `o` is none |
+| `assert_none(o)` | `(Option<T>) -> Int` | Fail if `o` is some |
+
+```sans
+assert(1 == 1)
+assert_eq(42, 42)
+assert_ne(1, 2)
+assert_ok(ok(42))
+assert_err(err("bad"))
+assert_some(some(1))
+assert_none(none())
+```
+
+Failure output example:
+```
+assert_eq failed: expected 42, got 99 at line 5
+```
+
 ### Filesystem & Process
 
 | Function | Alias | Signature | Description |
@@ -1119,9 +1148,15 @@ file.sans:12:5: error: undefined variable 'foo'
 
 Format: `file:line:col: severity: message`, followed by the source line and a caret (`^`) pointing to the offending token.
 
-The compiler collects multiple errors before exiting, so all errors in a file are reported in a single pass. Warnings are also emitted for common issues (e.g. unused variables).
+The compiler collects multiple errors before exiting, so all errors in a file are reported in a single pass.
 
 Error severities: `error` (build fails), `warning` (build continues).
+
+### Warnings
+
+The compiler emits warnings for:
+- **Unused variables** — declared but never referenced
+- **Unreachable code** — statements after a `return`
 
 ### Expression Interpolation
 
@@ -1264,10 +1299,10 @@ The compiler is 7 modules in `compiler/` (~11,600 LOC): lexer, parser, typeck, c
 
 ### Reserved Builtin Names
 
-User-defined functions take precedence over builtins of the same name. However, to avoid confusion, avoid redefining builtins unless intentional. The following names have builtin implementations: `p`, `print`, `str`, `stoi`, `itos`, `itof`, `ftoi`, `ftos`, `fr`, `fw`, `fa`, `fe`, `file_read`, `file_write`, `file_append`, `file_exists`, `listen`, `serve`, `serve_file`, `serve_tls`, `alloc`, `dealloc`, `load8`, `load16`, `load32`, `load64`, `store8`, `store16`, `store32`, `store64`, `mcpy`, `mcmp`, `slen`, `wfd`, `exit`, `system`, `sys`, `ok`, `err`, `map`, `M`, `jp`, `jparse`, `jfy`, `jo`, `ja`, `js`, `ji`, `jb`, `jn`, `hg`, `hp`, `sock`, `saccept`, `srecv`, `ssend`, `sclose`, `args`, `spawn`, `signal_handler`, `signal_check`, and all other documented built-in names.
+User-defined functions take precedence over builtins of the same name. However, to avoid confusion, avoid redefining builtins unless intentional. The following names have builtin implementations: `p`, `print`, `str`, `stoi`, `itos`, `itof`, `ftoi`, `ftos`, `fr`, `fw`, `fa`, `fe`, `file_read`, `file_write`, `file_append`, `file_exists`, `listen`, `serve`, `serve_file`, `serve_tls`, `alloc`, `dealloc`, `load8`, `load16`, `load32`, `load64`, `store8`, `store16`, `store32`, `store64`, `mcpy`, `mcmp`, `slen`, `wfd`, `exit`, `system`, `sys`, `ok`, `err`, `map`, `M`, `jp`, `jparse`, `jfy`, `jo`, `ja`, `js`, `ji`, `jb`, `jn`, `hg`, `hp`, `sock`, `saccept`, `srecv`, `ssend`, `sclose`, `args`, `spawn`, `signal_handler`, `signal_check`, `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none`, and all other documented built-in names.
 
 ---
 
 ## Known Limitations
 
-- **Scope GC**: Automatic scope-based memory management frees heap allocations on function return, including nested container contents and global-escaped values. The compiler itself must be built from the bootstrap binary. Thread safety of scope globals (`rc_alloc_head`/`rc_scope_head`) is not guaranteed.
+- **Scope GC**: Automatic scope-based memory management frees heap allocations on function return, including nested container contents (depth-2+) and global-escaped values. The compiler itself must be built from the bootstrap binary. Thread safety of scope globals (`rc_alloc_head`/`rc_scope_head`) is not guaranteed.

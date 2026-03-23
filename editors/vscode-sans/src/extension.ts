@@ -388,6 +388,20 @@ const HOVER_DATA: Record<string, string> = {
     // HttpRequest methods (path/method)
     'path': '**path**() -> String\n\nGet request URL path.\n\nUsage: `req.path()`',
     'method': '**method**() -> String\n\nGet request HTTP method.\n\nUsage: `req.method()  // "GET"`',
+
+    // Assertions
+    'assert': '**assert**(cond: Bool) -> Int\n\nFail if `cond` is false (zero). Prints line number on failure and exits with code 1.\n\nUsage: `assert(x > 0)`',
+    'assert_eq': '**assert_eq**(a: Int, b: Int) -> Int\n\nFail if `a != b`. Prints expected vs got values and line number.\n\nUsage: `assert_eq(result, 42)`',
+    'assert_ne': '**assert_ne**(a: Int, b: Int) -> Int\n\nFail if `a == b`. Prints the equal value and line number.\n\nUsage: `assert_ne(x, 0)`',
+    'assert_ok': '**assert_ok**(r: Result<T>) -> Int\n\nFail if Result is err. Prints line number.\n\nUsage: `assert_ok(ok(42))`',
+    'assert_err': '**assert_err**(r: Result<T>) -> Int\n\nFail if Result is ok. Prints line number.\n\nUsage: `assert_err(err("bad"))`',
+    'assert_some': '**assert_some**(o: Option<T>) -> Int\n\nFail if Option is none. Prints line number.\n\nUsage: `assert_some(some(1))`',
+    'assert_none': '**assert_none**(o: Option<T>) -> Int\n\nFail if Option is some. Prints line number.\n\nUsage: `assert_none(none())`',
+
+    // Keywords
+    'defer': '**defer** statement\n\nDefer execution of a statement until the end of the current scope.\n\nUsage: `defer close(fd)`',
+    'select': '**select** { ... }\n\nMultiplex over multiple channel operations. Picks the first ready channel.\n\nUsage:\n```\nselect {\n  v = rx.recv() => handle(v)\n  timeout 1000 => p("timeout")\n}\n```',
+    'pub': '**pub** keyword\n\nMark a function or global as public (exported from module).\n\nUsage: `pub f(x:I) = x*2`',
 };
 
 export function activate(context: vscode.ExtensionContext) {

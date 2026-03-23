@@ -1,0 +1,5 @@
+// since: 0.7.3
+g acc = 0
+add(n:I) I { acc = acc * 10 + n; 0 }
+helper() I { defer add(1); defer add(2); 0 }
+main() I { helper(); acc - 21 }
