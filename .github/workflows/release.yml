@@ -86,6 +86,9 @@ jobs:
           chmod +x /tmp/wrap/rm
           PATH="/tmp/wrap:$PATH" ./sans build compiler/main.sans
           # Collect .ll files
+          echo "=== .ll files in /tmp/ ==="
+          ls -la /tmp/sans_*_runtime.ll 2>/dev/null || echo "no runtime .ll files in /tmp"
+          ls -la /tmp/sans_curl* 2>/dev/null || echo "no curl files in /tmp"
           [ -f compiler/main.ll ] && mv compiler/main.ll ll-output/main.ll
           for f in /tmp/sans_*_runtime.ll; do
             [ -f "$f" ] && cp "$f" ll-output/
