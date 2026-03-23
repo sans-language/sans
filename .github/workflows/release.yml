@@ -111,6 +111,9 @@ jobs:
             sed -i '' 's/^import "pkg"/\/\/ import "pkg"/' compiler/main.sans
             sed -i '' 's/pkg_main(argv)/0/' compiler/main.sans
             sed -i '' 's/scope_disable()/0/' compiler/main.sans
+            # Strip curl — stage2 binary has no scope_disable so it can't compile
+            # all 18 runtime modules. Curl will be compiled in Stage 3.
+            sed -i '' 's/runtime_modules.push("curl")/0/' compiler/main.sans
             # Strip builtins added after v0.4.0 that appear in main.sans and runtime
             sed -i '' 's/sh("brew[^"]*")/""/' compiler/main.sans
             sed -i '' 's/time() \* 1000 + random(9999)/0/' compiler/main.sans
@@ -127,8 +130,17 @@ jobs:
             mv runtime/json.sans.bak runtime/json.sans
             mv runtime/math.sans.bak runtime/math.sans
 
-            echo "Stage 3: stage2 -> full current source"
+            echo "Stage 3: stage2 -> current source (curl compiled separately)"
+            # Stage2 has no scope_disable, so it can't compile all 18 modules.
+            # Strip curl, build the compiler, then the RESULT has scope_disable
+            # working and can compile curl separately for re-linking.
+            cp compiler/main.sans compiler/main.sans.bak2
+            sed -i '' 's/runtime_modules.push("curl")/0/' compiler/main.sans
             /tmp/sans-stage2 build compiler/main.sans
+            mv compiler/main.sans.bak2 compiler/main.sans
+            # Now compiler/main has scope_disable working. Rebuild with curl.
+            echo "Stage 3b: stage3 -> full current source with curl"
+            ./compiler/main build compiler/main.sans
           fi
           # Fix dylib paths for portability — use @rpath so binary works with any Homebrew prefix
           echo "=== Before rpath fix ==="
