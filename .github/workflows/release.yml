@@ -76,7 +76,13 @@ jobs:
       - name: Build self-hosted compiler
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
+          echo "=== Bootstrap version ==="
+          ./sans --version
+          echo "=== Building compiler ==="
           ./sans build compiler/main.sans
+          echo "=== Verify compiler built ==="
+          ls -la compiler/main
+          ./compiler/main --version
           # Fix dylib paths for portability — use @rpath so binary works with any Homebrew prefix
           echo "=== Before rpath fix ==="
           otool -L compiler/main | grep -E "ssl|crypto"
