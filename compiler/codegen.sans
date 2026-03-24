@@ -3416,7 +3416,7 @@ compile_inst(cg:I inst:I) I {
   // ------ JSON (66-82) --- runtime calls ------
   if op == IR_JSON_PARSE {
     compile_rt1(cg, inst, "sans_json_parse")
-    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 3)
+    emit_scope_track(cg, cg_get_val(cg, ir_dest(inst)), 4)
     return 0
   }
   if op == IR_JSON_OBJECT {

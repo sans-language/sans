@@ -101,7 +101,7 @@ js(s)             json_string(s)        S -> JsonValue
 ji(n)             json_int(n)           I -> JsonValue
 jb(b)             json_bool(b)          B -> JsonValue
 jn()              json_null()           -> JsonValue
-jp(s)             json_parse(s)         S -> JsonValue — handles int/float/string/bool/null/object/array
+jp(s)             json_parse(s)         S -> R<J> — handles int/float/string/bool/null/object/array; use ! to unwrap (BREAKING v0.8.1: was J, now R<J>); max depth 512
 jfy(v)            json_stringify(v)     JsonValue -> S
 hg(url)           http_get(url)         S -> HttpResponse
 hp(url body ct)   http_post(u b c)      S S S -> HttpResponse
@@ -319,6 +319,15 @@ getenv/genv  remove/rm  listdir/ls  sh/shell  J=JsonValue
 
 ## Runtime Safety
 ```
+// json_parse returns R<J> (BREAKING v0.8.1) — use ! to unwrap
+j = jp("{\"k\":1}")!      // unwrap or exit
+r = jp(bad_input)         // r.is_err == true, descriptive error message
+
+// JSON depth limit — max 512 nesting levels, error on overflow
+jp(deep_str)              // err("JSON parse error: maximum nesting depth exceeded")
+
+// Scope GC walks JSON — returning nested JSON from fn is safe (no use-after-free)
+
 // Array bounds — exit with error on out-of-bounds GET or SET
 a = [1 2 3]; a[10]        // error: index out of bounds: index 10 but length is 3
 

@@ -548,7 +548,7 @@ m.<span class="fn">get</span>(<span class="str">"z"</span>).<span class="fn">unw
         <tr><td><code>json_int(n)</code></td><td><code>ji</code></td><td><code>(Int) -&gt; JsonValue</code></td></tr>
         <tr><td><code>json_bool(b)</code></td><td><code>jb</code></td><td><code>(Bool) -&gt; JsonValue</code></td></tr>
         <tr><td><code>json_null()</code></td><td><code>jn</code></td><td><code>() -&gt; JsonValue</code></td></tr>
-        <tr><td><code>json_parse(s)</code></td><td><code>jp</code></td><td><code>(String) -&gt; JsonValue</code> — handles int, float, string, bool, null, object, array</td></tr>
+        <tr><td><code>json_parse(s)</code></td><td><code>jp</code></td><td><code>(String) -&gt; Result&lt;JsonValue&gt;</code> — parses int, float, string, bool, null, object, array. Returns error on invalid JSON or depth &gt; 512. <strong>Breaking (v0.8.1):</strong> was <code>JsonValue</code>; add <code>!</code> to unwrap.</td></tr>
         <tr><td><code>json_stringify(v)</code></td><td><code>jfy</code></td><td><code>(JsonValue) -&gt; String</code></td></tr>
       </tbody>
     </table>
@@ -982,6 +982,26 @@ a[10] = 5 // error: index out of bounds: index 10 but length is 3</code></pre>
     <p><code>char_at()</code> is bounds-checked at runtime:</p>
     <pre><code>s = "hi"
 s.char_at(99)  // error: string index out of bounds: index 99 but length is 2</code></pre>
+
+    <h3>JSON Parse Returns Result (v0.8.1 Breaking Change)</h3>
+    <p><code>json_parse(s)</code> / <code>jp(s)</code> now returns <code>Result&lt;JsonValue&gt;</code> instead of <code>JsonValue</code>. On invalid input, it returns an error Result with a descriptive message instead of a null JsonValue.</p>
+    <pre><code>// Before (v0.8.0):
+j = jp("{\"name\":\"Alice\"}")    // JsonValue (null on error)
+
+// After (v0.8.1+):
+j = jp("{\"name\":\"Alice\"}")!   // unwrap Result to get JsonValue
+// or handle the error:
+r = jp(input)
+if r.is_err { p("bad json") } else { r!.get("name") }</code></pre>
+    <p><strong>Migration:</strong> Add <code>!</code> after every <code>json_parse()</code> / <code>jp()</code> call, or use <code>?</code> to propagate the error.</p>
+
+    <h3>JSON Recursion Depth Limit</h3>
+    <p>JSON parsing enforces a maximum nesting depth of 512 levels. Inputs with deeper nesting return an error Result:</p>
+    <pre><code>r = jp(deeply_nested_string)
+// r.is_err == true, r.error() == "JSON parse error: maximum nesting depth exceeded"</code></pre>
+
+    <h3>Scope GC Walks JSON Types</h3>
+    <p>Returning nested JSON values from functions no longer causes use-after-free. The scope-based garbage collector now walks JSON object and array trees, promoting all referenced memory to the caller's scope on return.</p>
 
     <h3>SIGPIPE Handling</h3>
     <p>HTTP and HTTPS servers automatically ignore SIGPIPE so that client disconnects during a write do not crash the server process.</p>

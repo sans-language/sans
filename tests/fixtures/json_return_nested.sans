@@ -1,0 +1,22 @@
+// Test that nested JSON survives scope GC when returned from function
+build_json() J {
+  obj = json_object()
+  inner = json_object()
+  inner.set("val", json_int(99))
+  obj.set("nested", inner)
+  arr = json_array()
+  arr.push(json_int(1))
+  arr.push(json_int(2))
+  obj.set("items", arr)
+  obj
+}
+
+main() I {
+  j = build_json()
+  v = j.get("nested").get("val").get_int()
+  if v != 99 { return 1 }
+  a = j.get("items")
+  if a.get_index(0).get_int() != 1 { return 2 }
+  if a.get_index(1).get_int() != 2 { return 3 }
+  0
+}

@@ -1,0 +1,6 @@
+// Test that json_parse with null/empty returns Err
+main() I {
+  r = json_parse("")
+  if r.is_err() != true { return 1 }
+  0
+}

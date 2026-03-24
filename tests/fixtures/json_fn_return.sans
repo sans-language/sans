@@ -1,7 +1,7 @@
 // Test that J return type preserves JsonValue method dispatch across functions
 // Uses jp() which returns a fresh parse (not affected by scope GC of builder calls)
 read_json(s: S) J {
-  jp(s)
+  jp(s)!
 }
 
 main() I {
