@@ -2129,6 +2129,40 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if nargs != 0 { tc_error("signal_check() takes no arguments") }
       return make_type(TY_INT)
     }
+    if name == "setjmp" {
+      if nargs != 1 { tc_error("setjmp() takes exactly 1 argument (buf)") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("setjmp() buf must be Int, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "longjmp" {
+      if nargs != 2 { tc_error("longjmp() takes exactly 2 arguments (buf, val)") }
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at0) != 1 { tc_error("longjmp() buf must be Int, got " + type_to_string(at0)) }
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at1) != 1 { tc_error("longjmp() val must be Int, got " + type_to_string(at1)) }
+      return make_type(TY_INT)
+    }
+    if name == "panic_is_active" {
+      if nargs != 0 { tc_error("panic_is_active() takes no arguments") }
+      return make_type(TY_INT)
+    }
+    if name == "panic_enable" {
+      if nargs != 0 { tc_error("panic_enable() takes no arguments") }
+      return make_type(TY_INT)
+    }
+    if name == "panic_disable" {
+      if nargs != 0 { tc_error("panic_disable() takes no arguments") }
+      return make_type(TY_INT)
+    }
+    if name == "panic_get_buf" {
+      if nargs != 0 { tc_error("panic_get_buf() takes no arguments") }
+      return make_type(TY_INT)
+    }
+    if name == "panic_fire" {
+      if nargs != 0 { tc_error("panic_fire() takes no arguments") }
+      return make_type(TY_INT)
+    }
     if name == "spoll" {
       if nargs != 2 { tc_error("spoll() takes exactly 2 arguments (fd, timeout_ms)") }
       at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)

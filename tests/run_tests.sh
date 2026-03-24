@@ -515,6 +515,9 @@ run_test "bounds_check_array_get" "$REPO_ROOT/tests/fixtures/bounds_check_array_
 # Bounds checking
 run_test "bounds_check_string"  "$REPO_ROOT/tests/fixtures/bounds_check_string.sans"  0
 
+# Panic recovery
+run_test "unwrap_panic_recovery" "$REPO_ROOT/tests/fixtures/unwrap_panic_recovery.sans" 30
+
 # ---------------------------------------------------------------------------
 # Runtime error tests (expected to compile but fail at runtime)
 # ---------------------------------------------------------------------------
