@@ -3,7 +3,6 @@
 [![Release](https://img.shields.io/github/v/release/sans-language/sans?style=flat-square)](https://github.com/sans-language/sans/releases)
 [![License](https://img.shields.io/github/license/sans-language/sans?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue?style=flat-square)]()
-[![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-green?style=flat-square)]()
 
 A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
 
