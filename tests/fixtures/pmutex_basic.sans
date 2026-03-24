@@ -1,0 +1,7 @@
+main() I {
+  m = alloc(64)
+  pmutex_init(m)
+  pmutex_lock(m)
+  pmutex_unlock(m)
+  42
+}

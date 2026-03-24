@@ -4532,6 +4532,33 @@ compile_inst(cg:I inst:I) I {
   if op == IR_LOG_SET_LEVEL { return compile_rt1(cg, inst, "sans_log_set_level") }
   if op == IR_GET_LOG_LEVEL { return compile_rt0(cg, inst, "sans_get_log_level") }
   if op == IR_SET_LOG_LEVEL { return compile_rt1(cg, inst, "sans_set_log_level") }
+  if op == IR_PMUTEX_INIT {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i32 @pthread_mutex_init(ptr " + p + ", ptr null)")
+    cg_set_val(cg, ir_dest(inst), "0")
+    return 0
+  }
+  if op == IR_PMUTEX_LOCK {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i32 @pthread_mutex_lock(ptr " + p + ")")
+    cg_set_val(cg, ir_dest(inst), "0")
+    return 0
+  }
+  if op == IR_PMUTEX_UNLOCK {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i32 @pthread_mutex_unlock(ptr " + p + ")")
+    cg_set_val(cg, ir_dest(inst), "0")
+    return 0
+  }
 
   // ------ Low-Level Memory (126-135) ------
   if op == IR_LOAD8 {

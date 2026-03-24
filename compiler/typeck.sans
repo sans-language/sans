@@ -1530,6 +1530,24 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("set_log_level() requires Int argument, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
+    if name == "pmutex_init" {
+      if nargs != 1 { tc_error("pmutex_init() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("pmutex_init() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "pmutex_lock" {
+      if nargs != 1 { tc_error("pmutex_lock() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("pmutex_lock() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "pmutex_unlock" {
+      if nargs != 1 { tc_error("pmutex_unlock() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("pmutex_unlock() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
     if name == "print_err" {
       if nargs != 1 { tc_error("print_err() takes exactly 1 argument") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
