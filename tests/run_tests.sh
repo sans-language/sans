@@ -445,6 +445,7 @@ run_test "spawn_closure_test"        "$REPO_ROOT/tests/fixtures/spawn_closure_te
 run_test "channel_bounded_full"      "$REPO_ROOT/tests/fixtures/channel_bounded_full.sans"      6
 run_test "thread_join_order"         "$REPO_ROOT/tests/fixtures/thread_join_order.sans"         21
 run_test "pmutex_basic"              "$REPO_ROOT/tests/fixtures/pmutex_basic.sans"              42
+run_test "server_setters"            "$REPO_ROOT/tests/fixtures/server_setters.sans"            0
 
 # ---------------------------------------------------------------------------
 # Additional coverage

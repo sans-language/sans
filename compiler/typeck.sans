@@ -1548,6 +1548,54 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("pmutex_unlock() requires Int argument, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
+    if name == "set_max_workers" {
+      if nargs != 1 { tc_error("set_max_workers() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_max_workers() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "set_read_timeout" {
+      if nargs != 1 { tc_error("set_read_timeout() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_read_timeout() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "set_keepalive_timeout" {
+      if nargs != 1 { tc_error("set_keepalive_timeout() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_keepalive_timeout() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "set_drain_timeout" {
+      if nargs != 1 { tc_error("set_drain_timeout() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_drain_timeout() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "set_max_body" {
+      if nargs != 1 { tc_error("set_max_body() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_max_body() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "set_max_headers" {
+      if nargs != 1 { tc_error("set_max_headers() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_max_headers() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "set_max_header_count" {
+      if nargs != 1 { tc_error("set_max_header_count() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_max_header_count() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
+    if name == "set_max_url" {
+      if nargs != 1 { tc_error("set_max_url() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("set_max_url() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_INT)
+    }
     if name == "print_err" {
       if nargs != 1 { tc_error("print_err() takes exactly 1 argument") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)

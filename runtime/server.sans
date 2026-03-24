@@ -1,3 +1,24 @@
+// ------ Server Configuration Globals ------
+g sans_max_workers = 256
+g sans_active_workers = 0
+g sans_worker_mutex = 0
+g sans_read_timeout_ms = 30000
+g sans_keepalive_timeout_ms = 60000
+g sans_drain_timeout_ms = 5000
+g sans_max_body_size = 1048576
+g sans_max_header_size = 8192
+g sans_max_header_count = 100
+g sans_max_url_len = 8192
+
+sans_set_max_workers(n:I) I { sans_max_workers = n; 0 }
+sans_set_read_timeout(n:I) I { sans_read_timeout_ms = n * 1000; 0 }
+sans_set_keepalive_timeout(n:I) I { sans_keepalive_timeout_ms = n * 1000; 0 }
+sans_set_drain_timeout(n:I) I { sans_drain_timeout_ms = n * 1000; 0 }
+sans_set_max_body(n:I) I { sans_max_body_size = n; 0 }
+sans_set_max_headers(n:I) I { sans_max_header_size = n; 0 }
+sans_set_max_header_count(n:I) I { sans_max_header_count = n; 0 }
+sans_set_max_url(n:I) I { sans_max_url_len = n; 0 }
+
 // ------ HTTP Server Runtime ---------------------------------------------------------------------------------------------------------------------------
 // Request struct layout (64 bytes):
 //   offset  0: client fd (I)

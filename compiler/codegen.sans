@@ -678,6 +678,16 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_stream_end(i64)")
   emit(cg, "declare i64 @sans_http_request_form(i64, i64)")
 
+  // ------ Sans runtime: Server Config ------
+  emit(cg, "declare i64 @sans_set_max_workers(i64)")
+  emit(cg, "declare i64 @sans_set_read_timeout(i64)")
+  emit(cg, "declare i64 @sans_set_keepalive_timeout(i64)")
+  emit(cg, "declare i64 @sans_set_drain_timeout(i64)")
+  emit(cg, "declare i64 @sans_set_max_body(i64)")
+  emit(cg, "declare i64 @sans_set_max_headers(i64)")
+  emit(cg, "declare i64 @sans_set_max_header_count(i64)")
+  emit(cg, "declare i64 @sans_set_max_url(i64)")
+
   // ------ WebSocket ------
   emit(cg, "declare i64 @sans_ws_is_upgrade(i64)")
   emit(cg, "declare i64 @sans_ws_upgrade(i64)")
@@ -4559,6 +4569,14 @@ compile_inst(cg:I inst:I) I {
     cg_set_val(cg, ir_dest(inst), "0")
     return 0
   }
+  if op == IR_SET_MAX_WORKERS { return compile_rt1(cg, inst, "sans_set_max_workers") }
+  if op == IR_SET_READ_TIMEOUT { return compile_rt1(cg, inst, "sans_set_read_timeout") }
+  if op == IR_SET_KEEPALIVE_TIMEOUT { return compile_rt1(cg, inst, "sans_set_keepalive_timeout") }
+  if op == IR_SET_DRAIN_TIMEOUT { return compile_rt1(cg, inst, "sans_set_drain_timeout") }
+  if op == IR_SET_MAX_BODY { return compile_rt1(cg, inst, "sans_set_max_body") }
+  if op == IR_SET_MAX_HEADERS { return compile_rt1(cg, inst, "sans_set_max_headers") }
+  if op == IR_SET_MAX_HEADER_COUNT { return compile_rt1(cg, inst, "sans_set_max_header_count") }
+  if op == IR_SET_MAX_URL { return compile_rt1(cg, inst, "sans_set_max_url") }
 
   // ------ Low-Level Memory (126-135) ------
   if op == IR_LOAD8 {
