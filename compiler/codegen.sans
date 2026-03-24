@@ -2617,8 +2617,27 @@ compile_inst(cg:I inst:I) I {
     arr_val = cg_get_val(cg, dest)
     idx_val = cg_get_val(cg, ir_field(inst, 16))
     val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
     ap = cg_fresh_reg(cg)
     emit(cg, "  " + ap + " = inttoptr i64 " + arr_val + " to ptr")
+    // Load len from offset 1
+    lp = cg_fresh_reg(cg)
+    emit(cg, "  " + lp + " = getelementptr i64, ptr " + ap + ", i64 1")
+    ln = cg_fresh_reg(cg)
+    emit(cg, "  " + ln + " = load i64, ptr " + lp)
+    // Bounds check
+    ib = cg_fresh_reg(cg)
+    emit(cg, "  " + ib + " = icmp slt i64 " + idx_val + ", " + ln)
+    nn = cg_fresh_reg(cg)
+    emit(cg, "  " + nn + " = icmp sge i64 " + idx_val + ", 0")
+    ok = cg_fresh_reg(cg)
+    emit(cg, "  " + ok + " = and i1 " + ib + ", " + nn)
+    then_lbl = "as_then_" + uid
+    else_lbl = "as_else_" + uid
+    merge_lbl = "as_merge_" + uid
+    emit(cg, "  br i1 " + ok + ", label %" + then_lbl + ", label %" + else_lbl)
+    // In-bounds path
+    emit(cg, then_lbl + ":")
     di = cg_fresh_reg(cg)
     emit(cg, "  " + di + " = load i64, ptr " + ap)
     dp = cg_fresh_reg(cg)
@@ -2626,6 +2645,17 @@ compile_inst(cg:I inst:I) I {
     ep = cg_fresh_reg(cg)
     emit(cg, "  " + ep + " = getelementptr i64, ptr " + dp + ", i64 " + idx_val)
     emit(cg, "  store i64 " + val + ", ptr " + ep)
+    emit(cg, "  br label %" + merge_lbl)
+    // Out-of-bounds path
+    emit(cg, else_lbl + ":")
+    bf = cg_fresh_reg(cg)
+    emit(cg, "  " + bf + " = call i64 @sans_bounds_fail(i64 " + idx_val + ", i64 " + ln + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [0, %" + then_lbl + "], [" + bf + ", %" + else_lbl + "]")
+    cg_set_current_block(cg, merge_lbl)
     return 0
   }
 

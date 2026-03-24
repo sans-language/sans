@@ -568,6 +568,7 @@ echo "Runtime error tests (expected runtime failures)"
 echo "----------------------------------------"
 
 run_runtime_error_test "rt_array_oob_get"  "$REPO_ROOT/tests/negative/array_oob_get.sans"  "index out of bounds"
+run_runtime_error_test "rt_array_oob_set"  "$REPO_ROOT/tests/negative/array_oob_set.sans"  "index out of bounds"
 
 # ---------------------------------------------------------------------------
 # Summary
