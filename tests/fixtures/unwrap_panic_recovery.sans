@@ -1,0 +1,46 @@
+// Test panic recovery: setjmp/longjmp catches unwrap on err/none
+// Returns 0 on success (all checks pass)
+
+check_result_recovery() I {
+  panic_enable()
+  result = setjmp(panic_get_buf())
+  if result == 0 {
+    r = err(1, "test")
+    v = r!
+    1
+  } else {
+    0
+  }
+}
+
+check_option_recovery() I {
+  panic_enable()
+  result = setjmp(panic_get_buf())
+  if result == 0 {
+    o = none()
+    v = o!
+    1
+  } else {
+    0
+  }
+}
+
+main() I {
+  // Normal unwrap works
+  r1 = ok(10)
+  v1 = r1!
+
+  o1 = some(20)
+  v2 = o1!
+
+  // Panic recovery catches unwrap on err
+  c1 = check_result_recovery()
+  panic_disable()
+
+  // Panic recovery catches unwrap on none
+  c2 = check_option_recovery()
+  panic_disable()
+
+  // All checks pass: v1=10, v2=20, c1=0, c2=0
+  v1 + v2 + c1 + c2
+}

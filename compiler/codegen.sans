@@ -369,6 +369,14 @@ emit_externals_core(cg:I) I {
   emit(cg, "@__sans_signal_flag = external global i64")
   emit(cg, "declare void @__sans_signal_handler(i32)")
 
+  // ------ setjmp/longjmp ------
+  emit(cg, "declare i32 @_setjmp(ptr) #0")
+  emit(cg, "declare void @longjmp(ptr, i32)")
+
+  // ------ Panic recovery globals ------
+  emit(cg, "@__sans_panic_active = external global i64")
+  emit(cg, "@__sans_panic_buf = external global [200 x i8]")
+
   // ------ OpenSSL ------
   emit(cg, "declare ptr @TLS_server_method()")
   emit(cg, "declare ptr @SSL_CTX_new(ptr)")
@@ -394,6 +402,10 @@ emit_externals_core(cg:I) I {
 
   emit(cg, "@.empty_str = private unnamed_addr constant [1 x i8] zeroinitializer")
   emit(cg, "@.str.too_many_caps = private unnamed_addr constant [36 x i8] c\"closure: too many captures (max 8)\\0a\\00\"")
+  emit(cg, "@.str.unwrap_err = private unnamed_addr constant [29 x i8] c\"error: unwrap called on err\\0a\\00\"")
+  emit(cg, "@.str.unwrap_none = private unnamed_addr constant [30 x i8] c\"error: unwrap called on none\\0a\\00\"")
+
+  emit(cg, "attributes #0 = {" + " returns_twice }")
 
   0
 }
@@ -607,6 +619,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_array_min(i64)")
   emit(cg, "declare i64 @sans_array_max(i64)")
   emit(cg, "declare i64 @sans_array_flat(i64)")
+  emit(cg, "declare i64 @sans_bounds_fail(i64, i64)")
 
   // ------ Sans runtime: String pad/bytes ------
   emit(cg, "declare i64 @sans_string_pad_left(i64, i64, i64)")
@@ -683,6 +696,14 @@ emit_externals(cg:I) I {
   emit(cg, "  ret void")
   emit(cg, "}")
 
+  // ------ setjmp/longjmp ------
+  emit(cg, "declare i32 @_setjmp(ptr) #0")
+  emit(cg, "declare void @longjmp(ptr, i32)")
+
+  // ------ Panic recovery globals ------
+  emit(cg, "@__sans_panic_active = global i64 0")
+  emit(cg, "@__sans_panic_buf = global [200 x i8] zeroinitializer")
+
   // ------ OpenSSL ------
   emit(cg, "declare ptr @TLS_server_method()")
   emit(cg, "declare ptr @SSL_CTX_new(ptr)")
@@ -709,8 +730,130 @@ emit_externals(cg:I) I {
 
   emit(cg, "@.empty_str = private unnamed_addr constant [1 x i8] zeroinitializer")
   emit(cg, "@.str.too_many_caps = private unnamed_addr constant [36 x i8] c\"closure: too many captures (max 8)\\0a\\00\"")
+  emit(cg, "@.str.unwrap_err = private unnamed_addr constant [29 x i8] c\"error: unwrap called on err\\0a\\00\"")
+  emit(cg, "@.str.unwrap_none = private unnamed_addr constant [30 x i8] c\"error: unwrap called on none\\0a\\00\"")
+
+  emit(cg, "attributes #0 = {" + " returns_twice }")
 
   emit(cg, "")
+  0
+}
+
+// ------ Panic recovery unwrap helpers ---------------------------------------------------------------------------------------------------------
+
+// Result unwrap with panic recovery: if tag==0, return value; if tag==1 and panic active, longjmp; else exit(1)
+compile_result_unwrap_panic(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  a = cg_get_val(cg, ir_field(inst, 16))
+  uid = cg_label_id(cg)
+
+  // Convert i64 to ptr and load tag
+  rp = cg_fresh_reg(cg)
+  emit(cg, "  " + rp + " = inttoptr i64 " + a + " to ptr")
+  tag = cg_fresh_reg(cg)
+  emit(cg, "  " + tag + " = load i64, ptr " + rp)
+  cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp + " = icmp eq i64 " + tag + ", 0")
+
+  ok_lbl = "unwrap_ok_" + uid
+  err_lbl = "unwrap_err_" + uid
+  merge_lbl = "unwrap_merge_" + uid
+  emit(cg, "  br i1 " + cmp + ", label %" + ok_lbl + ", label %" + err_lbl)
+
+  // OK path: load value at offset 8
+  emit(cg, ok_lbl + ":")
+  vp = cg_fresh_reg(cg)
+  emit(cg, "  " + vp + " = getelementptr i8, ptr " + rp + ", i64 8")
+  val = cg_fresh_reg(cg)
+  emit(cg, "  " + val + " = load i64, ptr " + vp)
+  emit(cg, "  br label %" + merge_lbl)
+
+  // Error path: print error, check panic, longjmp or exit
+  emit(cg, err_lbl + ":")
+  pr = cg_fresh_reg(cg)
+  emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr @.str.unwrap_err)")
+  // Check __sans_panic_active
+  pa = cg_fresh_reg(cg)
+  emit(cg, "  " + pa + " = load i64, ptr @__sans_panic_active")
+  pa_cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + pa_cmp + " = icmp eq i64 " + pa + ", 1")
+  panic_lbl = "unwrap_panic_" + uid
+  exit_lbl = "unwrap_exit_" + uid
+  emit(cg, "  br i1 " + pa_cmp + ", label %" + panic_lbl + ", label %" + exit_lbl)
+
+  // Panic path: longjmp
+  emit(cg, panic_lbl + ":")
+  emit(cg, "  call void @longjmp(ptr @__sans_panic_buf, i32 1)")
+  emit(cg, "  br label %" + merge_lbl)
+
+  // Exit path: exit(1)
+  emit(cg, exit_lbl + ":")
+  emit(cg, "  call void @exit(i64 1)")
+  emit(cg, "  br label %" + merge_lbl)
+
+  // Merge
+  emit(cg, merge_lbl + ":")
+  phi = cg_fresh_reg(cg)
+  emit(cg, "  " + phi + " = phi i64 [" + val + ", %" + ok_lbl + "], [0, %" + panic_lbl + "], [0, %" + exit_lbl + "]")
+  cg_set_val(cg, dest, phi)
+  0
+}
+
+// Option unwrap with panic recovery: if tag==1, return value; if tag==0 and panic active, longjmp; else exit(1)
+compile_option_unwrap_panic(cg:I inst:I) I {
+  dest = ir_dest(inst)
+  a = cg_get_val(cg, ir_field(inst, 16))
+  uid = cg_label_id(cg)
+
+  // Convert i64 to ptr and load tag
+  op = cg_fresh_reg(cg)
+  emit(cg, "  " + op + " = inttoptr i64 " + a + " to ptr")
+  tag = cg_fresh_reg(cg)
+  emit(cg, "  " + tag + " = load i64, ptr " + op)
+  cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp + " = icmp eq i64 " + tag + ", 1")
+
+  some_lbl = "opt_unwrap_some_" + uid
+  none_lbl = "opt_unwrap_none_" + uid
+  merge_lbl = "opt_unwrap_merge_" + uid
+  emit(cg, "  br i1 " + cmp + ", label %" + some_lbl + ", label %" + none_lbl)
+
+  // Some path: load value at offset 8
+  emit(cg, some_lbl + ":")
+  vp = cg_fresh_reg(cg)
+  emit(cg, "  " + vp + " = getelementptr i8, ptr " + op + ", i64 8")
+  val = cg_fresh_reg(cg)
+  emit(cg, "  " + val + " = load i64, ptr " + vp)
+  emit(cg, "  br label %" + merge_lbl)
+
+  // None path: print error, check panic, longjmp or exit
+  emit(cg, none_lbl + ":")
+  pr = cg_fresh_reg(cg)
+  emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr @.str.unwrap_none)")
+  // Check __sans_panic_active
+  pa = cg_fresh_reg(cg)
+  emit(cg, "  " + pa + " = load i64, ptr @__sans_panic_active")
+  pa_cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + pa_cmp + " = icmp eq i64 " + pa + ", 1")
+  panic_lbl = "opt_unwrap_panic_" + uid
+  exit_lbl = "opt_unwrap_exit_" + uid
+  emit(cg, "  br i1 " + pa_cmp + ", label %" + panic_lbl + ", label %" + exit_lbl)
+
+  // Panic path: longjmp
+  emit(cg, panic_lbl + ":")
+  emit(cg, "  call void @longjmp(ptr @__sans_panic_buf, i32 1)")
+  emit(cg, "  br label %" + merge_lbl)
+
+  // Exit path: exit(1)
+  emit(cg, exit_lbl + ":")
+  emit(cg, "  call void @exit(i64 1)")
+  emit(cg, "  br label %" + merge_lbl)
+
+  // Merge
+  emit(cg, merge_lbl + ":")
+  phi = cg_fresh_reg(cg)
+  emit(cg, "  " + phi + " = phi i64 [" + val + ", %" + some_lbl + "], [0, %" + panic_lbl + "], [0, %" + exit_lbl + "]")
+  cg_set_val(cg, dest, phi)
   0
 }
 
@@ -2595,13 +2738,15 @@ compile_inst(cg:I inst:I) I {
     lv = cg_fresh_reg(cg)
     emit(cg, "  " + lv + " = load i64, ptr " + ep)
     emit(cg, "  br label %" + merge_lbl)
-    // Out-of-bounds path
+    // Out-of-bounds path — call sans_bounds_fail(index, length)
     emit(cg, else_lbl + ":")
+    bf = cg_fresh_reg(cg)
+    emit(cg, "  " + bf + " = call i64 @sans_bounds_fail(i64 " + idx_val + ", i64 " + ln + ")")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
     emit(cg, merge_lbl + ":")
     r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = phi i64 [" + lv + ", %" + then_lbl + "], [0, %" + else_lbl + "]")
+    emit(cg, "  " + r + " = phi i64 [" + lv + ", %" + then_lbl + "], [" + bf + ", %" + else_lbl + "]")
     cg_set_val(cg, dest, r)
     // Update current_label --- we're now in merge_lbl
     
@@ -2614,8 +2759,27 @@ compile_inst(cg:I inst:I) I {
     arr_val = cg_get_val(cg, dest)
     idx_val = cg_get_val(cg, ir_field(inst, 16))
     val = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
     ap = cg_fresh_reg(cg)
     emit(cg, "  " + ap + " = inttoptr i64 " + arr_val + " to ptr")
+    // Load len from offset 1
+    lp = cg_fresh_reg(cg)
+    emit(cg, "  " + lp + " = getelementptr i64, ptr " + ap + ", i64 1")
+    ln = cg_fresh_reg(cg)
+    emit(cg, "  " + ln + " = load i64, ptr " + lp)
+    // Bounds check
+    ib = cg_fresh_reg(cg)
+    emit(cg, "  " + ib + " = icmp slt i64 " + idx_val + ", " + ln)
+    nn = cg_fresh_reg(cg)
+    emit(cg, "  " + nn + " = icmp sge i64 " + idx_val + ", 0")
+    ok = cg_fresh_reg(cg)
+    emit(cg, "  " + ok + " = and i1 " + ib + ", " + nn)
+    then_lbl = "as_then_" + uid
+    else_lbl = "as_else_" + uid
+    merge_lbl = "as_merge_" + uid
+    emit(cg, "  br i1 " + ok + ", label %" + then_lbl + ", label %" + else_lbl)
+    // In-bounds path
+    emit(cg, then_lbl + ":")
     di = cg_fresh_reg(cg)
     emit(cg, "  " + di + " = load i64, ptr " + ap)
     dp = cg_fresh_reg(cg)
@@ -2623,6 +2787,17 @@ compile_inst(cg:I inst:I) I {
     ep = cg_fresh_reg(cg)
     emit(cg, "  " + ep + " = getelementptr i64, ptr " + dp + ", i64 " + idx_val)
     emit(cg, "  store i64 " + val + ", ptr " + ep)
+    emit(cg, "  br label %" + merge_lbl)
+    // Out-of-bounds path
+    emit(cg, else_lbl + ":")
+    bf = cg_fresh_reg(cg)
+    emit(cg, "  " + bf + " = call i64 @sans_bounds_fail(i64 " + idx_val + ", i64 " + ln + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [0, %" + then_lbl + "], [" + bf + ", %" + else_lbl + "]")
+    cg_set_current_block(cg, merge_lbl)
     return 0
   }
 
@@ -3361,6 +3536,61 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = load i64, ptr @__sans_signal_flag")
     cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ setjmp(buf): call i32 @_setjmp(ptr buf), sext to i64 ------
+  if op == IR_SETJMP {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    t = cg_fresh_reg(cg)
+    emit(cg, "  " + t + " = call i32 @_setjmp(ptr " + p + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sext i32 " + t + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ longjmp(buf, val): call void @longjmp(ptr buf, i32 val) ------
+  if op == IR_LONGJMP {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    b = cg_get_val(cg, ir_field(inst, 24))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    t = cg_fresh_reg(cg)
+    emit(cg, "  " + t + " = trunc i64 " + b + " to i32")
+    emit(cg, "  call void @longjmp(ptr " + p + ", i32 " + t + ")")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+
+  // ------ Panic recovery builtins ------
+  if op == IR_PANIC_IS_ACTIVE {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = load i64, ptr @__sans_panic_active")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_PANIC_ENABLE {
+    emit(cg, "  store i64 1, ptr @__sans_panic_active")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_PANIC_DISABLE {
+    emit(cg, "  store i64 0, ptr @__sans_panic_active")
+    cg_set_val(cg, dest, "0")
+    return 0
+  }
+  if op == IR_PANIC_GET_BUF {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = ptrtoint ptr @__sans_panic_buf to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_PANIC_FIRE {
+    emit(cg, "  call void @longjmp(ptr @__sans_panic_buf, i32 1)")
+    cg_set_val(cg, dest, "0")
     return 0
   }
 
@@ -4113,7 +4343,7 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_RESULT_IS_OK { return compile_rt1(cg, inst, "sans_result_is_ok") }
   if op == IR_RESULT_IS_ERR { return compile_rt1(cg, inst, "sans_result_is_err") }
-  if op == IR_RESULT_UNWRAP { return compile_rt1(cg, inst, "sans_result_unwrap") }
+  if op == IR_RESULT_UNWRAP { return compile_result_unwrap_panic(cg, inst) }
   if op == IR_RESULT_UNWRAP_OR { return compile_rt2(cg, inst, "sans_result_unwrap_or") }
   if op == IR_RESULT_ERROR { return compile_rt1(cg, inst, "sans_result_error") }
   if op == IR_RESULT_CODE { return compile_rt1(cg, inst, "sans_result_code") }
@@ -4291,7 +4521,7 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_OPTION_IS_SOME { return compile_rt1(cg, inst, "sans_option_is_some") }
   if op == IR_OPTION_IS_NONE { return compile_rt1(cg, inst, "sans_option_is_none") }
-  if op == IR_OPTION_UNWRAP { return compile_rt1(cg, inst, "sans_option_unwrap") }
+  if op == IR_OPTION_UNWRAP { return compile_option_unwrap_panic(cg, inst) }
   if op == IR_OPTION_UNWRAP_OR { return compile_rt2(cg, inst, "sans_option_unwrap_or") }
 
   // ------ Logging (119-125) --- runtime calls ------

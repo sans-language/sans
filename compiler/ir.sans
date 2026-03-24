@@ -823,6 +823,13 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "signal_handler" || name == "sigh" { lower_call_1(ctx, args, IR_SIGNAL_HANDLER, IRTY_INT) }
   else if name == "signal_check" || name == "sigc" { lower_call_0(ctx, IR_SIGNAL_CHECK, IRTY_INT) }
   else if name == "spoll" { lower_call_2(ctx, args, IR_SPOLL, IRTY_INT) }
+  else if name == "setjmp" { lower_call_1(ctx, args, IR_SETJMP, IRTY_INT) }
+  else if name == "longjmp" { lower_call_2(ctx, args, IR_LONGJMP, IRTY_INT) }
+  else if name == "panic_is_active" { lower_call_0(ctx, IR_PANIC_IS_ACTIVE, IRTY_INT) }
+  else if name == "panic_enable" { lower_call_0(ctx, IR_PANIC_ENABLE, IRTY_INT) }
+  else if name == "panic_disable" { lower_call_0(ctx, IR_PANIC_DISABLE, IRTY_INT) }
+  else if name == "panic_get_buf" { lower_call_0(ctx, IR_PANIC_GET_BUF, IRTY_INT) }
+  else if name == "panic_fire" { lower_call_0(ctx, IR_PANIC_FIRE, IRTY_INT) }
 
   // ------ Misc ------
   else if name == "args" { lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) }

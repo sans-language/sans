@@ -1,0 +1,5 @@
+main() {
+  s = "hello"
+  p(s.char_at(0))
+  p(s.char_at(4))
+}

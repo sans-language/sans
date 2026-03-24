@@ -1,0 +1,6 @@
+// tests/negative/array_oob_get.sans
+main() {
+  a = [1 2 3]
+  x = a[10]
+  p(itos(x))
+}

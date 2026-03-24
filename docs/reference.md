@@ -1349,6 +1349,70 @@ The tuple elements are bound as local variables in the loop body.
 
 ---
 
+## Runtime Safety
+
+### Array Bounds Checking
+
+Array GET and SET are bounds-checked at runtime. Out-of-bounds access prints an error and exits:
+
+```sans
+a = [1 2 3]
+x = a[10]  // error: index out of bounds: index 10 but length is 3
+a[10] = 5  // error: index out of bounds: index 10 but length is 3
+```
+
+This replaces the prior behavior of returning `0` on GET and silently corrupting memory on SET.
+
+### String Bounds Checking
+
+`char_at()` is bounds-checked at runtime:
+
+```sans
+s = "hi"
+c = s.char_at(99)  // error: string index out of bounds: index 99 but length is 2
+```
+
+### SIGPIPE Handling
+
+HTTP and HTTPS servers automatically ignore SIGPIPE. Client disconnects during a write no longer crash the server process.
+
+### Panic Recovery
+
+Panic recovery allows a program to catch unwrap failures (`!` on `Err`/`None`) instead of exiting. It is implemented with `setjmp`/`longjmp` and is designed for use in server request handlers.
+
+```sans
+buf := panic_get_buf()
+rv := setjmp(buf)
+if rv != 0 {
+    // longjmp was called — unwrap failed somewhere
+    req.respond(500 "internal error")
+    panic_disable()
+    0
+} else {
+    panic_enable()
+    result = risky_op()!  // calls longjmp instead of exit on Err/None
+    req.respond(200 str(result))
+    panic_disable()
+    0
+}
+```
+
+When panic recovery is enabled, `!` on `Err` or `None` calls `longjmp` back to the `setjmp` point instead of calling `exit(1)`.
+
+#### Panic Recovery Builtins
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `setjmp(buf)` | `(Int) -> Int` | Set jump point. Returns 0 initially, non-zero when jumped to |
+| `longjmp(buf, val)` | `(Int, Int) -> Int` | Jump back to the `setjmp` point with value `val` |
+| `panic_enable()` | `() -> Int` | Enable panic recovery (unwrap uses longjmp instead of exit) |
+| `panic_disable()` | `() -> Int` | Disable panic recovery |
+| `panic_is_active()` | `() -> Int` | Returns 1 if recovery is active, 0 otherwise |
+| `panic_get_buf()` | `() -> Int` | Get the jmp_buf pointer |
+| `panic_fire()` | `() -> Int` | Fire longjmp to panic buf (call longjmp manually) |
+
+---
+
 ## Internals
 
 ### Runtime Modules

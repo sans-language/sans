@@ -1,0 +1,7 @@
+// Test that signal_handler can install SIGPIPE handler
+// SIGPIPE = 13 — installing a handler prevents server crashes
+// when clients disconnect mid-response
+main() {
+  signal_handler(13)
+  p("sigpipe handler installed")
+}

@@ -19,6 +19,8 @@ FAIL=0
 SKIP=0
 NEG_PASS=0
 NEG_FAIL=0
+RT_PASS=0
+RT_FAIL=0
 
 run_negative_test() {
     local label="$1"
@@ -51,6 +53,44 @@ run_negative_test() {
 
     echo -e "  ${GREEN}✓${NC}  $label (correctly rejected)"
     ((NEG_PASS++)) || true
+}
+
+run_runtime_error_test() {
+    local label="$1"
+    local fixture="$2"
+    local expected_error="$3"
+
+    # Check fixture exists
+    if [ ! -e "$fixture" ]; then
+        echo -e "  ${YELLOW}SKIP${NC}  $label (fixture not found: $fixture)"
+        ((SKIP++)) || true
+        return
+    fi
+
+    local tmp_bin="/tmp/sans_rt_$$_${label}"
+    if ! "$SANS" build "$fixture" -o "$tmp_bin" 2>/dev/null; then
+        echo -e "  ${RED}✗${NC}  $label (expected compile to succeed but it failed)"
+        ((RT_FAIL++)) || true
+        return
+    fi
+
+    local stderr_out
+    local exit_code=0
+    stderr_out=$("$tmp_bin" 2>&1) || exit_code=$?
+
+    if [ $exit_code -eq 0 ]; then
+        echo -e "  ${RED}✗${NC}  $label (expected non-zero exit)"
+        ((RT_FAIL++)) || true
+    elif echo "$stderr_out" | grep -q "$expected_error"; then
+        echo -e "  ${GREEN}✓${NC}  $label (correctly failed at runtime)"
+        ((RT_PASS++)) || true
+    else
+        echo -e "  ${RED}✗${NC}  $label (expected '$expected_error' in output)"
+        echo "     got: $(echo "$stderr_out" | tail -3)"
+        ((RT_FAIL++)) || true
+    fi
+
+    rm -f "$tmp_bin"
 }
 
 run_test() {
@@ -469,6 +509,24 @@ run_test "compat_traits"      "$REPO_ROOT/tests/compat/traits.sans"      42
 run_test "assert_pass"        "$REPO_ROOT/tests/fixtures/assert_pass.sans"        0
 run_test "assert_fail"        "$REPO_ROOT/tests/fixtures/assert_fail.sans"        1
 run_test "generic_deep_nesting" "$REPO_ROOT/tests/fixtures/generic_deep_nesting.sans" 0
+run_test "sigpipe_test"        "$REPO_ROOT/tests/fixtures/sigpipe_test.sans"        0
+run_test "bounds_check_array_get" "$REPO_ROOT/tests/fixtures/bounds_check_array_get.sans" 0
+
+# Bounds checking
+run_test "bounds_check_string"  "$REPO_ROOT/tests/fixtures/bounds_check_string.sans"  0
+
+# Panic recovery
+run_test "unwrap_panic_recovery" "$REPO_ROOT/tests/fixtures/unwrap_panic_recovery.sans" 30
+
+# ---------------------------------------------------------------------------
+# Runtime error tests (expected to compile but fail at runtime)
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "Runtime error tests (expected runtime failures)"
+echo "----------------------------------------"
+
+run_runtime_error_test "rt_string_oob"  "$REPO_ROOT/tests/negative/string_oob.sans"  "string index out of bounds"
 
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)
@@ -505,17 +563,30 @@ run_negative_test "neg_match_tuple_arity"    "$REPO_ROOT/tests/negative/match_tu
 run_negative_test "neg_reexport_private"    "$REPO_ROOT/tests/negative/reexport_private/main.sans"  "undefined"
 
 # ---------------------------------------------------------------------------
+# Runtime error tests (expected to compile but fail at runtime)
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "Runtime error tests (expected runtime failures)"
+echo "----------------------------------------"
+
+run_runtime_error_test "rt_array_oob_get"  "$REPO_ROOT/tests/negative/array_oob_get.sans"  "index out of bounds"
+run_runtime_error_test "rt_array_oob_set"  "$REPO_ROOT/tests/negative/array_oob_set.sans"  "index out of bounds"
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
 TOTAL=$((PASS + FAIL + SKIP))
 NEG_TOTAL=$((NEG_PASS + NEG_FAIL))
-GRAND_TOTAL=$((TOTAL + NEG_TOTAL))
+RT_TOTAL=$((RT_PASS + RT_FAIL))
+GRAND_TOTAL=$((TOTAL + NEG_TOTAL + RT_TOTAL))
 echo "----------------------------------------"
 echo -e "${GREEN}$PASS${NC}/$TOTAL tests passed  (${SKIP} skipped, ${FAIL} failed)"
 echo -e "${GREEN}$NEG_PASS${NC}/$NEG_TOTAL negative tests passed  (${NEG_FAIL} failed)"
-echo -e "Grand total: $((PASS + NEG_PASS))/$GRAND_TOTAL"
+echo -e "${GREEN}$RT_PASS${NC}/$RT_TOTAL runtime error tests passed  (${RT_FAIL} failed)"
+echo -e "Grand total: $((PASS + NEG_PASS + RT_PASS))/$GRAND_TOTAL"
 
-if [ "$FAIL" -gt 0 ] || [ "$NEG_FAIL" -gt 0 ]; then
+if [ "$FAIL" -gt 0 ] || [ "$NEG_FAIL" -gt 0 ] || [ "$RT_FAIL" -gt 0 ]; then
     exit 1
 fi
