@@ -607,6 +607,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_array_min(i64)")
   emit(cg, "declare i64 @sans_array_max(i64)")
   emit(cg, "declare i64 @sans_array_flat(i64)")
+  emit(cg, "declare i64 @sans_bounds_fail(i64, i64)")
 
   // ------ Sans runtime: String pad/bytes ------
   emit(cg, "declare i64 @sans_string_pad_left(i64, i64, i64)")
@@ -2595,13 +2596,15 @@ compile_inst(cg:I inst:I) I {
     lv = cg_fresh_reg(cg)
     emit(cg, "  " + lv + " = load i64, ptr " + ep)
     emit(cg, "  br label %" + merge_lbl)
-    // Out-of-bounds path
+    // Out-of-bounds path — call sans_bounds_fail(index, length)
     emit(cg, else_lbl + ":")
+    bf = cg_fresh_reg(cg)
+    emit(cg, "  " + bf + " = call i64 @sans_bounds_fail(i64 " + idx_val + ", i64 " + ln + ")")
     emit(cg, "  br label %" + merge_lbl)
     // Merge
     emit(cg, merge_lbl + ":")
     r = cg_fresh_reg(cg)
-    emit(cg, "  " + r + " = phi i64 [" + lv + ", %" + then_lbl + "], [0, %" + else_lbl + "]")
+    emit(cg, "  " + r + " = phi i64 [" + lv + ", %" + then_lbl + "], [" + bf + ", %" + else_lbl + "]")
     cg_set_val(cg, dest, r)
     // Update current_label --- we're now in merge_lbl
     

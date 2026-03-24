@@ -1,3 +1,9 @@
+sans_bounds_fail(idx:I len:I) I {
+  p("error: index out of bounds: index " + itos(idx) + " but length is " + itos(len))
+  exit(1)
+  0
+}
+
 sans_array_contains(arr:I value:I) I {
   data = load64(arr)
   len = load64(arr + 8)
