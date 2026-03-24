@@ -29,6 +29,7 @@ sans_make_empty_request() I {
 }
 
 sans_http_accept(server:I) I {
+  signal_handler(13)
   sfd = load64(server)
   if sfd < 0 { sans_make_empty_request() } else { sans_http_accept_inner(sfd) }
 }

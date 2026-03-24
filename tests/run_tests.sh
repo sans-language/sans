@@ -469,6 +469,7 @@ run_test "compat_traits"      "$REPO_ROOT/tests/compat/traits.sans"      42
 run_test "assert_pass"        "$REPO_ROOT/tests/fixtures/assert_pass.sans"        0
 run_test "assert_fail"        "$REPO_ROOT/tests/fixtures/assert_fail.sans"        1
 run_test "generic_deep_nesting" "$REPO_ROOT/tests/fixtures/generic_deep_nesting.sans" 0
+run_test "sigpipe_test"        "$REPO_ROOT/tests/fixtures/sigpipe_test.sans"        0
 
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)

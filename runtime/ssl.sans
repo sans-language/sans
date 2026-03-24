@@ -88,6 +88,7 @@ sans_https_listen_try(fd:I port:I ctx:I) I {
 // ------ HTTPS Accept ------------------------------------------------------------------------------------------------------------------------------------------------
 
 sans_https_accept(server:I) I {
+  signal_handler(13)
   sfd = load64(server)
   ctx = load64(server + 16)
   cfd = saccept(sfd)
