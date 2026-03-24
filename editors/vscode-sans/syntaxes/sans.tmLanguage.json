@@ -78,7 +78,7 @@
         },
         {
           "name": "keyword.declaration.sans",
-          "match": "\\b(fn|let|mut|struct|enum|trait|impl|import|g)\\b"
+          "match": "\\b(fn|let|mut|struct|enum|trait|impl|import|pub|g)\\b"
         },
         {
           "name": "constant.language.boolean.sans",

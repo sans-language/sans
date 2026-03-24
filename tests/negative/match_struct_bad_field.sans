@@ -1,0 +1,8 @@
+struct Point { x:I y:I }
+main() I {
+  pt = Point { x: 1, y: 2 }
+  match pt {
+    Point { x, z } => x + z
+  }
+  0
+}

@@ -280,6 +280,9 @@ const HOVER_DATA: Record<string, string> = {
     // Generic structs
     'struct': '**struct** — Define a struct type\n\nUsage: `struct Point { x I, y I }`\n\nGeneric: `struct Pair<A B> { first A, second B }`\n`Pair<I S>{ first: 1, second: "hi" }`',
 
+    // Match
+    'match': '**match** — Pattern match expression\n\nSupports enum variants, integers, strings, wildcards (`_`), bindings, guards, struct destructuring, and tuple destructuring.\n\nUsage:\n`match x { 1 => "one", _ => "other" }`\n`match s { E::A => 0, E::B(x) => x }`\n`match pt { Point { x, y } => x + y }`\n`match pair { (a, b) => a + b }`\n`match n { x if x > 0 => x, _ => 0 }`',
+
     // Trait objects
     'dyn': '**dyn** TraitName — Trait object type\n\nCreates a dynamically-dispatched fat pointer (data ptr + vtable ptr, 16 bytes heap-allocated). Use `expr as dyn Trait` to coerce a concrete struct. Use `dyn Trait` as a parameter or variable type.\n\nUsage: `v = x as dyn Valued`\n`show(v dyn Valued) I { v.value() }`\n\nLimitations: no trait inheritance, no default implementations, no associated types.',
     'as': '**as** — Trait object coercion\n\nCoerces a concrete struct to a `dyn Trait` fat pointer for dynamic dispatch.\n\nUsage: `v = x as dyn Valued  // coerce Num to dyn Valued`\n`show(x as dyn Valued)      // pass as dyn Trait argument`',
@@ -401,7 +404,7 @@ const HOVER_DATA: Record<string, string> = {
     // Keywords
     'defer': '**defer** statement\n\nDefer execution of a statement until the end of the current scope.\n\nUsage: `defer close(fd)`',
     'select': '**select** { ... }\n\nMultiplex over multiple channel operations. Picks the first ready channel.\n\nUsage:\n```\nselect {\n  v = rx.recv() => handle(v)\n  timeout 1000 => p("timeout")\n}\n```',
-    'pub': '**pub** keyword\n\nMark a function or global as public (exported from module).\n\nUsage: `pub f(x:I) = x*2`',
+    'pub': '**pub** keyword\n\nMark a function or global as public (exported from module).\nAlso used with `import` to re-export a module\'s public symbols.\n\nUsage: `pub f(x:I) = x*2`\nRe-export: `pub import "mod"` — all pub symbols from mod become pub in current module.',
 };
 
 export function activate(context: vscode.ExtensionContext) {

@@ -5,9 +5,18 @@ import "ir"
 // Used to skip scope instrumentation in runtime modules (avoids double-definition of sans_scope_track)
 g cg_is_runtime_flag = 0
 g cg_fn_ret_types = 0
+g cg_fn_aliases = 0
 g cg_trait_impls = 0
 g cg_trait_registry = 0
 g cg_timeval_buf = 0
+
+// resolve_fn_alias: return aliased name if it exists, otherwise original
+resolve_fn_alias(fname:S) S {
+  if cg_fn_aliases != 0 {
+    if mhas(cg_fn_aliases, fname) { return mget(cg_fn_aliases, fname) }
+  }
+  fname
+}
 
 cg_str(v:I) S = v
 
@@ -628,6 +637,7 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_scope_untrack(i64)")
   emit(cg, "declare i64 @sans_scope_disable()")
   emit(cg, "declare i64 @sans_scope_enable()")
+  emit(cg, "declare i64 @sans_scope_promote(i64)")
 
   // ------ Sans runtime: Socket helper ------
   emit(cg, "declare i64 @sans_bind_port(i64, i64)")
@@ -2052,7 +2062,7 @@ compile_inst(cg:I inst:I) I {
   // ------ IR_CALL (12): [op, dest, fname, args_array] ------
   if op == IR_CALL {
     fname_ptr = ir_field(inst, 16)
-    fname = fname_ptr
+    fname = resolve_fn_alias(fname_ptr)
     args = ir_field(inst, 24)
     nargs = args.len()
     // Build arg list string: "i64 %a, i64 %b, ..."
@@ -3197,6 +3207,34 @@ compile_inst(cg:I inst:I) I {
     d = cg_fresh_reg(cg)
     emit(cg, "  " + d + " = call i64 @sans_scope_enable()")
     cg_set_val(cg, dest, d)
+    return 0
+  }
+
+  if op == IR_LOOP_SCOPE_ENTER {
+    if cg_is_runtime_flag == 0 {
+      d = cg_fresh_reg(cg)
+      emit(cg, "  " + d + " = call i64 @sans_scope_enter()")
+      cg_set_val(cg, dest, d)
+    }
+    return 0
+  }
+
+  if op == IR_LOOP_SCOPE_EXIT {
+    if cg_is_runtime_flag == 0 {
+      d = cg_fresh_reg(cg)
+      emit(cg, "  " + d + " = call i64 @sans_scope_exit(i64 0)")
+      cg_set_val(cg, dest, d)
+    }
+    return 0
+  }
+
+  if op == IR_SCOPE_PROMOTE {
+    if cg_is_runtime_flag == 0 {
+      val = cg_get_val(cg, load64(inst + 16))
+      d = cg_fresh_reg(cg)
+      emit(cg, "  " + d + " = call i64 @sans_scope_promote(i64 " + val + ")")
+      cg_set_val(cg, dest, d)
+    }
     return 0
   }
 
@@ -5470,6 +5508,12 @@ dce_build_live_set(module:I) I {
   wi := 0
   while wi < worklist.len() {
     fn_name = worklist.get(wi)
+    // Also resolve aliases: if fn_name has an alias, mark the target as live too
+    alias_target = resolve_fn_alias(fn_name)
+    if mhas(live, alias_target) == 0 {
+      mset(live, alias_target, 1)
+      worklist.push(alias_target)
+    }
     if mhas(calls_map, fn_name) {
       callees = mget(calls_map, fn_name)
       ci := 0

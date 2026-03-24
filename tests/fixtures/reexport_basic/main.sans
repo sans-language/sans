@@ -1,0 +1,6 @@
+import "facade"
+main() I {
+  p(facade.add(1 2))
+  p(facade.sub(5 3))
+  0
+}

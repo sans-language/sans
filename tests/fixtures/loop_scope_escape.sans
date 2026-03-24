@@ -1,0 +1,11 @@
+// Test loop scope: value escapes loop via mutable variable
+main() I {
+  result := ""
+  i := 0
+  while i < 5 {
+    result = "item_" + str(i)
+    i += 1
+  }
+  // result should be "item_4" (length 6), not freed
+  slen(result)
+}

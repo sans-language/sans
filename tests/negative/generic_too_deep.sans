@@ -1,0 +1,6 @@
+struct W<T> { val:T }
+
+main() I {
+  x = W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<W<I>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> { val: 0 }
+  0
+}

@@ -1,0 +1,13 @@
+struct Point { x:I y:I }
+
+describe(p:Point) I {
+  match p {
+    Point { x, y } => x + y
+  }
+}
+
+main() I {
+  pt = Point { x: 3, y: 4 }
+  p(describe(pt))
+  0
+}

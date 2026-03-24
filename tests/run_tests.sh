@@ -206,6 +206,9 @@ run_test "scope_basic"               "$REPO_ROOT/tests/fixtures/scope_basic.sans
 run_test "scope_typed"               "$REPO_ROOT/tests/fixtures/scope_typed.sans"               99
 run_test "scope_nested_calls"        "$REPO_ROOT/tests/fixtures/scope_nested_calls.sans"        60
 run_test "scope_string"              "$REPO_ROOT/tests/fixtures/scope_string.sans"              0
+run_test "loop_scope_basic"          "$REPO_ROOT/tests/fixtures/loop_scope_basic.sans"          30
+run_test "loop_scope_escape"         "$REPO_ROOT/tests/fixtures/loop_scope_escape.sans"         6
+run_test "loop_scope_nested"         "$REPO_ROOT/tests/fixtures/loop_scope_nested.sans"         27
 run_test "range_basic"               "$REPO_ROOT/tests/fixtures/range_basic.sans"               35
 run_test "array_sort"                "$REPO_ROOT/tests/fixtures/array_sort.sans"                55
 run_test "string_upper_lower"        "$REPO_ROOT/tests/fixtures/string_upper_lower.sans"        7
@@ -341,6 +344,8 @@ run_test "for_in_range_test"         "$REPO_ROOT/tests/fixtures/for_in_range_tes
 run_test "ternary_nested"            "$REPO_ROOT/tests/fixtures/ternary_nested.sans"            42
 run_test "match_wildcard"            "$REPO_ROOT/tests/fixtures/match_wildcard.sans"            42
 run_test "match_multiple"            "$REPO_ROOT/tests/fixtures/match_multiple.sans"            20
+run_test "match_struct_destruct"     "$REPO_ROOT/tests/fixtures/match_struct_destruct.sans"     0
+run_test "match_tuple_destruct"      "$REPO_ROOT/tests/fixtures/match_tuple_destruct.sans"      0
 run_test "if_else_chain"             "$REPO_ROOT/tests/fixtures/if_else_chain.sans"             175
 run_test "early_return"              "$REPO_ROOT/tests/fixtures/early_return.sans"              42
 
@@ -441,6 +446,7 @@ run_test "import_struct"  "$REPO_ROOT/tests/fixtures/import_struct/main.sans"  2
 run_test "lambda_cross_module" "$REPO_ROOT/tests/fixtures/lambda_cross_module/main.sans" 15
 run_test "visibility_pub"     "$REPO_ROOT/tests/fixtures/visibility_pub/main.sans"      17
 run_test "import_alias"       "$REPO_ROOT/tests/fixtures/import_alias/main.sans"        14
+run_test "reexport_basic"    "$REPO_ROOT/tests/fixtures/reexport_basic/main.sans"     0
 run_test "warnings_test"     "$REPO_ROOT/tests/fixtures/warnings_test.sans"            42
 run_test "unreachable_test"  "$REPO_ROOT/tests/fixtures/unreachable_test.sans"         10
 
@@ -462,6 +468,7 @@ run_test "compat_traits"      "$REPO_ROOT/tests/compat/traits.sans"      42
 # Assert builtins
 run_test "assert_pass"        "$REPO_ROOT/tests/fixtures/assert_pass.sans"        0
 run_test "assert_fail"        "$REPO_ROOT/tests/fixtures/assert_fail.sans"        1
+run_test "generic_deep_nesting" "$REPO_ROOT/tests/fixtures/generic_deep_nesting.sans" 0
 
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)
@@ -492,6 +499,10 @@ run_negative_test "neg_wrong_arg_count2"     "$REPO_ROOT/tests/negative/wrong_ar
 run_negative_test "neg_undefined_var3"       "$REPO_ROOT/tests/negative/undefined_var3.sans"        "undefined variable"
 run_negative_test "neg_bad_enum_variant"     "$REPO_ROOT/tests/negative/bad_enum_variant.sans"      "undefined"
 run_negative_test "neg_no_main"              "$REPO_ROOT/tests/negative/no_main.sans"               ""
+run_negative_test "neg_generic_too_deep"     "$REPO_ROOT/tests/negative/generic_too_deep.sans"      "generic instantiation depth exceeded"
+run_negative_test "neg_match_struct_bad_field" "$REPO_ROOT/tests/negative/match_struct_bad_field.sans" "no field"
+run_negative_test "neg_match_tuple_arity"    "$REPO_ROOT/tests/negative/match_tuple_arity.sans"    "tuple pattern"
+run_negative_test "neg_reexport_private"    "$REPO_ROOT/tests/negative/reexport_private/main.sans"  "undefined"
 
 # ---------------------------------------------------------------------------
 # Summary

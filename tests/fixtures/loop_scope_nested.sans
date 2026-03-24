@@ -1,0 +1,15 @@
+// Test nested loop scope: allocations freed per iteration in both loops
+main() I {
+  total := 0
+  i := 0
+  while i < 3 {
+    j := 0
+    while j < 3 {
+      s = str(i) + "," + str(j)
+      total += slen(s)
+      j += 1
+    }
+    i += 1
+  }
+  total
+}

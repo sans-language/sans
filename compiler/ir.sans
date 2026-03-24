@@ -258,7 +258,7 @@ irm_trait_registry(m:I) I = load64(m + 56)
 // offset 168: fn_param_defaults (I) --- Map: func name -> array of default expr ASTs (0 = no default)
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(184)
+  ctx = alloc(192)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -278,6 +278,7 @@ make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   store64(ctx + 128, ptr(M()))   // closure_info: reg -> [lambda_name, cap0, cap1, ...] or 0 for non-capturing
   store64(ctx + 136, ptr(M()))   // fn_ret_struct_names: func name -> struct name
   store64(ctx + 176, ptr(array<I>()))  // defer_stack: array of [fname, arg_regs_array] pairs
+  store64(ctx + 184, 0)          // loop_depth: nesting depth of while/for loops
   ctx
 }
 
@@ -326,6 +327,9 @@ ctx_set_fn_param_defaults(ctx:I v:I) I { store64(ctx + 168, v)
 ctx_set_lambda_counter(ctx:I v:I) I { store64(ctx + 120, v)
   0 }
 ctx_defer_stack(ctx:I) I = load64(ctx + 176)
+ctx_loop_depth(ctx:I) I = load64(ctx + 184)
+ctx_set_loop_depth(ctx:I v:I) I { store64(ctx + 184, v)
+  0 }
 
 // Emit deferred calls in LIFO order before a return
 ctx_emit_defers(ctx:I) I {
@@ -1499,6 +1503,11 @@ lower_stmt(ctx:I stmt:I) I {
       if char_at(local, 0) == 33 {
         // Mutable: strip "!" prefix, store
         ptr_reg = local.substring(1, slen(local))
+        // Inside a loop: promote value to parent scope so it survives scope_exit
+        if ctx_loop_depth(ctx) > 0 {
+          prom_d = ctx_fresh_reg(ctx)
+          ctx_emit(ctx, ir_inst1(IR_SCOPE_PROMOTE, prom_d, val_reg))
+        }
         ctx_emit(ctx, ir_store(ptr_reg, val_reg))
         // Update struct name on ptr_reg when reassigning struct value
         asn = ctx_get_struct_name(ctx, val_reg)
@@ -1526,6 +1535,13 @@ lower_stmt(ctx:I stmt:I) I {
     value_expr = load64(stmt + 16)
     val_reg = lower_expr(ctx, value_expr)
     ctx_emit_defers(ctx)
+    // Pop loop scope frames before function-level scope_exit (emitted by codegen for IR_RET)
+    rl_depth := ctx_loop_depth(ctx)
+    while rl_depth > 0 {
+      rsx_d = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, rsx_d))
+      rl_depth -= 1
+    }
     ctx_emit(ctx, ir_ret(val_reg))
     0
   }
@@ -1569,18 +1585,29 @@ lower_stmt(ctx:I stmt:I) I {
     ctx_set_break_label(ctx, end_label)
     ctx_set_continue_label(ctx, cond_label)
 
+    // Track loop depth for scope promotion
+    old_loop_depth = ctx_loop_depth(ctx)
+    ctx_set_loop_depth(ctx, old_loop_depth + 1)
+
     ctx_emit(ctx, ir_jump(cond_label))
     ctx_emit(ctx, ir_label(cond_label))
     cond_reg = lower_expr(ctx, cond_expr)
     ctx_emit(ctx, ir_branch(cond_reg, body_label, end_label))
     ctx_emit(ctx, ir_label(body_label))
+    // Emit loop scope_enter at start of each iteration
+    lse_d = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_ENTER, lse_d))
     lower_stmts(ctx, body_stmts)
+    // Emit loop scope_exit before back-edge jump
+    lsx_d = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, lsx_d))
     ctx_emit(ctx, ir_jump(cond_label))
     ctx_emit(ctx, ir_label(end_label))
 
-    // Restore old break/continue labels
+    // Restore old break/continue labels and loop depth
     ctx_set_break_label(ctx, old_break)
     ctx_set_continue_label(ctx, old_continue)
+    ctx_set_loop_depth(ctx, old_loop_depth)
     0
   }
 
@@ -1607,14 +1634,28 @@ lower_stmt(ctx:I stmt:I) I {
   // ST_BREAK
   else if tag == ST_BREAK {
     bl = ctx_break_label(ctx)
-    if bl != 0 { ctx_emit(ctx, ir_jump(bl)) }
+    if bl != 0 {
+      // Emit loop scope_exit before breaking out of loop
+      if ctx_loop_depth(ctx) > 0 {
+        bsx_d = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, bsx_d))
+      }
+      ctx_emit(ctx, ir_jump(bl))
+    }
     0
   }
 
   // ST_CONTINUE --- jump back to loop condition
   else if tag == ST_CONTINUE {
     cl = ctx_continue_label(ctx)
-    if cl != 0 { ctx_emit(ctx, ir_jump(cl)) }
+    if cl != 0 {
+      // Emit loop scope_exit before continuing (current iteration done)
+      if ctx_loop_depth(ctx) > 0 {
+        csx_d = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, csx_d))
+      }
+      ctx_emit(ctx, ir_jump(cl))
+    }
     0
   }
 
@@ -1715,6 +1756,10 @@ lower_for_in(ctx:I stmt:I) I {
   ctx_set_break_label(ctx, end_label)
   ctx_set_continue_label(ctx, cond_label)
 
+  // Track loop depth for scope promotion
+  fi_old_ld = ctx_loop_depth(ctx)
+  ctx_set_loop_depth(ctx, fi_old_ld + 1)
+
   ctx_emit(ctx, ir_jump(cond_label))
   ctx_emit(ctx, ir_label(cond_label))
 
@@ -1729,6 +1774,10 @@ lower_for_in(ctx:I stmt:I) I {
 
   ctx_emit(ctx, ir_label(body_label))
 
+  // Emit loop scope_enter at start of each iteration
+  fi_lse_d = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_ENTER, fi_lse_d))
+
   // Get element at index
   elem_reg = ctx_fresh_reg(ctx)
   idx_reg2 = ctx_fresh_reg(ctx)
@@ -1740,6 +1789,10 @@ lower_for_in(ctx:I stmt:I) I {
 
   // Lower body
   lower_stmts(ctx, body_stmts)
+
+  // Emit loop scope_exit before back-edge
+  fi_lsx_d = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, fi_lsx_d))
 
   // Increment index
   idx_reg3 = ctx_fresh_reg(ctx)
@@ -1756,6 +1809,7 @@ lower_for_in(ctx:I stmt:I) I {
   ctx_emit(ctx, ir_label(end_label))
   ctx_set_break_label(ctx, old_break)
   ctx_set_continue_label(ctx, old_continue)
+  ctx_set_loop_depth(ctx, fi_old_ld)
   0
 }
 
@@ -1793,6 +1847,10 @@ lower_for_in_destr(ctx:I stmt:I) I {
   ctx_set_break_label(ctx, end_label)
   ctx_set_continue_label(ctx, cond_label)
 
+  // Track loop depth for scope promotion
+  fid_old_ld = ctx_loop_depth(ctx)
+  ctx_set_loop_depth(ctx, fid_old_ld + 1)
+
   ctx_emit(ctx, ir_jump(cond_label))
   ctx_emit(ctx, ir_label(cond_label))
 
@@ -1806,6 +1864,10 @@ lower_for_in_destr(ctx:I stmt:I) I {
   ctx_emit(ctx, ir_branch(cmp_reg, body_label, end_label))
 
   ctx_emit(ctx, ir_label(body_label))
+
+  // Emit loop scope_enter at start of each iteration
+  fid_lse_d = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_ENTER, fid_lse_d))
 
   // Get element at index (a tuple)
   elem_reg = ctx_fresh_reg(ctx)
@@ -1834,6 +1896,10 @@ lower_for_in_destr(ctx:I stmt:I) I {
   // Lower body
   lower_stmts(ctx, body_stmts)
 
+  // Emit loop scope_exit before back-edge
+  fid_lsx_d = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, fid_lsx_d))
+
   // Increment index
   idx_reg3 = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_load(idx_reg3, idx_ptr))
@@ -1849,6 +1915,7 @@ lower_for_in_destr(ctx:I stmt:I) I {
   ctx_emit(ctx, ir_label(end_label))
   ctx_set_break_label(ctx, old_break)
   ctx_set_continue_label(ctx, old_continue)
+  ctx_set_loop_depth(ctx, fid_old_ld)
   0
 }
 
@@ -3506,6 +3573,69 @@ lower_match_value(ctx:I scrutinee_reg:I arms:I) I {
       ctx_emit(ctx, ir_store(result_ptr, body_reg))
       ctx_emit(ctx, ir_jump(merge_label))
       ctx_emit(ctx, ir_label(next_label))
+    } else if pat_type == 5 {
+      // Struct destructuring pattern: extract fields by name
+      struct_name = ctx_get_struct_name(ctx, scrutinee_reg)
+      sd = ctx_struct_defs(ctx)
+      struct_fields = if struct_name != 0 && mhas(sd, struct_name) { mget(sd, struct_name) } else { 0 }
+      num_fields = if struct_fields != 0 { struct_fields.len() } else { 1 }
+      // Build field index map
+      fi_map = M()
+      if struct_fields != 0 {
+        fk := 0
+        while fk < struct_fields.len() {
+          mset(fi_map, struct_fields.get(fk), fk + 1)
+          fk = fk + 1
+          0
+        }
+        0
+      }
+      pat_bindings = load64(pattern + 16)
+      pat_bindings_p = load64(pat_bindings)
+      pat_bindings_len = load64(pat_bindings + 8)
+      bi := 0
+      while bi < pat_bindings_len {
+        fname = load64(pat_bindings_p + bi * 8)
+        fidx := bi
+        looked = mget(fi_map, fname)
+        if looked != 0 { fidx = looked - 1 }
+        field_reg = ctx_fresh_reg(ctx)
+        ctx_emit(ctx, ir_field_load(field_reg, scrutinee_reg, fidx, num_fields))
+        ctx_set_reg_type(ctx, field_reg, IRTY_INT)
+        ctx_set_local(ctx, fname, field_reg)
+        bi = bi + 1
+        0
+      }
+      ctx_emit(ctx, ir_jump(arm_label))
+      ctx_emit(ctx, ir_label(arm_label))
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
+    } else if pat_type == 6 {
+      // Tuple destructuring pattern: extract elements by index
+      sub_pats = load64(pattern + 16)
+      sub_pats_p = load64(sub_pats)
+      sub_pats_len = load64(sub_pats + 8)
+      ti := 0
+      while ti < sub_pats_len {
+        sub_pat = load64(sub_pats_p + ti * 8)
+        sub_pat_type = load64(sub_pat + 24)
+        if sub_pat_type == 4 {
+          // Binding sub-pattern: extract element and bind
+          bind_name = load64(sub_pat + 8)
+          elem_reg = ctx_fresh_reg(ctx)
+          ctx_emit(ctx, ir_field_load(elem_reg, scrutinee_reg, ti, sub_pats_len))
+          ctx_set_reg_type(ctx, elem_reg, IRTY_INT)
+          ctx_set_local(ctx, bind_name, elem_reg)
+        }
+        ti = ti + 1
+        0
+      }
+      ctx_emit(ctx, ir_jump(arm_label))
+      ctx_emit(ctx, ir_label(arm_label))
+      body_reg = lower_expr(ctx, body_expr)
+      ctx_emit(ctx, ir_store(result_ptr, body_reg))
+      ctx_emit(ctx, ir_jump(merge_label))
     }
     i = i + 1
     0

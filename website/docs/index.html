@@ -155,6 +155,16 @@ result = x > <span class="num">0</span> ? x * <span class="num">2</span> : x * -
     _ => <span class="str">"zero"</span>,
 }
 
+<span class="comment">// Struct destructuring in match</span>
+<span class="kw">match</span> pt {
+    Point { x, y } => x + y,
+}
+
+<span class="comment">// Tuple destructuring in match</span>
+<span class="kw">match</span> pair {
+    (a, b) => a + b,
+}
+
 <span class="comment">// For-loop destructuring</span>
 <span class="kw">for</span> (k v) <span class="kw">in</span> m.<span class="fn">entries</span>() {
     <span class="fn">p</span>(<span class="str">"{k} = {str(v)}"</span>)
@@ -440,6 +450,25 @@ m.<span class="fn">get</span>(<span class="str">"z"</span>).<span class="fn">unw
     result = math.<span class="fn">add</span>(<span class="num">3</span> <span class="num">4</span>)
     result
 }</code></pre>
+
+    <h3>Module Re-exports</h3>
+    <p>Use <code>pub import</code> to re-export all public symbols from another module. Downstream consumers see a single clean API.</p>
+    <pre><code><span class="comment">// impl.sans</span>
+<span class="kw">pub</span> <span class="fn">add</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">I</span> = a + b
+<span class="kw">pub</span> <span class="fn">sub</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">I</span> = a - b
+<span class="fn">helper</span>() <span class="type">I</span> = <span class="num">42</span>        <span class="comment">// not pub — not re-exported</span>
+
+<span class="comment">// facade.sans</span>
+<span class="kw">pub</span> <span class="kw">import</span> <span class="str">"impl"</span>      <span class="comment">// re-exports add and sub</span>
+
+<span class="comment">// main.sans</span>
+<span class="kw">import</span> <span class="str">"facade"</span>
+<span class="fn">main</span>() <span class="type">I</span> {
+  <span class="fn">p</span>(facade.<span class="fn">add</span>(<span class="num">1</span> <span class="num">2</span>))   <span class="comment">// 3</span>
+  <span class="fn">p</span>(facade.<span class="fn">sub</span>(<span class="num">5</span> <span class="num">3</span>))   <span class="comment">// 2</span>
+  <span class="num">0</span>
+}</code></pre>
+    <p>Only <code>pub</code> symbols from the source module are re-exported. Non-pub symbols remain private.</p>
 
     <h2 id="package-manager">Package Manager</h2>
     <p>Sans includes a built-in package manager. Packages are git repositories fetched by version tag.</p>

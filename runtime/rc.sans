@@ -73,6 +73,61 @@ sans_scope_enter() I {
   0
 }
 
+// Promote a tracked allocation from the current (inner) scope to the parent scope.
+// Moves the tracking node past the watermark so scope_exit won't free it.
+// Used for values assigned to mutable variables declared before a loop.
+sans_scope_promote(ptr:I) I {
+  if rc_scope_disabled != 0 { return 0 }
+  if ptr == 0 { return 0 }
+  if rc_scope_head == 0 { return 0 }
+  watermark = load64(rc_scope_head)
+  // Find and unlink the node for ptr (only in current scope: rc_alloc_head to watermark)
+  prev := 0
+  node := rc_alloc_head
+  while node != 0 && node != watermark {
+    node_ptr = load64(node)
+    next = load64(node + 16)
+    if node_ptr == ptr {
+      // Unlink from current position in the alloc list
+      if prev == 0 {
+        rc_alloc_head = next
+      } else {
+        store64(prev + 16, next)
+      }
+      // Now insert node into the parent scope's portion of the list.
+      // After unlinking, the list is: rc_alloc_head -> ... -> watermark -> parent...
+      // We insert node right after watermark so scope_exit's walk doesn't reach it.
+      if watermark != 0 {
+        store64(node + 16, load64(watermark + 16))
+        store64(watermark + 16, node)
+      } else {
+        // watermark is 0: parent scope had no allocations.
+        // Make node the sole parent allocation and update watermark.
+        store64(node + 16, 0)
+        // If rc_alloc_head is now 0 (node was the only current-scope alloc),
+        // set rc_alloc_head = node and watermark = node so scope_exit is a no-op.
+        if rc_alloc_head == 0 {
+          rc_alloc_head = node
+          store64(rc_scope_head, node)
+        } else {
+          // Other current-scope nodes exist. Append node at end of list.
+          // Find the last current-scope node (the one pointing to 0/watermark).
+          tl := rc_alloc_head
+          while load64(tl + 16) != 0 {
+            tl = load64(tl + 16)
+          }
+          store64(tl + 16, node)
+          store64(rc_scope_head, node)
+        }
+      }
+      return 0
+    }
+    prev = node
+    node = next
+  }
+  0
+}
+
 // Disable/enable scope GC (for compiler build pipeline)
 sans_scope_disable() I {
   rc_scope_disabled = 1

@@ -9,6 +9,7 @@ import "ir"
 import "codegen"
 import "pkg"
 g g_merged = 0
+g g_fn_aliases = 0
 g g_file = 0
 g g_out = 0
 g g_src = 0
@@ -182,6 +183,114 @@ build(source_path:S output_path:S) I {
   build_step3(modules, program, output_path, source_path)
 }
 
+// merge_map_into: copy all keys from src map into dst map
+merge_map_into(dst:I src:I) I {
+  ks = src.keys()
+  ki := 0
+  while ki < ks.len() {
+    k = ks.get(ki)
+    mset(dst, k, mget(src, k))
+    ki += 1
+  }
+  0
+}
+
+// merge_map_or_store: merge src map into dst at offset, or store if dst is 0
+merge_map_or_store(exports:I offset:I src:I) I {
+  dst = load64(exports + offset)
+  if dst != 0 { return merge_map_into(dst, src) }
+  store64(exports + offset, src)
+  0
+}
+
+// ensure_fn_aliases: make sure g_fn_aliases is initialized
+ensure_fn_aliases() I {
+  if g_fn_aliases == 0 { g_fn_aliases = M() }
+  g_fn_aliases
+}
+
+// is_fn_pub: check if function is pub (or all exported)
+is_fn_pub(src_pub_fns:I fk:S) I {
+  if src_pub_fns == 0 { return 1 }
+  mhas(src_pub_fns, fk)
+}
+
+// merge_reexport_fns: merge pub functions from src_exports into dst exports and build aliases
+merge_reexport_fns(exports:I src_exports:I src_pub_fns:I imp_name:S cur_mod_name:S) I {
+  src_fns = load64(src_exports + 16)
+  if src_fns == 0 { return 0 }
+  dst_fns = load64(exports + 16)
+  fks = src_fns.keys()
+  fki := 0
+  while fki < fks.len() {
+    fk = fks.get(fki)
+    if is_fn_pub(src_pub_fns, fk) == 1 {
+      mset(dst_fns, fk, mget(src_fns, fk))
+      alias_from = cur_mod_name + "__" + fk
+      alias_to = imp_name + "__" + fk
+      aliases = ensure_fn_aliases()
+      mset(aliases, alias_from, alias_to)
+    }
+    fki += 1
+  }
+  0
+}
+
+// ensure_pub_fns_map: ensure pub_fns map exists at offset 32
+ensure_pub_fns_map(exports:I) I {
+  dst = load64(exports + 32)
+  if dst != 0 { return dst }
+  new_m = map()
+  store64(exports + 32, new_m)
+  new_m
+}
+
+// merge_reexport_pub_fns: merge pub_fns map from src into dst exports
+merge_reexport_pub_fns(exports:I src_pub_fns:I) I {
+  if src_pub_fns == 0 { return 0 }
+  dst = ensure_pub_fns_map(exports)
+  merge_map_into(dst, src_pub_fns)
+  0
+}
+
+// merge_one_reexport: merge one pub import's exports into current module
+merge_one_reexport(exports:I src_exports:I imp_name:S cur_mod_name:S) I {
+  src_pub_fns = load64(src_exports + 32)
+  // Merge structs (offset 0)
+  src_structs = load64(src_exports)
+  if src_structs != 0 { merge_map_or_store(exports, 0, src_structs) }
+  // Merge enums (offset 8)
+  src_enums = load64(src_exports + 8)
+  if src_enums != 0 { merge_map_or_store(exports, 8, src_enums) }
+  // Merge functions (only pub ones) and build aliases
+  merge_reexport_fns(exports, src_exports, src_pub_fns, imp_name, cur_mod_name)
+  // Merge globals (offset 24)
+  src_globals = load64(src_exports + 24)
+  if src_globals != 0 { merge_map_or_store(exports, 24, src_globals) }
+  // Merge pub_fns map
+  merge_reexport_pub_fns(exports, src_pub_fns)
+  0
+}
+
+// merge_reexports: for pub imports in a module, merge imported pub symbols
+merge_reexports(exports:I mod_prog:I mod_exports:I cur_mod_name:S) I {
+  imports_arr = load64(mod_prog)
+  num_imports = imports_arr.len()
+  ii := 0
+  while ii < num_imports {
+    imp_node = imports_arr.get(ii)
+    if imp_is_pub(imp_node) == 1 {
+      imp_path = imp_get_path(imp_node)
+      imp_name = mod_name_of(imp_path)
+      if mhas(mod_exports, imp_name) {
+        merge_one_reexport(exports, mget(mod_exports, imp_name), imp_name, cur_mod_name)
+      }
+    }
+    ii += 1
+  }
+  0
+}
+
 // Step 3: Type-check modules in dependency order (one while loop)
 build_step3(modules:I program:I output_path:I source_path:I) I {
   mod_exports = M()
@@ -195,6 +304,8 @@ build_step3(modules:I program:I output_path:I source_path:I) I {
     tc_current_source = fr(mod_path)
     tc_has_source = 1
     exports = check_module(mod_prog, mod_exports)
+    // Merge re-exported symbols from pub imports
+    merge_reexports(exports, mod_prog, mod_exports, mod_n)
     mset(mod_exports, mod_n, exports)
     // If module has an alias, also register exports under the alias
     mod_alias = rm_alias(mod)
@@ -389,6 +500,8 @@ build_step8(program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_
   store64(merged + 48, irm_trait_impls(main_ir))
   store64(merged + 56, irm_trait_registry(main_ir))
   g_merged = merged
+  // Pass re-export aliases to codegen
+  cg_fn_aliases = g_fn_aliases
   // Run codegen and link in the SAME scope to prevent scope GC from freeing IR data
   g_ll = g_out + ".ll"
   wfd(2, "+STEP=1 FILE=")
@@ -409,6 +522,8 @@ do_codegen_and_link(merged:I ll_path:S output_path:S source_path:S) I {
   g_link_ll = ll_path
   g_link_out = output_path
   g_link_src = source_path
+  // Pass re-export aliases to codegen
+  cg_fn_aliases = g_fn_aliases
   compile_to_ll(merged, ll_path)
   // This may be unreachable --- do_link is also called from compile_to_ll_impl's last iteration
   do_link(ll_path, output_path, source_path)
@@ -488,7 +603,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   if is_mac == 1 {
     link_cmd = link_cmd + " -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib"
   } else {
-    link_cmd = link_cmd + " -Wl,-z,stacksize=268435456 $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto')"
+    link_cmd = link_cmd + " -no-pie -Wl,-z,stacksize=268435456 $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto')"
   }
   link_cmd = link_cmd + " -o '" + output_path + "'"
   sys(link_cmd)

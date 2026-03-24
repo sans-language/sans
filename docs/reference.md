@@ -157,6 +157,16 @@ match x {
     _ => "zero",
 }
 
+// Struct destructuring in match
+match pt {
+    Point { x, y } => x + y,
+}
+
+// Tuple destructuring in match
+match pair {
+    (a, b) => a + b,
+}
+
 // For-loop destructuring (tuples)
 for (k v) in m.entries() {
     p("{k}: {str(v)}")
@@ -1070,6 +1080,30 @@ main() {
 }
 ```
 
+### Module Re-exports
+
+Use `pub import` to re-export all public symbols from another module. Downstream consumers see a single clean API without needing to know about internal module structure.
+
+```sans
+// impl.sans
+pub add(a:I b:I) I = a + b
+pub sub(a:I b:I) I = a - b
+helper() I = 42        // not pub — not re-exported
+
+// facade.sans
+pub import "impl"      // re-exports add and sub
+
+// main.sans
+import "facade"
+main() I {
+  p(facade.add(1 2))   // 3
+  p(facade.sub(5 3))   // 2
+  0
+}
+```
+
+Only symbols marked `pub` in the source module are re-exported. Non-pub symbols remain private.
+
 ## Package Manager
 
 Sans includes a built-in package manager accessed via `sans pkg`. Packages are git repositories fetched by version tag.
@@ -1256,6 +1290,36 @@ describe(s:S) S = match s {
 ```
 
 Guards are checked after the pattern matches. If the guard is false, the next arm is tried.
+
+---
+
+## Struct Destructuring in Match
+
+Match arms can destructure struct values by field name:
+
+```sans
+struct Point { x:I y:I }
+
+describe(p:Point) I = match p {
+    Point { x, y } => x + y,
+}
+```
+
+Each field name in the pattern becomes a local binding with the field's value and type. The field names must match actual fields of the struct; unknown fields produce a compile error.
+
+---
+
+## Tuple Destructuring in Match
+
+Match arms can destructure tuple values by element position:
+
+```sans
+add(pair:(I I)) I = match pair {
+    (a, b) => a + b,
+}
+```
+
+The number of bindings in the pattern must match the tuple arity. Each binding receives the corresponding tuple element's value and type. Arity mismatches produce a compile error.
 
 ---
 
