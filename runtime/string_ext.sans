@@ -240,15 +240,13 @@ sans_string_repeat(s:I count:I) I {
 sans_string_char_at(s:I idx:I) I {
   len = slen(s)
   if idx < 0 || idx >= len {
-    r = alloc(1)
-    store8(r, 0)
-    r
-  } else {
-    r = alloc(2)
-    store8(r, load8(s + idx))
-    store8(r + 1, 0)
-    r
+    p("error: string index out of bounds: index " + itos(idx) + " but length is " + itos(len))
+    exit(1)
   }
+  r = alloc(2)
+  store8(r, load8(s + idx))
+  store8(r + 1, 0)
+  r
 }
 
 sans_string_pad_left(s:I width:I fill:I) I {

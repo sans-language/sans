@@ -512,6 +512,19 @@ run_test "generic_deep_nesting" "$REPO_ROOT/tests/fixtures/generic_deep_nesting.
 run_test "sigpipe_test"        "$REPO_ROOT/tests/fixtures/sigpipe_test.sans"        0
 run_test "bounds_check_array_get" "$REPO_ROOT/tests/fixtures/bounds_check_array_get.sans" 0
 
+# Bounds checking
+run_test "bounds_check_string"  "$REPO_ROOT/tests/fixtures/bounds_check_string.sans"  0
+
+# ---------------------------------------------------------------------------
+# Runtime error tests (expected to compile but fail at runtime)
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "Runtime error tests (expected runtime failures)"
+echo "----------------------------------------"
+
+run_runtime_error_test "rt_string_oob"  "$REPO_ROOT/tests/negative/string_oob.sans"  "string index out of bounds"
+
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)
 # ---------------------------------------------------------------------------
