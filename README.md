@@ -108,6 +108,7 @@ main() {
 | **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()`, `.map()`, `.and_then()`, `.map_err()`, `.or_else()` |
 | **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator |
 | **Assertions** | `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none` — line numbers in failure messages |
+| **Runtime Safety** | Array/string bounds checking (exits with error on out-of-bounds); SIGPIPE ignored in HTTP servers; panic recovery via `setjmp`/`longjmp` (`panic_enable`, `panic_disable`, `panic_get_buf`, `panic_fire`) |
 | **Diagnostics** | `file:line:col: error: message` with source context, caret, multi-error reporting, and warnings |
 
 ## HTTP Server Example

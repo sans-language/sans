@@ -274,6 +274,15 @@ const HOVER_DATA: Record<string, string> = {
     'scope_disable': '**scope_disable**() -> Int\n\nDisable scope-based GC. Used internally by the compiler build pipeline.',
     'scope_enable': '**scope_enable**() -> Int\n\nRe-enable scope-based GC after `scope_disable()`.',
 
+    // Panic recovery (setjmp/longjmp-based error boundaries)
+    'setjmp': '**setjmp**(buf: Int) -> Int\n\nSet a jump point for panic recovery. Returns 0 on first call; returns non-zero when jumped to via `longjmp` or `panic_fire`.\n\nUsage:\n`buf := panic_get_buf()`\n`rv := setjmp(buf)`\n`if rv != 0 { // recovered from panic }`',
+    'longjmp': '**longjmp**(buf: Int, val: Int) -> Int\n\nJump back to the matching `setjmp` point with value `val`. `setjmp` will return `val`.\n\nUsage: `longjmp(buf 1)`',
+    'panic_enable': '**panic_enable**() -> Int\n\nEnable panic recovery. When active, the `!` unwrap operator calls `longjmp` instead of `exit(1)` on `Err`/`None`. Call `setjmp(panic_get_buf())` first.\n\nUsage: `panic_enable()`',
+    'panic_disable': '**panic_disable**() -> Int\n\nDisable panic recovery. After calling this, `!` unwrap reverts to `exit(1)` on failure. Call after handling the recovered panic.\n\nUsage: `panic_disable()`',
+    'panic_is_active': '**panic_is_active**() -> Int\n\nReturns 1 if panic recovery is currently active (i.e., `panic_enable()` has been called without a matching `panic_disable()`), 0 otherwise.\n\nUsage: `if panic_is_active() == 1 { ... }`',
+    'panic_get_buf': '**panic_get_buf**() -> Int\n\nGet the global jmp_buf pointer used for panic recovery. Pass this to `setjmp()` to set the recovery point.\n\nUsage: `buf := panic_get_buf()`\n`rv := setjmp(buf)`',
+    'panic_fire': '**panic_fire**() -> Int\n\nManually fire the panic longjmp. Equivalent to calling `longjmp(panic_get_buf() 1)`. Only valid when panic recovery is active.\n\nUsage: `panic_fire()`',
+
     // Default parameters
     'default': '**Default Parameters**\n\nTrailing function parameters can have default values using `=literal`.\n\nUsage: `f(x:I y:I=0) = x + y`\n`f(5)  // 5`\n`f(5 3)  // 8`',
 

@@ -47,6 +47,7 @@
         <li><a href="#assertions">Assertions</a></li>
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
+        <li><a href="#runtime-safety">Runtime Safety</a></li>
         <li><a href="#internals">Internals</a></li>
         <li><a href="#diagnostics">Compiler Diagnostics</a></li>
       </ul>
@@ -966,6 +967,50 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
         <tr><td>Mutex&lt;T&gt;</td><td><code>lock</code></td><td><code>() -&gt; T</code></td></tr>
         <tr><td>Mutex&lt;T&gt;</td><td><code>unlock(value)</code></td><td><code>(T) -&gt; Int</code></td></tr>
         <tr><td>JoinHandle</td><td><code>join</code></td><td><code>() -&gt; Int</code></td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="runtime-safety">Runtime Safety</h2>
+
+    <h3>Array Bounds Checking</h3>
+    <p>Array GET (<code>a[i]</code>) and SET (<code>a[i] = v</code>) are bounds-checked at runtime. Out-of-bounds access prints an error and exits:</p>
+    <pre><code>a = [1 2 3]
+a[10]     // error: index out of bounds: index 10 but length is 3
+a[10] = 5 // error: index out of bounds: index 10 but length is 3</code></pre>
+
+    <h3>String Bounds Checking</h3>
+    <p><code>char_at()</code> is bounds-checked at runtime:</p>
+    <pre><code>s = "hi"
+s.char_at(99)  // error: string index out of bounds: index 99 but length is 2</code></pre>
+
+    <h3>SIGPIPE Handling</h3>
+    <p>HTTP and HTTPS servers automatically ignore SIGPIPE so that client disconnects during a write do not crash the server process.</p>
+
+    <h3>Panic Recovery</h3>
+    <p>Panic recovery allows programs to catch unwrap failures (<code>!</code> on <code>Err</code>/<code>None</code>) and recover instead of exiting. Implemented with <code>setjmp</code>/<code>longjmp</code>; primarily intended for use in server request handlers.</p>
+    <pre><code>buf := panic_get_buf()
+rv := setjmp(buf)
+if rv != 0 {
+    req.respond(500 "internal error")
+    panic_disable()
+    0
+} else {
+    panic_enable()
+    result = risky_op()!  // longjmp on Err/None instead of exit
+    req.respond(200 str(result))
+    panic_disable()
+    0
+}</code></pre>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>setjmp(buf)</code></td><td><code>(Int) -&gt; Int</code></td><td>Set jump point. Returns 0 initially, non-zero on longjmp</td></tr>
+        <tr><td><code>longjmp(buf, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>Jump to setjmp point with value</td></tr>
+        <tr><td><code>panic_enable()</code></td><td><code>() -&gt; Int</code></td><td>Enable panic recovery (unwrap uses longjmp instead of exit)</td></tr>
+        <tr><td><code>panic_disable()</code></td><td><code>() -&gt; Int</code></td><td>Disable panic recovery</td></tr>
+        <tr><td><code>panic_is_active()</code></td><td><code>() -&gt; Int</code></td><td>Returns 1 if recovery is active, 0 otherwise</td></tr>
+        <tr><td><code>panic_get_buf()</code></td><td><code>() -&gt; Int</code></td><td>Get the jmp_buf pointer</td></tr>
+        <tr><td><code>panic_fire()</code></td><td><code>() -&gt; Int</code></td><td>Call longjmp to panic buf manually</td></tr>
       </tbody>
     </table>
 

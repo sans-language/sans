@@ -317,6 +317,26 @@ gidx/get_index  gs/get_string  geti/get_int  gb/get_bool  typeof/type_of
 cl/content_length  rj/respond_json
 getenv/genv  remove/rm  listdir/ls  sh/shell  J=JsonValue
 
+## Runtime Safety
+```
+// Array bounds — exit with error on out-of-bounds GET or SET
+a = [1 2 3]; a[10]        // error: index out of bounds: index 10 but length is 3
+
+// String bounds — char_at exits on out-of-bounds
+"hi".char_at(99)          // error: string index out of bounds: index 99 but length is 2
+
+// SIGPIPE — HTTP/HTTPS servers ignore SIGPIPE automatically
+
+// Panic recovery builtins (setjmp/longjmp-based)
+buf := panic_get_buf()    // get jmp_buf pointer
+rv := setjmp(buf)         // set jump point; 0 on first call, non-zero on longjmp
+panic_enable()            // unwrap (!) uses longjmp instead of exit
+panic_disable()           // restore default exit-on-unwrap behavior
+panic_is_active()         // I: 1 if active
+panic_fire()              // call longjmp to panic buf
+longjmp(buf val)          // jump to buf with value val
+```
+
 ## Compiler Diagnostics
 ```
 file.sans:12:5: error: undefined variable 'foo'   // file:line:col: severity: msg
