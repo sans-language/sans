@@ -4,24 +4,35 @@ Sans is an AI-first compiled language — contributions from both humans and AI 
 
 ## Quick Setup
 
-macOS is the primary development platform. Linux contributors should adapt the LLVM path (e.g., `apt install llvm-17`). Windows is not currently supported for development.
+Sans runs on macOS and Linux. Windows is not currently supported.
 
-**Prerequisites:** LLVM 17, Xcode Command Line Tools (macOS), a previous `sans` binary (for bootstrapping).
+**Prerequisites:** LLVM 17 and a previous `sans` binary (for bootstrapping).
+
+### macOS
 
 ```sh
-# Install dependencies (macOS)
 brew install llvm@17
 xcode-select --install
 
-# Get the latest sans binary (needed to build the self-hosted compiler)
 curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-macos-arm64.tar.gz | tar xz
 sudo mv sans /usr/local/bin/
+```
 
-# Build the compiler from source
+### Linux (Ubuntu/Debian)
+
+```sh
+wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 17
+
+curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz | tar xz
+sudo mv sans /usr/local/bin/
+```
+
+### Build & Test
+
+```sh
 git clone https://github.com/sans-language/sans && cd sans
 sans build compiler/main.sans
 
-# Run tests
 bash tests/run_tests.sh ./compiler/main
 ```
 

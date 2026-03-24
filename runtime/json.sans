@@ -1212,15 +1212,21 @@ sans_json_p_atoi(px:I start:I end:I) I {
 }
 
 sans_json_p_object(px:I) I {
+  depth = load64(px + 40)
+  if depth >= 512 { return 0 }
+  store64(px + 40, depth + 1)
   sans_json_p_adv(px)
   obj = sans_json_object()
   sans_json_p_skip_ws(px)
+  result := 0
   if sans_json_p_ch(px) == 125 {
     sans_json_p_adv(px)
-    obj
+    result = obj
   } else {
-    sans_json_p_obj_loop(px, obj)
+    result = sans_json_p_obj_loop(px, obj)
   }
+  store64(px + 40, depth)
+  result
 }
 
 sans_json_p_obj_loop(px:I obj:I) I {
@@ -1276,15 +1282,21 @@ sans_json_p_obj_loop(px:I obj:I) I {
 }
 
 sans_json_p_array(px:I) I {
+  depth = load64(px + 40)
+  if depth >= 512 { return 0 }
+  store64(px + 40, depth + 1)
   sans_json_p_adv(px)
   arr = sans_json_array()
   sans_json_p_skip_ws(px)
+  result := 0
   if sans_json_p_ch(px) == 93 {
     sans_json_p_adv(px)
-    arr
+    result = arr
   } else {
-    sans_json_p_arr_loop(px, arr)
+    result = sans_json_p_arr_loop(px, arr)
   }
+  store64(px + 40, depth)
+  result
 }
 
 sans_json_p_arr_loop(px:I arr:I) I {
@@ -1367,21 +1379,56 @@ sans_json_p_value(px:I) I {
   }
 }
 
+sans_json_p_result_ok(value:I) I {
+  r = alloc(32)
+  store64(r, 0)
+  store64(r + 8, value)
+  store64(r + 16, 0)
+  store64(r + 24, 0)
+  r
+}
+
+sans_json_p_result_err(code:I msg:I) I {
+  r = alloc(32)
+  store64(r, 1)
+  store64(r + 8, 0)
+  len = slen(msg)
+  buf = alloc(len + 1)
+  mcpy(buf, msg, len + 1)
+  store64(r + 16, buf)
+  store64(r + 24, code)
+  r
+}
+
 sans_json_parse(src:I) I {
-  if src == 0 { sans_json_null() } else { sans_json_parse_inner(src) }
+  if src == 0 {
+    sans_json_p_result_err(1, "json parse error: null input")
+  } else {
+    sans_json_parse_inner(src)
+  }
 }
 
 sans_json_parse_inner(src:I) I {
   pool_cap = 2048
   chunk = alloc(8 + pool_cap * 16)
   store64(chunk, 0)
-  px = alloc(40)
+  px = alloc(48)
   store64(px, src)
   store64(px + 8, 0)
   store64(px + 16, chunk)
   store64(px + 24, 0)
   store64(px + 32, pool_cap)
+  store64(px + 40, 0)
   result = sans_json_p_value(px)
+  depth = load64(px + 40)
   dealloc(px)
-  if result == 0 { sans_json_null() } else { result }
+  if result == 0 {
+    if depth >= 512 {
+      sans_json_p_result_err(2, "json parse error: max depth exceeded")
+    } else {
+      sans_json_p_result_err(1, "json parse error: invalid json")
+    }
+  } else {
+    sans_json_p_result_ok(result)
+  }
 }

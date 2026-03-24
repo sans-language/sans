@@ -300,7 +300,7 @@ output = sh("uname -s")    // "Darwin\n" or "Linux\n"
 | `json_int(n)` | `ji` | `(Int) -> JsonValue` |
 | `json_bool(b)` | `jb` | `(Bool) -> JsonValue` |
 | `json_null()` | `jn` | `() -> JsonValue` |
-| `json_parse(s)` | `jp` | `(String) -> JsonValue` — parses objects, arrays, strings, ints, floats, bools, null |
+| `json_parse(s)` | `jp` | `(String) -> Result<JsonValue>` — parses objects, arrays, strings, ints, floats, bools, null. Returns error on invalid JSON or depth > 512. **Breaking change (v0.8.1):** previously returned `JsonValue` (null on error). Migration: add `!` after `json_parse()` calls. |
 | `json_stringify(v)` | `jfy` | `(JsonValue) -> String` |
 
 ### HTTP Client
@@ -1375,6 +1375,36 @@ c = s.char_at(99)  // error: string index out of bounds: index 99 but length is 
 ### SIGPIPE Handling
 
 HTTP and HTTPS servers automatically ignore SIGPIPE. Client disconnects during a write no longer crash the server process.
+
+### JSON Parse Returns Result (v0.8.1 Breaking Change)
+
+`json_parse(s)` / `jp(s)` now returns `Result<JsonValue>` instead of `JsonValue`. On invalid input, it returns an error Result with a descriptive message instead of a null JsonValue.
+
+```sans
+// Before (v0.8.0 and earlier):
+j = jp("{\"name\":\"Alice\"}")    // JsonValue (null on error)
+
+// After (v0.8.1+):
+j = jp("{\"name\":\"Alice\"}")!   // unwrap Result to get JsonValue
+// or handle the error:
+r = jp(input)
+if r.is_err { p("bad json"); 0 } else { r! }
+```
+
+**Migration:** Add `!` after every `json_parse()` / `jp()` call, or use `?` to propagate the error.
+
+### JSON Recursion Depth Limit
+
+JSON parsing enforces a maximum nesting depth of 512 levels. Inputs with deeper nesting return an error Result:
+
+```sans
+r = jp(deeply_nested_string)
+// r.is_err == true, r.error() == "JSON parse error: maximum nesting depth exceeded"
+```
+
+### Scope GC Walks JSON Types
+
+Returning nested JSON values from functions no longer causes use-after-free. The scope-based garbage collector now walks JSON object and array trees, promoting all referenced memory to the caller's scope on return.
 
 ### Panic Recovery
 

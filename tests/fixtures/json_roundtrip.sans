@@ -4,7 +4,7 @@ fn main() Int {
     obj.set("flag", json_bool(true))
 
     let s = json_stringify(obj)
-    let parsed = json_parse(s)
+    let parsed = json_parse(s)!
     let x = parsed.get("x").get_int()
     let flag = parsed.get("flag").get_bool()
 

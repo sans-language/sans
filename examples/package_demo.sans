@@ -15,8 +15,8 @@
 
 // Example: reading sans.json in your own code
 read_manifest() J {
-  if fe("sans.json") != true { return jp("{}") }
-  jp(fr("sans.json"))
+  if fe("sans.json") != true { return jp("{}")! }
+  jp(fr("sans.json"))!
 }
 
 main() I {

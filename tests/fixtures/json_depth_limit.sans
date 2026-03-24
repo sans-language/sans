@@ -1,0 +1,23 @@
+// Test that deeply nested JSON (512+ levels) returns error Result
+main() I {
+  // Build a string with 600 levels of nested arrays: [[[[...]]]]
+  s := "["
+  i := 0
+  while i < 599 {
+    s = s + "["
+    i += 1
+    0
+  }
+  s = s + "1"
+  i = 0
+  while i < 600 {
+    s = s + "]"
+    i += 1
+    0
+  }
+  r = json_parse(s)
+  if r.is_err() != true { return 1 }
+  msg = r.error()
+  if msg.contains("max depth") != true { return 2 }
+  0
+}

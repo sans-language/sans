@@ -1,0 +1,7 @@
+// Test that json_parse returns Result — unwrap on valid JSON
+main() I {
+  j = json_parse("{\"x\":42}")!
+  v = j.get("x").get_int()
+  if v != 42 { return 1 }
+  0
+}

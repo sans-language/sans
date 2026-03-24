@@ -27,7 +27,7 @@ fn main() Int {
     obj.set("count", json_int(5))
     obj.set("ok", json_bool(true))
     let json_str = json_stringify(obj)
-    let parsed = json_parse(json_str)
+    let parsed = json_parse(json_str)!
     let count = parsed.get("count").get_int()
     let ok = parsed.get("ok").get_bool()
     log_info("json done")

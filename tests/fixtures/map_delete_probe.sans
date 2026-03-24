@@ -1,0 +1,37 @@
+// Test that map_delete does not break linear probe chains
+// Insert keys that collide, delete one in the middle, verify the rest are still accessible
+main() I {
+  m = M()
+  // Insert several entries
+  m.set("a", 1)
+  m.set("b", 2)
+  m.set("c", 3)
+  m.set("d", 4)
+  m.set("e", 5)
+
+  // Delete a middle entry
+  m.delete("c")
+
+  // All remaining entries must still be findable
+  if m.has("a") != true { return 1 }
+  if m.has("b") != true { return 2 }
+  if m.has("d") != true { return 3 }
+  if m.has("e") != true { return 4 }
+  if m.has("c") == true { return 5 }
+
+  // Verify values
+  if m.get("a") != 1 { return 6 }
+  if m.get("b") != 2 { return 7 }
+  if m.get("d") != 4 { return 8 }
+  if m.get("e") != 5 { return 9 }
+
+  // Delete first and last
+  m.delete("a")
+  m.delete("e")
+  if m.has("b") != true { return 10 }
+  if m.has("d") != true { return 11 }
+  if m.get("b") != 2 { return 12 }
+  if m.get("d") != 4 { return 13 }
+
+  0
+}

@@ -238,6 +238,52 @@ scope_should_keep(ptr:I keep:I) I {
       0
     }
   }
+  // JSON (tag 3): check inner type and walk children
+  if keep_tag == 3 {
+    jt = load64(keep)
+    if jt == 3 {
+      // JSON string: check string pointer
+      val = load64(keep + 8)
+      if val == ptr { return 1 }
+    } else if jt == 4 {
+      // JSON array: walk items
+      arr_ptr = load64(keep + 8)
+      if arr_ptr != 0 {
+        items = load64(arr_ptr)
+        arr_len = load64(arr_ptr + 8)
+        ji := 0
+        while ji < arr_len {
+          elem = load64(items + ji * 8)
+          if elem == ptr { return 1 }
+          if scope_should_keep(ptr, elem) == 1 { return 1 }
+          ji += 1
+          0
+        }
+      }
+    } else if jt == 5 {
+      // JSON object: walk keys and values
+      obj_ptr = load64(keep + 8)
+      if obj_ptr != 0 {
+        hashes = load64(obj_ptr)
+        keys = load64(obj_ptr + 8)
+        vals = load64(obj_ptr + 16)
+        cap = load64(obj_ptr + 32)
+        ji := 0
+        while ji < cap {
+          h = load64(hashes + ji * 8)
+          if h != 0 {
+            k = load64(keys + ji * 8)
+            if k == ptr { return 1 }
+            v = load64(vals + ji * 8)
+            if v == ptr { return 1 }
+            if scope_should_keep(ptr, v) == 1 { return 1 }
+          }
+          ji += 1
+          0
+        }
+      }
+    }
+  }
   // Result (tag 4): check ok value at offset 8
   if keep_tag == 4 {
     tag = load64(keep)

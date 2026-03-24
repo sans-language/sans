@@ -631,9 +631,11 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "float_to_string" { lower_call_1(ctx, args, IR_FLOAT_TO_STRING, IRTY_STR) }
 
   // ------ JSON ------
-  else if name == "json_parse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
-  else if name == "jparse" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
-  else if name == "jp" { lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_JSON) }
+  else if name == "json_parse" || name == "jparse" || name == "jp" {
+    dest = lower_call_1(ctx, args, IR_JSON_PARSE, IRTY_RESULT)
+    ctx_set_struct_name(ctx, dest, ptr("R<J>"))
+    dest
+  }
   else if name == "json_object" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
   else if name == "jobj" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
   else if name == "jo" { lower_call_0(ctx, IR_JSON_OBJECT, IRTY_JSON) }
@@ -1076,6 +1078,12 @@ lower_call_user(ctx:I name:I args:I) I {
     ctx_set_reg_type(ctx, dest, if rt != 0 { rt } else { IRTY_INT })
     // If return type is struct, propagate struct name for field access
     if rt == IRTY_STRUCT {
+      sn_map = ctx_fn_ret_struct_names(ctx)
+      sn = mget(sn_map, name)
+      if sn != 0 { ctx_set_struct_name(ctx, dest, sn) }
+    }
+    // If return type is Result, propagate type name for unwrap inner type resolution
+    if rt == IRTY_RESULT {
       sn_map = ctx_fn_ret_struct_names(ctx)
       sn = mget(sn_map, name)
       if sn != 0 { ctx_set_struct_name(ctx, dest, sn) }
@@ -3168,7 +3176,18 @@ lower_result_method(ctx:I obj_reg:I method:I args:I) I {
   else if method == "unwrap" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_RESULT_UNWRAP, dest, obj_reg))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    // Determine inner type from struct_name annotation (e.g. "R<J>" -> JSON)
+    sn = ctx_get_struct_name(ctx, obj_reg)
+    inner_ty := IRTY_INT
+    if sn != 0 {
+      sn_s = ir_s(sn)
+      if sn_s == "R<J>" || sn_s == "Result<JsonValue>" || sn_s == "Result<J>" || sn_s == "R<JsonValue>" { inner_ty = IRTY_JSON }
+      else if sn_s.sw("R<[") || sn_s.sw("Result<Array") || sn_s.sw("Result<[") || sn_s.sw("R<Array") { inner_ty = IRTY_ARRAY }
+      else if sn_s == "R<S>" || sn_s == "Result<String>" || sn_s == "Result<S>" || sn_s == "R<String>" { inner_ty = IRTY_STR }
+      else if sn_s == "R<M>" || sn_s.sw("R<Map") || sn_s.sw("Result<Map") { inner_ty = IRTY_MAP }
+      else { inner_ty = IRTY_INT }
+    }
+    ctx_set_reg_type(ctx, dest, inner_ty)
     dest
   }
   else if method == "unwrap_or" {
@@ -4732,6 +4751,10 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
         mset(fn_ret_types, fname, rt)
         // Also store with mangled name for intra-module call resolution
         if module_name != 0 { mset(fn_ret_types, module_name + "__" + fname, rt) }
+      }
+      if rt == IRTY_RESULT {
+        mset(fn_ret_struct_names, fname, ret_type_name)
+        if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ret_type_name) }
       }
       if rt == IRTY_STRUCT {
         mset(fn_ret_struct_names, fname, ret_type_name)

@@ -1,0 +1,8 @@
+// Test that json_parse returns Err on invalid JSON
+main() I {
+  r = json_parse("not valid json")
+  if r.is_err() != true { return 1 }
+  msg = r.error()
+  if msg.contains("json parse error") != true { return 2 }
+  0
+}

@@ -3,7 +3,6 @@
 [![Release](https://img.shields.io/github/v/release/sans-language/sans?style=flat-square)](https://github.com/sans-language/sans/releases)
 [![License](https://img.shields.io/github/license/sans-language/sans?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue?style=flat-square)]()
-[![Self-hosted](https://img.shields.io/badge/compiler-self--hosted-green?style=flat-square)]()
 
 A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
 
@@ -96,7 +95,7 @@ main() {
 | **File I/O** | `file_read`/`fr`, `file_write`/`fw`, `file_exists`/`fe` |
 | **Filesystem** | `mkdir`, `rmdir`, `remove`/`rm`, `listdir`/`ls`, `is_dir`, `getenv`/`genv` |
 | **Process** | `sh`/`shell` (capture stdout), `system`/`sys` (exit code) |
-| **JSON** | `json_parse`/`jp` (handles floats, objects, arrays, strings, ints, bools, null), `json_stringify`/`jfy`, `json_object`/`jo` |
+| **JSON** | `json_parse`/`jp` returns `Result<JsonValue>` (handles floats, objects, arrays, strings, ints, bools, null; depth limit 512), `json_stringify`/`jfy`, `json_object`/`jo` |
 | **HTTP client** | `http_get`/`hg`, `http_post`/`hp` |
 | **HTTP server** | `serve(port handler)` with auto-threading, keep-alive, auto-gzip, graceful shutdown |
 | **HTTPS/TLS** | `serve_tls(port cert key handler)`, `https_listen` |
@@ -108,6 +107,7 @@ main() {
 | **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()`, `.map()`, `.and_then()`, `.map_err()`, `.or_else()` |
 | **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator |
 | **Assertions** | `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none` — line numbers in failure messages |
+| **Memory Safety** | Scope-based GC walks nested JSON types on return (no use-after-free); `json_parse` returns `Result<JsonValue>` with descriptive errors; JSON depth limit (512) prevents stack overflow |
 | **Runtime Safety** | Array/string bounds checking (exits with error on out-of-bounds); SIGPIPE ignored in HTTP servers; panic recovery via `setjmp`/`longjmp` (`panic_enable`, `panic_disable`, `panic_get_buf`, `panic_fire`) |
 | **Diagnostics** | `file:line:col: error: message` with source context, caret, multi-error reporting, and warnings |
 
