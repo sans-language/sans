@@ -78,13 +78,20 @@ jobs:
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
           echo "=== Bootstrap version ==="
           ./sans --version
-          echo "=== Building compiler (with .ll capture for Linux) ==="
-          # Capture .ll files during THIS build (bootstrap can compile all modules).
-          # The rm wrapper skips .ll file deletion so they survive.
+          echo "=== Stage 1: Build with stubbed runtime (bootstrap may lack new builtins) ==="
+          cp runtime/server.sans runtime/server.sans.bak
+          cp runtime/ssl.sans runtime/ssl.sans.bak
+          sed -i.tmp 's/pmutex_init(sans_worker_mutex)/0/g; s/pmutex_lock(sans_worker_mutex)/0/g; s/pmutex_unlock(sans_worker_mutex)/0/g' runtime/server.sans
+          sed -i.tmp 's/pmutex_init(sans_ssl_worker_mutex)/0/g; s/pmutex_lock(sans_ssl_worker_mutex)/0/g; s/pmutex_unlock(sans_ssl_worker_mutex)/0/g' runtime/ssl.sans
+          ./sans build compiler/main.sans
+          cp runtime/server.sans.bak runtime/server.sans
+          cp runtime/ssl.sans.bak runtime/ssl.sans
+          rm -f runtime/server.sans.bak runtime/ssl.sans.bak runtime/server.sans.tmp runtime/ssl.sans.tmp
+          echo "=== Stage 2: Rebuild with stage-1 compiler (captures .ll for Linux) ==="
           mkdir -p ll-output /tmp/wrap
           printf '#!/bin/bash\nARGS=()\nfor f in "$@"; do [[ "$f" == *.ll ]] || ARGS+=("$f"); done\n[ ${#ARGS[@]} -gt 0 ] && exec /bin/rm "${ARGS[@]}"\n' > /tmp/wrap/rm
           chmod +x /tmp/wrap/rm
-          PATH="/tmp/wrap:$PATH" ./sans build compiler/main.sans
+          PATH="/tmp/wrap:$PATH" ./compiler/main build compiler/main.sans
           # Collect .ll files
           echo "=== .ll files in /tmp/ ==="
           ls -la /tmp/sans_*_runtime.ll 2>/dev/null || echo "no runtime .ll files in /tmp"

@@ -67,7 +67,7 @@ const HOVER_DATA: Record<string, string> = {
     'http_listen': '**http_listen**(port: Int) -> HttpServer\n\nStart HTTP server on port. Returns server handle.',
     'hl_s': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nAlias: `hl_s`\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
     'https_listen': '**https_listen**(port: Int, cert: String, key: String) -> HttpServer\n\nStart HTTPS server with TLS on port. `cert` and `key` are file paths to the PEM certificate and private key.\n\nUsage: `srv = https_listen(8443 "cert.pem" "key.pem")`',
-    'serve': '**serve**(port: Int, handler: Fn) -> Int\n\nStart a production HTTP server with auto-threading, HTTP/1.1 keep-alive, and graceful shutdown (SIGINT/SIGTERM). Each connection is handled in a new thread. The handler receives an HttpRequest.\n\nUsage: `serve(8080 fptr("handle"))`',
+    'serve': '**serve**(port: Int, handler: Fn) -> Int\n\nStart a production HTTP server with bounded thread pool, HTTP/1.1 keep-alive, auto-gzip, and graceful shutdown (SIGINT/SIGTERM). Configure with `set_max_workers`, `set_read_timeout`, etc.\n\nUsage: `serve(8080 fptr("handle"))`',
     'serve_tls': '**serve_tls**(port: Int, cert: String, key: String, handler: Fn) -> Int\n\nStart a production HTTPS server with auto-threading, keep-alive, and graceful shutdown.\n\nUsage: `serve_tls(8443 "cert.pem" "key.pem" fptr("handle"))`',
     'stream_write': '**stream_write**(writer: Int, data: String) -> Int\n\nSend a chunk of data in a chunked HTTP response. The writer is obtained from `req.respond_stream(status)`.\n\nUsage: `stream_write(w "hello\\n")`',
     'stream_end': '**stream_end**(writer: Int) -> Int\n\nFinalize a chunked HTTP response by sending the terminal chunk.\n\nUsage: `stream_end(w)`',
@@ -83,6 +83,21 @@ const HOVER_DATA: Record<string, string> = {
     'ssl_read': '**ssl_read**(ssl: Int, buf: Int, len: Int) -> Int\n\nRead up to `len` bytes from a TLS connection into buffer. Returns bytes read.\n\nUsage: `n = ssl_read(ssl buf 4096)`',
     'ssl_write': '**ssl_write**(ssl: Int, buf: Int, len: Int) -> Int\n\nWrite `len` bytes from buffer to a TLS connection. Returns bytes written.\n\nUsage: `ssl_write(ssl ptr(data) data.len)`',
     'ssl_close': '**ssl_close**(ssl: Int) -> Int\n\nShut down TLS connection and free the SSL object.\n\nUsage: `ssl_close(ssl)`',
+
+    // Server configuration
+    'set_max_workers': '**set_max_workers**(n: Int) -> Int\n\nSet max concurrent worker threads (default 256). Connections beyond this limit receive HTTP 503.\n\nUsage: `set_max_workers(128)`',
+    'set_read_timeout': '**set_read_timeout**(s: Int) -> Int\n\nSet read timeout in seconds (default 30). Closes connection if no data received within timeout.\n\nUsage: `set_read_timeout(10)`',
+    'set_keepalive_timeout': '**set_keepalive_timeout**(s: Int) -> Int\n\nSet keep-alive timeout in seconds (default 60). Time to wait for next request on a persistent connection.\n\nUsage: `set_keepalive_timeout(30)`',
+    'set_drain_timeout': '**set_drain_timeout**(s: Int) -> Int\n\nSet shutdown drain timeout in seconds (default 5). Time to wait for in-flight requests during graceful shutdown.\n\nUsage: `set_drain_timeout(10)`',
+    'set_max_body': '**set_max_body**(n: Int) -> Int\n\nSet max request body size in bytes (default 1048576 / 1MB). Oversized requests receive HTTP 413.\n\nUsage: `set_max_body(4096)`',
+    'set_max_headers': '**set_max_headers**(n: Int) -> Int\n\nSet max total header size in bytes (default 8192 / 8KB). Oversized headers receive HTTP 431.\n\nUsage: `set_max_headers(16384)`',
+    'set_max_header_count': '**set_max_header_count**(n: Int) -> Int\n\nSet max number of request headers (default 100). Excess headers receive HTTP 431.\n\nUsage: `set_max_header_count(50)`',
+    'set_max_url': '**set_max_url**(n: Int) -> Int\n\nSet max URL length in bytes (default 8192 / 8KB). Oversized URLs receive HTTP 414.\n\nUsage: `set_max_url(2048)`',
+
+    // Low-level threading
+    'pmutex_init': '**pmutex_init**(ptr: Int) -> Int\n\nInitialize a raw pthread mutex at the given address.\n\nUsage: `pmutex_init(ptr)`',
+    'pmutex_lock': '**pmutex_lock**(ptr: Int) -> Int\n\nLock a raw pthread mutex.\n\nUsage: `pmutex_lock(ptr)`',
+    'pmutex_unlock': '**pmutex_unlock**(ptr: Int) -> Int\n\nUnlock a raw pthread mutex.\n\nUsage: `pmutex_unlock(ptr)`',
 
     // HttpRequest methods
     'header': '**header**(name: String) -> String\n\nGet request header value by name (case-insensitive). Returns "" if not found.\n\nUsage: `ct = req.header("Content-Type")`',

@@ -709,6 +709,17 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "ll" { lower_call_1(ctx, args, IR_LOG_SET_LEVEL, IRTY_INT) }
   else if name == "get_log_level" { lower_call_0(ctx, IR_GET_LOG_LEVEL, IRTY_INT) }
   else if name == "set_log_level" { lower_call_1(ctx, args, IR_SET_LOG_LEVEL, IRTY_INT) }
+  else if name == "pmutex_init" { lower_call_1(ctx, args, IR_PMUTEX_INIT, IRTY_INT) }
+  else if name == "pmutex_lock" { lower_call_1(ctx, args, IR_PMUTEX_LOCK, IRTY_INT) }
+  else if name == "pmutex_unlock" { lower_call_1(ctx, args, IR_PMUTEX_UNLOCK, IRTY_INT) }
+  else if name == "set_max_workers" { lower_call_1(ctx, args, IR_SET_MAX_WORKERS, IRTY_INT) }
+  else if name == "set_read_timeout" { lower_call_1(ctx, args, IR_SET_READ_TIMEOUT, IRTY_INT) }
+  else if name == "set_keepalive_timeout" { lower_call_1(ctx, args, IR_SET_KEEPALIVE_TIMEOUT, IRTY_INT) }
+  else if name == "set_drain_timeout" { lower_call_1(ctx, args, IR_SET_DRAIN_TIMEOUT, IRTY_INT) }
+  else if name == "set_max_body" { lower_call_1(ctx, args, IR_SET_MAX_BODY, IRTY_INT) }
+  else if name == "set_max_headers" { lower_call_1(ctx, args, IR_SET_MAX_HEADERS, IRTY_INT) }
+  else if name == "set_max_header_count" { lower_call_1(ctx, args, IR_SET_MAX_HEADER_COUNT, IRTY_INT) }
+  else if name == "set_max_url" { lower_call_1(ctx, args, IR_SET_MAX_URL, IRTY_INT) }
   else if name == "print_err" { lower_call_1(ctx, args, IR_PRINT_ERR, IRTY_INT) }
 
   // ------ Range ------

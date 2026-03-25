@@ -678,6 +678,16 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_stream_end(i64)")
   emit(cg, "declare i64 @sans_http_request_form(i64, i64)")
 
+  // ------ Sans runtime: Server Config ------
+  emit(cg, "declare i64 @sans_set_max_workers(i64)")
+  emit(cg, "declare i64 @sans_set_read_timeout(i64)")
+  emit(cg, "declare i64 @sans_set_keepalive_timeout(i64)")
+  emit(cg, "declare i64 @sans_set_drain_timeout(i64)")
+  emit(cg, "declare i64 @sans_set_max_body(i64)")
+  emit(cg, "declare i64 @sans_set_max_headers(i64)")
+  emit(cg, "declare i64 @sans_set_max_header_count(i64)")
+  emit(cg, "declare i64 @sans_set_max_url(i64)")
+
   // ------ WebSocket ------
   emit(cg, "declare i64 @sans_ws_is_upgrade(i64)")
   emit(cg, "declare i64 @sans_ws_upgrade(i64)")
@@ -4532,6 +4542,41 @@ compile_inst(cg:I inst:I) I {
   if op == IR_LOG_SET_LEVEL { return compile_rt1(cg, inst, "sans_log_set_level") }
   if op == IR_GET_LOG_LEVEL { return compile_rt0(cg, inst, "sans_get_log_level") }
   if op == IR_SET_LOG_LEVEL { return compile_rt1(cg, inst, "sans_set_log_level") }
+  if op == IR_PMUTEX_INIT {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i32 @pthread_mutex_init(ptr " + p + ", ptr null)")
+    cg_set_val(cg, ir_dest(inst), "0")
+    return 0
+  }
+  if op == IR_PMUTEX_LOCK {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i32 @pthread_mutex_lock(ptr " + p + ")")
+    cg_set_val(cg, ir_dest(inst), "0")
+    return 0
+  }
+  if op == IR_PMUTEX_UNLOCK {
+    a = cg_get_val(cg, ir_field(inst, 16))
+    p = cg_fresh_reg(cg)
+    emit(cg, "  " + p + " = inttoptr i64 " + a + " to ptr")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i32 @pthread_mutex_unlock(ptr " + p + ")")
+    cg_set_val(cg, ir_dest(inst), "0")
+    return 0
+  }
+  if op == IR_SET_MAX_WORKERS { return compile_rt1(cg, inst, "sans_set_max_workers") }
+  if op == IR_SET_READ_TIMEOUT { return compile_rt1(cg, inst, "sans_set_read_timeout") }
+  if op == IR_SET_KEEPALIVE_TIMEOUT { return compile_rt1(cg, inst, "sans_set_keepalive_timeout") }
+  if op == IR_SET_DRAIN_TIMEOUT { return compile_rt1(cg, inst, "sans_set_drain_timeout") }
+  if op == IR_SET_MAX_BODY { return compile_rt1(cg, inst, "sans_set_max_body") }
+  if op == IR_SET_MAX_HEADERS { return compile_rt1(cg, inst, "sans_set_max_headers") }
+  if op == IR_SET_MAX_HEADER_COUNT { return compile_rt1(cg, inst, "sans_set_max_header_count") }
+  if op == IR_SET_MAX_URL { return compile_rt1(cg, inst, "sans_set_max_url") }
 
   // ------ Low-Level Memory (126-135) ------
   if op == IR_LOAD8 {
