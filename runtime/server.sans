@@ -1889,8 +1889,8 @@ sans_read_next_request_plain(fd:I) I {
   path = alloc(plen + 1)
   if plen > 0 { mcpy(path, buf + pstart, plen) } else { 0 }
   store8(path + plen, 0)
-  body = sans_assemble_body_plain(fd, buf, hdr_end, filled)
-  if body == 0 { body = sans_empty_str() }
+  raw_body = sans_assemble_body_plain(fd, buf, hdr_end, filled)
+  body = if raw_body == 0 { sans_empty_str() } else { raw_body }
   req = alloc(64)
   store64(req, fd)
   store64(req + 8, method)
