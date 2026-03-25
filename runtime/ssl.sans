@@ -10,6 +10,47 @@
 //   offset 48: ssl ptr (I) --- 0 for plain HTTP
 //   offset 56: keep_alive (I) --- 1 if connection should stay open
 
+// ------ SSL Worker Pool Globals ---------------------------------------------------------------------------------------------------------------------------
+g sans_ssl_max_workers = 256
+g sans_ssl_active_workers = 0
+g sans_ssl_worker_mutex = 0
+g sans_ssl_drain_timeout_ms = 5000
+
+sans_ssl_init_worker_mutex() I {
+  if sans_ssl_worker_mutex == 0 {
+    sans_ssl_worker_mutex = alloc(64)
+    pmutex_init(sans_ssl_worker_mutex)
+  }
+  0
+}
+
+sans_ssl_worker_inc() I {
+  pmutex_lock(sans_ssl_worker_mutex)
+  c = sans_ssl_active_workers
+  if c >= sans_ssl_max_workers {
+    pmutex_unlock(sans_ssl_worker_mutex)
+    0
+  } else {
+    sans_ssl_active_workers = c + 1
+    pmutex_unlock(sans_ssl_worker_mutex)
+    1
+  }
+}
+
+sans_ssl_worker_dec() I {
+  pmutex_lock(sans_ssl_worker_mutex)
+  sans_ssl_active_workers = sans_ssl_active_workers - 1
+  pmutex_unlock(sans_ssl_worker_mutex)
+  0
+}
+
+sans_ssl_drain_read_workers() I {
+  pmutex_lock(sans_ssl_worker_mutex)
+  c = sans_ssl_active_workers
+  pmutex_unlock(sans_ssl_worker_mutex)
+  c
+}
+
 // ------ SSL Context Setup ---------------------------------------------------------------------------------------------------------------------------------
 
 sans_ssl_ctx(cert:I key:I) I {
@@ -551,7 +592,7 @@ sans_ssl_int_to_buf_pos(n:I) I {
 }
 
 sans_ssl_status_text(s:I) I {
-  if s == 404 { sans_ssl_st_nf() } else { if s == 500 { sans_ssl_st_ie() } else { if s == 400 { sans_ssl_st_br() } else { sans_ssl_st_ok() } } }
+  if s == 200 { sans_ssl_st_ok() } else { if s == 400 { sans_ssl_st_br() } else { if s == 404 { sans_ssl_st_nf() } else { if s == 413 { sans_ssl_copy_str("Payload Too Large", 17) } else { if s == 414 { sans_ssl_copy_str("URI Too Long", 12) } else { if s == 431 { sans_ssl_copy_str("Request Header Fields Too Large", 31) } else { if s == 500 { sans_ssl_st_ie() } else { if s == 503 { sans_ssl_copy_str("Service Unavailable", 19) } else { sans_ssl_st_ok() } } } } } } } }
 }
 
 sans_ssl_st_ok() I {
@@ -754,9 +795,15 @@ sans_ssl_lit_cka() I {
 
 // ------ serve_tls() --- HTTPS production server ------------------------------------------------------------------
 
+sans_ssl_reject_503(cfd:I) I {
+  sclose(cfd)
+  0
+}
+
 sans_serve_tls(port:I cert:I key:I handler:I) I {
   signal_handler(2)
   signal_handler(15)
+  sans_ssl_init_worker_mutex()
   srv = sans_https_listen(port, cert, key)
   fd = load64(srv)
   if fd < 0 { 0 } else { sans_serve_tls_loop(srv, handler) }
@@ -764,23 +811,63 @@ sans_serve_tls(port:I cert:I key:I handler:I) I {
 
 sans_serve_tls_loop(srv:I handler:I) I {
   sfd = load64(srv)
+  ctx = load64(srv + 16)
   while signal_check() == 0 {
     ready = spoll(sfd, 1000)
     if ready > 0 {
-      req = sans_https_accept(srv)
-      fd = load64(req)
-      if fd >= 0 {
-        targ = alloc(24)
-        store64(targ, handler)
-        store64(targ + 8, req)
-        store64(targ + 16, srv)
-        spawn sans_ssl_serve_worker(targ)
+      cfd = saccept(sfd)
+      if cfd >= 0 {
+        if sans_ssl_worker_inc() == 1 {
+          targ = alloc(32)
+          store64(targ, handler)
+          store64(targ + 8, cfd)
+          store64(targ + 16, ctx)
+          spawn sans_ssl_serve_worker_v2(targ)
+          0
+        } else {
+          sans_ssl_reject_503(cfd)
+        }
       }
     }
     0
   }
-  p("Shutting down...")
   sclose(sfd)
+  elapsed := 0
+  while sans_ssl_drain_read_workers() > 0 && elapsed < sans_ssl_drain_timeout_ms {
+    sleep(100)
+    elapsed += 100
+  }
+  if sans_ssl_drain_read_workers() > 0 {
+    wfd(2, "warn: shutting down with active workers\n")
+  }
+  0
+}
+
+sans_ssl_serve_worker_v2(targ:I) I {
+  handler = load64(targ)
+  cfd = load64(targ + 8)
+  ctx = load64(targ + 16)
+  ssl = ssl_new(ctx)
+  if ssl == 0 {
+    sclose(cfd)
+    sans_ssl_worker_dec()
+    return 0
+  }
+  r1 = ssl_set_fd(ssl, cfd)
+  r2 = ssl_do_accept(ssl)
+  if r2 <= 0 {
+    ssl_free(ssl)
+    sclose(cfd)
+    sans_ssl_worker_dec()
+    return 0
+  }
+  req = sans_https_read(ssl, cfd)
+  fd = load64(req)
+  if fd >= 0 {
+    store64(req + 56, 1)
+    sans_ssl_serve_worker_loop(handler, req)
+  }
+  sans_ssl_worker_dec()
   0
 }
 
