@@ -1,0 +1,12 @@
+// Test that keyed hash produces consistent results for map operations
+main() I {
+  m = M()
+  m.set("hello" 1)
+  m.set("world" 2)
+  m.set("test" 3)
+  ok1 = m.get("hello")! == 1 ? 1 : 0
+  ok2 = m.get("world")! == 2 ? 1 : 0
+  ok3 = m.get("test")! == 3 ? 1 : 0
+  ok4 = m.len() == 3 ? 1 : 0
+  ok1 + ok2 + ok3 + ok4
+}

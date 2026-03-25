@@ -1,3 +1,20 @@
+// Per-process random seed for keyed hashing (prevents hash-flooding DoS)
+g sans_map_hash_seed0 = 0
+g sans_map_hash_seed1 = 0
+g sans_map_hash_seeded = 0
+
+sans_map_hash_seed_init() I {
+  if sans_map_hash_seeded == 0 {
+    t = time()
+    s := t * 6364136223846793005 + 1442695040888963407
+    sans_map_hash_seed0 = s
+    s = s * 6364136223846793005 + 1442695040888963407
+    sans_map_hash_seed1 = s
+    sans_map_hash_seeded = 1
+    0
+  } else { 0 }
+}
+
 sans_map_create() I {
   cap = 16
   m = alloc(40)
@@ -14,15 +31,18 @@ sans_map_create() I {
 }
 
 sans_map_hash(key:I) I {
-  h := 5381
+  sans_map_hash_seed_init()
+  h := sans_map_hash_seed0
   i := 0
   c := load8(key)
   while c != 0 {
-    h = h * 33 + c
+    h = (h + c + 1) * 1099511628211 + sans_map_hash_seed1
     i = i + 1
     c = load8(key + i)
     0
   }
+  // Final mix: multiply by large odd constant + fold in length
+  h = (h + i) * 6364136223846793005 + 1442695040888963407
   if h == 0 { 1 } else { h }
 }
 
@@ -344,8 +364,9 @@ sans_map_entries(m:I) I {
 // ------ Integer key map functions ------
 
 sans_map_hash_int(key:I) I {
-  h := key * 2654435761
-  if h < 0 { h = 0 - h } else { 0 }
+  sans_map_hash_seed_init()
+  h := (key + sans_map_hash_seed0) * 6364136223846793005 + sans_map_hash_seed1
+  h = (h + key) * 1099511628211
   if h == 0 { 1 } else { h }
 }
 

@@ -1,0 +1,19 @@
+// Test keyed hash with integer keys
+main() I {
+  m = M<I I>()
+  i := 0
+  while i < 100 {
+    m.set(i i * i)
+    i += 1
+    0
+  }
+  ok := 0
+  j := 0
+  while j < 100 {
+    v = m.get(j)!
+    if v == j * j { ok += 1 }
+    j += 1
+    0
+  }
+  ok == 100 ? 1 : 0
+}

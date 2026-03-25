@@ -493,6 +493,26 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `system(cmd)` / `sys(cmd)` | `(String) -> Int` | run shell command, return exit code |
 | `gzip_compress(data, len)` | `(Int, Int) -> Int` | gzip-compress data; returns ptr to `[compressed_ptr, compressed_len]` |
 
+#### Bitwise Operations
+
+Native LLVM i64 bitwise operations.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `bxor(a, b)` | `(Int, Int) -> Int` | bitwise XOR |
+| `band(a, b)` | `(Int, Int) -> Int` | bitwise AND |
+| `bor(a, b)` | `(Int, Int) -> Int` | bitwise OR |
+| `bshl(a, b)` | `(Int, Int) -> Int` | bitwise shift left |
+| `bshr(a, b)` | `(Int, Int) -> Int` | bitwise shift right |
+
+```sans
+x = bxor(0xFF 0x0F)   // 0xF0
+mask = band(val 0xFF)  // low byte
+flags = bor(a b)       // combine flags
+shifted = bshl(1 8)    // 256
+high = bshr(val 32)    // upper 32 bits
+```
+
 #### Low-Level Threading
 
 Raw pthread mutex operations for when you need manual synchronization.

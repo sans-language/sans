@@ -1,0 +1,10 @@
+// Test that JSON objects work correctly with keyed hash
+main() I {
+  j = json_parse("{\"a\":1,\"b\":2,\"c\":3,\"d\":4,\"e\":5}")!
+  ok1 = j["a"].get_int() == 1 ? 1 : 0
+  ok2 = j["b"].get_int() == 2 ? 1 : 0
+  ok3 = j["c"].get_int() == 3 ? 1 : 0
+  ok4 = j["d"].get_int() == 4 ? 1 : 0
+  ok5 = j["e"].get_int() == 5 ? 1 : 0
+  ok1 + ok2 + ok3 + ok4 + ok5
+}
