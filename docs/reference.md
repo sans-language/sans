@@ -340,6 +340,32 @@ output = sh("uname -s")    // "Darwin\n" or "Linux\n"
 
 `serve_tls(port, cert, key, handler)` is the HTTPS variant with the same graceful shutdown behavior.
 
+#### Server Configuration
+
+Configure the HTTP server before calling `serve()` or `serve_tls()`. All settings have sensible defaults.
+
+| Function | Default | Description |
+|----------|---------|-------------|
+| `set_max_workers(n)` | 256 | Max concurrent worker threads. Connections beyond this limit receive HTTP 503. |
+| `set_read_timeout(s)` | 30 | Seconds to wait for client data before closing the connection. |
+| `set_keepalive_timeout(s)` | 60 | Seconds to wait for next request on keep-alive connection. |
+| `set_drain_timeout(s)` | 5 | Seconds to wait for in-flight requests during shutdown. |
+| `set_max_body(n)` | 1048576 (1MB) | Max request body size in bytes. Oversized requests receive HTTP 413. |
+| `set_max_headers(n)` | 8192 (8KB) | Max total header size in bytes. Oversized headers receive HTTP 431. |
+| `set_max_header_count(n)` | 100 | Max number of request headers. Excess headers receive HTTP 431. |
+| `set_max_url(n)` | 8192 (8KB) | Max URL length in bytes. Oversized URLs receive HTTP 414. |
+
+```sans
+main() I {
+  set_max_workers(128)
+  set_read_timeout(10)
+  set_max_body(4096)
+  serve(8080 fptr("handle"))
+}
+```
+
+**Server behaviors:** `serve()` and `serve_tls()` use a bounded thread pool (default 256 workers). Requests are read incrementally until headers are complete, then body is read based on Content-Length. On SIGTERM, the server stops accepting connections and drains in-flight workers (default 5s timeout). Oversized input is automatically rejected with 413/414/431 responses.
+
 #### Automatic Gzip Compression
 
 `respond()` automatically gzip-compresses response bodies when all conditions are met:
@@ -466,6 +492,16 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `exit(code)` | `(Int) -> Int` | exit process |
 | `system(cmd)` / `sys(cmd)` | `(String) -> Int` | run shell command, return exit code |
 | `gzip_compress(data, len)` | `(Int, Int) -> Int` | gzip-compress data; returns ptr to `[compressed_ptr, compressed_len]` |
+
+#### Low-Level Threading
+
+Raw pthread mutex operations for when you need manual synchronization.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pmutex_init(ptr)` | `(Int) -> Int` | Initialize a raw pthread mutex at the given address |
+| `pmutex_lock(ptr)` | `(Int) -> Int` | Lock a raw pthread mutex |
+| `pmutex_unlock(ptr)` | `(Int) -> Int` | Unlock a raw pthread mutex |
 
 #### Arena Allocator
 

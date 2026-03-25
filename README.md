@@ -97,7 +97,7 @@ main() {
 | **Process** | `sh`/`shell` (capture stdout), `system`/`sys` (exit code) |
 | **JSON** | `json_parse`/`jp` returns `Result<JsonValue>` (handles floats, objects, arrays, strings, ints, bools, null; depth limit 512), `json_stringify`/`jfy`, `json_object`/`jo` |
 | **HTTP client** | `http_get`/`hg`, `http_post`/`hp` |
-| **HTTP server** | `serve(port handler)` with auto-threading, keep-alive, auto-gzip, graceful shutdown |
+| **HTTP server** | `serve(port handler)` with bounded thread pool, request timeouts, graceful shutdown, input validation (body/header/URL limits) |
 | **HTTPS/TLS** | `serve_tls(port cert key handler)`, `https_listen` |
 | **WebSocket** | `upgrade_ws`, `ws_send`, `ws_recv`, `ws_close` |
 | **CORS** | `cors(req origin)`, `cors_all(req)` |
@@ -105,7 +105,7 @@ main() {
 | **Static files** | `serve_file(req dir)` with content-type detection |
 | **Logging** | `log_debug`/`ld`, `log_info`/`li`, `log_warn`/`lw`, `log_error`/`le` |
 | **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()`, `.map()`, `.and_then()`, `.map_err()`, `.or_else()` |
-| **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator |
+| **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator, `pmutex_init`/`pmutex_lock`/`pmutex_unlock` |
 | **Assertions** | `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none` — line numbers in failure messages |
 | **Memory Safety** | Scope-based GC walks nested JSON types on return (no use-after-free); `json_parse` returns `Result<JsonValue>` with descriptive errors; JSON depth limit (512) prevents stack overflow |
 | **Runtime Safety** | Array/string bounds checking (exits with error on out-of-bounds); SIGPIPE ignored in HTTP servers; panic recovery via `setjmp`/`longjmp` (`panic_enable`, `panic_disable`, `panic_get_buf`, `panic_fire`) |
@@ -125,7 +125,7 @@ main() I {
 }
 ```
 
-Production-ready: auto-threading, HTTP/1.1 keep-alive, gzip compression, graceful shutdown (SIGINT/SIGTERM).
+Production-ready: bounded thread pool (default 256 workers), HTTP/1.1 keep-alive, gzip compression, request timeouts, input validation, graceful shutdown (SIGINT/SIGTERM).
 
 ## Running Tests
 

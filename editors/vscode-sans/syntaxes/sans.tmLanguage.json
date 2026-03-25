@@ -126,7 +126,7 @@
         },
         {
           "name": "support.function.http.sans",
-          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ca|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws|serve_file|url_decode|ud|path_segment|ps|respond_json|rj|respond_stream|query|path_only|content_length|cl|set_header)\\b"
+          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ca|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws|serve_file|url_decode|ud|path_segment|ps|respond_json|rj|respond_stream|query|path_only|content_length|cl|set_header|set_max_workers|set_read_timeout|set_keepalive_timeout|set_drain_timeout|set_max_body|set_max_headers|set_max_header_count|set_max_url)\\b"
         },
         {
           "name": "support.function.log.sans",
@@ -142,7 +142,7 @@
         },
         {
           "name": "support.function.memory.sans",
-          "match": "\\b(alloc|dealloc|ralloc|mcpy|mcmp|mzero|slen|load8|store8|load16|store16|load32|store32|load64|store64|strstr|bswap16|exit|system|sys|wfd|arena_begin|arena_alloc|arena_end|ab|aa|ae|mget|mset|mhas|signal_handler|signal_check|sigh|sigc|spoll|gzip_compress|gz|setjmp|longjmp|panic_enable|panic_disable|panic_is_active|panic_get_buf|panic_fire)\\b"
+          "match": "\\b(alloc|dealloc|ralloc|mcpy|mcmp|mzero|slen|load8|store8|load16|store16|load32|store32|load64|store64|strstr|bswap16|exit|system|sys|wfd|arena_begin|arena_alloc|arena_end|ab|aa|ae|mget|mset|mhas|signal_handler|signal_check|sigh|sigc|spoll|gzip_compress|gz|setjmp|longjmp|panic_enable|panic_disable|panic_is_active|panic_get_buf|panic_fire|pmutex_init|pmutex_lock|pmutex_unlock)\\b"
         },
         {
           "name": "support.function.pointer.sans",

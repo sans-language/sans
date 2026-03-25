@@ -146,6 +146,15 @@ r.and_then(|v:T| R<U> { ... })         R<T> -> R<U>  (chain fallible fn)
 r.map_err(|e:S| S { ... })             R<T> -> R<T>  (transform err msg)
 r.or_else(|e:S| R<T> { ... })          R<T> -> R<T>  (recover from err)
 
+// Server configuration (call before serve()/serve_tls(), args: I, returns I)
+set_max_workers(256) set_read_timeout(30) set_keepalive_timeout(60)
+set_drain_timeout(5) set_max_body(1048576) set_max_headers(8192)
+set_max_header_count(100) set_max_url(8192)
+// Auto: 503 at capacity, 413 body too large, 414 URL too long, 431 headers too large
+
+// Low-level threading
+pmutex_init(ptr:I) pmutex_lock(ptr:I) pmutex_unlock(ptr:I) — raw pthread mutex ops
+
 // Low-level primitives (pointers as I)
 alloc(n)                                I -> I (malloc)
 dealloc(p)                              I -> I (free)
@@ -303,7 +312,7 @@ a.zip(b)                         // [(I I)] — paired tuples
 `?` try (on R<T>: unwrap or early-return err; on O<T>: unwrap or early-return none())
 
 ## Builtin Names (user-defined functions take precedence)
-User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check` and all others listed above.
+User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check set_max_workers set_read_timeout set_keepalive_timeout set_drain_timeout set_max_body set_max_headers set_max_header_count set_max_url pmutex_init pmutex_lock pmutex_unlock` and all others listed above.
 
 ## All Aliases (short | medium | long)
 fread/fr/file_read  fwrite/fw/file_write  fappend/fa/file_append  fexists/fe/file_exists

@@ -586,7 +586,30 @@ m.<span class="fn">get</span>(<span class="str">"z"</span>).<span class="fn">unw
     <p><code>serve_file(req, dir)</code> serves a static file from <code>dir</code> matching the request path. Handles content-type detection, 404 for missing files, and directory traversal protection.</p>
     <p><code>url_decode(s)</code> decodes a URL-encoded string (e.g. <code>%20</code> to space, <code>+</code> to space).</p>
     <p><code>path_segment(path, idx)</code> extracts the segment at index <code>idx</code> from a URL path. <code>path_segment("/api/users/42" 2)</code> returns <code>"42"</code>.</p>
-    <p><code>serve(port, handler)</code> starts a production server with auto-threading, HTTP/1.1 keep-alive, automatic gzip compression, and graceful shutdown. Each connection spawns a thread. The handler receives an <code>HttpRequest</code> and should call <code>respond</code> or <code>respond_stream</code>. On SIGINT/SIGTERM, the server stops accepting new connections, lets in-flight requests finish, and exits cleanly.</p>
+    <p><code>serve(port, handler)</code> starts a production server with auto-threading, HTTP/1.1 keep-alive, automatic gzip compression, and graceful shutdown. Uses a bounded thread pool (default 256 workers). Requests are read incrementally until headers are complete, then body is read based on Content-Length. On SIGINT/SIGTERM, the server stops accepting new connections, drains in-flight workers, and exits cleanly.</p>
+
+    <h4>Server Configuration</h4>
+    <p>Configure the HTTP server before calling <code>serve()</code> or <code>serve_tls()</code>. All settings have sensible defaults.</p>
+    <table>
+      <thead><tr><th>Function</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>set_max_workers(n)</code></td><td>256</td><td>Max concurrent worker threads. 503 at capacity.</td></tr>
+        <tr><td><code>set_read_timeout(s)</code></td><td>30</td><td>Read timeout per recv call (seconds).</td></tr>
+        <tr><td><code>set_keepalive_timeout(s)</code></td><td>60</td><td>Timeout for next request on keep-alive (seconds).</td></tr>
+        <tr><td><code>set_drain_timeout(s)</code></td><td>5</td><td>Shutdown drain timeout (seconds).</td></tr>
+        <tr><td><code>set_max_body(n)</code></td><td>1048576 (1MB)</td><td>Max request body bytes. 413 if exceeded.</td></tr>
+        <tr><td><code>set_max_headers(n)</code></td><td>8192 (8KB)</td><td>Max total header size bytes. 431 if exceeded.</td></tr>
+        <tr><td><code>set_max_header_count(n)</code></td><td>100</td><td>Max number of headers. 431 if exceeded.</td></tr>
+        <tr><td><code>set_max_url(n)</code></td><td>8192 (8KB)</td><td>Max URL length bytes. 414 if exceeded.</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="fn">main</span>() <span class="ty">I</span> {
+  <span class="fn">set_max_workers</span>(<span class="num">128</span>)
+  <span class="fn">set_read_timeout</span>(<span class="num">10</span>)
+  <span class="fn">set_max_body</span>(<span class="num">4096</span>)
+  <span class="fn">serve</span>(<span class="num">8080</span> <span class="fn">fptr</span>(<span class="str">"handle"</span>))
+}</code></pre>
+
     <p><code>req.respond_stream(status)</code> sends chunked HTTP headers and returns a writer. Use <code>stream_write(w, data)</code> to send chunks and <code>stream_end(w)</code> to finalize.</p>
     <p><code>signal_handler(signum)</code> registers a signal handler that sets a global flag. <code>signal_check()</code> returns 1 if the signal was received. <code>spoll(fd, timeout_ms)</code> polls a file descriptor for readability with timeout, returning 1 if ready, 0 otherwise.</p>
 
@@ -722,6 +745,9 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
         <tr><td><code>store64(ptr, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>store 64-bit value</td></tr>
         <tr><td><code>strstr(haystack, needle)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>find substring, 0 if not found</td></tr>
         <tr><td><code>bswap16(val)</code></td><td><code>(Int) -&gt; Int</code></td><td>byte-swap 16-bit (htons)</td></tr>
+        <tr><td><code>pmutex_init(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>Initialize a raw pthread mutex</td></tr>
+        <tr><td><code>pmutex_lock(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>Lock a raw pthread mutex</td></tr>
+        <tr><td><code>pmutex_unlock(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>Unlock a raw pthread mutex</td></tr>
         <tr><td><code>exit(code)</code></td><td><code>(Int) -&gt; Int</code></td><td>exit process</td></tr>
         <tr><td><code>system(cmd)</code> / <code>sys(cmd)</code></td><td><code>(String) -&gt; Int</code></td><td>run shell command, return exit code</td></tr>
         <tr><td><code>gzip_compress(data, len)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>gzip-compress data; returns ptr to [compressed_ptr, compressed_len]</td></tr>
