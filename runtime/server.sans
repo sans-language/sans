@@ -19,6 +19,48 @@ sans_set_max_headers(n:I) I { sans_max_header_size = n; 0 }
 sans_set_max_header_count(n:I) I { sans_max_header_count = n; 0 }
 sans_set_max_url(n:I) I { sans_max_url_len = n; 0 }
 
+sans_init_worker_mutex() I {
+  if sans_worker_mutex == 0 {
+    sans_worker_mutex = alloc(64)
+    pmutex_init(sans_worker_mutex)
+  }
+  0
+}
+
+sans_worker_inc() I {
+  pmutex_lock(sans_worker_mutex)
+  c = sans_active_workers
+  if c >= sans_max_workers {
+    pmutex_unlock(sans_worker_mutex)
+    0
+  } else {
+    sans_active_workers = c + 1
+    pmutex_unlock(sans_worker_mutex)
+    1
+  }
+}
+
+sans_worker_dec() I {
+  pmutex_lock(sans_worker_mutex)
+  sans_active_workers = sans_active_workers - 1
+  pmutex_unlock(sans_worker_mutex)
+  0
+}
+
+sans_drain_read_workers() I {
+  pmutex_lock(sans_worker_mutex)
+  c = sans_active_workers
+  pmutex_unlock(sans_worker_mutex)
+  c
+}
+
+sans_reject_503(fd:I) I {
+  resp = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+  sans_send_all(fd, resp, 74)
+  sclose(fd)
+  0
+}
+
 // ------ HTTP Server Runtime ---------------------------------------------------------------------------------------------------------------------------
 // Request struct layout (64 bytes):
 //   offset  0: client fd (I)
@@ -1476,6 +1518,7 @@ sans_str_eq_close(s:I) I {
 sans_serve(port:I handler:I) I {
   signal_handler(2)
   signal_handler(15)
+  sans_init_worker_mutex()
   fd = sock(2, 1, 0)
   if fd < 0 { 0 } else { sans_serve_bind(fd, port, handler) }
 }
@@ -1505,20 +1548,29 @@ sans_serve_accept_loop(sfd:I handler:I) I {
     if ready > 0 {
       cfd = saccept(sfd)
       if cfd >= 0 {
-        req = sans_http_accept_read(cfd)
-        rfd = load64(req)
-        if rfd >= 0 {
+        if sans_worker_inc() == 1 {
           targ = alloc(16)
           store64(targ, handler)
-          store64(targ + 8, req)
-          spawn sans_serve_worker(targ)
+          store64(targ + 8, cfd)
+          spawn sans_serve_worker_v2(targ)
+          0
+        } else {
+          sans_reject_503(cfd)
         }
       }
     }
     0
   }
-  p("Shutting down...")
   sclose(sfd)
+  // Drain in-flight workers
+  elapsed := 0
+  while sans_drain_read_workers() > 0 && elapsed < sans_drain_timeout_ms {
+    sleep(100)
+    elapsed += 100
+  }
+  if sans_drain_read_workers() > 0 {
+    wfd(2, "warn: shutting down with active workers\n")
+  }
   0
 }
 
@@ -1528,6 +1580,19 @@ sans_serve_worker(targ:I) I {
   // Set keep_alive flag
   store64(req + 56, 1)
   sans_serve_worker_loop(handler, req)
+}
+
+sans_serve_worker_v2(targ:I) I {
+  handler = load64(targ)
+  cfd = load64(targ + 8)
+  req = sans_http_accept_read(cfd)
+  rfd = load64(req)
+  if rfd >= 0 {
+    store64(req + 56, 1)
+    sans_serve_worker_loop(handler, req)
+  }
+  sans_worker_dec()
+  0
 }
 
 sans_serve_worker_loop(handler:I req:I) I {
