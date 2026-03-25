@@ -27,20 +27,29 @@ jobs:
           mv sans sans-bootstrap
           ./sans-bootstrap --version
 
-      - name: Build compiler (with .ll capture for Linux cross-build)
+      - name: Build compiler (two-stage bootstrap + .ll capture for Linux)
         run: |
           export PATH="/opt/homebrew/opt/llvm@17/bin:/usr/local/opt/llvm@17/bin:$PATH"
           mkdir -p ll-output
 
-          # The compiler writes .ll files then deletes them via sys("rm -f ...").
-          # Replace rm with a wrapper that skips .ll deletion so files survive.
+          # Stage 1: The bootstrap may not know new builtins used in runtime files.
+          # Temporarily stub them out so the bootstrap can compile, producing a
+          # stage-1 compiler that DOES know the new builtins.
+          cp runtime/server.sans runtime/server.sans.bak
+          cp runtime/ssl.sans runtime/ssl.sans.bak
+          sed -i.tmp 's/pmutex_init(sans_worker_mutex)/0/g; s/pmutex_lock(sans_worker_mutex)/0/g; s/pmutex_unlock(sans_worker_mutex)/0/g' runtime/server.sans
+          sed -i.tmp 's/pmutex_init(sans_ssl_worker_mutex)/0/g; s/pmutex_lock(sans_ssl_worker_mutex)/0/g; s/pmutex_unlock(sans_ssl_worker_mutex)/0/g' runtime/ssl.sans
+          ./sans-bootstrap build compiler/main.sans
+          cp runtime/server.sans.bak runtime/server.sans
+          cp runtime/ssl.sans.bak runtime/ssl.sans
+          rm -f runtime/server.sans.bak runtime/ssl.sans.bak runtime/server.sans.tmp runtime/ssl.sans.tmp
+
+          # Stage 2: Rebuild with the stage-1 compiler (knows all builtins).
+          # Use rm wrapper to capture .ll files during this build.
           mkdir -p /tmp/wrap
           printf '#!/bin/bash\nARGS=()\nfor f in "$@"; do [[ "$f" == *.ll ]] || ARGS+=("$f"); done\n[ ${#ARGS[@]} -gt 0 ] && exec /bin/rm "${ARGS[@]}"\n' > /tmp/wrap/rm
           chmod +x /tmp/wrap/rm
-
-          # Build with rm wrapper active — captures .ll files during THE build
-          # (not a second build which may crash due to scope GC)
-          PATH="/tmp/wrap:$PATH" ./sans-bootstrap build compiler/main.sans
+          PATH="/tmp/wrap:$PATH" ./compiler/main build compiler/main.sans
 
           # Collect surviving .ll files
           [ -f compiler/main.ll ] && cp compiler/main.ll ll-output/main.ll
