@@ -447,6 +447,9 @@ run_test "thread_join_order"         "$REPO_ROOT/tests/fixtures/thread_join_orde
 run_test "pmutex_basic"              "$REPO_ROOT/tests/fixtures/pmutex_basic.sans"              42
 run_test "server_setters"            "$REPO_ROOT/tests/fixtures/server_setters.sans"            0
 
+# Server production-ready (v0.8.2)
+run_test "server_413_test"           "$REPO_ROOT/tests/fixtures/server_413_test.sans"           0
+
 # ---------------------------------------------------------------------------
 # Additional coverage
 # ---------------------------------------------------------------------------

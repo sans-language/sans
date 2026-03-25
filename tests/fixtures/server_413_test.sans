@@ -1,0 +1,10 @@
+main() I {
+  set_max_body(64)
+  set_read_timeout(2)
+  set_drain_timeout(1)
+  set_max_workers(4)
+  set_max_headers(4096)
+  set_max_header_count(50)
+  set_max_url(4096)
+  0
+}
