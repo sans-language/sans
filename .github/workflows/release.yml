@@ -67,9 +67,9 @@ jobs:
 
       - name: Download bootstrap compiler
         run: |
-          # Use v0.6.1 as bootstrap — it knows all builtins needed to compile
-          # the current source directly. No multi-stage bootstrap needed.
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.6.1/sans-macos-arm64.tar.gz" | tar xz
+          # Use latest release as bootstrap — must know Result<T> unwrap (!)
+          # and all builtins up to the previous release.
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/sans-macos-arm64.tar.gz" | tar xz
           chmod +x sans
           ./sans --version
 
