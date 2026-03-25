@@ -277,6 +277,14 @@ run_test "basic_test"                "$REPO_ROOT/tests/fixtures/basic_test.sans"
 run_test "math_test"                 "$REPO_ROOT/tests/fixtures/math_test.sans"                 0
 
 # ---------------------------------------------------------------------------
+# Bitwise operations & SipHash
+run_test "bitwise_ops"               "$REPO_ROOT/tests/fixtures/bitwise_ops.sans"               7
+run_test "siphash_basic"             "$REPO_ROOT/tests/fixtures/siphash_basic.sans"             4
+run_test "siphash_collision"         "$REPO_ROOT/tests/fixtures/siphash_collision.sans"         1
+run_test "siphash_json"              "$REPO_ROOT/tests/fixtures/siphash_json.sans"              5
+run_test "siphash_int_keys"          "$REPO_ROOT/tests/fixtures/siphash_int_keys.sans"          1
+
+# ---------------------------------------------------------------------------
 # Option<T> edge cases
 # ---------------------------------------------------------------------------
 

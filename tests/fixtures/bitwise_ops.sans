@@ -1,0 +1,18 @@
+// Test native 64-bit bitwise operations
+main() I {
+  // XOR
+  ok1 = bxor(255, 170) == 85 ? 1 : 0
+  // AND
+  ok2 = band(255, 170) == 170 ? 1 : 0
+  // OR
+  ok3 = bor(170, 85) == 255 ? 1 : 0
+  // SHL
+  ok4 = bshl(1, 8) == 256 ? 1 : 0
+  // SHR
+  ok5 = bshr(256, 8) == 1 ? 1 : 0
+  // XOR identity
+  ok6 = bxor(12345, 12345) == 0 ? 1 : 0
+  // Large value shift
+  ok7 = bshl(1, 32) == 4294967296 ? 1 : 0
+  ok1 + ok2 + ok3 + ok4 + ok5 + ok6 + ok7
+}

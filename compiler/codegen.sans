@@ -5306,6 +5306,47 @@ compile_inst(cg:I inst:I) I {
     cg_set_val(cg, dest, r)
     return 0
   }
+  // ------ Native 64-bit bitwise operations ------
+  if op == IR_BXOR {
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = xor i64 " + av + ", " + bv)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_BAND {
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = and i64 " + av + ", " + bv)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_BOR {
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = or i64 " + av + ", " + bv)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_BSHL {
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = shl i64 " + av + ", " + bv)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_BSHR {
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = lshr i64 " + av + ", " + bv)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
   if op == IR_CHAR_AT {
     // [op, dest, str_reg, idx_reg]: add ptr+offset, load i8, zext
     sv = cg_get_val(cg, ir_field(inst, 16))

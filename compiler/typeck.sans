@@ -1747,6 +1747,15 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if is_i64_compat(at) != 1 { tc_error("bswap16() val must be Int, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
+    // ------ Native 64-bit bitwise operations ------
+    if name == "bxor" || name == "band" || name == "bor" || name == "bshl" || name == "bshr" {
+      if nargs != 2 { tc_error(name + "() takes exactly 2 arguments (a, b)") }
+      at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at0) != 1 { tc_error(name + "() first arg must be Int, got " + type_to_string(at0)) }
+      at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at1) != 1 { tc_error(name + "() second arg must be Int, got " + type_to_string(at1)) }
+      return make_type(TY_INT)
+    }
     if name == "char_at" {
       if nargs != 2 { tc_error("char_at() takes exactly 2 arguments (string, index)") }
       at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)

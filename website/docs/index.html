@@ -745,6 +745,11 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
         <tr><td><code>store64(ptr, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>store 64-bit value</td></tr>
         <tr><td><code>strstr(haystack, needle)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>find substring, 0 if not found</td></tr>
         <tr><td><code>bswap16(val)</code></td><td><code>(Int) -&gt; Int</code></td><td>byte-swap 16-bit (htons)</td></tr>
+        <tr><td><code>bxor(a, b)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>bitwise XOR (native 64-bit)</td></tr>
+        <tr><td><code>band(a, b)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>bitwise AND (native 64-bit)</td></tr>
+        <tr><td><code>bor(a, b)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>bitwise OR (native 64-bit)</td></tr>
+        <tr><td><code>bshl(a, b)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>bitwise shift left (native 64-bit)</td></tr>
+        <tr><td><code>bshr(a, b)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>bitwise shift right (native 64-bit)</td></tr>
         <tr><td><code>pmutex_init(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>Initialize a raw pthread mutex</td></tr>
         <tr><td><code>pmutex_lock(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>Lock a raw pthread mutex</td></tr>
         <tr><td><code>pmutex_unlock(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>Unlock a raw pthread mutex</td></tr>

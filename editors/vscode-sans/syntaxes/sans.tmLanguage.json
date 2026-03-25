@@ -142,7 +142,7 @@
         },
         {
           "name": "support.function.memory.sans",
-          "match": "\\b(alloc|dealloc|ralloc|mcpy|mcmp|mzero|slen|load8|store8|load16|store16|load32|store32|load64|store64|strstr|bswap16|exit|system|sys|wfd|arena_begin|arena_alloc|arena_end|ab|aa|ae|mget|mset|mhas|signal_handler|signal_check|sigh|sigc|spoll|gzip_compress|gz|setjmp|longjmp|panic_enable|panic_disable|panic_is_active|panic_get_buf|panic_fire|pmutex_init|pmutex_lock|pmutex_unlock)\\b"
+          "match": "\\b(alloc|dealloc|ralloc|mcpy|mcmp|mzero|slen|load8|store8|load16|store16|load32|store32|load64|store64|strstr|bswap16|bxor|band|bor|bshl|bshr|exit|system|sys|wfd|arena_begin|arena_alloc|arena_end|ab|aa|ae|mget|mset|mhas|signal_handler|signal_check|sigh|sigc|spoll|gzip_compress|gz|setjmp|longjmp|panic_enable|panic_disable|panic_is_active|panic_get_buf|panic_fire|pmutex_init|pmutex_lock|pmutex_unlock)\\b"
         },
         {
           "name": "support.function.pointer.sans",

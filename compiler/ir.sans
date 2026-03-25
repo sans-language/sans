@@ -767,6 +767,13 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "load64" { lower_call_1(ctx, args, IR_LOAD64, IRTY_INT) }
   else if name == "store64" { lower_call_2(ctx, args, IR_STORE64, IRTY_INT) }
   else if name == "bswap16" { lower_call_1(ctx, args, IR_BSWAP16, IRTY_INT) }
+
+  // ------ Native 64-bit bitwise operations ------
+  else if name == "bxor" { lower_call_2(ctx, args, IR_BXOR, IRTY_INT) }
+  else if name == "band" { lower_call_2(ctx, args, IR_BAND, IRTY_INT) }
+  else if name == "bor" { lower_call_2(ctx, args, IR_BOR, IRTY_INT) }
+  else if name == "bshl" { lower_call_2(ctx, args, IR_BSHL, IRTY_INT) }
+  else if name == "bshr" { lower_call_2(ctx, args, IR_BSHR, IRTY_INT) }
   else if name == "char_at" { lower_call_char_at(ctx, args) }
 
   // ------ Arena ------
