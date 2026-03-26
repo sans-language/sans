@@ -106,6 +106,12 @@
       font-size: 12px;
       margin-left: 4px;
     }
+    @media (max-width: 768px) {
+      .editor-body { min-height: 300px; }
+      #editor, #highlight { font-size: 12px; padding: 10px 12px 10px 50px; }
+      #line-numbers { width: 38px; font-size: 12px; padding: 10px 6px 10px 0; }
+      .playground-output { font-size: 12px; }
+    }
     .playground-output {
       font-family: 'Source Code Pro', monospace;
       font-size: 13px;

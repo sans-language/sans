@@ -74,23 +74,13 @@
 
   .example-card pre {
     margin: 0;
-    padding: 0;
-    overflow-x: auto;
-    font-family: 'Source Code Pro', monospace;
-    font-size: 13px;
-    line-height: 1;
-    background: #1e293b;
-    color: #e2e8f0;
     border: none;
-    border-radius: 0;
+    border-radius: 0 0 12px 12px;
+    background-image: linear-gradient(to right, #0f172a 48px, #334155 48px, #334155 49px, transparent 49px);
   }
 
   .example-card pre code {
-    padding: 16px 18px;
-  }
-
-  .example-card code {
-    font-family: inherit;
+    padding: 12px 16px 12px 62px;
   }
 
   .btn-try {
@@ -213,7 +203,11 @@
   @media (max-width: 768px) {
     .examples-hero h1 { font-size: 1.8rem; }
     .examples-grid { grid-template-columns: 1fr; }
-    .example-card pre { font-size: 12px; padding: 12px 14px; }
+    .example-card pre { font-size: 11px; }
+    .example-card pre code { padding: 10px 12px 10px 50px; }
+    pre code { padding: 10px 12px 10px 50px; }
+    pre { background-image: linear-gradient(to right, #0f172a 38px, #334155 38px, #334155 39px, transparent 39px); }
+    pre code .line::before { width: 34px; padding-right: 8px; font-size: 11px; }
   }
 </style>
 </head>
