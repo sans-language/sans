@@ -30,10 +30,10 @@
     </div>
 
     <p>Works on both Apple Silicon and Intel Macs (Intel runs via Rosetta 2). Verify the install:</p>
-    <pre><code>sans --version</code></pre>
+    <pre class="no-line-numbers"><code>sans --version</code></pre>
 
     <h3>Prerequisites</h3>
-    <pre><code>xcode-select --install
+    <pre class="no-line-numbers"><code>xcode-select --install
 brew install llvm@17</code></pre>
     <ul>
       <li><strong>Xcode Command Line Tools</strong> &mdash; required for the system linker (<code>cc</code>)</li>
@@ -42,7 +42,7 @@ brew install llvm@17</code></pre>
 
     <h3>Gatekeeper note</h3>
     <p>macOS may block the binary on first run since it is not notarized. To clear the quarantine flag after installing:</p>
-    <pre><code>xattr -d com.apple.quarantine /usr/local/bin/sans</code></pre>
+    <pre class="no-line-numbers"><code>xattr -d com.apple.quarantine /usr/local/bin/sans</code></pre>
 
     <h2>Linux</h2>
 
@@ -52,7 +52,7 @@ brew install llvm@17</code></pre>
     </div>
 
     <h3>Prerequisites</h3>
-    <pre><code>sudo apt install build-essential llvm-17 libcurl4-openssl-dev libssl-dev</code></pre>
+    <pre class="no-line-numbers"><code>sudo apt install build-essential llvm-17 libcurl4-openssl-dev libssl-dev</code></pre>
     <ul>
       <li><strong>GCC or Clang</strong> &mdash; system linker</li>
       <li><strong>LLVM 17</strong> &mdash; Sans uses <code>llc</code> at runtime to compile programs</li>
@@ -80,15 +80,15 @@ brew install llvm@17</code></pre>
     <p>Pre-built binaries for Windows are not yet available. You can <a href="#build-from-source">build from source</a> or watch the <a href="https://github.com/sans-language/sans/releases">releases page</a> for updates.</p>
 
     <h2 id="build-from-source">Build from source</h2>
-    <p>Requires: Rust (stable), LLVM 17, Clang/GCC.</p>
-    <pre><code>git clone https://github.com/sans-language/sans
+    <p>Sans is self-hosted &mdash; the compiler is written in Sans. Building from source requires a bootstrap binary (any recent release) and LLVM 17.</p>
+    <pre class="no-line-numbers"><code>git clone https://github.com/sans-language/sans
 cd sans
-LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
-# binary at target/release/sans</code></pre>
+sans build compiler/main.sans   # uses bootstrap binary to compile the compiler
+sudo mv sans /usr/local/bin/</code></pre>
 
     <h2>What's included</h2>
     <p>The <code>sans</code> binary is the full compiler. It compiles <code>.sans</code> source files to native executables via LLVM. No separate runtime is needed &mdash; the standard library is compiled from source alongside your program on each build.</p>
-    <pre><code>sans build hello.sans   # produces ./hello
+    <pre class="no-line-numbers"><code>sans build hello.sans   # produces ./hello
 sans run hello.sans     # build + run, cleans up</code></pre>
 
     <p>See the <a href="/docs/">documentation</a> for language reference and examples.</p>
