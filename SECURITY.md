@@ -48,5 +48,5 @@ Sans includes several security features for production use:
 - **Request size limits** and input validation on HTTP servers (v0.8.2)
 - **Bounded thread pool** with connection limits (v0.8.2)
 - **Graceful shutdown** on SIGTERM/SIGINT (v0.8.2)
-- **SipHash** for Map/JSON to prevent hash collision DoS (v0.8.3)
+- **Keyed FNV-1a hash** for Map/JSON to prevent hash collision DoS (v0.8.3)
 - **Sandboxed playground** with Docker isolation (v0.8.4)

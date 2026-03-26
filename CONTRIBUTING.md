@@ -4,7 +4,7 @@ Sans is an AI-first compiled language — contributions from both humans and AI 
 
 ## Quick Setup
 
-Sans runs on macOS and Linux. Windows is not currently supported.
+Sans runs on macOS, Linux, and Windows (via MSYS2/MinGW).
 
 **Prerequisites:** LLVM 17 and a previous `sans` binary (for bootstrapping).
 
@@ -25,6 +25,17 @@ wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 17
 
 curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz | tar xz
 sudo mv sans /usr/local/bin/
+```
+
+### Windows (MSYS2)
+
+Install [MSYS2](https://www.msys2.org/), then from a MINGW64 shell:
+
+```sh
+pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-clang mingw-w64-x86_64-curl mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
+
+curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-windows-x86_64.tar.gz | tar xz
+mv sans.exe /usr/local/bin/
 ```
 
 ### Build & Test

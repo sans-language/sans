@@ -59,7 +59,29 @@ brew install llvm@17</code></pre>
       <li><strong>libcurl + libssl</strong> &mdash; for HTTP and TLS support</li>
     </ul>
 
-    <h2>Manual download</h2>
+    <h2>Windows</h2>
+
+    <p>Download and extract the archive, then add <code>sans.exe</code> to your PATH:</p>
+
+    <div class="install-block">
+      <pre id="install-cmd-windows">curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-windows-x86_64.tar.gz | tar xz &amp;&amp; move sans.exe C:\usr\local\bin\</pre>
+      <button class="copy-btn" onclick="copyInstallWindows()">Copy</button>
+    </div>
+
+    <p>Or download manually from the <a href="#manual-download">table below</a> and add the directory to your <code>PATH</code>. Verify the install:</p>
+    <pre class="no-line-numbers"><code>sans --version</code></pre>
+
+    <h3>Prerequisites</h3>
+    <p>Install <a href="https://www.msys2.org/">MSYS2</a>, then from a MINGW64 shell:</p>
+    <pre class="no-line-numbers"><code>pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-clang mingw-w64-x86_64-curl mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib</code></pre>
+    <ul>
+      <li><strong>LLVM 17+</strong> &mdash; Sans uses <code>llc</code> at runtime to compile programs</li>
+      <li><strong>Clang</strong> &mdash; system linker</li>
+      <li><strong>libcurl + libssl + zlib</strong> &mdash; for HTTP, TLS, and compression support</li>
+    </ul>
+    <p>Run <code>sans</code> from the MSYS2 MINGW64 shell so the dependencies are on the PATH.</p>
+
+    <h2 id="manual-download">Manual download</h2>
     <table>
       <thead><tr><th>Platform</th><th>Arch</th><th>Download</th></tr></thead>
       <tbody>
@@ -73,11 +95,13 @@ brew install llvm@17</code></pre>
           <td>x86_64</td>
           <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz">sans-linux-x86_64.tar.gz</a></td>
         </tr>
+        <tr>
+          <td>Windows</td>
+          <td>x86_64</td>
+          <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-windows-x86_64.tar.gz">sans-windows-x86_64.tar.gz</a></td>
+        </tr>
       </tbody>
     </table>
-
-    <h2>Windows</h2>
-    <p>Pre-built binaries for Windows are not yet available. You can <a href="#build-from-source">build from source</a> or watch the <a href="https://github.com/sans-language/sans/releases">releases page</a> for updates.</p>
 
     <h2 id="build-from-source">Build from source</h2>
     <p>Sans is self-hosted &mdash; the compiler is written in Sans. Building from source requires a bootstrap binary (any recent release) and LLVM 17.</p>
@@ -109,6 +133,7 @@ sans run hello.sans     # build + run, cleans up</code></pre>
     }
     function copyInstall() { copyCmd('install-cmd', document.querySelectorAll('.copy-btn')[0]); }
     function copyInstallLinux() { copyCmd('install-cmd-linux', document.querySelectorAll('.copy-btn')[1]); }
+    function copyInstallWindows() { copyCmd('install-cmd-windows', document.querySelectorAll('.copy-btn')[2]); }
   </script>
 </body>
 </html>

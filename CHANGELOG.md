@@ -2,6 +2,184 @@
 
 All notable changes to Sans are documented here.
 
+## [0.8.5] - 2026-03-26
+
+### Added
+- Website playground page with editor, run, share, and snippet loading
+- Mini-playground in homepage hero section
+- "Try it" buttons on documentation examples
+- Examples page on website
+- Playground editor with syntax highlighting, line numbers, and resizable editors
+- Windows x86_64 build in release workflow (via MSYS2/MinGW)
+
+### Changed
+- Website redesign: replace Catppuccin palette with professional design system
+- Homepage messaging updated to "The language AI gets right on the first try"
+- Benchmarks page reframed as "Comparisons"
+- CI auto-updates `ai-reference.md` and `llms.txt` versions on release
+
+### Fixed
+- Playground examples updated to use valid Sans syntax with return types
+- Various line number alignment and layout fixes across the website
+- Mobile responsive code blocks
+- Download page: removed line numbers from terminal command blocks, fixed build-from-source instructions
+
+### Security
+- Content-Security-Policy headers on all website pages
+- Snippet ID format validation before API fetch
+- Shell injection fix in `fuzz.yml` workflow_dispatch inputs
+
+### Docs
+- Security policy and best practices guide
+- Community (Discussions) section in README
+- Documentation synced across README, website, and reference files
+
+## [0.8.3] - 2026-03-25
+
+### Added
+- Native 64-bit bitwise builtins: `bxor`, `band`, `bor`, `bshl`, `bshr` (single LLVM instructions)
+- Runtime fuzz testing for JSON parser, string ops, and map operations with CI integration
+
+### Security
+- Replace djb2 hash with keyed FNV-1a in map and JSON runtime to prevent hash-flooding DoS
+
+## [0.8.2] - 2026-03-25
+
+### Added
+- `pmutex_init()`, `pmutex_lock()`, `pmutex_unlock()` builtins for raw pthread mutex access
+- Server configuration: `set_max_workers`, `set_read_timeout`, `set_keepalive_timeout`, `set_drain_timeout`, `set_max_body`, `set_max_headers`, `set_max_header_count`, `set_max_url`
+- Bounded thread pool for HTTP/HTTPS servers — 503 rejection at capacity, graceful drain on shutdown
+- Multi-read request assembly with timeouts and input validation
+
+### Fixed
+- Release bootstrap updated from v0.6.1 to latest release (v0.6.1 did not know Result unwrap `!` syntax)
+- LLVM IR dominance error in multi-read request assembly
+- `pkg.sans` updated to unwrap `json_parse` Result for v0.8.1 compatibility
+
+## [0.8.1] - 2026-03-24
+
+### Added
+- JSON recursion depth limit (512) — returns error Result on overflow instead of stack overflow
+- Memory safety audit report (`docs/memory-audit-v0.8.1.md`)
+
+### Fixed
+- `scope_should_keep` now walks JSON types (string/array/object) — prevents use-after-free when returning nested JSON from functions
+- Result unwrap preserves inner IRTY type — `R<J>.unwrap()` now correctly dispatches JSON methods
+- `map_delete` backward-shift to preserve linear probe chains — previously broke probing chain causing silent data loss
+
+### Changed
+- **Breaking:** `json_parse()` returns `Result<JsonValue>` instead of `JsonValue` — callers must unwrap with `!` or handle the error
+
+## [0.8.0] - 2026-03-24
+
+### Added
+- Runtime bounds checking for array GET/SET — prints descriptive error and exits instead of silent corruption
+- String `char_at` emits runtime error on out-of-bounds instead of silent empty string
+- Panic recovery with `setjmp`/`longjmp` for error boundaries — HTTP server handlers catch unwrap failures instead of crashing
+- New builtins: `setjmp`, `longjmp`, `panic_enable`, `panic_disable`, `panic_get_buf`, `panic_is_active`, `panic_fire`
+- SIGPIPE handler in HTTP/HTTPS server accept loops — prevents server crash on client disconnect
+- Fuzz testing harness for lexer/parser (Python generator + Bash runner, daily CI with 100K iterations)
+
+## [0.7.4] - 2026-03-23
+
+### Added
+- Module re-exports via `pub import "mod"` — only `pub`-marked symbols re-exported
+- Struct and tuple destructuring in match arms: `Point { x, y } => x + y`
+- Per-iteration scope cleanup for `while`, `for-in`, and `for-in-destr` loops
+- Depth guard for generic monomorphization (max 32)
+
+### Fixed
+- Loop scope frames popped on early return from inside loops (prevents double-free)
+- Added `-no-pie` flag to Linux linker command
+
+## [0.7.3] - 2026-03-23
+
+### Added
+- Compiler warnings: unused variables (skips `_`-prefixed), unreachable code after return
+- `assert(cond)` and `assert_eq(a, b)` compiler builtins with source line reporting
+- `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none` builtins
+- Compatibility test suite: 10 frozen tests in `tests/compat/`
+
+### Fixed
+- Scope GC recursive keep: preserves nested containers at depth 2+; added `rc_kept_head` to track kept nodes
+
+## [0.7.2] - 2026-03-22
+
+### Added
+- Trait objects (`dyn Trait`) with vtable dispatch: `expr as dyn Trait` coercion, fat pointers, indirect method calls
+- `dyn TraitName` usable in type positions (function parameters, variables)
+- Polymorphic arrays: `array<dyn Trait>()` with typed element indexing
+- `defer` statement — LIFO execution on function return, works with early returns
+- Channel `select` with timeout: `select { v = ch.recv() => body, timeout(ms) => body }`
+- `pub` visibility modifier for module exports
+- Import aliases: `import "http" as h`
+- Dead code elimination via call graph analysis
+- Constant folding for integer arithmetic on literals
+- `sans test [dir]` command — discovers and runs `*_test.sans` files
+- Negative test infrastructure (expected compilation failures)
+- Test suite expanded to 250+ fixtures
+
+### Fixed
+- **Breaking:** `Array.find()` returns `Option<T>` instead of raw element
+- Global variable init values read wrong AST offset — caused wrong values for curl constants (segfaults)
+- Result combinator scope tracking: no double-tracking propagated results (was causing double-free)
+
+## [0.7.1] - 2026-03-21
+
+### Added
+- `Option<T>` / `O<T>` type with `some(value)` and `none()` constructors
+- Option methods: `is_some`, `is_none`, `unwrap`, `unwrap_or`, `!` unwrap, `?` try operator
+- Generalized `Map<K,V>` / `M<K,V>` with integer key support: `M<I,I>`, `M<I,S>`, `M<S,S>`
+- Result combinators: `map`, `and_then`, `map_err`, `or_else`
+
+### Changed
+- **Breaking:** `Map.get()` returns `Option<V>` instead of raw Int
+- Opaque handles (`HttpServer`, `HttpResponse`, etc.) are now type-distinct from Int
+
+## [0.7.0] - 2026-03-21
+
+### Added
+- Source location tracking (line:col) on all expression and statement AST node types
+- Structured compiler diagnostics: `file:line:col: error: message` with source context and caret
+- Multi-error diagnostic collection — compiler shows all diagnostics before exiting
+- CI test workflow running on both macOS and Linux via `.ll` cross-compilation
+
+### Fixed
+- `random()` was a stub returning `max/2` — replaced with libc `rand()` seeded from `time()`
+- JSON parser handles float values — `3.14` was previously truncated to `3`
+- Closures with 3+ captures silently miscompiled — expanded to support up to 8 captures
+- Platform-specific linker flags for Linux stack size
+
+## [0.6.1] - 2026-03-20
+
+### Fixed
+- Strip `sh`/`time`/`random` from stage 2 bootstrap — v0.4.0 does not have them
+
+### Security
+- Command injection: quote all paths in shell commands (`llc`, `cc`, `rm`)
+- Random temp paths for `sans run` output (prevents symlink attacks)
+- Package manager validation switched from denylist to allowlist
+- Scope GC globals made thread-local to prevent data corruption under concurrent load
+- Fix CRLF header injection in HTTP responses
+- Increase SSL read buffer and header capacity
+
+## [0.6.0] - 2026-03-20
+
+### Added
+- Package manager CLI (`sans pkg`) with `init`, `add`, `install`, `remove`, `list`, `update`, `search`
+- `sans.json` manifest format with dependency resolution and community index
+- `sh()` builtin — execute shell command and capture stdout
+- `listdir()`, `mkdir()`, `is_dir()`, `rmdir()`, `remove()`, `getenv()` builtins
+- `J` type alias for `JsonValue` — preserves JSON type info across function boundaries
+- `.keys()`, `.has()`, `.delete()` methods on `JsonValue`
+- `scope_disable()` / `scope_enable()` builtins for IR data protection during compilation
+- VSCode extension with complete hover docs and syntax highlighting
+- Claude Code skills and workflow guides (architecture-review, PR review, skeptic-review, testing, planning)
+- CI version-guard workflow
+
+### Security
+- Package manager input validation: allowlist-only characters, block flag injection and path traversal
+
 ## [0.5.4] - 2026-03-19
 
 ### Added
@@ -48,14 +226,9 @@ All notable changes to Sans are documented here.
 - **`match` expressions** on integers and strings: `match x { 1 => "one", _ => "other" }`
 - **Tuple destructuring**: `let (a, b) = tuple_expr`
 - **`stof(s)` / `string_to_float(s)`** — parse string to float via C strtod
-- **Default parameters** — (partial: typeck allows, parser TBD)
 
 ### Fixed
 - Lambda segfault: three bugs in capture detection and context inheritance
-  - `find_captures_stmt` for ST_LET read wrong offset for value expression
-  - `find_captures_expr` for EX_CALL treated function name as expression pointer
-  - Lambda context didn't inherit local_fn_set/module_name/imported_fn_names
-- Nested lambdas, inline lambdas with function calls, reduce/each/flat_map all work
 
 ## [0.4.6] - 2026-03-19
 
