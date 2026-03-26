@@ -336,7 +336,8 @@ main() I {
       updateHighlight();
       document.getElementById('output').textContent = 'Press Run to execute your code.';
       document.getElementById('status').textContent = '';
-      window.history.pushState({}, '', '/play/');\n      updateHighlight();
+      window.history.pushState({}, '', '/play/');
+      updateHighlight();
     }
 
     function escapeHtml(s) {
