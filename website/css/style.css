@@ -252,23 +252,24 @@ pre {
 
 pre code {
   display: block;
-  padding: 12px 16px 12px 62px;
+  padding: 12px 16px 12px 0;
   color: #e2e8f0;
   counter-reset: line;
-  position: relative;
 }
 
 /* Line numbers gutter */
 pre code .line {
   display: block;
+  padding-left: 62px;
 }
 
 pre code .line::before {
   counter-increment: line;
   content: counter(line);
-  position: absolute;
-  left: 0;
+  display: inline-block;
   width: 44px;
+  margin-left: -62px;
+  margin-right: 18px;
   padding-right: 10px;
   text-align: right;
   color: #475569;
@@ -706,8 +707,9 @@ footer a:hover {
   tbody td { padding: 6px 10px; }
 
   pre { font-size: 11px; background-image: linear-gradient(to right, #0f172a 38px, #334155 38px, #334155 39px, transparent 39px); }
-  pre code { padding: 10px 12px 10px 50px; }
-  pre code .line::before { width: 34px; padding-right: 8px; font-size: 11px; }
+  pre code { padding: 10px 12px 10px 0; }
+  pre code .line { padding-left: 50px; }
+  pre code .line::before { width: 34px; margin-left: -50px; margin-right: 16px; padding-right: 8px; font-size: 11px; }
   p code, li code, td code { font-size: 12px; }
 
   .docs h1 { font-size: 24px; }
