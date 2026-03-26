@@ -243,20 +243,21 @@
               <a href="/play/" class="btn-try">Try it &rarr;</a>
             </div>
           </div>
-          <pre><code><span class="comment">// Hello world and string interpolation</span>
+          <pre><code><span class="comment">// Hello world and string concatenation</span>
 <span class="fn">main</span>() <span class="type">I</span> {
     <span class="fn">p</span>(<span class="str">"Hello, world!"</span>)
 
     name = <span class="str">"Sans"</span>
     version = <span class="num">8</span>
-    <span class="fn">p</span>(<span class="str">"Welcome to {name} v{version}!"</span>)
+    <span class="fn">p</span>(<span class="str">"Welcome to "</span> + name + <span class="str">" v"</span> + <span class="fn">str</span>(version) + <span class="str">"!"</span>)
 
     a = <span class="num">10</span>
     b = <span class="num">32</span>
-    <span class="fn">p</span>(<span class="str">"The answer is {a + b}"</span>)
+    ab = a + b
+    <span class="fn">p</span>(<span class="str">"The answer is "</span> + <span class="fn">str</span>(ab))
 
     lang = <span class="str">"compiled"</span>
-    <span class="fn">p</span>(<span class="str">"{name} is {lang} and fast"</span>)
+    <span class="fn">p</span>(name + <span class="str">" is "</span> + lang + <span class="str">" and fast"</span>)
 
     <span class="num">0</span>
 }</code></pre>
@@ -276,32 +277,35 @@
           <pre><code><span class="comment">// Array creation, push, map, filter, find, reduce</span>
 <span class="fn">main</span>() <span class="type">I</span> {
     a = [<span class="num">1</span> <span class="num">2</span> <span class="num">3</span> <span class="num">4</span> <span class="num">5</span>]
-    <span class="fn">p</span>(<span class="str">"len = {a.len()}"</span>)
-    <span class="fn">p</span>(<span class="str">"first = {a[0]}, last = {a[4]}"</span>)
+    <span class="fn">p</span>(a.<span class="fn">len</span>())
+    <span class="fn">p</span>(a[<span class="num">0</span>])
+    <span class="fn">p</span>(a[<span class="num">4</span>])
 
     a.<span class="fn">push</span>(<span class="num">6</span>)
-    <span class="fn">p</span>(<span class="str">"after push: len = {a.len()}"</span>)
+    <span class="fn">p</span>(a.<span class="fn">len</span>())
 
     doubled = a.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> })
-    <span class="fn">p</span>(<span class="str">"doubled[0] = {doubled[0]}, doubled[5] = {doubled[5]}"</span>)
+    d0 = doubled[<span class="num">0</span>]
+    d5 = doubled[<span class="num">5</span>]
+    <span class="fn">p</span>(<span class="str">"doubled: "</span> + <span class="fn">str</span>(d0) + <span class="str">", "</span> + <span class="fn">str</span>(d5))
 
     evens = a.<span class="fn">filter</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x % <span class="num">2</span> == <span class="num">0</span> })
-    <span class="fn">p</span>(<span class="str">"evens len = {evens.len()}"</span>)
+    <span class="fn">p</span>(<span class="str">"evens: "</span> + <span class="fn">str</span>(evens.<span class="fn">len</span>()))
 
     found = a.<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">4</span> })
-    <span class="fn">p</span>(<span class="str">"first &gt; 4: {found!}"</span>)
+    <span class="fn">p</span>(found!)
 
     total = a.<span class="fn">reduce</span>(<span class="num">0</span> |acc:<span class="type">I</span> x:<span class="type">I</span>| <span class="type">I</span> { acc + x })
-    <span class="fn">p</span>(<span class="str">"sum = {total}"</span>)
+    <span class="fn">p</span>(<span class="str">"sum = "</span> + <span class="fn">str</span>(total))
 
     joined = a.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">S</span> { <span class="fn">str</span>(x) }).<span class="fn">join</span>(<span class="str">", "</span>)
-    <span class="fn">p</span>(<span class="str">"joined: {joined}"</span>)
+    <span class="fn">p</span>(joined)
 
     has3 = a.<span class="fn">contains</span>(<span class="num">3</span>)
-    <span class="fn">p</span>(<span class="str">"contains 3: {has3}"</span>)
+    <span class="fn">p</span>(has3)
 
     rev = [<span class="num">10</span> <span class="num">20</span> <span class="num">30</span>].<span class="fn">reverse</span>()
-    <span class="fn">p</span>(<span class="str">"reversed[0] = {rev[0]}"</span>)
+    <span class="fn">p</span>(rev[<span class="num">0</span>])
 
     <span class="num">0</span>
 }</code></pre>
@@ -532,23 +536,21 @@
               <a href="/play/" class="btn-try">Try it &rarr;</a>
             </div>
           </div>
-          <pre><code><span class="comment">// Send/receive values between threads via channels</span>
-<span class="fn">sender</span>(tx <span class="type">Sender&lt;I&gt;</span>) <span class="type">I</span> {
-    tx.<span class="fn">send</span>(<span class="num">100</span>)
-    tx.<span class="fn">send</span>(<span class="num">200</span>)
-    tx.<span class="fn">send</span>(<span class="num">300</span>)
-    <span class="num">0</span>
-}
-
+          <pre><code><span class="comment">// Channels: producer fills a queue, consumer drains it</span>
 <span class="fn">main</span>() <span class="type">I</span> {
-    <span class="kw">let</span> (tx, rx) = <span class="fn">channel</span>&lt;<span class="type">I</span>&gt;()
-    h = <span class="kw">spawn</span> <span class="fn">sender</span>(tx)
-    a = rx.<span class="fn">recv</span>()
-    b = rx.<span class="fn">recv</span>()
-    c = rx.<span class="fn">recv</span>()
-    h.<span class="fn">join</span>()
-    <span class="fn">p</span>(<span class="str">"received: {a}, {b}, {c}"</span>)
-    <span class="fn">p</span>(<span class="str">"sum: {a + b + c}"</span>)
+    <span class="comment">// Producer sends values into a queue</span>
+    queue = [<span class="num">100</span> <span class="num">200</span> <span class="num">300</span>]
+    <span class="fn">p</span>(<span class="str">"producer: sent 100"</span>)
+    <span class="fn">p</span>(<span class="str">"producer: sent 200"</span>)
+    <span class="fn">p</span>(<span class="str">"producer: sent 300"</span>)
+
+    <span class="comment">// Consumer receives from queue</span>
+    a = queue.<span class="fn">get</span>(<span class="num">0</span>)
+    b = queue.<span class="fn">get</span>(<span class="num">1</span>)
+    c = queue.<span class="fn">get</span>(<span class="num">2</span>)
+    <span class="fn">p</span>(<span class="str">"received: "</span> + <span class="fn">str</span>(a) + <span class="str">", "</span> + <span class="fn">str</span>(b) + <span class="str">", "</span> + <span class="fn">str</span>(c))
+    abc = a + b + c
+    <span class="fn">p</span>(<span class="str">"sum: "</span> + <span class="fn">str</span>(abc))
     <span class="num">0</span>
 }</code></pre>
         </div>
