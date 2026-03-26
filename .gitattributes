@@ -1,0 +1,2 @@
+# Keep Sans source files with LF line endings on all platforms
+*.sans text eol=lf
