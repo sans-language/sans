@@ -94,6 +94,8 @@ fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I
 fe(path)          file_exists(path)     S -> B
+srl()             stdin_read_line()     -> S (read line from stdin)
+srb(n)            stdin_read_bytes(n)   I -> S (read n bytes from stdin)
 getenv(name)/genv(name)                 S -> S (read env var, "" if unset)
 mkdir(path)                             S -> I (mkdir -p, 1=ok 0=err)
 rmdir(path)                             S -> I (remove empty dir, 1=ok 0=err)

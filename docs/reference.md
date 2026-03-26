@@ -200,6 +200,25 @@ String comparison (`==`, `!=`) is supported.
 | `file_append(path, content)` | `fa` | `(String, String) -> Int` |
 | `file_exists(path)` | `fe` | `(String) -> Bool` |
 
+### Stdin I/O
+
+| Function | Alias | Description |
+|----------|-------|-------------|
+| `stdin_read_line()` | `srl()` | Read one line from stdin (blocking). Returns the line without trailing newline. |
+| `stdin_read_bytes(n)` | `srb(n)` | Read exactly `n` bytes from stdin (blocking). |
+
+These functions use an internal 64KB buffer for efficient reading. Used for building interactive programs and protocol servers (e.g., the LSP server).
+
+```sans
+// Read a line from stdin
+line = srl()
+p(line)
+
+// Read exactly 10 bytes
+data = srb(10)
+p(data)
+```
+
 ### Type Conversion
 
 | Function | Alias | Signature |
