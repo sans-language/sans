@@ -296,7 +296,7 @@ p.<span class="num">0</span> + p.<span class="num">1</span>  <span class="commen
     <p>Single expressions in parens are grouping, not tuples: <code>(1 + 2)</code> evaluates to <code>3</code>, not a 1-tuple.</p>
 
     <h2 id="structs">Structs</h2>
-    <pre><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
+    <pre class="tryable"><code><span class="kw">struct</span> <span class="type">Point</span> { x <span class="type">I</span>, y <span class="type">I</span> }
 
 <span class="fn">make_point</span>(x:<span class="type">I</span> y:<span class="type">I</span>) <span class="type">Point</span> = <span class="type">Point</span> { x: x, y: y }
 
@@ -308,7 +308,7 @@ p.<span class="num">0</span> + p.<span class="num">1</span>  <span class="commen
 
     <h2 id="generic-structs">Generic Structs</h2>
     <p>Structs can have type parameters, enabling reusable data structures:</p>
-    <pre><code><span class="kw">struct</span> <span class="type">Pair</span>&lt;A B&gt; { first <span class="type">A</span>, second <span class="type">B</span> }
+    <pre class="tryable"><code><span class="kw">struct</span> <span class="type">Pair</span>&lt;A B&gt; { first <span class="type">A</span>, second <span class="type">B</span> }
 
 <span class="fn">main</span>() {
     p = <span class="type">Pair</span>&lt;<span class="type">I</span> <span class="type">S</span>&gt;{ first: <span class="num">1</span>, second: <span class="str">"hello"</span> }
@@ -385,7 +385,7 @@ multiplier = <span class="num">3</span>
 scaled = nums.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * multiplier })</code></pre>
 
     <h2 id="errors">Error Handling</h2>
-    <pre><code><span class="fn">divide</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; = b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div/0"</span>) : <span class="fn">ok</span>(a / b)
+    <pre class="tryable"><code><span class="fn">divide</span>(a:<span class="type">I</span> b:<span class="type">I</span>) <span class="type">R</span>&lt;<span class="type">I</span>&gt; = b == <span class="num">0</span> ? <span class="fn">err</span>(<span class="str">"div/0"</span>) : <span class="fn">ok</span>(a / b)
 
 <span class="fn">main</span>() {
     r = <span class="fn">divide</span>(<span class="num">10</span> <span class="num">3</span>)
@@ -500,7 +500,7 @@ m.<span class="fn">get</span>(<span class="str">"z"</span>).<span class="fn">unw
     <p>Packages are cached at <code>~/.sans/packages/</code>. Dependencies are resolved transitively via BFS.</p>
 
     <h2 id="concurrency">Concurrency</h2>
-    <pre><code><span class="fn">worker</span>(tx <span class="type">Sender</span>&lt;<span class="type">Int</span>&gt;) <span class="type">I</span> {
+    <pre class="tryable"><code><span class="fn">worker</span>(tx <span class="type">Sender</span>&lt;<span class="type">Int</span>&gt;) <span class="type">I</span> {
     tx.<span class="fn">send</span>(<span class="num">42</span>)
     <span class="num">0</span>
 }
@@ -628,7 +628,7 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
     <h4>WebSocket</h4>
     <p><code>req.is_ws_upgrade()</code> returns 1 if the request is a WebSocket upgrade request. <code>req.upgrade_ws()</code> performs the handshake and returns a WebSocket handle.</p>
     <p><code>ws_send(ws, msg)</code> sends a text frame. <code>ws_recv(ws)</code> receives the next text frame (handles ping/pong automatically, returns <code>""</code> on close). <code>ws_close(ws)</code> sends a close frame and closes the socket.</p>
-    <pre><code><span class="fn">handle</span>(req:<span class="ty">I</span>) <span class="ty">I</span> {
+    <pre class="tryable"><code><span class="fn">handle</span>(req:<span class="ty">I</span>) <span class="ty">I</span> {
   req.<span class="fn">is_ws_upgrade</span>() ? {
     ws = req.<span class="fn">upgrade_ws</span>()
     msg := <span class="fn">ws_recv</span>(ws)
@@ -1098,5 +1098,28 @@ if rv != 0 {
   </div>
 
     <sans-footer base=""></sans-footer>
+<script>
+  function tryInPlayground(code) {
+    fetch('https://api.sans.dev/api/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+    .then(r => r.json())
+    .then(data => { window.open('/play/' + data.id, '_blank'); })
+    .catch(() => { window.open('/play/', '_blank'); });
+  }
+
+  // Add "Try it" buttons to all code blocks with class "tryable"
+  document.querySelectorAll('pre.tryable').forEach(pre => {
+    const code = pre.querySelector('code').textContent;
+    const btn = document.createElement('button');
+    btn.className = 'try-it-btn';
+    btn.textContent = 'Try it';
+    btn.onclick = function() { tryInPlayground(code); };
+    pre.style.position = 'relative';
+    pre.insertBefore(btn, pre.firstChild);
+  });
+</script>
 </body>
 </html>
