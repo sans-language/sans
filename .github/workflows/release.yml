@@ -294,10 +294,30 @@ jobs:
 
       - name: Smoke test
         run: |
+          echo "=== Environment ==="
+          echo "OS=$OS TEMP=$TEMP"
+          echo "COMSPEC=$COMSPEC"
+          echo "PATH (first 3):"
+          echo "$PATH" | tr ':' '\n' | head -3
+          echo "=== llc ==="
+          which llc && llc --version 2>&1 | head -1
+          echo "=== cc ==="
+          which cc && cc --version 2>&1 | head -1
+          echo "=== Build ==="
           echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
-          ./sans.exe build /tmp/smoke.sans -o /tmp/smoke
-          /tmp/smoke.exe
-          echo "Smoke test passed"
+          ./sans.exe build /tmp/smoke.sans -o /tmp/smoke 2>&1 || true
+          echo "=== Outputs ==="
+          ls -la /tmp/smoke* 2>/dev/null || echo "no output files"
+          echo "=== Run ==="
+          if [ -f /tmp/smoke.exe ]; then
+            /tmp/smoke.exe
+            echo "Smoke test passed"
+          else
+            echo "Build did not produce binary — checking .ll/.o files"
+            ls -la /tmp/smoke* /tmp/sans_* 2>/dev/null || true
+            echo "FAIL: smoke test binary not produced"
+            exit 1
+          fi
 
       - name: Package
         run: |
