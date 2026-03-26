@@ -294,10 +294,9 @@ jobs:
 
       - name: Smoke test
         run: |
-          # Verify the binary executes correctly
-          ./sans.exe --version
-          # Full compilation smoke test requires native Windows support in the
-          # compiler (system() calls, path handling) — tracked separately
+          echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
+          ./sans.exe build /tmp/smoke.sans -o /tmp/smoke
+          /tmp/smoke.exe
           echo "Smoke test passed"
 
       - name: Package
