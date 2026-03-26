@@ -143,6 +143,14 @@ E2E tests live in `tests/fixtures/`. Each fixture is a `.sans` file with an expe
 
 The compiler pipeline: **lexer → parser → typeck → IR → codegen → LLVM**. Seven modules in `compiler/`, 13+ runtime modules in `runtime/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full architecture overview.
 
+## Community
+
+Questions, ideas, or feedback? Join the [GitHub Discussions](https://github.com/sans-language/sans/discussions).
+
+## Security
+
+Found a vulnerability? See [SECURITY.md](SECURITY.md) for our responsible disclosure policy. For best practices, read the [security guide](docs/security-guide.md).
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up the development environment, add features, and submit pull requests. AI agents: read [CLAUDE.md](CLAUDE.md) for the complete rule set.
