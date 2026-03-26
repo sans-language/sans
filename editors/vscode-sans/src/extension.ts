@@ -136,9 +136,10 @@ const HOVER_DATA: Record<string, string> = {
     'log_error': '**log_error**(msg: String) -> Int\n\nLog message at ERROR level to stderr.',
     'll': '**log_set_level**(level: Int) -> Int\n\nSet minimum log level. 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR.',
     'log_set_level': '**log_set_level**(level: Int) -> Int\n\nSet minimum log level. 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR.',
+    'get_log_level': '**get_log_level**() -> Int\n\nGet current log level. 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR.',
+    'set_log_level': '**set_log_level**(level: Int) -> Int\n\nSet minimum log level. 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR. Alias for `log_set_level`.',
 
     // Result
-    'ok': '**ok**(value: T) -> Result\\<T\\>\n\nWrap value in successful Result.',
     'err': '**err**(message: String) -> Result\\<_\\>\n**err**(code: Int, message: String) -> Result\\<_\\>\n\nCreate error Result with message. Optionally include an integer error code.\n\nUsage: `err("not found")` or `err(404 "not found")`\n\nRetrieve code with `.code()` method.',
     'code': '**code**() -> Int\n\nResult method. Get the error code from a Result. Returns 0 if no code was set.\n\nUsage: `r.code()  // 404`',
     'and_then': '**and_then**(fn: (T) -> Result\\<U\\>) -> Result\\<U\\>\n\nResult method. Apply `fn` to the ok value where `fn` itself returns a Result. On error, returns the error unchanged. Useful for chaining fallible steps.\n\nUsage: `parse("10").and_then(|n:I| R<I> { n > 0 ? ok(n) : err("negative") })`',
@@ -287,7 +288,7 @@ const HOVER_DATA: Record<string, string> = {
     'S': '**String** — UTF-8 string',
     'R': '**Result\\<T\\>** — Success or error value',
     'J': '**JsonValue** — Opaque JSON value (short alias for JsonValue)',
-    'JsonValue': '**JsonValue** — Opaque JSON value. Created via `jo()`, `ja()`, `jp()`. Methods: `.get()`, `.set()`, `.keys()`, `.has()`, `.delete()`, `.type_of()`, `.get_string()`, `.get_int()`',
+    'JsonValue': '**JsonValue** — Opaque JSON value. Created via `jo()`, `ja()`, `jp()`. Methods: `.get()`, `.set()`, `.keys()`, `.has()`, `.delete()`, `.type_of()`, `.get_string()`, `.get_int()`, `.stringify()`, `.push()`',
 
     // Package manager
     'pkg': '**sans pkg** — Package manager commands\n\n`sans pkg init` — Create sans.json\n`sans pkg add <url> [tag]` — Add dependency\n`sans pkg install` — Install all deps\n`sans pkg remove <url>` — Remove dependency\n`sans pkg list` — List deps\n`sans pkg update <url> [tag]` — Update dependency\n`sans pkg search <query>` — Search index',
@@ -318,8 +319,8 @@ const HOVER_DATA: Record<string, string> = {
 
     // Math
     'abs': '**abs**(n: Int) -> Int\n\nReturn absolute value.\n\nUsage: `abs(-5)  // 5`',
-    'min': '**min**(a: Int, b: Int) -> Int\n\nReturn the smaller of two integers.\n\nUsage: `min(3 7)  // 3`',
-    'max': '**max**(a: Int, b: Int) -> Int\n\nReturn the larger of two integers.\n\nUsage: `max(3 7)  // 7`',
+    'min': '**min**(a: Int, b: Int) -> Int\n\nReturn the smaller of two integers. Also an Array method: `[3 1 2].min()  // 1`.\n\nUsage: `min(3 7)  // 3`',
+    'max': '**max**(a: Int, b: Int) -> Int\n\nReturn the larger of two integers. Also an Array method: `[3 1 2].max()  // 3`.\n\nUsage: `max(3 7)  // 7`',
 
     // Collections
     'range': '**range**(n: Int) -> Array\\<Int\\>\n**range**(a: Int, b: Int) -> Array\\<Int\\>\n\nGenerate array of integers [0..n) or [a..b).\n\nUsage: `range(5)  // [0 1 2 3 4]`\n`range(2 5)  // [2 3 4]`',
@@ -351,7 +352,7 @@ const HOVER_DATA: Record<string, string> = {
     'unlock': '**unlock**(value: T) -> Int\n\nUnlock mutex with updated value.\n\nUsage: `mtx.unlock(val)`',
 
     // Array methods
-    'push': '**push**(value: T) -> Int\n\nAppend value to array.\n\nUsage: `a.push(42)`',
+    'push': '**push**(value: T) -> Int\n\nAppend value to array. Also a JsonValue method: `jarr.push(ji(42))`.\n\nUsage: `a.push(42)`',
     'pop': '**pop**() -> T\n\nRemove and return last element.\n\nUsage: `v = a.pop()`',
     'len': '**len**() -> Int\n\nGet length of array, string, map, or JSON value.\n\nUsage: `n = a.len()`',
     'get': '**get**(key/index) -> T\n\nGet element by index (Array, String) or key (Map, JsonValue).\n\nUsage: `a.get(0)` or `m.get("key")`',
@@ -413,9 +414,13 @@ const HOVER_DATA: Record<string, string> = {
     'typeof': '**type_of**() -> String\n\nAlias for `type_of()`.\n\nUsage: `v.typeof()`',
     'stringify': '**stringify**() -> String\n\nSerialize JsonValue to string. Same as `json_stringify(v)`.\n\nUsage: `v.stringify()`',
 
+    // JoinHandle method
+    'join': '**join**() -> Int\n\nJoinHandle method. Wait for spawned thread to complete.\n\nUsage: `h = spawn worker(data)`\n`h.join()`',
+
     // HttpResponse methods
     'status': '**status**() -> Int\n\nGet HTTP response status code.\n\nUsage: `r.status()  // 200`',
     'body': '**body**() -> String\n\nGet HTTP response/request body.\n\nUsage: `r.body()`',
+    'ok': '**ok**(value: T) -> Result\\<T\\>\n\nWrap value in successful Result.\n\nAlso an HttpResponse method: `resp.ok()` returns Bool (true if status 200-299).',
 
     // HttpRequest methods (path/method)
     'path': '**path**() -> String\n\nGet request URL path.\n\nUsage: `req.path()`',

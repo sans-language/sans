@@ -62,6 +62,8 @@ for (k v) in m.entries() { }              // for-loop destructuring
 while cond { }             // loop
 break                      // exit loop
 continue                   // skip to next iteration
+defer stmt                 // LIFO execution on function return (args eval'd at defer site)
+select { v = rx.recv() => body, timeout(ms) => body }  // channel multiplex
 ```
 
 ## Tuples
@@ -131,6 +133,8 @@ li(msg)           log_info(msg)         S -> I
 lw(msg)           log_warn(msg)         S -> I
 le(msg)           log_error(msg)        S -> I
 ll(level)         log_set_level(n)      I -> I
+get_log_level()                         -> I (current log level)
+set_log_level(n)                        I -> I (alias for log_set_level)
 ok(v)                                   T -> R<T>
 err(msg)                                S -> R<_>
 err(code msg)                           I S -> R<_> (error with code)
@@ -246,9 +250,9 @@ Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f
 Map<K V>:  set(k v) get(k)->O<V> has(k) len keys vals delete(k) entries  // bare M() = M<S I>
            M<S I>() M<I I>() M<I S>() M<S S>()  // int keys use multiplicative hash; float keys disallowed
            BREAKING(v0.7.1): get() returns O<V> — use ! or .unwrap_or(d) to extract
-String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s) char_at(i)/get(i) repeat(n) to_int pad_left(w ch) pad_right(w ch) bytes
+String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s) char_at(i)/get(i) repeat(n) to_int pad_left(w ch) pad_right(w ch) bytes add(s)
 Int:       to_str/to_string
-JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v)
+JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v) stringify
 HttpResponse: status body header(n) ok
 HttpServer:   accept
 HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length cookie(name) form(name) respond(status body) respond(status body ct) respond_json(status body) respond_stream(status) is_ws_upgrade upgrade_ws

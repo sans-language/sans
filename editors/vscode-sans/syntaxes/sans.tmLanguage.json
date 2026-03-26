@@ -74,7 +74,7 @@
       "patterns": [
         {
           "name": "keyword.control.sans",
-          "match": "\\b(if|else|while|for|in|match|return|spawn|break|continue)\\b"
+          "match": "\\b(if|else|while|for|in|match|return|spawn|break|continue|defer|select)\\b"
         },
         {
           "name": "keyword.declaration.sans",
@@ -98,7 +98,7 @@
         },
         {
           "name": "support.type.builtin.sans",
-          "match": "\\b(Array|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|HS|HR|Fn|Map|J)\\b"
+          "match": "\\b(Array|Option|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|O|M|HS|HR|Fn|Map|J)\\b"
         }
       ]
     },
@@ -134,7 +134,7 @@
         },
         {
           "name": "support.function.result.sans",
-          "match": "\\b(ok|err)\\b"
+          "match": "\\b(ok|err|some|none)\\b"
         },
         {
           "name": "support.function.assert.sans",
