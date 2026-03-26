@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/sans-language/sans?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue?style=flat-square)]()
 
-A fast, compiled programming language designed for backend and API development. Sans compiles to native code via LLVM, producing standalone binaries with no runtime dependencies.
+The language AI gets right on the first try. A fast, compiled language with 12 types, 40 keywords, and everything built in. Compiles to native code via LLVM — standalone binaries, no runtime dependencies.
 
 ## Quick Start
 

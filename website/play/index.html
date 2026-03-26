@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="sans-version" content="0.8.2">
+  <title>Sans Playground</title>
+  <script>
+    (function(){var t=localStorage.getItem('sans-theme');if(t)document.documentElement.setAttribute('data-theme',t);else if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.setAttribute('data-theme','dark');})();
+  </script>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/components.js" defer></script>
+  <style>
+    .playground { max-width: 900px; margin: 32px auto; padding: 0 16px; }
+    .playground-editor {
+      width: 100%;
+      min-height: 260px;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 16px;
+      border: 1px solid var(--surface0);
+      border-radius: 8px;
+      background: var(--mantle);
+      color: var(--text);
+      resize: vertical;
+      tab-size: 4;
+    }
+    .playground-controls {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0;
+      align-items: center;
+    }
+    .playground-controls .btn-primary,
+    .playground-controls .btn-secondary {
+      padding: 8px 20px;
+      font-size: 14px;
+    }
+    .playground-controls .shortcut {
+      color: var(--subtext0);
+      font-size: 12px;
+      margin-left: 4px;
+    }
+    .playground-output {
+      font-family: 'Source Code Pro', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 16px;
+      border: 1px solid var(--surface0);
+      border-radius: 8px;
+      background: var(--mantle);
+      color: var(--text);
+      min-height: 80px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .playground-output .error { color: var(--red); }
+    .playground-output .success { color: var(--green); }
+    .playground-spinner { color: var(--subtext0); }
+    .playground-status { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .playground-status h3 { margin: 0; }
+  </style>
+</head>
+<body>
+  <sans-nav active="playground" base=""></sans-nav>
+
+  <div class="playground">
+    <h1>Sans Playground</h1>
+    <p style="color:var(--subtext0); margin-bottom:16px;">Write Sans code and run it instantly. No installation required.</p>
+
+    <textarea id="editor" class="playground-editor" spellcheck="false">main() {
+    p("Hello from Sans!")
+
+    nums = [1 2 3 4 5]
+    doubled = nums.map(|x:I| I { x * 2 })
+    p(doubled)
+}</textarea>
+
+    <div class="playground-controls">
+      <button id="run-btn" class="btn-primary" onclick="runCode()">Run</button>
+      <span class="shortcut">Ctrl+Enter</span>
+      <button class="btn-secondary" onclick="shareCode()">Share</button>
+      <button class="btn-secondary" onclick="resetCode()">Reset</button>
+    </div>
+
+    <div class="playground-status">
+      <h3>Output</h3>
+      <span id="status"></span>
+    </div>
+    <div id="output" class="playground-output">Press Run to execute your code.</div>
+  </div>
+
+  <sans-footer base=""></sans-footer>
+
+  <script>
+    const API = 'https://api.sans.dev';
+    const DEFAULT_CODE = document.getElementById('editor').value;
+
+    // Load snippet from URL path
+    (function() {
+      const path = window.location.pathname.replace(/\/$/, '');
+      const parts = path.split('/');
+      const id = parts[parts.length - 1];
+      if (id && id !== 'play' && id.length === 8) {
+        fetch(API + '/api/snippet/' + id)
+          .then(r => r.ok ? r.json() : Promise.reject())
+          .then(data => { document.getElementById('editor').value = data.code; })
+          .catch(() => {
+            document.getElementById('output').innerHTML = '<span class="error">Snippet not found. Loading default example.</span>';
+          });
+      }
+    })();
+
+    async function runCode() {
+      const code = document.getElementById('editor').value;
+      const output = document.getElementById('output');
+      const status = document.getElementById('status');
+      const btn = document.getElementById('run-btn');
+
+      btn.disabled = true;
+      btn.textContent = 'Running...';
+      output.innerHTML = '<span class="playground-spinner">Compiling and running...</span>';
+      status.textContent = '';
+
+      try {
+        const res = await fetch(API + '/api/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+
+        if (res.status === 429) {
+          output.innerHTML = '<span class="error">Rate limit exceeded. Please wait a moment.</span>';
+          return;
+        }
+
+        const data = await res.json();
+        let html = '';
+        if (data.stderr) {
+          html += '<span class="error">' + escapeHtml(data.stderr) + '</span>\n';
+        }
+        if (data.stdout) {
+          html += '<span class="success">' + escapeHtml(data.stdout) + '</span>';
+        }
+        if (!data.stdout && !data.stderr) {
+          html = '<span class="success">(no output)</span>';
+        }
+        output.innerHTML = html;
+        status.textContent = data.compile_success ? 'Compiled OK' : 'Compile error';
+        status.style.color = data.compile_success ? 'var(--green)' : 'var(--red)';
+      } catch (e) {
+        output.innerHTML = '<span class="error">Failed to connect to playground server.</span>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run';
+      }
+    }
+
+    async function shareCode() {
+      const code = document.getElementById('editor').value;
+      try {
+        const res = await fetch(API + '/api/share', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        const url = window.location.origin + '/play/' + data.id;
+        window.history.pushState({}, '', '/play/' + data.id);
+        navigator.clipboard.writeText(url).then(() => {
+          document.getElementById('status').textContent = 'Link copied!';
+          document.getElementById('status').style.color = 'var(--green)';
+        });
+      } catch (e) {
+        document.getElementById('status').textContent = 'Share failed';
+        document.getElementById('status').style.color = 'var(--red)';
+      }
+    }
+
+    function resetCode() {
+      document.getElementById('editor').value = DEFAULT_CODE;
+      document.getElementById('output').textContent = 'Press Run to execute your code.';
+      document.getElementById('status').textContent = '';
+      window.history.pushState({}, '', '/play/');
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    document.getElementById('editor').addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runCode();
+      }
+      // Tab inserts spaces
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = this.selectionStart;
+        this.value = this.value.substring(0, start) + '    ' + this.value.substring(this.selectionEnd);
+        this.selectionStart = this.selectionEnd = start + 4;
+      }
+    });
+  </script>
+</body>
+</html>

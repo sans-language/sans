@@ -639,3 +639,23 @@ footer a:hover {
 
   footer { padding: 24px 16px; }
 }
+
+/* Try-it buttons in docs */
+.try-it-btn {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-family: 'Source Sans 3', sans-serif;
+  color: var(--lavender);
+  border: 1px solid var(--surface0);
+  border-radius: 4px;
+  background: var(--mantle);
+  cursor: pointer;
+  text-decoration: none;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.try-it-btn:hover {
+  background: var(--surface0);
+  color: var(--mauve);
+}

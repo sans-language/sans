@@ -1,4 +1,6 @@
-# Sans AI Reference
+# Sans Programming Language — v0.8.4
+# https://sans.dev | Playground: https://sans.dev/play
+# AI Reference: https://sans.dev/llms.txt
 
 Compact reference for LLM context injection. Use short aliases.
 
