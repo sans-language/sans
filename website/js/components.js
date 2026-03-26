@@ -305,4 +305,15 @@ class SansFooter extends HTMLElement {
 }
 
 customElements.define('sans-nav', SansNav);
+
+// Auto-wrap code lines in <span class="line"> for line numbers
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('pre > code').forEach(code => {
+    const html = code.innerHTML;
+    const lines = html.split('\n');
+    // Remove trailing empty line from split
+    if (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+    code.innerHTML = lines.map(l => `<span class="line">${l}</span>`).join('\n');
+  });
+});
 customElements.define('sans-footer', SansFooter);
