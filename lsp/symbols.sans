@@ -1,4 +1,8 @@
 // LSP symbol lookup — signature help
+import "../compiler/constants"
+import "../compiler/lexer"
+import "../compiler/parser"
+import "../compiler/typeck"
 import "analyzer"
 import "protocol"
 

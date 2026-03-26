@@ -1894,6 +1894,16 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       }
       return make_type(TY_INT)
     }
+    if name == "rfd" {
+      if nargs != 3 { tc_error("rfd() takes exactly 3 arguments (fd, buf, len)") }
+      ci := 0
+      while ci < 3 {
+      at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("rfd() argument must be Int, got " + type_to_string(at)) }
+      ci += 1
+      }
+      return make_type(TY_INT)
+    }
     if name == "ssend" {
       if nargs != 3 { tc_error("ssend() takes exactly 3 arguments (fd, buf, len)") }
       ci := 0

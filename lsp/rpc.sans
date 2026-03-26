@@ -7,13 +7,14 @@ rpc_read() J {
   // Read header lines until empty line
   content_len := 0
   found := 0
-  line := srl()
-  while slen(line) > 0 {
+  header_done := 0
+  while header_done == 0 {
+    line = srl()
     trimmed = line.trim()
     if slen(trimmed) == 0 {
-      // Empty line = end of headers
-      found = 1
-      line = ""
+      // Empty line = end of headers (or EOF)
+      if content_len > 0 { found = 1 } else { 0 }
+      header_done = 1
     } else {
       if trimmed.starts_with("Content-Length:") {
         // Extract length value after the colon
@@ -21,7 +22,6 @@ rpc_read() J {
         content_len = stoi(val)
         0
       } else { 0 }
-      line = srl()
     }
   }
   if found == 0 || content_len <= 0 { return jn() }

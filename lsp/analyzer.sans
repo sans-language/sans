@@ -1,4 +1,8 @@
 // LSP Analyzer — wraps the compiler pipeline for LSP analysis
+import "../compiler/constants"
+import "../compiler/lexer"
+import "../compiler/parser"
+import "../compiler/typeck"
 import "protocol"
 
 // --- Persistent state ---
@@ -70,10 +74,10 @@ get_diagnostics_json(uri:S) J {
     // Map: DIAG_ERROR(0) -> LSP Error(1), DIAG_WARN(1) -> LSP Warning(2)
     lsp_sev = sev + 1
     // Convert 1-based compiler lines to 0-based LSP lines
-    line = diag_line(d) - 1
-    if line < 0 { line = 0 }
-    col = diag_col(d) - 1
-    if col < 0 { col = 0 }
+    raw_line = diag_line(d) - 1
+    line = if raw_line < 0 { 0 } else { raw_line }
+    raw_col = diag_col(d) - 1
+    col = if raw_col < 0 { 0 } else { raw_col }
     msg = diag_msg(d)
     // End position: same line, end of word (approximate with col+1)
     diag_j = make_lsp_diagnostic(line, col, line, col + 1, lsp_sev, msg)

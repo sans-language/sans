@@ -1,4 +1,8 @@
 // LSP server entry point — main message loop
+import "../compiler/constants"
+import "../compiler/lexer"
+import "../compiler/parser"
+import "../compiler/typeck"
 import "rpc"
 import "protocol"
 import "analyzer"
@@ -84,10 +88,10 @@ handle_definition(id:J params:J) I {
   if found_colon == 0 { return rpc_respond(id, jn()) }
   line_str = loc_str.substring(0, colon_pos)
   col_str = loc_str.substring(colon_pos + 1, slen(loc_str))
-  def_line = stoi(line_str) - 1
-  def_col = stoi(col_str) - 1
-  if def_line < 0 { def_line = 0 }
-  if def_col < 0 { def_col = 0 }
+  raw_def_line = stoi(line_str) - 1
+  def_line = if raw_def_line < 0 { 0 } else { raw_def_line }
+  raw_def_col = stoi(col_str) - 1
+  def_col = if raw_def_col < 0 { 0 } else { raw_def_col }
   result = make_lsp_location(uri, def_line, def_col, def_line, def_col)
   rpc_respond(id, result)
 }
