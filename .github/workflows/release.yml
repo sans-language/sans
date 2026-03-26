@@ -294,8 +294,12 @@ jobs:
 
       - name: Smoke test
         run: |
+          # The compiler invokes llc/cc via system() which uses cmd.exe on Windows.
+          # Set MSYS2 as the COMSPEC so system() calls route through bash instead.
+          export COMSPEC="$(cygpath -w /usr/bin/bash.exe)"
+          export PATH="/mingw64/bin:$PATH"
           echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
-          ./sans.exe build /tmp/smoke.sans
+          ./sans.exe build /tmp/smoke.sans -o /tmp/smoke.exe
           /tmp/smoke.exe
           echo "Smoke test passed"
 
