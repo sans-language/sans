@@ -256,7 +256,7 @@ main() I {
         const last = parts[parts.length - 1];
         if (last && last !== 'play' && last.length === 8) id = last;
       }
-      if (id) {
+      if (id && /^[a-zA-Z0-9]{8}$/.test(id)) {
         fetch(API + '/api/snippet/' + id)
           .then(r => r.ok ? r.json() : Promise.reject())
           .then(data => { editorEl.value = data.code; updateHighlight(); })
