@@ -260,20 +260,16 @@ parsed = json.<span class="fn">loads</span>(json.<span class="fn">dumps</span>(o
       <input type="radio" name="ex3" id="ex3-node">
       <input type="radio" name="ex3" id="ex3-python">
       <div class="tab-bar">
-        <label for="ex3-sans" class="tab-label">Sans <span class="token-badge">18 tokens</span></label>
+        <label for="ex3-sans" class="tab-label">Sans <span class="token-badge">25 tokens</span></label>
         <label for="ex3-go" class="tab-label">Go <span class="token-badge">42 tokens</span></label>
         <label for="ex3-rust" class="tab-label">Rust <span class="token-badge">58 tokens</span></label>
         <label for="ex3-node" class="tab-label">Node <span class="token-badge">32 tokens</span></label>
         <label for="ex3-python" class="tab-label">Python <span class="token-badge">26 tokens</span></label>
       </div>
       <div class="tab-panels">
-        <div class="tab-panel"><pre><code><span class="fn">handler</span>(req:<span class="type">HR</span>) <span class="type">S</span> = <span class="str">"hello world"</span>
+        <div class="tab-panel"><pre><code><span class="fn">handle</span>(req:<span class="type">HR</span>) <span class="type">I</span> = req.<span class="fn">respond</span>(<span class="num">200</span> <span class="str">"hello world"</span>)
 
-<span class="fn">main</span>() {
-    s = <span class="fn">hs</span>(<span class="num">8080</span>)
-    s.<span class="fn">get</span>(<span class="str">"/"</span>, handler)
-    s.<span class="fn">start</span>()
-}</code></pre></div>
+<span class="fn">main</span>() { <span class="fn">serve</span>(<span class="num">8080</span> <span class="fn">fptr</span>(<span class="str">"handle"</span>)) }</code></pre></div>
         <div class="tab-panel"><pre><code><span class="kw">func</span> <span class="fn">main</span>() {
     http.<span class="fn">HandleFunc</span>(<span class="str">"/"</span>,
         <span class="kw">func</span>(w http.ResponseWriter,
@@ -315,7 +311,7 @@ app.<span class="fn">run</span>(port=<span class="num">8080</span>)</code></pre>
         <tbody>
           <tr><td>Fibonacci</td><td>14 tokens</td><td>26 tokens</td><td>27 tokens</td><td>22 tokens</td><td>16 tokens</td><td>13-46%</td></tr>
           <tr><td>JSON roundtrip</td><td>36 tokens</td><td>65 tokens</td><td>72 tokens</td><td>40 tokens</td><td>34 tokens</td><td>6-50%</td></tr>
-          <tr><td>HTTP server</td><td>18 tokens</td><td>42 tokens</td><td>58 tokens</td><td>32 tokens</td><td>26 tokens</td><td>31-69%</td></tr>
+          <tr><td>HTTP server</td><td>25 tokens</td><td>42 tokens</td><td>58 tokens</td><td>32 tokens</td><td>26 tokens</td><td>22-57%</td></tr>
         </tbody>
       </table>
     </div>
