@@ -15,23 +15,48 @@ g g_out = 0
 g g_src = 0
 g g_ll = 0
 g g_llc = 0
+g g_is_win = -1
+
+
+// ------ Platform helpers --------------------------------------------------------------------------------------------------------------------------------------
+
+check_win() I {
+  if g_is_win < 0 {
+    os = genv("OS")
+    if os.contains("Windows") == 1 { g_is_win = 1 } else { g_is_win = 0 }
+  }
+  g_is_win
+}
+
+del(p:S) I {
+  w = check_win()
+  if w == 1 { sys("del /q " + p + " 2>nul") } else { sys("rm -f '" + p + "'") }
+}
 
 
 // ------ Find llc binary ---------------------------------------------------------------------------------------------------------------------------------------
 find_llc() S {
+  if check_win() == 1 {
+    llc_out = sh("where llc 2>nul").trim()
+    if slen(llc_out) > 2 {
+      // where may return multiple lines, take the first
+      llc_lines = llc_out.split("\n")
+      return llc_lines.get(0).trim()
+    }
+    return "llc"
+  }
   // Try common llc locations (Homebrew on macOS)
   if fexists("/opt/homebrew/opt/llvm@17/bin/llc") == 1 { return "/opt/homebrew/opt/llvm@17/bin/llc" }
   if fexists("/usr/local/opt/llvm@17/bin/llc") == 1 { return "/usr/local/opt/llvm@17/bin/llc" }
   if fexists("/opt/homebrew/opt/llvm/bin/llc") == 1 { return "/opt/homebrew/opt/llvm/bin/llc" }
   if fexists("/usr/local/opt/llvm/bin/llc") == 1 { return "/usr/local/opt/llvm/bin/llc" }
   if fexists("/usr/bin/llc") == 1 { return "/usr/bin/llc" }
-  // Use brew to discover LLVM path (use sh() to capture output instead of temp file)
+  // Use brew to discover LLVM path
   prefix = sh("brew --prefix llvm@17 2>/dev/null || brew --prefix llvm 2>/dev/null")
   if slen(prefix) > 1 {
     llc_path = prefix.trim() + "/bin/llc"
     if fexists(llc_path) == 1 { return llc_path }
   }
-  // Fallback
   "llc"
 }
 
@@ -533,10 +558,21 @@ do_link(ll_path:S output_path:S source_path:S) I {
   // Find llc binary
   if g_llc == 0 { g_llc = find_llc() }
   llc = g_llc
+  // Platform-specific quoting and temp dir
+  c := "'"
+  td := "/tmp"
+  os_env = genv("OS")
+  win := 0
+  if os_env.contains("Windows") == 1 {
+    c = ""
+    td = sh("cmd /c echo %TEMP%").trim()
+    if slen(td) < 2 { td = genv("TEMP") }
+    win = 1
+  }
 
   // 11. Invoke llc to produce object file
   obj_path = output_path + ".o"
-  sys("'" + llc + "' -filetype=obj -O2 -o '" + obj_path + "' '" + ll_path + "'")
+  sys(c + llc + c + " -filetype=obj -O2 -o " + c + obj_path + c + " " + c + ll_path + c)
 
   // 12. Compile runtime
   runtime_dir_cwd = "runtime"
@@ -570,49 +606,61 @@ do_link(ll_path:S output_path:S source_path:S) I {
     wfd(2, rname)
     wfd(2, "\n")
     sans_path = runtime_dir + "/" + rname + ".sans"
-    o_path = "/tmp/sans_" + rname + "_runtime.o"
+    o_path = td + "/sans_" + rname + "_runtime.o"
     rsrc = fr(sans_path)
     rprog = parse(rsrc)
     empty_exports = M()
     check_module(rprog, empty_exports)
     empty_fn_ret = M()
     rir = lower(rprog, 0, empty_fn_ret)
-    r_ll = "/tmp/sans_" + rname + "_runtime.ll"
+    r_ll = td + "/sans_" + rname + "_runtime.ll"
     r_cg = compile_to_ll_runtime(rir, r_ll)
-    sys("'" + llc + "' -filetype=obj -O2 -o '" + o_path + "' '" + r_ll + "'")
-    sys("rm -f '" + r_ll + "'")
+    sys(c + llc + c + " -filetype=obj -O2 -o " + c + o_path + c + " " + c + r_ll + c)
+    del(r_ll)
     runtime_o_paths.push(o_path)
     ri = ri + 1
     0
   }
 
   // 13. Link
-  // Detect platform: 'D' (68) = Darwin/macOS, 'L' (76) = Linux
-  platform = sh("uname -s")
-  is_mac := 0
-  if load8(platform) == 68 { is_mac = 1 } else { 0 }
-
-  link_cmd := "cc '" + obj_path + "'"
+  link_cmd := "cc " + c + obj_path + c
   li := 0
   while li < runtime_o_paths.len() {
-    link_cmd = link_cmd + " '" + runtime_o_paths.get(li) + "'"
+    link_cmd = link_cmd + " " + c + runtime_o_paths.get(li) + c
     li = li + 1
     0
   }
-  link_cmd = link_cmd + " -lcurl -lz"
-  if is_mac == 1 {
-    link_cmd = link_cmd + " -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib"
+  if win == 1 {
+    // Windows (MinGW): link win_compat shim, winsock2, pthreads
+    compat_o = td + "/sans_win_compat.o"
+    compat_src = runtime_dir + "/win_compat.c"
+    if fexists(compat_src) == 1 {
+      sys("cc -c -o " + c + compat_o + c + " " + c + compat_src + c)
+      link_cmd = link_cmd + " " + c + compat_o + c
+    }
+    link_cmd = link_cmd + " -lcurl -lz -lssl -lcrypto -lpthread -lws2_32"
+    link_cmd = link_cmd + " -o " + c + output_path + ".exe" + c
   } else {
-    link_cmd = link_cmd + " -no-pie -Wl,-z,stacksize=268435456 $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto')"
+    // Detect macOS vs Linux: 'D' (68) = Darwin
+    platform = sh("uname -s")
+    is_mac := 0
+    if load8(platform) == 68 { is_mac = 1 } else { 0 }
+    link_cmd = link_cmd + " -lcurl -lz"
+    if is_mac == 1 {
+      link_cmd = link_cmd + " -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib"
+    } else {
+      link_cmd = link_cmd + " -no-pie -Wl,-z,stacksize=268435456 $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto')"
+    }
+    link_cmd = link_cmd + " -o " + c + output_path + c
   }
-  link_cmd = link_cmd + " -o '" + output_path + "'"
   sys(link_cmd)
 
   // 14. Cleanup
-  sys("rm -f '" + ll_path + "' '" + obj_path + "'")
+  del(ll_path)
+  del(obj_path)
   ri = 0
   while ri < runtime_o_paths.len() {
-    sys("rm -f '" + runtime_o_paths.get(ri) + "'")
+    del(runtime_o_paths.get(ri))
     ri = ri + 1
     0
   }
@@ -623,8 +671,28 @@ do_link(ll_path:S output_path:S source_path:S) I {
 // ------ Test Runner -----------------------------------------------------------------------------------------------------------------------------------------
 
 test_main(dir:S) I {
+  // Platform-specific config
+  c := "'"
+  td := "/tmp"
+  sep := "/"
+  ext := ""
+  os_env = genv("OS")
+  win := 0
+  if os_env.contains("Windows") == 1 {
+    c = ""
+    td = sh("cmd /c echo %TEMP%").trim()
+    if slen(td) < 2 { td = genv("TEMP") } else { td = td }
+    sep = "\\"
+    ext = ".exe"
+    win = 1
+  }
   // Discover *_test.sans files via shell
-  listing = sh("ls " + dir + "/*_test.sans 2>/dev/null || true")
+  listing := ""
+  if win == 1 {
+    listing = sh("dir /b " + c + dir + "\\*_test.sans" + c + " 2>nul")
+  } else {
+    listing = sh("ls " + dir + "/*_test.sans 2>/dev/null || true")
+  }
   if slen(listing) < 2 {
     p("no *_test.sans files found in " + dir)
     exit(1)
@@ -638,29 +706,32 @@ test_main(dir:S) I {
   p("sans test: " + str(total) + " test file(s) in " + dir)
   p("----------------------------------------")
   while i < total {
-    file = files.get(i)
-    if slen(file) > 0 {
-      tmp = "/tmp/sans_test_" + str(time()) + "_" + str(i)
+    fname := files.get(i).trim()
+    // dir /b returns bare filenames, prepend directory
+    if win == 1 { fname = dir + sep + fname } else { fname = fname }
+    if slen(fname) > 0 {
+      tmp = td + "/sans_test_" + str(time()) + "_" + str(i)
+      exe = tmp + ext
       // Compile
-      build_out = sh("sans build '" + file + "' -o '" + tmp + "' 2>&1 || echo 'SANS_BUILD_FAIL'")
+      build_out = sh("sans build " + c + fname + c + " -o " + c + tmp + c + " 2>&1 || echo SANS_BUILD_FAIL")
       if build_out.contains("SANS_BUILD_FAIL") == 1 {
-        p("  FAIL  " + file + " (compile error)")
+        p("  FAIL  " + fname + " (compile error)")
         failed = failed + 1
       } else {
         // Run
-        run_out = sh(tmp + " 2>&1; echo $?")
+        run_out = sh(c + exe + c + " 2>&1; echo $?")
         run_lines = run_out.trim().split("\n")
         exit_line = run_lines.get(run_lines.len() - 1)
         rc = stoi(exit_line)
         if rc == 0 {
-          p("  OK    " + file)
+          p("  OK    " + fname)
           passed = passed + 1
         } else {
-          p("  FAIL  " + file + " (exit " + str(rc) + ")")
+          p("  FAIL  " + fname + " (exit " + str(rc) + ")")
           failed = failed + 1
         }
       }
-      sys("rm -f '" + tmp + "'")
+      del(exe)
     }
     i = i + 1
     0
@@ -732,14 +803,25 @@ main() I {
     0
   } else { if cmd == "run" {
     g_file = file
-    g_out = "/tmp/sans_run_" + str(time() * 1000 + random(9999))
+    run_ext := ""
+    run_td := "/tmp"
+    run_c := "'"
+    run_os = genv("OS")
+    if run_os.contains("Windows") == 1 {
+      run_ext = ".exe"
+      run_td = sh("cmd /c echo %TEMP%").trim()
+      if slen(run_td) < 2 { run_td = genv("TEMP") } else { run_td = run_td }
+      run_c = ""
+    }
+    g_out = run_td + "/sans_run_" + str(time() * 1000 + random(9999))
     g_src = file
     wfd(2, "STEP=0 FILE=")
     wfd(2, g_file)
     wfd(2, "\n")
     build(g_file, g_out)
-    sys(g_out)
-    sys("rm -f " + g_out)
+    exe = g_out + run_ext
+    sys(run_c + exe + run_c)
+    del(exe)
     0
   } else {
     p("unknown command: " + cmd)

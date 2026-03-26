@@ -166,6 +166,7 @@ jobs:
   build-linux:
     name: Build Linux x86_64
     needs: build-macos
+    if: ${{ always() && needs.build-macos.result == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -226,6 +227,7 @@ jobs:
   build-windows:
     name: Build Windows x86_64
     needs: build-macos
+    if: ${{ always() && needs.build-macos.result == 'success' }}
     runs-on: windows-latest
 
     defaults:
@@ -274,8 +276,11 @@ jobs:
             RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
           done
 
+          # Compile Windows compatibility shim (poll -> WSAPoll)
+          cc -c -o /tmp/win_compat.o runtime/win_compat.c
+
           # Link with MinGW — provides pthreads, POSIX socket compat, etc.
-          cc main.o $RUNTIME_OBJS \
+          cc main.o $RUNTIME_OBJS /tmp/win_compat.o \
             $(pkg-config --libs libcurl openssl zlib 2>/dev/null || echo '-lcurl -lssl -lcrypto -lz') \
             -lpthread -lws2_32 \
             -o sans.exe
@@ -289,8 +294,10 @@ jobs:
 
       - name: Smoke test
         run: |
+          # MSYS2 sets TEMP=/tmp (MSYS2 path) but MinGW binaries need Windows paths
+          export TEMP="$(cygpath -w /tmp)"
           echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
-          ./sans.exe build /tmp/smoke.sans
+          ./sans.exe build /tmp/smoke.sans -o /tmp/smoke
           /tmp/smoke.exe
           echo "Smoke test passed"
 
