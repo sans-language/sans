@@ -41,8 +41,9 @@ jobs:
         run: chmod +x tools/fuzz/fuzz_compiler.sh
 
       - name: Run compiler fuzz testing
+        env:
+          ITERATIONS: ${{ github.event.inputs.iterations || '100000' }}
         run: |
-          ITERATIONS="${{ github.event.inputs.iterations || '100000' }}"
           echo "Running $ITERATIONS compiler fuzz iterations..."
           tools/fuzz/fuzz_compiler.sh "$ITERATIONS" ./sans
 
@@ -81,8 +82,9 @@ jobs:
         run: chmod +x tools/fuzz/fuzz_runtime.sh
 
       - name: Run runtime fuzz testing
+        env:
+          ITERATIONS: ${{ github.event.inputs.runtime_iterations || '1000' }}
         run: |
-          ITERATIONS="${{ github.event.inputs.runtime_iterations || '1000' }}"
           echo "Running $ITERATIONS runtime fuzz iterations..."
           tools/fuzz/fuzz_runtime.sh "$ITERATIONS" ./sans
 
