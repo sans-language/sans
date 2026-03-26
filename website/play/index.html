@@ -79,7 +79,6 @@
       text-align: right;
       font-family: 'Source Code Pro', monospace;
       font-size: 13px;
-      line-height: 1.4;
       color: #475569;
       background: #0f172a;
       border-right: 1px solid #334155;
@@ -87,7 +86,9 @@
       pointer-events: none;
       z-index: 3;
       overflow: hidden;
-      white-space: pre;
+    }
+    #line-numbers div {
+      line-height: 1.4;
     }
 
     /* Sync scroll between textarea and overlay */
@@ -213,8 +214,8 @@ main() I {
     function updateLineNumbers() {
       const lines = editorEl.value.split('\n').length;
       const nums = [];
-      for (let i = 1; i <= lines; i++) nums.push(i);
-      document.getElementById('line-numbers').innerHTML = nums.join('\n');
+      for (let i = 1; i <= lines; i++) nums.push('<div>' + i + '</div>');
+      document.getElementById('line-numbers').innerHTML = nums.join('');
     }
 
     function syncScroll() {
@@ -244,12 +245,17 @@ main() I {
     // Initial render
     updateHighlight();
 
-    // Load snippet from URL path
+    // Load snippet from URL query param (?s=ID) or path (/play/ID)
     (function() {
-      const path = window.location.pathname.replace(/\/$/, '');
-      const parts = path.split('/');
-      const id = parts[parts.length - 1];
-      if (id && id !== 'play' && id.length === 8) {
+      const params = new URLSearchParams(window.location.search);
+      let id = params.get('s');
+      if (!id) {
+        const path = window.location.pathname.replace(/\/$/, '');
+        const parts = path.split('/');
+        const last = parts[parts.length - 1];
+        if (last && last !== 'play' && last.length === 8) id = last;
+      }
+      if (id) {
         fetch(API + '/api/snippet/' + id)
           .then(r => r.ok ? r.json() : Promise.reject())
           .then(data => { editorEl.value = data.code; updateHighlight(); })
@@ -314,7 +320,7 @@ main() I {
         });
         const data = await res.json();
         const url = window.location.origin + '/play/' + data.id;
-        window.history.pushState({}, '', '/play/' + data.id);
+        window.history.pushState({}, '', '/play/?s=' + data.id);
         navigator.clipboard.writeText(url).then(() => {
           document.getElementById('status').textContent = 'Link copied!';
           document.getElementById('status').style.color = '#34d399';
@@ -330,7 +336,7 @@ main() I {
       updateHighlight();
       document.getElementById('output').textContent = 'Press Run to execute your code.';
       document.getElementById('status').textContent = '';
-      window.history.pushState({}, '', '/play/');
+      window.history.pushState({}, '', '/play/');\n      updateHighlight();
     }
 
     function escapeHtml(s) {

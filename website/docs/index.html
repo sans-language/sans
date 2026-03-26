@@ -1106,7 +1106,7 @@ if rv != 0 {
       body: JSON.stringify({ code }),
     })
     .then(r => r.json())
-    .then(data => { window.open('/play/' + data.id, '_blank'); })
+    .then(data => { window.open('/play/?s=' + data.id, '_blank'); })
     .catch(() => { window.open('/play/', '_blank'); });
   }
 

@@ -78,7 +78,9 @@
     pointer-events: none;
     z-index: 3;
     overflow: hidden;
-    white-space: pre;
+  }
+  #mini-line-numbers div {
+    line-height: 1.4;
   }
   .mini-playground-controls {
     display: flex;
@@ -340,8 +342,8 @@ app.<span class="fn">run</span>(port=<span class="num">8080</span>)</code></pre>
     document.getElementById('mini-highlight').innerHTML = highlightSans(miniEl.value) + '\n';
     const lines = miniEl.value.split('\n').length;
     const nums = [];
-    for (let i = 1; i <= lines; i++) nums.push(i);
-    document.getElementById('mini-line-numbers').innerHTML = nums.join('\n');
+    for (let i = 1; i <= lines; i++) nums.push('<div>' + i + '</div>');
+    document.getElementById('mini-line-numbers').innerHTML = nums.join('');
   }
 
   function miniSync() {

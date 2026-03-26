@@ -77,7 +77,7 @@ class SansNav extends HTMLElement {
 
         .brand {
           font-weight: 700;
-          font-size: 18px;
+          font-size: 32px;
           color: var(--text);
           text-decoration: none;
           margin-right: auto;
