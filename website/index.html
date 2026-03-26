@@ -10,6 +10,51 @@
   </script>
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/components.js" defer></script>
+<style>
+  .mini-playground {
+    max-width: 640px;
+    margin: 32px auto 0;
+    text-align: left;
+  }
+  .mini-playground textarea {
+    width: 100%;
+    min-height: 140px;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 12px;
+    border: 1px solid var(--surface0);
+    border-radius: 8px;
+    background: var(--mantle);
+    color: var(--text);
+    resize: none;
+    tab-size: 4;
+  }
+  .mini-playground-controls {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0;
+    align-items: center;
+  }
+  .mini-playground-controls .btn-primary { padding: 6px 16px; font-size: 13px; }
+  .mini-playground-controls .shortcut { color: var(--subtext0); font-size: 11px; }
+  .mini-playground-output {
+    font-family: 'Source Code Pro', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    padding: 12px;
+    border: 1px solid var(--surface0);
+    border-radius: 8px;
+    background: var(--mantle);
+    color: var(--text);
+    min-height: 40px;
+    white-space: pre-wrap;
+  }
+  .mini-playground-output .error { color: var(--red); }
+  .mini-playground-output .success { color: var(--green); }
+  .mini-playground-link { text-align: center; margin-top: 8px; }
+  .mini-playground-link a { color: var(--lavender); font-size: 13px; }
+</style>
 </head>
 <body>
   <sans-nav active="home" base=""></sans-nav>
@@ -24,6 +69,21 @@
         <a href="/download/" class="btn-secondary">Get started</a>
       </div>
       <p class="hero-version">Alpha &mdash; macOS &amp; Linux &mdash; <a href="https://github.com/sans-language/sans/releases">all releases</a></p>
+    <div class="mini-playground">
+      <textarea id="mini-editor" spellcheck="false">handler(req:HR) S = "Hello from Sans!"
+
+main() {
+    s = hs(8080)
+    s.get("/", handler)
+    s.start()
+}</textarea>
+      <div class="mini-playground-controls">
+        <button id="mini-run" class="btn-primary" onclick="miniRun()">Run</button>
+        <span class="shortcut">Ctrl+Enter</span>
+      </div>
+      <div id="mini-output" class="mini-playground-output">Press Run to try it.</div>
+      <div class="mini-playground-link"><a href="/play/">Open in Playground &rarr;</a></div>
+    </div>
     </div>
   </section>
 
@@ -204,5 +264,37 @@ app.<span class="fn">run</span>(port=<span class="num">8080</span>)</code></pre>
   </section>
 
     <sans-footer base=""></sans-footer>
+<script>
+  const MINI_API = 'https://api.sans.dev';
+  async function miniRun() {
+    const code = document.getElementById('mini-editor').value;
+    const output = document.getElementById('mini-output');
+    const btn = document.getElementById('mini-run');
+    btn.disabled = true; btn.textContent = 'Running...';
+    output.innerHTML = '<span style="color:var(--subtext0)">Compiling...</span>';
+    try {
+      const res = await fetch(MINI_API + '/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (res.status === 429) { output.innerHTML = '<span class="error">Rate limit exceeded.</span>'; return; }
+      const data = await res.json();
+      let html = '';
+      if (data.stderr) html += '<span class="error">' + data.stderr.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>\n';
+      if (data.stdout) html += '<span class="success">' + data.stdout.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span>';
+      if (!data.stdout && !data.stderr) html = '<span class="success">(no output)</span>';
+      output.innerHTML = html;
+    } catch(e) {
+      output.innerHTML = '<span class="error">Server unavailable.</span>';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Run';
+    }
+  }
+  document.getElementById('mini-editor').addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); miniRun(); }
+    if (e.key === 'Tab') { e.preventDefault(); const s = this.selectionStart; this.value = this.value.substring(0, s) + '    ' + this.value.substring(this.selectionEnd); this.selectionStart = this.selectionEnd = s + 4; }
+  });
+</script>
 </body>
 </html>
