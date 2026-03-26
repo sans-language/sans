@@ -1,6 +1,10 @@
-# Sans AI Reference
+# Sans AI Reference — v0.8.4
 
 Compact reference for LLM context injection. Use short aliases.
+
+**Changes since v0.8.3:**
+- Web playground at sans.dev/play
+- Updated website messaging
 
 ## Types
 `I`=Int `F`=Float `B`=Bool `S`=String `J`=JsonValue `R<T>`=Result<T> `O<T>`=Option<T>
