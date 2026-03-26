@@ -1,8 +1,0 @@
-fib(n:I) I {
-  n <= 1 ? n : fib(n - 1) + fib(n - 2)
-}
-
-main() {
-  p(fib(35))
-  0
-}

@@ -1,6 +1,0 @@
-benchmark,language,req_per_sec,latency_avg_ms,latency_p99_ms
-http_throughput,sans,45044,2.13,4.13
-http_throughput,python,44577,2.15,4.18
-http_throughput,go,41107,2.38,7.33
-http_throughput,node,44493,2.18,5.06
-http_throughput,rust,45447,2.11,4.10

@@ -41,7 +41,7 @@ jobs:
           fi
 
           # Check website HTML meta version tags
-          for html in website/index.html website/docs/index.html website/benchmarks/index.html website/download/index.html; do
+          for html in website/index.html website/docs/index.html website/download/index.html; do
             if file_diff "$html" | grep -qE '^\+.*content="[0-9]+\.[0-9]+\.[0-9]+"'; then
               VIOLATIONS="$VIOLATIONS\n  - $html (version meta tag)"
             fi
