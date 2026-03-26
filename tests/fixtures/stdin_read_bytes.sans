@@ -1,0 +1,5 @@
+// expected: ABCDE
+main() {
+  chunk = srb(5)
+  p(chunk)
+}

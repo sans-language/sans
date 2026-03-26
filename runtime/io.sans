@@ -1,0 +1,132 @@
+// Buffered stdin reader for LSP JSON-RPC communication
+
+g sans_stdin_buf = 0
+g sans_stdin_buf_size = 65536
+g sans_stdin_pos = 0
+g sans_stdin_filled = 0
+g sans_stdin_eof = 0
+
+sans_stdin_init() I {
+  if sans_stdin_buf == 0 {
+    sans_stdin_buf = alloc(sans_stdin_buf_size + 1)
+  }
+  0
+}
+
+sans_stdin_fill() I {
+  sans_stdin_init()
+  if sans_stdin_eof != 0 { 0 } else {
+    unread = sans_stdin_filled - sans_stdin_pos
+    if unread > 0 {
+      mcpy(sans_stdin_buf, sans_stdin_buf + sans_stdin_pos, unread)
+      0
+    } else {
+      unread = 0
+      0
+    }
+    sans_stdin_pos = 0
+    sans_stdin_filled = unread
+    space = sans_stdin_buf_size - sans_stdin_filled
+    if space <= 0 { 0 } else {
+      n = srecv(0, sans_stdin_buf + sans_stdin_filled, space)
+      if n <= 0 {
+        sans_stdin_eof = 1
+        0
+      } else {
+        sans_stdin_filled += n
+        n
+      }
+    }
+  }
+}
+
+sans_stdin_read_line() I {
+  sans_stdin_init()
+  done := 0
+  result := 0
+  while done == 0 {
+    i := sans_stdin_pos
+    found := 0
+    while i < sans_stdin_filled {
+      c = load8(sans_stdin_buf + i)
+      if c == 10 {
+        found = 1
+        line_len = i - sans_stdin_pos
+        if line_len > 0 {
+          prev = load8(sans_stdin_buf + i - 1)
+          if prev == 13 {
+            line_len = line_len - 1
+            0
+          } else { 0 }
+        } else { 0 }
+        result = alloc(line_len + 1)
+        if line_len > 0 {
+          mcpy(result, sans_stdin_buf + sans_stdin_pos, line_len)
+          0
+        } else { 0 }
+        store8(result + line_len, 0)
+        sans_stdin_pos = i + 1
+        done = 1
+        i = sans_stdin_filled
+      } else {
+        i += 1
+        0
+      }
+    }
+    if done == 0 {
+      if sans_stdin_eof != 0 {
+        remaining = sans_stdin_filled - sans_stdin_pos
+        result = alloc(remaining + 1)
+        if remaining > 0 {
+          mcpy(result, sans_stdin_buf + sans_stdin_pos, remaining)
+          0
+        } else { 0 }
+        store8(result + remaining, 0)
+        sans_stdin_pos = sans_stdin_filled
+        done = 1
+      } else {
+        sans_stdin_fill()
+        0
+      }
+    } else { 0 }
+  }
+  result
+}
+
+sans_stdin_read_bytes(count:I) I {
+  sans_stdin_init()
+  out = alloc(count + 1)
+  copied := 0
+  done := 0
+  while done == 0 {
+    if copied >= count {
+      done = 1
+      0
+    } else {
+      avail = sans_stdin_filled - sans_stdin_pos
+      if avail > 0 {
+        need = count - copied
+        take = if avail < need { avail } else { need }
+        mcpy(out + copied, sans_stdin_buf + sans_stdin_pos, take)
+        sans_stdin_pos += take
+        copied += take
+        0
+      } else {
+        if sans_stdin_eof != 0 {
+          done = 1
+          0
+        } else {
+          sans_stdin_fill()
+          if sans_stdin_eof != 0 {
+            if sans_stdin_filled <= sans_stdin_pos {
+              done = 1
+              0
+            } else { 0 }
+          } else { 0 }
+        }
+      }
+    }
+  }
+  store8(out + copied, 0)
+  out
+}
