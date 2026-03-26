@@ -30,7 +30,7 @@ check_win() I {
 
 del(p:S) I {
   w = check_win()
-  if w == 1 { sys("del /q \"" + p + "\" 2>nul") } else { sys("rm -f '" + p + "'") }
+  if w == 1 { sys("del /q " + p + " 2>nul") } else { sys("rm -f '" + p + "'") }
 }
 
 
@@ -564,7 +564,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   os_env = genv("OS")
   win := 0
   if os_env.contains("Windows") == 1 {
-    c = "\""
+    c = ""
     td = genv("TEMP")
     win = 1
   }
@@ -678,7 +678,7 @@ test_main(dir:S) I {
   os_env = genv("OS")
   win := 0
   if os_env.contains("Windows") == 1 {
-    c = "\""
+    c = ""
     td = genv("TEMP")
     sep = "\\"
     ext = ".exe"
@@ -808,7 +808,7 @@ main() I {
     if run_os.contains("Windows") == 1 {
       run_ext = ".exe"
       run_td = genv("TEMP")
-      run_c = "\""
+      run_c = ""
     }
     g_out = run_td + "/sans_run_" + str(time() * 1000 + random(9999))
     g_src = file
