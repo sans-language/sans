@@ -21,18 +21,7 @@
       overflow: hidden;
       background: #1e293b;
     }
-    .editor-titlebar {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      background: #0f172a;
-      border-bottom: 1px solid #334155;
-      font-size: 12px;
-      color: #64748b;
-    }
-    .editor-titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: #334155; }
-    .editor-titlebar .filename { margin-left: 8px; }
+    .editor-titlebar { display: none; }
 
     .editor-body {
       position: relative;
@@ -145,10 +134,6 @@
     <p style="color:var(--subtext0); margin-bottom:16px;">Write Sans code and run it instantly. No installation required.</p>
 
     <div class="editor-wrap">
-      <div class="editor-titlebar">
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        <span class="filename">playground.sans</span>
-      </div>
       <div class="editor-body">
         <div id="line-numbers"></div>
         <textarea id="editor" spellcheck="false">fib(n:I) I = n &lt;= 1 ? n : fib(n-1) + fib(n-2)
