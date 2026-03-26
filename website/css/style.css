@@ -243,7 +243,7 @@ pre {
   overflow-x: auto;
   font-family: 'Source Code Pro', 'Fira Code', monospace;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1;
   position: relative;
   border: 1px solid #334155;
 }
