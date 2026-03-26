@@ -56,9 +56,38 @@ func handleRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleShare(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	var req struct {
+		Code string `json:"code"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
+		return
+	}
+	if req.Code == "" {
+		http.Error(w, `{"error":"code is required"}`, http.StatusBadRequest)
+		return
+	}
+	id, err := db.SaveSnippet(req.Code)
+	if err != nil {
+		log.Printf("save snippet error: %v", err)
+		http.Error(w, `{"error":"internal error"}`, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": id})
 }
 
 func handleSnippet(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	id := r.PathValue("id")
+	if len(id) != 8 {
+		http.Error(w, `{"error":"invalid snippet id"}`, http.StatusBadRequest)
+		return
+	}
+	code, err := db.GetSnippet(id)
+	if err != nil {
+		http.Error(w, `{"error":"snippet not found"}`, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": id, "code": code})
 }
