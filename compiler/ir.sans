@@ -588,6 +588,10 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "p" { lower_call_print(ctx, args) }
 
   // ------ I/O ------
+  else if name == "stdin_read_line" { lower_call_0(ctx, IR_STDIN_READ_LINE, IRTY_STR) }
+  else if name == "srl" { lower_call_0(ctx, IR_STDIN_READ_LINE, IRTY_STR) }
+  else if name == "stdin_read_bytes" { lower_call_1(ctx, args, IR_STDIN_READ_BYTES, IRTY_STR) }
+  else if name == "srb" { lower_call_1(ctx, args, IR_STDIN_READ_BYTES, IRTY_STR) }
   else if name == "file_read" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
   else if name == "read_file" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
   else if name == "fread" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }

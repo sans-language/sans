@@ -531,6 +531,10 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_string_split(i64, i64)")
   emit(cg, "declare i64 @sans_string_replace(i64, i64, i64)")
 
+  // ------ Sans runtime: Stdin I/O ------
+  emit(cg, "declare i64 @sans_stdin_read_line()")
+  emit(cg, "declare i64 @sans_stdin_read_bytes(i64)")
+
   // ------ Sans runtime: Result ------
   emit(cg, "declare i64 @sans_result_ok(i64)")
   emit(cg, "declare i64 @sans_result_err(i64, i64)")
@@ -3197,6 +3201,27 @@ compile_inst(cg:I inst:I) I {
 
     cg_set_current_block(cg, merge_lbl)
     emit_scope_track(cg, cg_get_val(cg, dest), 5)
+    return 0
+  }
+
+  // ------ IR_STDIN_READ_LINE ------
+  if op == IR_STDIN_READ_LINE {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_stdin_read_line()")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, r, 5)
+    return 0
+  }
+
+  // ------ IR_STDIN_READ_BYTES ------
+  if op == IR_STDIN_READ_BYTES {
+    cv = cg_get_val(cg, ir_field(inst, 16))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_stdin_read_bytes(i64 " + cv + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, r, 5)
     return 0
   }
 
