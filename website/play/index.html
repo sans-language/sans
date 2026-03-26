@@ -11,21 +11,95 @@
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/components.js" defer></script>
   <style>
-    .playground { max-width: 900px; margin: 32px auto; padding: 0 16px; }
-    .playground-editor {
-      width: 100%;
-      min-height: 260px;
-      font-family: 'Source Code Pro', monospace;
-      font-size: 14px;
-      line-height: 1.5;
-      padding: 16px;
+    .playground { max-width: 960px; margin: 32px auto; padding: 0 16px; }
+
+    /* Editor container — overlay approach */
+    .editor-wrap {
+      position: relative;
       border: 1px solid #334155;
       border-radius: 8px;
+      overflow: hidden;
       background: #1e293b;
-      color: #e2e8f0;
-      resize: vertical;
-      tab-size: 4;
     }
+    .editor-titlebar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: #0f172a;
+      border-bottom: 1px solid #334155;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .editor-titlebar .dot { width: 10px; height: 10px; border-radius: 50%; background: #334155; }
+    .editor-titlebar .filename { margin-left: 8px; }
+
+    .editor-body {
+      position: relative;
+      min-height: 400px;
+    }
+
+    /* Hidden textarea that captures input */
+    #editor {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 12px 16px 12px 56px;
+      background: transparent;
+      color: transparent;
+      caret-color: #e2e8f0;
+      border: none;
+      outline: none;
+      resize: none;
+      tab-size: 4;
+      white-space: pre;
+      overflow: auto;
+      z-index: 2;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* Highlighted overlay */
+    #highlight {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 12px 16px 12px 56px;
+      color: #e2e8f0;
+      pointer-events: none;
+      white-space: pre;
+      overflow: auto;
+      z-index: 1;
+    }
+
+    /* Line numbers gutter */
+    #line-numbers {
+      position: absolute;
+      top: 0; left: 0;
+      width: 44px;
+      height: 100%;
+      padding: 12px 8px 12px 0;
+      text-align: right;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #475569;
+      background: #0f172a;
+      border-right: 1px solid #334155;
+      user-select: none;
+      pointer-events: none;
+      z-index: 3;
+      overflow: hidden;
+    }
+
+    /* Sync scroll between textarea and overlay */
+    #editor:focus ~ #highlight { /* keep in sync via JS */ }
+
     .playground-controls {
       display: flex;
       gap: 8px;
@@ -55,9 +129,9 @@
       white-space: pre-wrap;
       word-break: break-all;
     }
-    .playground-output .error { color: var(--red); }
-    .playground-output .success { color: var(--green); }
-    .playground-spinner { color: var(--subtext0); }
+    .playground-output .error { color: #f87171; }
+    .playground-output .success { color: #34d399; }
+    .playground-spinner { color: #94a3b8; }
     .playground-status { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .playground-status h3 { margin: 0; }
   </style>
@@ -69,7 +143,14 @@
     <h1>Sans Playground</h1>
     <p style="color:var(--subtext0); margin-bottom:16px;">Write Sans code and run it instantly. No installation required.</p>
 
-    <textarea id="editor" class="playground-editor" spellcheck="false">fib(n:I) I = n <= 1 ? n : fib(n-1) + fib(n-2)
+    <div class="editor-wrap">
+      <div class="editor-titlebar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="filename">playground.sans</span>
+      </div>
+      <div class="editor-body">
+        <div id="line-numbers"></div>
+        <textarea id="editor" spellcheck="false">fib(n:I) I = n &lt;= 1 ? n : fib(n-1) + fib(n-2)
 
 main() I {
     p("Hello from Sans!")
@@ -81,6 +162,9 @@ main() I {
     p("fib(10) = {fib(10)}")
     0
 }</textarea>
+        <div id="highlight"></div>
+      </div>
+    </div>
 
     <div class="playground-controls">
       <button id="run-btn" class="btn-primary" onclick="runCode()">Run</button>
@@ -100,7 +184,70 @@ main() I {
 
   <script>
     const API = 'https://api.sans.dev';
-    const DEFAULT_CODE = document.getElementById('editor').value;
+
+    // Fix the HTML entities in the textarea default value
+    const editorEl = document.getElementById('editor');
+    editorEl.value = editorEl.value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    const DEFAULT_CODE = editorEl.value;
+
+    // Sans syntax highlighter
+    function highlightSans(code) {
+      const esc = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return esc
+        // Strings (double-quoted)
+        .replace(/"([^"\\]|\\.)*"/g, '<span style="color:#34d399">$&</span>')
+        // Comments
+        .replace(/(\/\/.*)$/gm, '<span style="color:#64748b;font-style:italic">$1</span>')
+        // Numbers
+        .replace(/\b(\d+\.?\d*)\b/g, '<span style="color:#fb923c">$1</span>')
+        // Keywords
+        .replace(/\b(if|else|while|for|in|match|return|break|continue|struct|enum|trait|impl|fn|let|import|pub|spawn|main|true|false)\b/g, '<span style="color:#c084fc">$1</span>')
+        // Types
+        .replace(/\b(I|F|B|S|J|R|O|M|Array|Map|String|Int|Float|Bool|Result|Option|HttpServer|HttpRequest|HttpResponse|Sender|Receiver|Mutex|JoinHandle|dyn)\b/g, '<span style="color:#fbbf24">$1</span>')
+        // Built-in functions
+        .replace(/\b(p|str|stoi|itof|ftoi|ftos|range|sleep|time|now|random|rand|fr|fw|fa|fe|jp|jfy|jo|ja|js|ji|jb|jn|hg|hp|ok|err|some|none|assert|assert_eq|assert_ne|serve|listen|channel|mutex|fptr|spawn)\b(?=\s*\()/g, '<span style="color:#60a5fa">$1</span>');
+    }
+
+    function updateHighlight() {
+      const code = editorEl.value;
+      document.getElementById('highlight').innerHTML = highlightSans(code) + '\n';
+      updateLineNumbers();
+      syncScroll();
+    }
+
+    function updateLineNumbers() {
+      const lines = editorEl.value.split('\n').length;
+      const nums = [];
+      for (let i = 1; i <= lines; i++) nums.push(i);
+      document.getElementById('line-numbers').innerHTML = nums.join('\n');
+    }
+
+    function syncScroll() {
+      const hl = document.getElementById('highlight');
+      const ln = document.getElementById('line-numbers');
+      hl.scrollTop = editorEl.scrollTop;
+      hl.scrollLeft = editorEl.scrollLeft;
+      ln.scrollTop = editorEl.scrollTop;
+    }
+
+    editorEl.addEventListener('input', updateHighlight);
+    editorEl.addEventListener('scroll', syncScroll);
+    editorEl.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runCode();
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = this.selectionStart;
+        this.value = this.value.substring(0, start) + '    ' + this.value.substring(this.selectionEnd);
+        this.selectionStart = this.selectionEnd = start + 4;
+        updateHighlight();
+      }
+    });
+
+    // Initial render
+    updateHighlight();
 
     // Load snippet from URL path
     (function() {
@@ -110,7 +257,7 @@ main() I {
       if (id && id !== 'play' && id.length === 8) {
         fetch(API + '/api/snippet/' + id)
           .then(r => r.ok ? r.json() : Promise.reject())
-          .then(data => { document.getElementById('editor').value = data.code; })
+          .then(data => { editorEl.value = data.code; updateHighlight(); })
           .catch(() => {
             document.getElementById('output').innerHTML = '<span class="error">Snippet not found. Loading default example.</span>';
           });
@@ -118,7 +265,7 @@ main() I {
     })();
 
     async function runCode() {
-      const code = document.getElementById('editor').value;
+      const code = editorEl.value;
       const output = document.getElementById('output');
       const status = document.getElementById('status');
       const btn = document.getElementById('run-btn');
@@ -153,7 +300,7 @@ main() I {
         }
         output.innerHTML = html;
         status.textContent = data.compile_success ? 'Compiled OK' : 'Compile error';
-        status.style.color = data.compile_success ? 'var(--green)' : 'var(--red)';
+        status.style.color = data.compile_success ? '#34d399' : '#f87171';
       } catch (e) {
         output.innerHTML = '<span class="error">Failed to connect to playground server.</span>';
       } finally {
@@ -163,7 +310,7 @@ main() I {
     }
 
     async function shareCode() {
-      const code = document.getElementById('editor').value;
+      const code = editorEl.value;
       try {
         const res = await fetch(API + '/api/share', {
           method: 'POST',
@@ -175,16 +322,17 @@ main() I {
         window.history.pushState({}, '', '/play/' + data.id);
         navigator.clipboard.writeText(url).then(() => {
           document.getElementById('status').textContent = 'Link copied!';
-          document.getElementById('status').style.color = 'var(--green)';
+          document.getElementById('status').style.color = '#34d399';
         });
       } catch (e) {
         document.getElementById('status').textContent = 'Share failed';
-        document.getElementById('status').style.color = 'var(--red)';
+        document.getElementById('status').style.color = '#f87171';
       }
     }
 
     function resetCode() {
-      document.getElementById('editor').value = DEFAULT_CODE;
+      editorEl.value = DEFAULT_CODE;
+      updateHighlight();
       document.getElementById('output').textContent = 'Press Run to execute your code.';
       document.getElementById('status').textContent = '';
       window.history.pushState({}, '', '/play/');
@@ -193,20 +341,6 @@ main() I {
     function escapeHtml(s) {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
-
-    document.getElementById('editor').addEventListener('keydown', function(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        runCode();
-      }
-      // Tab inserts spaces
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const start = this.selectionStart;
-        this.value = this.value.substring(0, start) + '    ' + this.value.substring(this.selectionEnd);
-        this.selectionStart = this.selectionEnd = start + 4;
-      }
-    });
   </script>
 </body>
 </html>
