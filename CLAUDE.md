@@ -62,7 +62,7 @@ Sans is designed for AI generation, not human readability. All new features, syn
 4. **`editors/vscode-sans/src/extension.ts`** — Add hover documentation entry to `HOVER_DATA` for any new keyword, function, method, or alias
 5. **`editors/vscode-sans/syntaxes/sans.tmLanguage.json`** — Add syntax highlighting patterns for new keywords, builtins, or operators
 6. **`tests/fixtures/`** — Add at least one E2E test fixture (`.sans` file) demonstrating the feature
-7. **`examples/`** — Update existing examples or add a new one if the feature is significant enough to showcase
+7. **`sans-language/examples` repo** — Update existing examples or add a new one if the feature is significant enough to showcase
 8. **`README.md`** — Update feature list if the feature is user-facing and notable
 
 **If a short alias is added** (e.g., `p` for `print`), it must appear in all of: `ai-reference.md`, `reference.md`, and `HOVER_DATA`.

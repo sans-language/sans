@@ -222,3 +222,85 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: sans-linux-x86_64.tar.gz
+
+  build-windows:
+    name: Build Windows x86_64
+    needs: build-macos
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.dry_run && github.ref || 'main' }}
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-llvm
+            mingw-w64-x86_64-clang
+            mingw-w64-x86_64-curl
+            mingw-w64-x86_64-openssl
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-winpthreads-git
+            pkg-config
+
+      - name: Download .ll artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ll-files
+          path: ll-output/
+
+      - name: Compile from LLVM IR
+        run: |
+          echo "=== .ll files ==="
+          ls -la ll-output/
+          echo "=== LLVM version ==="
+          llc --version | head -2
+
+          # Compile main .ll to object
+          llc -filetype=obj -O2 -o main.o ll-output/main.ll
+
+          # Compile each runtime .ll to object
+          RUNTIME_OBJS=""
+          for ll in ll-output/sans_*_runtime.ll; do
+            base=$(basename "$ll" .ll)
+            llc -filetype=obj -O2 -o "/tmp/${base}.o" "$ll"
+            RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
+          done
+
+          # Link with MinGW — provides pthreads, POSIX socket compat, etc.
+          cc main.o $RUNTIME_OBJS \
+            $(pkg-config --libs libcurl openssl zlib 2>/dev/null || echo '-lcurl -lssl -lcrypto -lz') \
+            -lpthread -lws2_32 \
+            -o sans.exe
+
+          strip sans.exe
+
+      - name: Verify binary
+        run: |
+          ./sans.exe --version
+          file sans.exe
+
+      - name: Smoke test
+        run: |
+          echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
+          ./sans.exe build /tmp/smoke.sans
+          /tmp/smoke.exe
+          echo "Smoke test passed"
+
+      - name: Package
+        run: |
+          tar czf sans-windows-x86_64.tar.gz sans.exe
+          rm sans.exe
+
+      - name: Upload release asset
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sans-windows-x86_64.tar.gz

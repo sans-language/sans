@@ -1,8 +1,0 @@
-handle(req:HR) I {
-  req.respond(200 "Hello from Sans!")
-}
-
-main() I {
-  p("Server on http://localhost:8080")
-  serve(8080 fptr("handle"))
-}

@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/sans-language/sans?style=flat-square)](https://github.com/sans-language/sans/releases)
 [![License](https://img.shields.io/github/license/sans-language/sans?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue?style=flat-square)]()
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)]()
 
 The language AI gets right on the first try. A fast, compiled language with 12 types, 40 keywords, and everything built in. Compiles to native code via LLVM — standalone binaries, no runtime dependencies.
 
@@ -31,6 +31,20 @@ Requires LLVM 17, gcc/clang, libcurl, libssl:
 
 ```sh
 sudo apt install llvm-17 build-essential libcurl4-openssl-dev libssl-dev
+```
+
+### Install (Windows x86_64)
+
+Install [MSYS2](https://www.msys2.org/), then from a MINGW64 shell:
+
+```sh
+curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-windows-x86_64.tar.gz | tar xz
+```
+
+Requires LLVM 17+, Clang, libcurl, libssl, zlib:
+
+```sh
+pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-clang mingw-w64-x86_64-curl mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib
 ```
 
 See the [download page](https://sans-language.github.io/sans/download/) for more options.

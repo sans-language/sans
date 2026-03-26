@@ -30,10 +30,10 @@
     </div>
 
     <p>Works on both Apple Silicon and Intel Macs (Intel runs via Rosetta 2). Verify the install:</p>
-    <pre><code>sans --version</code></pre>
+    <pre class="no-line-numbers"><code>sans --version</code></pre>
 
     <h3>Prerequisites</h3>
-    <pre><code>xcode-select --install
+    <pre class="no-line-numbers"><code>xcode-select --install
 brew install llvm@17</code></pre>
     <ul>
       <li><strong>Xcode Command Line Tools</strong> &mdash; required for the system linker (<code>cc</code>)</li>
@@ -42,7 +42,7 @@ brew install llvm@17</code></pre>
 
     <h3>Gatekeeper note</h3>
     <p>macOS may block the binary on first run since it is not notarized. To clear the quarantine flag after installing:</p>
-    <pre><code>xattr -d com.apple.quarantine /usr/local/bin/sans</code></pre>
+    <pre class="no-line-numbers"><code>xattr -d com.apple.quarantine /usr/local/bin/sans</code></pre>
 
     <h2>Linux</h2>
 
@@ -52,14 +52,36 @@ brew install llvm@17</code></pre>
     </div>
 
     <h3>Prerequisites</h3>
-    <pre><code>sudo apt install build-essential llvm-17 libcurl4-openssl-dev libssl-dev</code></pre>
+    <pre class="no-line-numbers"><code>sudo apt install build-essential llvm-17 libcurl4-openssl-dev libssl-dev</code></pre>
     <ul>
       <li><strong>GCC or Clang</strong> &mdash; system linker</li>
       <li><strong>LLVM 17</strong> &mdash; Sans uses <code>llc</code> at runtime to compile programs</li>
       <li><strong>libcurl + libssl</strong> &mdash; for HTTP and TLS support</li>
     </ul>
 
-    <h2>Manual download</h2>
+    <h2>Windows</h2>
+
+    <p>Download and extract the archive, then add <code>sans.exe</code> to your PATH:</p>
+
+    <div class="install-block">
+      <pre id="install-cmd-windows">curl -fsSL https://github.com/sans-language/sans/releases/latest/download/sans-windows-x86_64.tar.gz | tar xz &amp;&amp; move sans.exe C:\usr\local\bin\</pre>
+      <button class="copy-btn" onclick="copyInstallWindows()">Copy</button>
+    </div>
+
+    <p>Or download manually from the <a href="#manual-download">table below</a> and add the directory to your <code>PATH</code>. Verify the install:</p>
+    <pre class="no-line-numbers"><code>sans --version</code></pre>
+
+    <h3>Prerequisites</h3>
+    <p>Install <a href="https://www.msys2.org/">MSYS2</a>, then from a MINGW64 shell:</p>
+    <pre class="no-line-numbers"><code>pacman -S mingw-w64-x86_64-llvm mingw-w64-x86_64-clang mingw-w64-x86_64-curl mingw-w64-x86_64-openssl mingw-w64-x86_64-zlib</code></pre>
+    <ul>
+      <li><strong>LLVM 17+</strong> &mdash; Sans uses <code>llc</code> at runtime to compile programs</li>
+      <li><strong>Clang</strong> &mdash; system linker</li>
+      <li><strong>libcurl + libssl + zlib</strong> &mdash; for HTTP, TLS, and compression support</li>
+    </ul>
+    <p>Run <code>sans</code> from the MSYS2 MINGW64 shell so the dependencies are on the PATH.</p>
+
+    <h2 id="manual-download">Manual download</h2>
     <table>
       <thead><tr><th>Platform</th><th>Arch</th><th>Download</th></tr></thead>
       <tbody>
@@ -73,22 +95,24 @@ brew install llvm@17</code></pre>
           <td>x86_64</td>
           <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-linux-x86_64.tar.gz">sans-linux-x86_64.tar.gz</a></td>
         </tr>
+        <tr>
+          <td>Windows</td>
+          <td>x86_64</td>
+          <td><a href="https://github.com/sans-language/sans/releases/latest/download/sans-windows-x86_64.tar.gz">sans-windows-x86_64.tar.gz</a></td>
+        </tr>
       </tbody>
     </table>
 
-    <h2>Windows</h2>
-    <p>Pre-built binaries for Windows are not yet available. You can <a href="#build-from-source">build from source</a> or watch the <a href="https://github.com/sans-language/sans/releases">releases page</a> for updates.</p>
-
     <h2 id="build-from-source">Build from source</h2>
-    <p>Requires: Rust (stable), LLVM 17, Clang/GCC.</p>
-    <pre><code>git clone https://github.com/sans-language/sans
+    <p>Sans is self-hosted &mdash; the compiler is written in Sans. Building from source requires a bootstrap binary (any recent release) and LLVM 17.</p>
+    <pre class="no-line-numbers"><code>git clone https://github.com/sans-language/sans
 cd sans
-LLVM_SYS_170_PREFIX=$(brew --prefix llvm@17) cargo build --release
-# binary at target/release/sans</code></pre>
+sans build compiler/main.sans   # uses bootstrap binary to compile the compiler
+sudo mv sans /usr/local/bin/</code></pre>
 
     <h2>What's included</h2>
     <p>The <code>sans</code> binary is the full compiler. It compiles <code>.sans</code> source files to native executables via LLVM. No separate runtime is needed &mdash; the standard library is compiled from source alongside your program on each build.</p>
-    <pre><code>sans build hello.sans   # produces ./hello
+    <pre class="no-line-numbers"><code>sans build hello.sans   # produces ./hello
 sans run hello.sans     # build + run, cleans up</code></pre>
 
     <p>See the <a href="/docs/">documentation</a> for language reference and examples.</p>
@@ -109,6 +133,7 @@ sans run hello.sans     # build + run, cleans up</code></pre>
     }
     function copyInstall() { copyCmd('install-cmd', document.querySelectorAll('.copy-btn')[0]); }
     function copyInstallLinux() { copyCmd('install-cmd-linux', document.querySelectorAll('.copy-btn')[1]); }
+    function copyInstallWindows() { copyCmd('install-cmd-windows', document.querySelectorAll('.copy-btn')[2]); }
   </script>
 </body>
 </html>

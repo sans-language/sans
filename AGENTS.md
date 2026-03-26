@@ -63,7 +63,7 @@ Every new feature, builtin, method, type, or syntax change must update **all** o
 4. **`editors/vscode-sans/src/extension.ts`** — hover docs (`HOVER_DATA`) **(enforced by CI)**
 5. **`editors/vscode-sans/syntaxes/sans.tmLanguage.json`** — syntax highlighting **(enforced by CI)**
 6. `tests/fixtures/` — E2E test fixture
-7. `examples/` — update or add example if significant
+7. `sans-language/examples` repo — update or add example if significant
 8. `README.md` — update feature list if user-facing
 
 **Enforcement:** The `editor-guard` CI workflow warns on PRs that change compiler, runtime, or docs files without updating the VSCode extension. A pre-commit hook (`scripts/setup-hooks.sh`) provides the same warning locally. Add the `skip-editor-guard` label to suppress the CI warning when no editor changes are needed.

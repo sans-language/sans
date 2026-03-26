@@ -5,12 +5,10 @@
 target
 
 # Compiled binaries
-examples/server
-examples/hello
 playground/playground-server
-playground/playground.db
-playground/playground.db-shm
-playground/playground.db-wal
+playground.db
+playground.db-shm
+playground.db-wal
 *.o
 *.out
 
