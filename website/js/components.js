@@ -42,6 +42,7 @@ class SansNav extends HTMLElement {
     const dark = this._isDark();
 
     const links = [
+      { key: 'playground', label: 'Playground', href: `${base}/play/` },
       { key: 'docs', label: 'Documentation', href: `${base}/docs/` },
       { key: 'benchmarks', label: 'Comparisons', href: `${base}/benchmarks/` },
       { key: 'download', label: 'Download', href: `${base}/download/` },
