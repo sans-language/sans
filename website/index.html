@@ -70,12 +70,14 @@
       </div>
       <p class="hero-version">Alpha &mdash; macOS &amp; Linux &mdash; <a href="https://github.com/sans-language/sans/releases">all releases</a></p>
     <div class="mini-playground">
-      <textarea id="mini-editor" spellcheck="false">handler(req:HR) S = "Hello from Sans!"
+      <textarea id="mini-editor" spellcheck="false">fib(n:I) I = n <= 1 ? n : fib(n-1) + fib(n-2)
 
-main() {
-    s = hs(8080)
-    s.get("/", handler)
-    s.start()
+main() I {
+    p("fib(10) = {fib(10)}")
+    nums = [1 2 3 4 5]
+    doubled = nums.map(|x:I| I { x * 2 })
+    p(doubled)
+    0
 }</textarea>
       <div class="mini-playground-controls">
         <button id="mini-run" class="btn-primary" onclick="miniRun()">Run</button>
