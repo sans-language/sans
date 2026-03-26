@@ -89,7 +89,6 @@ The release workflow (`.github/workflows/release.yml`) automatically:
 - `editors/vscode-sans/package.json`
 - `website/index.html` (meta tag)
 - `website/docs/index.html` (meta tag)
-- `website/benchmarks/index.html` (meta tag)
 - `website/download/index.html` (meta tag)
 - `CLAUDE.md` (this file, "Current version" below)
 - `compiler/main.sans` (self-hosted compiler version string)

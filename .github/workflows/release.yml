@@ -34,7 +34,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" editors/vscode-sans/package.json
-          for html in website/index.html website/docs/index.html website/benchmarks/index.html website/download/index.html website/play/index.html; do
+          for html in website/index.html website/docs/index.html website/download/index.html website/play/index.html; do
             sed -i "s/content=\"[0-9][0-9a-zA-Z.\-]*\"/content=\"${VERSION}\"/" "$html"
           done
           sed -i "s/\*\*Current version: \`[0-9][0-9a-zA-Z.\-]*\`\*\*/\*\*Current version: \`${VERSION}\`\*\*/" CLAUDE.md

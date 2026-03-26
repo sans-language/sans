@@ -1,6 +1,0 @@
-main() {
-  serve(8765 |req:HttpRequest| I {
-    req.respond(200 "{\"message\":\"hello\",\"n\":42}" "application/json")
-  })
-  0
-}
