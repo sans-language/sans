@@ -43,6 +43,7 @@ class SansNav extends HTMLElement {
 
     const links = [
       { key: 'playground', label: 'Playground', href: `${base}/play/` },
+      { key: 'examples', label: 'Examples', href: `${base}/examples/` },
       { key: 'docs', label: 'Documentation', href: `${base}/docs/` },
       { key: 'benchmarks', label: 'Comparisons', href: `${base}/benchmarks/` },
       { key: 'download', label: 'Download', href: `${base}/download/` },

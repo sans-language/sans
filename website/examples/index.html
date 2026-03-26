@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="sans-version" content="0.8.3">
+  <title>Sans by Example</title>
+  <script>
+    (function(){var t=localStorage.getItem('sans-theme');if(t)document.documentElement.setAttribute('data-theme',t);else if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.setAttribute('data-theme','dark');})();
+  </script>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/components.js" defer></script>
+<style>
+  .examples-hero {
+    text-align: center;
+    padding: 64px 32px 48px;
+  }
+  .examples-hero h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .examples-hero p {
+    color: var(--subtext0);
+    font-size: 1.125rem;
+    margin-bottom: 28px;
+  }
+  .examples-hero .hero-cta {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .examples-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 24px;
+    margin: 0 auto 48px;
+  }
+
+  .example-card {
+    background: var(--mantle);
+    border: 1px solid var(--surface0);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .example-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--surface0);
+  }
+
+  .example-card-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+  }
+
+  .example-card-subtitle {
+    font-size: 12px;
+    color: var(--subtext0);
+    margin-top: 2px;
+  }
+
+  .example-card-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .example-card pre {
+    margin: 0;
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: 'Source Code Pro', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    background: var(--base);
+    color: var(--text);
+  }
+
+  .example-card code {
+    font-family: inherit;
+  }
+
+  .btn-try {
+    display: inline-block;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mauve);
+    background: var(--crust);
+    border: 1px solid var(--surface1);
+    border-radius: 6px;
+    text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .btn-try:hover {
+    background: var(--surface0);
+    color: var(--text);
+  }
+
+  .category-section {
+    margin-bottom: 56px;
+  }
+
+  .category-section h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .category-section .category-desc {
+    color: var(--subtext0);
+    margin-bottom: 24px;
+    font-size: 0.95rem;
+  }
+
+  .example-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    margin-top: 16px;
+  }
+
+  .example-table th {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 2px solid var(--surface0);
+    color: var(--subtext0);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .example-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--surface0);
+    vertical-align: middle;
+  }
+
+  .example-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .example-table tr:hover td {
+    background: var(--mantle);
+  }
+
+  .example-num {
+    color: var(--subtext0);
+    font-family: 'Source Code Pro', monospace;
+    font-size: 12px;
+    width: 36px;
+  }
+
+  .example-link {
+    color: var(--lavender);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .example-link:hover {
+    text-decoration: underline;
+  }
+
+  .example-desc {
+    color: var(--subtext1);
+  }
+
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--surface0);
+    margin: 48px 0;
+  }
+
+  .repo-callout {
+    background: var(--mantle);
+    border: 1px solid var(--surface0);
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    margin: 0 auto 48px;
+    max-width: 600px;
+  }
+
+  .repo-callout h3 {
+    font-size: 1.2rem;
+    margin-bottom: 8px;
+  }
+
+  .repo-callout p {
+    color: var(--subtext0);
+    margin-bottom: 20px;
+    font-size: 0.95rem;
+  }
+
+  @media (max-width: 768px) {
+    .examples-hero h1 { font-size: 1.8rem; }
+    .examples-grid { grid-template-columns: 1fr; }
+    .example-card pre { font-size: 12px; padding: 12px 14px; }
+  }
+</style>
+</head>
+<body>
+  <sans-nav active="examples" base=""></sans-nav>
+
+  <div class="examples-hero container">
+    <h1>Sans by Example</h1>
+    <p>55 complete programs. Every one compiles and runs.</p>
+    <div class="hero-cta">
+      <a href="/play/" class="btn-primary">Open Playground</a>
+      <a href="https://github.com/sans-language/examples" target="_blank" rel="noopener" class="btn-secondary">Browse on GitHub</a>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- ===================== BASICS ===================== -->
+    <div class="category-section">
+      <h2>Basics</h2>
+      <p class="category-desc">Core syntax — variables, functions, arrays, maps, strings, control flow, structs, enums, and error handling.</p>
+
+      <div class="examples-grid">
+
+        <!-- Hello World -->
+        <div class="example-card">
+          <div class="example-card-header">
+            <div>
+              <div class="example-card-title">01 — Hello World</div>
+              <div class="example-card-subtitle">String interpolation and printing</div>
+            </div>
+            <div class="example-card-actions">
+              <a href="/play/" class="btn-try">Try it &rarr;</a>
+            </div>
+          </div>
+          <pre><code><span class="comment">// Hello world and string interpolation</span>
+<span class="fn">main</span>() <span class="type">I</span> {
+    <span class="fn">p</span>(<span class="str">"Hello, world!"</span>)
+
+    name = <span class="str">"Sans"</span>
+    version = <span class="num">8</span>
+    <span class="fn">p</span>(<span class="str">"Welcome to {name} v{version}!"</span>)
+
+    a = <span class="num">10</span>
+    b = <span class="num">32</span>
+    <span class="fn">p</span>(<span class="str">"The answer is {a + b}"</span>)
+
+    lang = <span class="str">"compiled"</span>
+    <span class="fn">p</span>(<span class="str">"{name} is {lang} and fast"</span>)
+
+    <span class="num">0</span>
+}</code></pre>
+        </div>
+
+        <!-- Arrays -->
+        <div class="example-card">
+          <div class="example-card-header">
+            <div>
+              <div class="example-card-title">04 — Arrays</div>
+              <div class="example-card-subtitle">push, map, filter, find, reduce, join</div>
+            </div>
+            <div class="example-card-actions">
+              <a href="/play/" class="btn-try">Try it &rarr;</a>
+            </div>
+          </div>
+          <pre><code><span class="comment">// Array creation, push, map, filter, find, reduce</span>
+<span class="fn">main</span>() <span class="type">I</span> {
+    a = [<span class="num">1</span> <span class="num">2</span> <span class="num">3</span> <span class="num">4</span> <span class="num">5</span>]
+    <span class="fn">p</span>(<span class="str">"len = {a.len()}"</span>)
+    <span class="fn">p</span>(<span class="str">"first = {a[0]}, last = {a[4]}"</span>)
+
+    a.<span class="fn">push</span>(<span class="num">6</span>)
+    <span class="fn">p</span>(<span class="str">"after push: len = {a.len()}"</span>)
+
+    doubled = a.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> })
+    <span class="fn">p</span>(<span class="str">"doubled[0] = {doubled[0]}, doubled[5] = {doubled[5]}"</span>)
+
+    evens = a.<span class="fn">filter</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x % <span class="num">2</span> == <span class="num">0</span> })
+    <span class="fn">p</span>(<span class="str">"evens len = {evens.len()}"</span>)
+
+    found = a.<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">4</span> })
+    <span class="fn">p</span>(<span class="str">"first &gt; 4: {found!}"</span>)
+
+    total = a.<span class="fn">reduce</span>(<span class="num">0</span> |acc:<span class="type">I</span> x:<span class="type">I</span>| <span class="type">I</span> { acc + x })
+    <span class="fn">p</span>(<span class="str">"sum = {total}"</span>)
+
+    joined = a.<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">S</span> { <span class="fn">str</span>(x) }).<span class="fn">join</span>(<span class="str">", "</span>)
+    <span class="fn">p</span>(<span class="str">"joined: {joined}"</span>)
+
+    has3 = a.<span class="fn">contains</span>(<span class="num">3</span>)
+    <span class="fn">p</span>(<span class="str">"contains 3: {has3}"</span>)
+
+    rev = [<span class="num">10</span> <span class="num">20</span> <span class="num">30</span>].<span class="fn">reverse</span>()
+    <span class="fn">p</span>(<span class="str">"reversed[0] = {rev[0]}"</span>)
+
+    <span class="num">0</span>
+}</code></pre>
+        </div>
+
+      </div>
+
+      <table class="example-table">
+        <thead>
+          <tr>
+            <th class="example-num">#</th>
+            <th>Example</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="example-num">01</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/01_hello.sans" target="_blank" rel="noopener" class="example-link">Hello World</a></td>
+            <td class="example-desc">String interpolation and printing</td>
+          </tr>
+          <tr>
+            <td class="example-num">02</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/02_variables.sans" target="_blank" rel="noopener" class="example-link">Variables</a></td>
+            <td class="example-desc">Immutable and mutable bindings, type inference</td>
+          </tr>
+          <tr>
+            <td class="example-num">03</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/03_functions.sans" target="_blank" rel="noopener" class="example-link">Functions</a></td>
+            <td class="example-desc">Expression bodies, recursion, short signatures</td>
+          </tr>
+          <tr>
+            <td class="example-num">04</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/04_arrays.sans" target="_blank" rel="noopener" class="example-link">Arrays</a></td>
+            <td class="example-desc">push, map, filter, find, reduce, join</td>
+          </tr>
+          <tr>
+            <td class="example-num">05</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/05_maps.sans" target="_blank" rel="noopener" class="example-link">Maps</a></td>
+            <td class="example-desc">Key-value store, get, set, delete, contains</td>
+          </tr>
+          <tr>
+            <td class="example-num">06</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/06_strings.sans" target="_blank" rel="noopener" class="example-link">Strings</a></td>
+            <td class="example-desc">Interpolation, split, trim, starts_with, contains</td>
+          </tr>
+          <tr>
+            <td class="example-num">07</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/07_control_flow.sans" target="_blank" rel="noopener" class="example-link">Control Flow</a></td>
+            <td class="example-desc">if/else, while, ternary, break, continue</td>
+          </tr>
+          <tr>
+            <td class="example-num">08</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/08_structs.sans" target="_blank" rel="noopener" class="example-link">Structs</a></td>
+            <td class="example-desc">Field access, methods, nested structs</td>
+          </tr>
+          <tr>
+            <td class="example-num">09</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/09_enums.sans" target="_blank" rel="noopener" class="example-link">Enums</a></td>
+            <td class="example-desc">Variants, match, data-carrying variants</td>
+          </tr>
+          <tr>
+            <td class="example-num">10</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/basics/10_error_handling.sans" target="_blank" rel="noopener" class="example-link">Error Handling</a></td>
+            <td class="example-desc">Result type, ?, r!, err(), ok()</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- ===================== DATA ===================== -->
+    <div class="category-section">
+      <h2>Data</h2>
+      <p class="category-desc">JSON, file I/O, CSV parsing, word counting, sorting, tuples, and data pipelines.</p>
+
+      <table class="example-table">
+        <thead>
+          <tr>
+            <th class="example-num">#</th>
+            <th>Example</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="example-num">11</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/11_json_build.sans" target="_blank" rel="noopener" class="example-link">JSON Build</a></td>
+            <td class="example-desc">Construct and serialize JSON objects and arrays</td>
+          </tr>
+          <tr>
+            <td class="example-num">12</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/12_json_parse.sans" target="_blank" rel="noopener" class="example-link">JSON Parse</a></td>
+            <td class="example-desc">Parse JSON strings, extract typed values</td>
+          </tr>
+          <tr>
+            <td class="example-num">13</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/13_json_transform.sans" target="_blank" rel="noopener" class="example-link">JSON Transform</a></td>
+            <td class="example-desc">Round-trip parse, filter, reshape JSON data</td>
+          </tr>
+          <tr>
+            <td class="example-num">14</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/14_csv_parser.sans" target="_blank" rel="noopener" class="example-link">CSV Parser</a></td>
+            <td class="example-desc">Parse delimited text, compute column stats</td>
+          </tr>
+          <tr>
+            <td class="example-num">15</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/15_word_counter.sans" target="_blank" rel="noopener" class="example-link">Word Counter</a></td>
+            <td class="example-desc">Count word frequencies using a map</td>
+          </tr>
+          <tr>
+            <td class="example-num">16</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/16_file_read_write.sans" target="_blank" rel="noopener" class="example-link">File Read / Write</a></td>
+            <td class="example-desc">Read, write, and append to files</td>
+          </tr>
+          <tr>
+            <td class="example-num">17</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/17_data_pipeline.sans" target="_blank" rel="noopener" class="example-link">Data Pipeline</a></td>
+            <td class="example-desc">Chained map/filter/reduce transformations</td>
+          </tr>
+          <tr>
+            <td class="example-num">18</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/18_sort_and_search.sans" target="_blank" rel="noopener" class="example-link">Sort and Search</a></td>
+            <td class="example-desc">sort_by, binary search, custom comparators</td>
+          </tr>
+          <tr>
+            <td class="example-num">19</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/19_tuple_operations.sans" target="_blank" rel="noopener" class="example-link">Tuple Operations</a></td>
+            <td class="example-desc">Destructuring, tuple arrays, zip patterns</td>
+          </tr>
+          <tr>
+            <td class="example-num">20</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/data/20_config_parser.sans" target="_blank" rel="noopener" class="example-link">Config Parser</a></td>
+            <td class="example-desc">Parse key=value config files with defaults</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- ===================== PATTERNS ===================== -->
+    <div class="category-section">
+      <h2>Patterns</h2>
+      <p class="category-desc">Pattern matching, closures, builder pattern, state machines, iterators, and generics.</p>
+
+      <table class="example-table">
+        <thead>
+          <tr>
+            <th class="example-num">#</th>
+            <th>Example</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="example-num">21</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/21_pattern_matching.sans" target="_blank" rel="noopener" class="example-link">Pattern Matching</a></td>
+            <td class="example-desc">match on enums, integers, strings, structs</td>
+          </tr>
+          <tr>
+            <td class="example-num">22</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/22_closures.sans" target="_blank" rel="noopener" class="example-link">Closures</a></td>
+            <td class="example-desc">Capture variables, pass lambdas, higher-order functions</td>
+          </tr>
+          <tr>
+            <td class="example-num">23</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/23_builder_pattern.sans" target="_blank" rel="noopener" class="example-link">Builder Pattern</a></td>
+            <td class="example-desc">Fluent struct construction with method chaining</td>
+          </tr>
+          <tr>
+            <td class="example-num">24</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/24_state_machine.sans" target="_blank" rel="noopener" class="example-link">State Machine</a></td>
+            <td class="example-desc">Enum-driven state transitions</td>
+          </tr>
+          <tr>
+            <td class="example-num">25</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/25_iterator_chains.sans" target="_blank" rel="noopener" class="example-link">Iterator Chains</a></td>
+            <td class="example-desc">Chained map, filter, reduce, zip, flat_map</td>
+          </tr>
+          <tr>
+            <td class="example-num">26</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/26_option_chaining.sans" target="_blank" rel="noopener" class="example-link">Option Chaining</a></td>
+            <td class="example-desc">Propagate None through optional lookups</td>
+          </tr>
+          <tr>
+            <td class="example-num">27</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/27_result_combinators.sans" target="_blank" rel="noopener" class="example-link">Result Combinators</a></td>
+            <td class="example-desc">map, and_then, or_else on Result values</td>
+          </tr>
+          <tr>
+            <td class="example-num">28</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/28_generic_structs.sans" target="_blank" rel="noopener" class="example-link">Generic Structs</a></td>
+            <td class="example-desc">Parameterized structs with type constraints</td>
+          </tr>
+          <tr>
+            <td class="example-num">29</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/29_trait_objects.sans" target="_blank" rel="noopener" class="example-link">Trait Objects</a></td>
+            <td class="example-desc">Dynamic dispatch through trait interfaces</td>
+          </tr>
+          <tr>
+            <td class="example-num">30</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/patterns/30_recursion.sans" target="_blank" rel="noopener" class="example-link">Recursion</a></td>
+            <td class="example-desc">Tree traversal, memoization, mutual recursion</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- ===================== CONCURRENCY ===================== -->
+    <div class="category-section">
+      <h2>Concurrency</h2>
+      <p class="category-desc">Threads, channels, mutexes, worker pools, and parallel algorithms — all built in, no libraries needed.</p>
+
+      <div class="examples-grid">
+
+        <!-- Channels -->
+        <div class="example-card">
+          <div class="example-card-header">
+            <div>
+              <div class="example-card-title">32 — Channels</div>
+              <div class="example-card-subtitle">Send and receive values between threads</div>
+            </div>
+            <div class="example-card-actions">
+              <a href="/play/" class="btn-try">Try it &rarr;</a>
+            </div>
+          </div>
+          <pre><code><span class="comment">// Send/receive values between threads via channels</span>
+<span class="fn">sender</span>(tx <span class="type">Sender&lt;I&gt;</span>) <span class="type">I</span> {
+    tx.<span class="fn">send</span>(<span class="num">100</span>)
+    tx.<span class="fn">send</span>(<span class="num">200</span>)
+    tx.<span class="fn">send</span>(<span class="num">300</span>)
+    <span class="num">0</span>
+}
+
+<span class="fn">main</span>() <span class="type">I</span> {
+    <span class="kw">let</span> (tx, rx) = <span class="fn">channel</span>&lt;<span class="type">I</span>&gt;()
+    h = <span class="kw">spawn</span> <span class="fn">sender</span>(tx)
+    a = rx.<span class="fn">recv</span>()
+    b = rx.<span class="fn">recv</span>()
+    c = rx.<span class="fn">recv</span>()
+    h.<span class="fn">join</span>()
+    <span class="fn">p</span>(<span class="str">"received: {a}, {b}, {c}"</span>)
+    <span class="fn">p</span>(<span class="str">"sum: {a + b + c}"</span>)
+    <span class="num">0</span>
+}</code></pre>
+        </div>
+
+      </div>
+
+      <table class="example-table">
+        <thead>
+          <tr>
+            <th class="example-num">#</th>
+            <th>Example</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="example-num">31</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/31_spawn_join.sans" target="_blank" rel="noopener" class="example-link">Spawn and Join</a></td>
+            <td class="example-desc">Launch threads with spawn, collect with join</td>
+          </tr>
+          <tr>
+            <td class="example-num">32</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/32_channels.sans" target="_blank" rel="noopener" class="example-link">Channels</a></td>
+            <td class="example-desc">Send and receive typed values between threads</td>
+          </tr>
+          <tr>
+            <td class="example-num">33</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/33_worker_pool.sans" target="_blank" rel="noopener" class="example-link">Worker Pool</a></td>
+            <td class="example-desc">Fixed-size thread pool processing a job queue</td>
+          </tr>
+          <tr>
+            <td class="example-num">34</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/34_mutex_counter.sans" target="_blank" rel="noopener" class="example-link">Mutex Counter</a></td>
+            <td class="example-desc">Shared mutable state protected by a mutex</td>
+          </tr>
+          <tr>
+            <td class="example-num">35</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/35_fan_out_fan_in.sans" target="_blank" rel="noopener" class="example-link">Fan-out / Fan-in</a></td>
+            <td class="example-desc">Distribute work across goroutines, merge results</td>
+          </tr>
+          <tr>
+            <td class="example-num">36</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/36_producer_consumer.sans" target="_blank" rel="noopener" class="example-link">Producer / Consumer</a></td>
+            <td class="example-desc">Bounded channel between producer and consumer threads</td>
+          </tr>
+          <tr>
+            <td class="example-num">37</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/37_parallel_sum.sans" target="_blank" rel="noopener" class="example-link">Parallel Sum</a></td>
+            <td class="example-desc">Partition array across threads, sum results</td>
+          </tr>
+          <tr>
+            <td class="example-num">38</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/38_pipeline.sans" target="_blank" rel="noopener" class="example-link">Pipeline</a></td>
+            <td class="example-desc">Multi-stage channel pipeline with backpressure</td>
+          </tr>
+          <tr>
+            <td class="example-num">39</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/39_countdown_latch.sans" target="_blank" rel="noopener" class="example-link">Countdown Latch</a></td>
+            <td class="example-desc">Synchronize on N tasks completing before proceeding</td>
+          </tr>
+          <tr>
+            <td class="example-num">40</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/concurrency/40_concurrent_map.sans" target="_blank" rel="noopener" class="example-link">Concurrent Map</a></td>
+            <td class="example-desc">Thread-safe map with mutex sharding</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- ===================== APPS ===================== -->
+    <div class="category-section">
+      <h2>Apps</h2>
+      <p class="category-desc">Real programs: calculators, todo lists, data structures, text analysis, and more.</p>
+
+      <div class="examples-grid">
+
+        <!-- FizzBuzz -->
+        <div class="example-card">
+          <div class="example-card-header">
+            <div>
+              <div class="example-card-title">43 — FizzBuzz</div>
+              <div class="example-card-subtitle">Classic problem, idiomatic Sans</div>
+            </div>
+            <div class="example-card-actions">
+              <a href="/play/" class="btn-try">Try it &rarr;</a>
+            </div>
+          </div>
+          <pre><code><span class="fn">fizzbuzz</span>(n:<span class="type">I</span>) <span class="type">S</span> {
+  fb = n % <span class="num">15</span> == <span class="num">0</span>
+  f  = n % <span class="num">3</span> == <span class="num">0</span>
+  b  = n % <span class="num">5</span> == <span class="num">0</span>
+  fb ? <span class="str">"FizzBuzz"</span> : f ? <span class="str">"Fizz"</span> : b ? <span class="str">"Buzz"</span> : <span class="fn">str</span>(n)
+}
+
+<span class="fn">main</span>() <span class="type">I</span> {
+  i := <span class="num">1</span>
+  <span class="kw">while</span> i &lt;= <span class="num">30</span> {
+    <span class="fn">p</span>(<span class="fn">fizzbuzz</span>(i))
+    i += <span class="num">1</span>
+  }
+  <span class="num">0</span>
+}</code></pre>
+        </div>
+
+      </div>
+
+      <table class="example-table">
+        <thead>
+          <tr>
+            <th class="example-num">#</th>
+            <th>Example</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="example-num">41</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/41_calculator.sans" target="_blank" rel="noopener" class="example-link">Calculator</a></td>
+            <td class="example-desc">Expression evaluator with operator precedence</td>
+          </tr>
+          <tr>
+            <td class="example-num">42</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/42_todo_list.sans" target="_blank" rel="noopener" class="example-link">Todo List</a></td>
+            <td class="example-desc">Add, complete, and list tasks stored in an array</td>
+          </tr>
+          <tr>
+            <td class="example-num">43</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/43_fizzbuzz.sans" target="_blank" rel="noopener" class="example-link">FizzBuzz</a></td>
+            <td class="example-desc">Classic problem with nested ternaries</td>
+          </tr>
+          <tr>
+            <td class="example-num">44</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/44_temperature.sans" target="_blank" rel="noopener" class="example-link">Temperature Converter</a></td>
+            <td class="example-desc">Celsius, Fahrenheit, and Kelvin conversions</td>
+          </tr>
+          <tr>
+            <td class="example-num">45</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/45_matrix.sans" target="_blank" rel="noopener" class="example-link">Matrix</a></td>
+            <td class="example-desc">Matrix multiplication with nested arrays</td>
+          </tr>
+          <tr>
+            <td class="example-num">46</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/46_base64.sans" target="_blank" rel="noopener" class="example-link">Base64</a></td>
+            <td class="example-desc">Encode and decode Base64 from first principles</td>
+          </tr>
+          <tr>
+            <td class="example-num">47</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/47_linked_list.sans" target="_blank" rel="noopener" class="example-link">Linked List</a></td>
+            <td class="example-desc">Singly-linked list with push, pop, traverse</td>
+          </tr>
+          <tr>
+            <td class="example-num">48</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/48_key_value_store.sans" target="_blank" rel="noopener" class="example-link">Key-Value Store</a></td>
+            <td class="example-desc">In-memory store with get, set, delete, TTL</td>
+          </tr>
+          <tr>
+            <td class="example-num">49</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/49_log_analyzer.sans" target="_blank" rel="noopener" class="example-link">Log Analyzer</a></td>
+            <td class="example-desc">Parse and aggregate structured log lines</td>
+          </tr>
+          <tr>
+            <td class="example-num">50</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/50_text_stats.sans" target="_blank" rel="noopener" class="example-link">Text Stats</a></td>
+            <td class="example-desc">Word count, line count, char frequency</td>
+          </tr>
+          <tr>
+            <td class="example-num">51</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/51_roman_numerals.sans" target="_blank" rel="noopener" class="example-link">Roman Numerals</a></td>
+            <td class="example-desc">Convert integers to and from Roman numeral strings</td>
+          </tr>
+          <tr>
+            <td class="example-num">52</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/52_password_gen.sans" target="_blank" rel="noopener" class="example-link">Password Generator</a></td>
+            <td class="example-desc">Configurable random password generation</td>
+          </tr>
+          <tr>
+            <td class="example-num">53</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/53_histogram.sans" target="_blank" rel="noopener" class="example-link">Histogram</a></td>
+            <td class="example-desc">Render an ASCII bar chart from data</td>
+          </tr>
+          <tr>
+            <td class="example-num">54</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/54_ring_buffer.sans" target="_blank" rel="noopener" class="example-link">Ring Buffer</a></td>
+            <td class="example-desc">Fixed-capacity circular buffer with wrap-around</td>
+          </tr>
+          <tr>
+            <td class="example-num">55</td>
+            <td><a href="https://github.com/sans-language/examples/blob/main/apps/55_task_scheduler.sans" target="_blank" rel="noopener" class="example-link">Task Scheduler</a></td>
+            <td class="example-desc">Priority queue of tasks with deadline ordering</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- Repo callout -->
+    <div class="repo-callout">
+      <h3>All 55 examples on GitHub</h3>
+      <p>Clone the repo and run any example locally with <code>sans build</code>. Each file compiles to a self-contained native binary.</p>
+      <a href="https://github.com/sans-language/examples" target="_blank" rel="noopener" class="btn-primary">github.com/sans-language/examples</a>
+    </div>
+
+  </div>
+
+  <sans-footer base=""></sans-footer>
+</body>
+</html>
