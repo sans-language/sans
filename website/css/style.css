@@ -723,19 +723,23 @@ footer a:hover {
 }
 
 /* Try-it buttons in docs */
+pre.tryable {
+  position: relative;
+}
 .try-it-btn {
-  display: inline-block;
-  padding: 2px 10px;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 12px;
   font-size: 11px;
   font-family: 'Source Sans 3', sans-serif;
-  color: var(--lavender);
-  border: 1px solid var(--surface0);
+  color: #94a3b8;
+  border: 1px solid #475569;
   border-radius: 4px;
-  background: var(--mantle);
+  background: #0f172a;
   cursor: pointer;
   text-decoration: none;
-  margin-left: 8px;
-  vertical-align: middle;
+  z-index: 1;
 }
 .try-it-btn:hover {
   background: var(--surface0);
