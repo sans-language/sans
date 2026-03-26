@@ -69,12 +69,17 @@
     <h1>Sans Playground</h1>
     <p style="color:var(--subtext0); margin-bottom:16px;">Write Sans code and run it instantly. No installation required.</p>
 
-    <textarea id="editor" class="playground-editor" spellcheck="false">main() {
+    <textarea id="editor" class="playground-editor" spellcheck="false">fib(n:I) I = n <= 1 ? n : fib(n-1) + fib(n-2)
+
+main() I {
     p("Hello from Sans!")
 
     nums = [1 2 3 4 5]
     doubled = nums.map(|x:I| I { x * 2 })
     p(doubled)
+
+    p("fib(10) = {fib(10)}")
+    0
 }</textarea>
 
     <div class="playground-controls">
