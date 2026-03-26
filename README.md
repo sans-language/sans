@@ -127,6 +127,10 @@ main() I {
 
 Production-ready: bounded thread pool (default 256 workers), HTTP/1.1 keep-alive, gzip compression, request timeouts, input validation, graceful shutdown (SIGINT/SIGTERM).
 
+## Examples
+
+55+ complete, runnable programs in the [examples repo](https://github.com/sans-language/examples) — basics, data processing, patterns, concurrency, and applications. Browse them on the [website](https://sans.dev/examples/) or try them in the [playground](https://sans.dev/play/).
+
 ## Running Tests
 
 ```sh
