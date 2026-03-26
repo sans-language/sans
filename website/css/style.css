@@ -1,6 +1,6 @@
 /* ============================================================
    Sans Language — CSS Design System
-   Catppuccin Latte (light) / Mocha (dark)
+   Professional light / dark palette
    ============================================================ */
 
 /* 1. FONTS
@@ -21,67 +21,67 @@
   font-display: swap;
 }
 
-/* 2. CATPPUCCIN LATTE — LIGHT MODE (default)
+/* 2. PROFESSIONAL LIGHT MODE (default)
    ------------------------------------------------------------ */
 :root {
-  --base:     #eff1f5;
-  --mantle:   #e6e9ef;
-  --crust:    #dce0e8;
-  --surface0: #ccd0da;
-  --surface1: #bcc0cc;
-  --text:     #4c4f69;
-  --subtext1: #5c5f77;
-  --subtext0: #6c6f85;
-  --overlay0: #9ca0b0;
-  --mauve:    #8839ef;
-  --lavender: #7287fd;
-  --green:    #40a02b;
-  --peach:    #fe640b;
-  --yellow:   #df8e1d;
-  --red:      #d20f39;
+  --base:     #ffffff;
+  --mantle:   #f9fafb;
+  --crust:    #f3f4f6;
+  --surface0: #e5e7eb;
+  --surface1: #d1d5db;
+  --text:     #111827;
+  --subtext1: #374151;
+  --subtext0: #6b7280;
+  --overlay0: #9ca3af;
+  --mauve:    #7c3aed;
+  --lavender: #6366f1;
+  --green:    #059669;
+  --peach:    #ea580c;
+  --yellow:   #d97706;
+  --red:      #dc2626;
   --on-accent: #ffffff;
 }
 
-/* 3. CATPPUCCIN MOCHA — DARK MODE
+/* 3. PROFESSIONAL DARK MODE
    ------------------------------------------------------------ */
 [data-theme="dark"] {
-  --base:     #1e1e2e;
-  --mantle:   #181825;
-  --crust:    #11111b;
-  --surface0: #313244;
-  --surface1: #45475a;
-  --text:     #cdd6f4;
-  --subtext1: #bac2de;
-  --subtext0: #a6adc8;
-  --overlay0: #6c7086;
-  --mauve:    #cba6f7;
-  --lavender: #b4befe;
-  --green:    #a6e3a1;
-  --peach:    #fab387;
-  --yellow:   #f9e2af;
-  --red:      #f38ba8;
-  --on-accent: #1e1e2e;
+  --base:     #0f172a;
+  --mantle:   #1e293b;
+  --crust:    #0f172a;
+  --surface0: #334155;
+  --surface1: #475569;
+  --text:     #f1f5f9;
+  --subtext1: #cbd5e1;
+  --subtext0: #94a3b8;
+  --overlay0: #64748b;
+  --mauve:    #a78bfa;
+  --lavender: #818cf8;
+  --green:    #34d399;
+  --peach:    #fb923c;
+  --yellow:   #fbbf24;
+  --red:      #f87171;
+  --on-accent: #0f172a;
 }
 
 /* No-JS dark mode fallback via OS preference */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --base:     #1e1e2e;
-    --mantle:   #181825;
-    --crust:    #11111b;
-    --surface0: #313244;
-    --surface1: #45475a;
-    --text:     #cdd6f4;
-    --subtext1: #bac2de;
-    --subtext0: #a6adc8;
-    --overlay0: #6c7086;
-    --mauve:    #cba6f7;
-    --lavender: #b4befe;
-    --green:    #a6e3a1;
-    --peach:    #fab387;
-    --yellow:   #f9e2af;
-    --red:      #f38ba8;
-    --on-accent: #1e1e2e;
+    --base:     #0f172a;
+    --mantle:   #1e293b;
+    --crust:    #0f172a;
+    --surface0: #334155;
+    --surface1: #475569;
+    --text:     #f1f5f9;
+    --subtext1: #cbd5e1;
+    --subtext0: #94a3b8;
+    --overlay0: #64748b;
+    --mauve:    #a78bfa;
+    --lavender: #818cf8;
+    --green:    #34d399;
+    --peach:    #fb923c;
+    --yellow:   #fbbf24;
+    --red:      #f87171;
+    --on-accent: #0f172a;
   }
 }
 
@@ -175,16 +175,18 @@ a:hover {
   cursor: pointer;
   border: none;
   text-decoration: none;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .btn-primary {
   background-color: var(--mauve);
   color: var(--on-accent);
+  box-shadow: 0 1px 3px rgba(124, 58, 237, 0.3);
 }
 
 .btn-primary:hover {
   opacity: 0.9;
+  box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
   text-decoration: none;
 }
 
@@ -212,12 +214,13 @@ a:hover {
   border: 1px solid var(--surface0);
   border-radius: 12px;
   padding: 24px 28px;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .feature-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.1);
+  border-color: var(--mauve);
 }
 
 .feature-card h3 {
@@ -234,29 +237,92 @@ a:hover {
 /* 9. CODE + SYNTAX HIGHLIGHTING
    ------------------------------------------------------------ */
 pre {
-  background-color: var(--mantle);
+  background-color: #1e293b;
   border-radius: 8px;
-  padding: 20px 24px;
+  padding: 0;
   overflow-x: auto;
   font-family: 'Source Code Pro', 'Fira Code', monospace;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.6;
+  position: relative;
+  border: 1px solid #334155;
+}
+
+pre code {
+  display: block;
+  padding: 16px 20px 16px 56px;
+  color: #e2e8f0;
+  counter-reset: line;
+}
+
+/* Line numbers */
+pre code .line {
+  display: block;
+  position: relative;
+}
+
+pre code .line::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: -40px;
+  width: 28px;
+  text-align: right;
+  color: #475569;
+  font-size: 12px;
+  user-select: none;
+}
+
+/* Editor title bar */
+.code-title {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background: #0f172a;
+  border-bottom: 1px solid #334155;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+  gap: 8px;
+}
+
+.code-title .dots {
+  display: flex;
+  gap: 6px;
+}
+
+.code-title .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #334155;
 }
 
 code {
   font-family: 'Source Code Pro', 'Fira Code', monospace;
 }
 
+/* Inline code — uses theme colors */
 p code,
 li code,
 td code {
-  background-color: var(--mantle);
+  background-color: var(--crust);
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 13px;
+  color: var(--text);
+  border: 1px solid var(--surface0);
 }
 
-/* Syntax token classes */
+/* Syntax highlighting — always dark (code is always on dark bg) */
+pre .kw      { color: #c084fc; }
+pre .fn      { color: #60a5fa; }
+pre .str     { color: #34d399; }
+pre .num     { color: #fb923c; }
+pre .type    { color: #fbbf24; }
+pre .comment { color: #64748b; font-style: italic; }
+
+/* Syntax token classes outside pre — use theme variables */
 .kw      { color: var(--mauve); }
 .fn      { color: var(--lavender); }
 .str     { color: var(--green); }
@@ -275,24 +341,35 @@ table {
 }
 
 thead th {
-  color: var(--mauve);
+  color: var(--text);
   font-weight: 600;
   border-bottom: 2px solid var(--surface0);
-  padding: 10px 14px;
+  padding: 12px 16px;
   text-align: left;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--surface0);
 }
 
 tbody tr:nth-child(odd) {
-  background-color: var(--mantle);
+  background-color: transparent;
 }
 
 tbody tr:nth-child(even) {
-  background-color: var(--base);
+  background-color: var(--mantle);
+}
+
+tbody tr:hover {
+  background-color: var(--crust);
 }
 
 td,
 th {
-  padding: 10px 14px;
+  padding: 12px 16px;
 }
 
 td.highlight {
@@ -625,7 +702,8 @@ footer a:hover {
   thead th { padding: 8px 10px; }
   tbody td { padding: 6px 10px; }
 
-  pre { font-size: 12px; padding: 12px 14px; }
+  pre { font-size: 12px; }
+  pre code { padding: 12px 14px 12px 44px; }
   p code, li code, td code { font-size: 12px; }
 
   .docs h1 { font-size: 24px; }

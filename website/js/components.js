@@ -59,7 +59,9 @@ class SansNav extends HTMLElement {
         *, *::before, *::after { box-sizing: border-box; }
 
         .nav-bar {
-          background: var(--mantle);
+          background: color-mix(in srgb, var(--base) 80%, transparent);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
           border-bottom: 1px solid var(--surface0);
         }
 
@@ -264,7 +266,7 @@ class SansFooter extends HTMLElement {
         *, *::before, *::after { box-sizing: border-box; }
 
         .footer-bar {
-          background: var(--mantle);
+          background: var(--base);
           border-top: 1px solid var(--surface0);
           padding: 24px 32px;
           text-align: center;
