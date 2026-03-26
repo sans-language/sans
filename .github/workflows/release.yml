@@ -274,8 +274,11 @@ jobs:
             RUNTIME_OBJS="$RUNTIME_OBJS /tmp/${base}.o"
           done
 
+          # Compile Windows compatibility shim (poll -> WSAPoll)
+          cc -c -o /tmp/win_compat.o runtime/win_compat.c
+
           # Link with MinGW — provides pthreads, POSIX socket compat, etc.
-          cc main.o $RUNTIME_OBJS \
+          cc main.o $RUNTIME_OBJS /tmp/win_compat.o \
             $(pkg-config --libs libcurl openssl zlib 2>/dev/null || echo '-lcurl -lssl -lcrypto -lz') \
             -lpthread -lws2_32 \
             -o sans.exe
