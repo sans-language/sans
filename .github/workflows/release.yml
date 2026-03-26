@@ -166,6 +166,7 @@ jobs:
   build-linux:
     name: Build Linux x86_64
     needs: build-macos
+    if: ${{ always() && needs.build-macos.result == 'success' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -226,6 +227,7 @@ jobs:
   build-windows:
     name: Build Windows x86_64
     needs: build-macos
+    if: ${{ always() && needs.build-macos.result == 'success' }}
     runs-on: windows-latest
 
     defaults:
