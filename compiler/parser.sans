@@ -13,6 +13,8 @@ tok_col(t:I) I = load64(t + 24)
 // size is at offset 8, line is at size-16, col is at size-8
 node_line(n:I) I = load64(n + load64(n + 8) - 16)
 node_col(n:I) I = load64(n + load64(n + 8) - 8)
+g p_collect_mode = 0
+
 // ------ Parser state ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Parser: [tokens:I, pos:I, last_try_expr:I] = 24 bytes
 make_parser(tokens:I) I {
@@ -64,6 +66,7 @@ p_at(p:I kind:I) I = if p_peek_kind(p) == kind { 1 } else { 0 }
 // Consume token of expected kind or error
 p_expect(p:I kind:I) I {
   if p_at(p, kind) == 1 { p_advance(p) } else {
+    if p_collect_mode == 1 { return 0 }
     p("parse error: expected token kind ")
     p(kind)
     p(" got ")
@@ -79,6 +82,7 @@ p_expect_ident(p:I) I {
     t = p_advance(p)
     tok_val(t)
   } else {
+    if p_collect_mode == 1 { return 0 }
     p("parse error: expected identifier, got kind ")
     p(p_peek_kind(p))
     exit(1)
