@@ -82,15 +82,9 @@ handle_definition(id:J params:J) I {
   // Both LSP and lookup_definition_at use 0-based coordinates
   loc_str = lookup_definition_at(content, line, col)
   if slen(loc_str) == 0 { return rpc_respond(id, jn()) }
-  // loc_str is "line:col" or just a name (symbol found but no location)
-  // For now, if it's just a name, we can't navigate — respond null
-  colon_pos := 0
-  found_colon := 0
-  while colon_pos < slen(loc_str) && found_colon == 0 {
-    if load8(loc_str + colon_pos) == 58 { found_colon = 1 }
-    else { colon_pos += 1 }
-  }
-  if found_colon == 0 { return rpc_respond(id, jn()) }
+  // loc_str is "line:col" — parse it
+  colon_pos = loc_str.index_of(":")
+  if colon_pos < 0 { return rpc_respond(id, jn()) }
   line_str = loc_str.substring(0, colon_pos)
   col_str = loc_str.substring(colon_pos + 1, slen(loc_str))
   raw_def_line = stoi(line_str) - 1

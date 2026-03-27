@@ -300,73 +300,36 @@ lookup_definition_at(content:S line:I col:I) S {
   if enums != 0 && mhas(enums, word) == 1 { is_known = 1 } else { is_known = is_known }
   if is_known == 0 { return "" }
 
-  wlen = slen(word)
-  len = slen(content)
-
-  // Scan for function definition: "word(" at start of line (after optional whitespace)
-  cur_line := 0
+  // Use the lexer to find the definition token
+  // A function def is: IDENT "(" — where IDENT matches word
+  // A struct def is: "struct" IDENT — where IDENT matches word
+  // An enum def is: "enum" IDENT — where IDENT matches word
+  tokens = lex(content)
+  num = load64(tokens + 8)
+  tok_data = load64(tokens)
   i := 0
-  while i < len {
-    line_start = i
-    // Skip leading whitespace
-    while i < len && (char_at(content, i) == 32 || char_at(content, i) == 9) { i += 1 }
-    col_pos = i - line_start
-
-    // Check for "word(" — function definition
-    match := 1
-    wi := 0
-    while wi < wlen && i + wi < len && match == 1 {
-      if char_at(content, i + wi) != char_at(word, wi) { match = 0 } else { match = match }
-      wi += 1
-    }
-    if match == 1 && i + wlen < len && char_at(content, i + wlen) == 40 {
-      return str(cur_line + 1) + ":" + str(col_pos + 1)
-    }
-
-    // Check for "struct word" — struct definition
-    struct_kw = "struct "
-    sklen = 7
-    if i + sklen + wlen <= len {
-      smatch := 1
-      si := 0
-      while si < sklen && smatch == 1 {
-        if char_at(content, i + si) != char_at(struct_kw, si) { smatch = 0 } else { smatch = smatch }
-        si += 1
-      }
-      if smatch == 1 {
-        wi2 := 0
-        while wi2 < wlen && smatch == 1 {
-          if char_at(content, i + sklen + wi2) != char_at(word, wi2) { smatch = 0 } else { smatch = smatch }
-          wi2 += 1
+  while i < num {
+    tok = load64(tok_data + i * 8)
+    kind = tok_kind(tok)
+    // TK_IDENT = 4
+    if kind == 4 && tok_val(tok) == word {
+      // Check if next token is '(' (TK_LPAREN = 55) — function definition
+      if i + 1 < num {
+        next = load64(tok_data + (i + 1) * 8)
+        if tok_kind(next) == 55 {
+          return str(tok_line(tok)) + ":" + str(tok_col(tok))
         }
-        if smatch == 1 { return str(cur_line + 1) + ":" + str(col_pos + sklen + 1) }
       }
     }
-
-    // Check for "enum word" — enum definition
-    enum_kw = "enum "
-    eklen = 5
-    if i + eklen + wlen <= len {
-      ematch := 1
-      ei := 0
-      while ei < eklen && ematch == 1 {
-        if char_at(content, i + ei) != char_at(enum_kw, ei) { ematch = 0 } else { ematch = ematch }
-        ei += 1
-      }
-      if ematch == 1 {
-        wi3 := 0
-        while wi3 < wlen && ematch == 1 {
-          if char_at(content, i + eklen + wi3) != char_at(word, wi3) { ematch = 0 } else { ematch = ematch }
-          wi3 += 1
-        }
-        if ematch == 1 { return str(cur_line + 1) + ":" + str(col_pos + eklen + 1) }
+    // Check for "struct WORD" or "enum WORD" — keyword followed by matching ident
+    // TK_STRUCT = 14, TK_ENUM = 15
+    if (kind == 14 || kind == 15) && i + 1 < num {
+      next = load64(tok_data + (i + 1) * 8)
+      if tok_kind(next) == 4 && tok_val(next) == word {
+        return str(tok_line(next)) + ":" + str(tok_col(next))
       }
     }
-
-    // Skip to next line
-    while i < len && char_at(content, i) != 10 { i += 1 }
-    if i < len { i += 1 }
-    cur_line += 1
+    i += 1
   }
 
   ""
