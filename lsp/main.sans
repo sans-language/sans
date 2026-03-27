@@ -65,8 +65,8 @@ handle_hover(id:J params:J) I {
   pos = params_position(params)
   line = pos / 1000000
   col = pos % 1000000
-  // LSP sends 0-based, hover expects 1-based
-  text = lookup_hover_at(content, line + 1, col + 1)
+  // Both LSP and lookup_hover_at use 0-based coordinates
+  text = lookup_hover_at(content, line, col)
   if slen(text) == 0 { return rpc_respond(id, jn()) }
   result = make_lsp_hover("```sans\n" + text + "\n```")
   rpc_respond(id, result)
@@ -79,18 +79,12 @@ handle_definition(id:J params:J) I {
   pos = params_position(params)
   line = pos / 1000000
   col = pos % 1000000
-  // LSP sends 0-based, definition expects 1-based
-  loc_str = lookup_definition_at(content, line + 1, col + 1)
+  // Both LSP and lookup_definition_at use 0-based coordinates
+  loc_str = lookup_definition_at(content, line, col)
   if slen(loc_str) == 0 { return rpc_respond(id, jn()) }
-  // loc_str is "line:col" or just a name (symbol found but no location)
-  // For now, if it's just a name, we can't navigate — respond null
-  colon_pos := 0
-  found_colon := 0
-  while colon_pos < slen(loc_str) && found_colon == 0 {
-    if load8(loc_str + colon_pos) == 58 { found_colon = 1 }
-    else { colon_pos += 1 }
-  }
-  if found_colon == 0 { return rpc_respond(id, jn()) }
+  // loc_str is "line:col" — parse it
+  colon_pos = loc_str.index_of(":")
+  if colon_pos < 0 { return rpc_respond(id, jn()) }
   line_str = loc_str.substring(0, colon_pos)
   col_str = loc_str.substring(colon_pos + 1, slen(loc_str))
   raw_def_line = stoi(line_str) - 1
@@ -235,7 +229,16 @@ handle_rename(id:J params:J) I {
   pos_encoded = params_position(params)
   line = pos_encoded / 1000000
   col = pos_encoded % 1000000
-  new_name = params.get("newName").get_string()
+  nn = params.get("newName")
+  if nn.type_of() != "string" {
+    rpc_respond_error(id, 0 - 32602, "newName must be a string")
+    return 0
+  }
+  new_name = nn.get_string()
+  if slen(new_name) == 0 {
+    rpc_respond_error(id, 0 - 32602, "newName must not be empty")
+    return 0
+  }
   content = doc_get(uri)
   if slen(content) == 0 {
     rpc_respond(id, jo())
@@ -315,6 +318,74 @@ handle_workspace_symbols(id:J params:J) I {
   0
 }
 
+handle_document_symbols(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, ja())
+    return 0
+  }
+  symbols = ja()
+  if lsp_last_symbols == 0 {
+    rpc_respond(id, symbols)
+    return 0
+  }
+
+  // Functions (fn_env at offset 16)
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 {
+    fkeys = fn_env.keys()
+    fi := 0
+    while fi < fkeys.len() {
+      fname = fkeys.get(fi)
+      sym = jo()
+      sym.set("name", js(fname))
+      sym.set("kind", ji(SK_FUNCTION))
+      sym.set("range", make_lsp_range(0, 0, 0, 0))
+      sym.set("selectionRange", make_lsp_range(0, 0, 0, 0))
+      symbols.push(sym)
+      fi += 1
+    }
+  }
+
+  // Structs (offset 0)
+  structs_map = load64(lsp_last_symbols)
+  if structs_map != 0 {
+    skeys = structs_map.keys()
+    si := 0
+    while si < skeys.len() {
+      sname = skeys.get(si)
+      sym = jo()
+      sym.set("name", js(sname))
+      sym.set("kind", ji(SK_STRUCT))
+      sym.set("range", make_lsp_range(0, 0, 0, 0))
+      sym.set("selectionRange", make_lsp_range(0, 0, 0, 0))
+      symbols.push(sym)
+      si += 1
+    }
+  }
+
+  // Enums (offset 8)
+  enums_map = load64(lsp_last_symbols + 8)
+  if enums_map != 0 {
+    ekeys = enums_map.keys()
+    ei := 0
+    while ei < ekeys.len() {
+      ename = ekeys.get(ei)
+      sym = jo()
+      sym.set("name", js(ename))
+      sym.set("kind", ji(SK_ENUM))
+      sym.set("range", make_lsp_range(0, 0, 0, 0))
+      sym.set("selectionRange", make_lsp_range(0, 0, 0, 0))
+      symbols.push(sym)
+      ei += 1
+    }
+  }
+
+  rpc_respond(id, symbols)
+  0
+}
+
 handle_code_action(id:J params:J) I {
   actions = ja()
   ctx = params.get("context")
@@ -387,6 +458,7 @@ main() I {
       } else if method == "textDocument/foldingRange" { handle_folding_range(rpc_id(msg), rpc_params(msg))
       } else if method == "workspace/symbol" { handle_workspace_symbols(rpc_id(msg), rpc_params(msg))
       } else if method == "textDocument/codeAction" { handle_code_action(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/documentSymbol" { handle_document_symbols(rpc_id(msg), rpc_params(msg))
       } else if method == "shutdown" {
         handle_shutdown(rpc_id(msg))
       } else if method == "exit" {

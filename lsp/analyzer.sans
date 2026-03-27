@@ -34,7 +34,10 @@ lsp_mod_name_of(path:S) S {
 // --- Import resolution ---
 
 // Resolve import path to a file. Tries relative to base_dir first, then project root.
+// Rejects paths with ".." to prevent path traversal.
 lsp_resolve_path(import_path:S base_dir:S) S {
+  // Guard against path traversal
+  if import_path.contains("..") == 1 { return "" }
   result := ""
   candidate = base_dir + "/" + import_path + ".sans"
   if fe(candidate) == 1 { result = candidate }
@@ -283,28 +286,53 @@ lookup_hover_at(content:S line:I col:I) S {
 }
 
 // Look up definition location at a position
-// Returns "line:col" string or "" if not found
+// Returns "line:col" string (1-based) or "" if not found
 lookup_definition_at(content:S line:I col:I) S {
   word = word_at_position(content, line, col)
   if slen(word) == 0 { return "" }
   if lsp_last_symbols == 0 { return "" }
 
-  // Check fn_env (offset 16) — functions exist but fn_sig doesn't store location
   fn_env = load64(lsp_last_symbols + 16)
-  if fn_env != 0 && mhas(fn_env, word) {
-    return word
-  }
-
-  // Check structs_map (offset 0)
   structs = load64(lsp_last_symbols)
-  if structs != 0 && mhas(structs, word) {
-    return word
-  }
-
-  // Check enums_map (offset 8)
   enums = load64(lsp_last_symbols + 8)
-  if enums != 0 && mhas(enums, word) {
-    return word
+
+  // Check if word is a known symbol
+  is_known := 0
+  if fn_env != 0 && mhas(fn_env, word) == 1 { is_known = 1 } else { is_known = is_known }
+  if structs != 0 && mhas(structs, word) == 1 { is_known = 1 } else { is_known = is_known }
+  if enums != 0 && mhas(enums, word) == 1 { is_known = 1 } else { is_known = is_known }
+  if is_known == 0 { return "" }
+
+  // Use the lexer to find the definition token
+  // A function def is: IDENT "(" — where IDENT matches word
+  // A struct def is: "struct" IDENT — where IDENT matches word
+  // An enum def is: "enum" IDENT — where IDENT matches word
+  tokens = lex(content)
+  num = load64(tokens + 8)
+  tok_data = load64(tokens)
+  i := 0
+  while i < num {
+    tok = load64(tok_data + i * 8)
+    kind = tok_kind(tok)
+    // TK_IDENT = 4
+    if kind == 4 && tok_val(tok) == word {
+      // Check if next token is '(' (TK_LPAREN = 55) — function definition
+      if i + 1 < num {
+        next = load64(tok_data + (i + 1) * 8)
+        if tok_kind(next) == 55 {
+          return str(tok_line(tok)) + ":" + str(tok_col(tok))
+        }
+      }
+    }
+    // Check for "struct WORD" or "enum WORD" — keyword followed by matching ident
+    // TK_STRUCT = 14, TK_ENUM = 15
+    if (kind == 14 || kind == 15) && i + 1 < num {
+      next = load64(tok_data + (i + 1) * 8)
+      if tok_kind(next) == 4 && tok_val(next) == word {
+        return str(tok_line(next)) + ":" + str(tok_col(next))
+      }
+    }
+    i += 1
   }
 
   ""

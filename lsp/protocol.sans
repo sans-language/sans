@@ -86,6 +86,7 @@ make_server_capabilities() J {
   caps.set("renameProvider", rn)
   caps.set("foldingRangeProvider", jb(1))
   caps.set("workspaceSymbolProvider", jb(1))
+  caps.set("documentSymbolProvider", jb(1))
   cao = jo()
   kinds = ja()
   kinds.push(js("quickfix"))
