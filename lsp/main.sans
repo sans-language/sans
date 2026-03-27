@@ -11,6 +11,7 @@ import "completion"
 import "semantic_tokens"
 import "references"
 import "folding"
+import "module_cache"
 
 // --- Global state ---
 g doc_store_map = 0
@@ -124,12 +125,14 @@ handle_did_change(params:J) I {
   uri = params_uri(params)
   content = params_text(params)
   doc_store(uri, content)
+  mcache_invalidate(uri_to_path(uri))
   run_diagnostics(uri, content)
   0
 }
 
 handle_did_save(params:J) I {
   uri = params_uri(params)
+  mcache_invalidate(uri_to_path(uri))
   content = doc_get(uri)
   if slen(content) > 0 { run_diagnostics(uri, content) }
   0
@@ -138,6 +141,7 @@ handle_did_save(params:J) I {
 handle_did_close(params:J) I {
   uri = params_uri(params)
   doc_remove(uri)
+  mcache_invalidate(uri_to_path(uri))
   // Clear diagnostics by publishing empty array
   params_out = make_publish_diagnostics(uri, ja())
   rpc_notify("textDocument/publishDiagnostics", params_out)
