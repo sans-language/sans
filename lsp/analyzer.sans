@@ -283,28 +283,90 @@ lookup_hover_at(content:S line:I col:I) S {
 }
 
 // Look up definition location at a position
-// Returns "line:col" string or "" if not found
+// Returns "line:col" string (1-based) or "" if not found
 lookup_definition_at(content:S line:I col:I) S {
   word = word_at_position(content, line, col)
   if slen(word) == 0 { return "" }
   if lsp_last_symbols == 0 { return "" }
 
-  // Check fn_env (offset 16) — functions exist but fn_sig doesn't store location
   fn_env = load64(lsp_last_symbols + 16)
-  if fn_env != 0 && mhas(fn_env, word) {
-    return word
-  }
-
-  // Check structs_map (offset 0)
   structs = load64(lsp_last_symbols)
-  if structs != 0 && mhas(structs, word) {
-    return word
-  }
-
-  // Check enums_map (offset 8)
   enums = load64(lsp_last_symbols + 8)
-  if enums != 0 && mhas(enums, word) {
-    return word
+
+  // Check if word is a known symbol
+  is_known := 0
+  if fn_env != 0 && mhas(fn_env, word) == 1 { is_known = 1 } else { is_known = is_known }
+  if structs != 0 && mhas(structs, word) == 1 { is_known = 1 } else { is_known = is_known }
+  if enums != 0 && mhas(enums, word) == 1 { is_known = 1 } else { is_known = is_known }
+  if is_known == 0 { return "" }
+
+  wlen = slen(word)
+  len = slen(content)
+
+  // Scan for function definition: "word(" at start of line (after optional whitespace)
+  cur_line := 0
+  i := 0
+  while i < len {
+    line_start = i
+    // Skip leading whitespace
+    while i < len && (char_at(content, i) == 32 || char_at(content, i) == 9) { i += 1 }
+    col_pos = i - line_start
+
+    // Check for "word(" — function definition
+    match := 1
+    wi := 0
+    while wi < wlen && i + wi < len && match == 1 {
+      if char_at(content, i + wi) != char_at(word, wi) { match = 0 } else { match = match }
+      wi += 1
+    }
+    if match == 1 && i + wlen < len && char_at(content, i + wlen) == 40 {
+      return str(cur_line + 1) + ":" + str(col_pos + 1)
+    }
+
+    // Check for "struct word" — struct definition
+    struct_kw = "struct "
+    sklen = 7
+    if i + sklen + wlen <= len {
+      smatch := 1
+      si := 0
+      while si < sklen && smatch == 1 {
+        if char_at(content, i + si) != char_at(struct_kw, si) { smatch = 0 } else { smatch = smatch }
+        si += 1
+      }
+      if smatch == 1 {
+        wi2 := 0
+        while wi2 < wlen && smatch == 1 {
+          if char_at(content, i + sklen + wi2) != char_at(word, wi2) { smatch = 0 } else { smatch = smatch }
+          wi2 += 1
+        }
+        if smatch == 1 { return str(cur_line + 1) + ":" + str(col_pos + sklen + 1) }
+      }
+    }
+
+    // Check for "enum word" — enum definition
+    enum_kw = "enum "
+    eklen = 5
+    if i + eklen + wlen <= len {
+      ematch := 1
+      ei := 0
+      while ei < eklen && ematch == 1 {
+        if char_at(content, i + ei) != char_at(enum_kw, ei) { ematch = 0 } else { ematch = ematch }
+        ei += 1
+      }
+      if ematch == 1 {
+        wi3 := 0
+        while wi3 < wlen && ematch == 1 {
+          if char_at(content, i + eklen + wi3) != char_at(word, wi3) { ematch = 0 } else { ematch = ematch }
+          wi3 += 1
+        }
+        if ematch == 1 { return str(cur_line + 1) + ":" + str(col_pos + eklen + 1) }
+      }
+    }
+
+    // Skip to next line
+    while i < len && char_at(content, i) != 10 { i += 1 }
+    if i < len { i += 1 }
+    cur_line += 1
   }
 
   ""
