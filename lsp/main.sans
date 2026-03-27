@@ -120,6 +120,7 @@ handle_did_change(params:J) I {
   uri = params_uri(params)
   content = params_text(params)
   doc_store(uri, content)
+  run_diagnostics(uri, content)
   0
 }
 
