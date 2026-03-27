@@ -1,0 +1,133 @@
+// ------ Semantic tokens for Sans LSP ------
+import "../compiler/constants"
+import "../compiler/lexer"
+import "../compiler/parser"
+import "protocol"
+
+// Return the string length of a keyword by token kind
+keyword_len(kind:I) I {
+  // fn=2, let=3, mut=3, true=4, false=5, if=2, else=4, while=5
+  // return=6, struct=6, enum=4, match=5, trait=5, impl=4, for=3
+  // self=4, Self=4, spawn=5, channel=7, mutex=5, array=5, in=2
+  // import=6, g=1, break=5, continue=8, as=2, defer=5, select=6, pub=3
+  if kind == TK_FN { return 2 }
+  if kind == TK_LET { return 3 }
+  if kind == TK_MUT { return 3 }
+  if kind == TK_TRUE { return 4 }
+  if kind == TK_FALSE { return 5 }
+  if kind == TK_IF { return 2 }
+  if kind == TK_ELSE { return 4 }
+  if kind == TK_WHILE { return 5 }
+  if kind == TK_RETURN { return 6 }
+  if kind == TK_STRUCT { return 6 }
+  if kind == TK_ENUM { return 4 }
+  if kind == TK_MATCH { return 5 }
+  if kind == TK_TRAIT { return 5 }
+  if kind == TK_IMPL { return 4 }
+  if kind == TK_FOR { return 3 }
+  if kind == TK_SELF_VAL { return 4 }
+  if kind == TK_SELF_TYPE { return 4 }
+  if kind == TK_SPAWN { return 5 }
+  if kind == TK_CHANNEL { return 7 }
+  if kind == TK_MUTEX { return 5 }
+  if kind == TK_ARRAY { return 5 }
+  if kind == TK_IN { return 2 }
+  if kind == TK_IMPORT { return 6 }
+  if kind == TK_GLOBAL { return 1 }
+  if kind == TK_BREAK { return 5 }
+  if kind == TK_CONTINUE { return 8 }
+  if kind == TK_AS { return 2 }
+  if kind == TK_DEFER { return 5 }
+  if kind == TK_SELECT { return 6 }
+  if kind == TK_PUB { return 3 }
+  2
+}
+
+// Encode semantic tokens for a document.
+// Returns LSP SemanticTokens { data: int[] }
+// Data format: [deltaLine, deltaStart, length, tokenType, tokenModifiers, ...]
+compute_semantic_tokens(content:S) J {
+  tokens = lex(content)
+  data = ja()
+  prev_line := 0
+  prev_col := 0
+  num = load64(tokens + 8)
+  tok_data = load64(tokens)
+  i := 0
+  while i < num {
+    tok = load64(tok_data + i * 8)
+    kind = tok_kind(tok)
+    line = tok_line(tok) - 1
+    col = tok_col(tok) - 1
+    val = tok_val(tok)
+
+    // Classify token into semantic type; -1 means skip
+    sem_type := 0 - 1
+    tok_len := 1
+
+    // Keywords: TK_FN(5)..TK_CONTINUE(30), TK_AS(66)..TK_PUB(69)
+    if kind >= TK_FN && kind <= TK_CONTINUE {
+      sem_type = SEM_KEYWORD
+      tok_len = keyword_len(kind)
+    }
+    if kind == TK_AS || kind == TK_DEFER || kind == TK_SELECT || kind == TK_PUB {
+      sem_type = SEM_KEYWORD
+      tok_len = keyword_len(kind)
+    }
+
+    // Int literal: val is the integer value
+    if kind == TK_INT_LIT {
+      sem_type = SEM_NUMBER
+      tok_len = slen(str(val))
+    }
+
+    // Float literal: val is a string pointer
+    if kind == TK_FLOAT_LIT {
+      sem_type = SEM_NUMBER
+      tok_len = slen(val)
+    }
+
+    // String literal: val is the processed string (without quotes)
+    if kind == TK_STRING_LIT {
+      sem_type = SEM_STRING
+      tok_len = slen(val) + 2
+    }
+
+    // Interpolated string — treat like a string
+    if kind == TK_INTERP_STRING {
+      sem_type = SEM_STRING
+      tok_len = 2
+    }
+
+    // Identifier (TK_IDENT = 4)
+    if kind == TK_IDENT {
+      tok_len = slen(val)
+      // Uppercase first char = type name
+      first_ch = load8(val)
+      if first_ch >= 65 && first_ch <= 90 {
+        sem_type = SEM_TYPE
+      } else {
+        sem_type = SEM_VARIABLE
+      }
+    }
+
+    if sem_type >= 0 {
+      delta_line = line - prev_line
+      delta_col = 0
+      if delta_line == 0 { delta_col = col - prev_col } else { delta_col = col }
+      data.push(ji(delta_line))
+      data.push(ji(delta_col))
+      data.push(ji(tok_len))
+      data.push(ji(sem_type))
+      data.push(ji(0))
+      prev_line = line
+      prev_col = col
+    }
+
+    i += 1
+  }
+
+  result = jo()
+  result.set("data", data)
+  result
+}

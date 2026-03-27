@@ -75,6 +75,11 @@ make_server_capabilities() J {
   triggers_c.push(js("."))
   cp.set("triggerCharacters", triggers_c)
   caps.set("completionProvider", cp)
+  // Semantic tokens — full document
+  st = jo()
+  st.set("legend", make_semantic_tokens_legend())
+  st.set("full", jb(1))
+  caps.set("semanticTokensProvider", st)
   caps
 }
 
@@ -157,6 +162,39 @@ make_completion_list(items:J) J {
   r.set("isIncomplete", jb(0))
   r.set("items", items)
   r
+}
+
+// --- Semantic token type indices into the legend ---
+g SEM_KEYWORD = 0
+g SEM_FUNCTION = 1
+g SEM_VARIABLE = 2
+g SEM_STRING = 3
+g SEM_NUMBER = 4
+g SEM_COMMENT = 5
+g SEM_TYPE = 6
+g SEM_OPERATOR = 7
+g SEM_PARAMETER = 8
+g SEM_PROPERTY = 9
+g SEM_ENUM_MEMBER = 10
+
+make_semantic_tokens_legend() J {
+  legend = jo()
+  types = ja()
+  types.push(js("keyword"))
+  types.push(js("function"))
+  types.push(js("variable"))
+  types.push(js("string"))
+  types.push(js("number"))
+  types.push(js("comment"))
+  types.push(js("type"))
+  types.push(js("operator"))
+  types.push(js("parameter"))
+  types.push(js("property"))
+  types.push(js("enumMember"))
+  legend.set("tokenTypes", types)
+  mods = ja()
+  legend.set("tokenModifiers", mods)
+  legend
 }
 
 // Strip "file://" prefix from URI

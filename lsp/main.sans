@@ -8,6 +8,7 @@ import "protocol"
 import "analyzer"
 import "symbols"
 import "completion"
+import "semantic_tokens"
 
 // --- Global state ---
 g doc_store_map = 0
@@ -141,6 +142,18 @@ handle_did_close(params:J) I {
   0
 }
 
+handle_semantic_tokens(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, jo())
+    return 0
+  }
+  tokens = compute_semantic_tokens(content)
+  rpc_respond(id, tokens)
+  0
+}
+
 add_symbol_completions(items:J prefix:S) I {
   if lsp_last_symbols == 0 { return 0 }
   // Functions (fn_env at offset 16)
@@ -234,6 +247,8 @@ main() I {
         handle_signature_help(rpc_id(msg), params)
       } else if method == "textDocument/completion" {
         handle_completion(rpc_id(msg), params)
+      } else if method == "textDocument/semanticTokens/full" {
+        handle_semantic_tokens(rpc_id(msg), params)
       } else if method == "shutdown" {
         handle_shutdown(rpc_id(msg))
       } else if method == "exit" {
