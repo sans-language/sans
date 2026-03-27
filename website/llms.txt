@@ -1,4 +1,4 @@
-# Sans Programming Language — v0.8.5
+# Sans Programming Language — v0.8.6
 # https://sans.dev | Playground: https://sans.dev/play
 # AI Reference: https://sans.dev/llms.txt
 
