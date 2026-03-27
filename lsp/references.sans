@@ -1,0 +1,63 @@
+// ------ Find references and rename for Sans LSP ------
+import "../compiler/constants"
+import "../compiler/lexer"
+import "../compiler/parser"
+import "analyzer"
+import "protocol"
+
+// Find all references to the word at (line, col) in content.
+// line and col are 0-based (LSP convention).
+// Returns JSON array of Location objects.
+find_references(uri:S content:S line:I col:I) J {
+  locations = ja()
+  if slen(content) == 0 { return locations }
+  word = word_at_position(content, line, col)
+  if slen(word) == 0 { return locations }
+
+  // Lex the document and find all identifier tokens matching the word
+  tokens = lex(content)
+  num = load64(tokens + 8)
+  tok_data = load64(tokens)
+  i := 0
+  while i < num {
+    tok = load64(tok_data + i * 8)
+    kind = tok_kind(tok)
+    if kind == 4 {
+      val = tok_val(tok)
+      if val == word {
+        tl = tok_line(tok) - 1
+        tc = tok_col(tok) - 1
+        loc = make_lsp_location(uri, tl, tc, tl, tc + slen(word))
+        locations.push(loc)
+      }
+    }
+    i += 1
+  }
+
+  locations
+}
+
+// Compute workspace edit for renaming a symbol.
+// Returns JSON WorkspaceEdit with changes for the document.
+compute_rename(uri:S content:S line:I col:I new_name:S) J {
+  refs = find_references(uri, content, line, col)
+  if refs.len() == 0 { return jo() }
+
+  edits = ja()
+  i := 0
+  while i < refs.len() {
+    loc = refs.get_index(i)
+    rng = loc.get("range")
+    edit = jo()
+    edit.set("range", rng)
+    edit.set("newText", js(new_name))
+    edits.push(edit)
+    i += 1
+  }
+
+  changes = jo()
+  changes.set(uri, edits)
+  result = jo()
+  result.set("changes", changes)
+  result
+}

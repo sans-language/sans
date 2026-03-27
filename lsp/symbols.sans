@@ -16,7 +16,7 @@ lookup_signature_at(content:S line:I col:I) J {
   pos := 0
   cur_line := 0
   while cur_line < line && pos < len {
-    ch = load8(content + pos)
+    ch = char_at(content, pos)
     if ch == 10 { cur_line += 1 }
     pos += 1
   }
@@ -33,7 +33,7 @@ lookup_signature_at(content:S line:I col:I) J {
   paren_pos := 0
 
   while scan >= 0 && found == 0 {
-    c = load8(content + scan)
+    c = char_at(content, scan)
     if c == 41 {
       // ')' — increase depth (nested call)
       depth += 1
@@ -66,19 +66,19 @@ lookup_signature_at(content:S line:I col:I) J {
   if name_start < 0 { return jn() }
 
   // Skip any whitespace before '('
-  while name_start >= 0 && load8(content + name_start) == 32 {
+  while name_start >= 0 && char_at(content, name_start) == 32 {
     name_start -= 1
   }
   if name_start < 0 { return jn() }
 
   // Check we're on an ident char
-  if is_ident_char(load8(content + name_start)) == 0 { return jn() }
+  if is_ident_char(char_at(content, name_start)) == 0 { return jn() }
 
   // Walk backward through identifier
   name_end2 = name_start + 1
   done := 0
   while name_start > 0 && done == 0 {
-    prev = load8(content + name_start - 1)
+    prev = char_at(content, name_start - 1)
     if is_ident_char(prev) == 1 { name_start -= 1 } else { done = 1 }
   }
 

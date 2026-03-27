@@ -1,0 +1,45 @@
+// ------ Folding ranges for Sans LSP ------
+import "protocol"
+
+compute_folding_ranges(content:S) J {
+  ranges = ja()
+  len = slen(content)
+  stack = array<I>()
+  line := 0
+  i := 0
+  in_string := 0
+  in_comment := 0
+
+  while i < len {
+    ch = char_at(content, i)
+
+    if ch == 34 && in_comment == 0 {
+      in_string = if in_string == 0 { 1 } else { 0 }
+    }
+    if ch == 47 && i + 1 < len && char_at(content, i + 1) == 47 && in_string == 0 {
+      in_comment = 1
+    }
+    if ch == 10 { in_comment = 0 }
+
+    if in_string == 0 && in_comment == 0 {
+      if ch == 123 { stack.push(line) }
+      if ch == 125 {
+        if stack.len() > 0 {
+          start_line = stack.pop()
+          if line > start_line {
+            r = jo()
+            r.set("startLine", ji(start_line))
+            r.set("endLine", ji(line))
+            r.set("kind", js("region"))
+            ranges.push(r)
+          }
+        }
+      }
+    }
+
+    if ch == 10 { line += 1 }
+    i += 1
+  }
+
+  ranges
+}

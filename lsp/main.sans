@@ -7,6 +7,10 @@ import "rpc"
 import "protocol"
 import "analyzer"
 import "symbols"
+import "completion"
+import "semantic_tokens"
+import "references"
+import "folding"
 
 // --- Global state ---
 g doc_store_map = 0
@@ -120,6 +124,7 @@ handle_did_change(params:J) I {
   uri = params_uri(params)
   content = params_text(params)
   doc_store(uri, content)
+  run_diagnostics(uri, content)
   0
 }
 
@@ -136,6 +141,200 @@ handle_did_close(params:J) I {
   // Clear diagnostics by publishing empty array
   params_out = make_publish_diagnostics(uri, ja())
   rpc_notify("textDocument/publishDiagnostics", params_out)
+  0
+}
+
+handle_semantic_tokens(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, jo())
+    return 0
+  }
+  tokens = compute_semantic_tokens(content)
+  rpc_respond(id, tokens)
+  0
+}
+
+add_symbol_completions(items:J prefix:S) I {
+  if lsp_last_symbols == 0 { return 0 }
+  // Functions (fn_env at offset 16)
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 {
+    fkeys = fn_env.keys()
+    fi := 0
+    while fi < fkeys.len() {
+      fname = fkeys.get(fi)
+      if str_has_prefix(fname, prefix) == 1 {
+        fsig = mget(fn_env, fname)
+        fdetail = format_fn_signature(fname, fsig)
+        items.push(make_completion_item(fname, COMP_FUNCTION, fdetail))
+      }
+      fi += 1
+    }
+  }
+  // Structs (offset 0)
+  structs_map = load64(lsp_last_symbols)
+  if structs_map != 0 {
+    skeys = structs_map.keys()
+    si := 0
+    while si < skeys.len() {
+      sname = skeys.get(si)
+      if str_has_prefix(sname, prefix) == 1 {
+        items.push(make_completion_item(sname, COMP_STRUCT, "struct"))
+      }
+      si += 1
+    }
+  }
+  // Enums (offset 8)
+  enums_map = load64(lsp_last_symbols + 8)
+  if enums_map != 0 {
+    ekeys = enums_map.keys()
+    ei := 0
+    while ei < ekeys.len() {
+      ename = ekeys.get(ei)
+      if str_has_prefix(ename, prefix) == 1 {
+        items.push(make_completion_item(ename, COMP_ENUM, "enum"))
+      }
+      ei += 1
+    }
+  }
+  0
+}
+
+handle_completion(id:J params:J) I {
+  // Get keyword+builtin completions, then add symbols
+  result = get_completions("")
+  items = result.get("items")
+  add_symbol_completions(items, "")
+  rpc_respond(id, result)
+  0
+}
+
+handle_references(id:J params:J) I {
+  uri = params_uri(params)
+  pos_encoded = params_position(params)
+  line = pos_encoded / 1000000
+  col = pos_encoded % 1000000
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, ja())
+    return 0
+  }
+  refs = find_references(uri, content, line, col)
+  rpc_respond(id, refs)
+  0
+}
+
+handle_rename(id:J params:J) I {
+  uri = params_uri(params)
+  pos_encoded = params_position(params)
+  line = pos_encoded / 1000000
+  col = pos_encoded % 1000000
+  new_name = params.get("newName").get_string()
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, jo())
+    return 0
+  }
+  edit = compute_rename(uri, content, line, col, new_name)
+  rpc_respond(id, edit)
+  0
+}
+
+handle_folding_range(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, ja())
+    return 0
+  }
+  ranges = compute_folding_ranges(content)
+  rpc_respond(id, ranges)
+  0
+}
+
+handle_workspace_symbols(id:J params:J) I {
+  query = params.get("query")
+  q := ""
+  if query.type_of() == "string" { q = query.get_string() } else { q = "" }
+
+  symbols = ja()
+  if lsp_last_symbols == 0 {
+    rpc_respond(id, symbols)
+    return 0
+  }
+
+  // Functions
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 {
+    ks = fn_env.keys()
+    ki := 0
+    while ki < ks.len() {
+      k = ks.get(ki)
+      if slen(q) == 0 || k.contains(q) == 1 {
+        symbols.push(make_symbol_info(k, SK_FUNCTION, lsp_root_uri, 0))
+      }
+      ki += 1
+    }
+  }
+
+  // Structs
+  structs = load64(lsp_last_symbols)
+  if structs != 0 {
+    ks = structs.keys()
+    ki := 0
+    while ki < ks.len() {
+      k = ks.get(ki)
+      if slen(q) == 0 || k.contains(q) == 1 {
+        symbols.push(make_symbol_info(k, SK_STRUCT, lsp_root_uri, 0))
+      }
+      ki += 1
+    }
+  }
+
+  // Enums
+  enums = load64(lsp_last_symbols + 8)
+  if enums != 0 {
+    ks = enums.keys()
+    ki := 0
+    while ki < ks.len() {
+      k = ks.get(ki)
+      if slen(q) == 0 || k.contains(q) == 1 {
+        symbols.push(make_symbol_info(k, SK_ENUM, lsp_root_uri, 0))
+      }
+      ki += 1
+    }
+  }
+
+  rpc_respond(id, symbols)
+  0
+}
+
+handle_code_action(id:J params:J) I {
+  actions = ja()
+  ctx = params.get("context")
+  if ctx.type_of() != "null" {
+    diags = ctx.get("diagnostics")
+    if diags.type_of() != "null" {
+      di := 0
+      while di < diags.len() {
+        diag = diags.get_index(di)
+        msg_j = diag.get("message")
+        if msg_j.type_of() == "string" {
+          msg = msg_j.get_string()
+          if msg.contains("undefined") == 1 {
+            action = jo()
+            action.set("title", js("Suppress: " + msg))
+            action.set("kind", js("quickfix"))
+            actions.push(action)
+          }
+        }
+        di += 1
+      }
+    }
+  }
+  rpc_respond(id, actions)
   0
 }
 
@@ -175,6 +374,15 @@ main() I {
         handle_definition(rpc_id(msg), params)
       } else if method == "textDocument/signatureHelp" {
         handle_signature_help(rpc_id(msg), params)
+      } else if method == "textDocument/completion" {
+        handle_completion(rpc_id(msg), params)
+      } else if method == "textDocument/semanticTokens/full" {
+        handle_semantic_tokens(rpc_id(msg), params)
+      } else if method == "textDocument/references" { handle_references(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/rename" { handle_rename(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/foldingRange" { handle_folding_range(rpc_id(msg), rpc_params(msg))
+      } else if method == "workspace/symbol" { handle_workspace_symbols(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/codeAction" { handle_code_action(rpc_id(msg), rpc_params(msg))
       } else if method == "shutdown" {
         handle_shutdown(rpc_id(msg))
       } else if method == "exit" {
