@@ -8,6 +8,7 @@ import "typeck"
 import "ir"
 import "codegen"
 import "pkg"
+import "fmt"
 g g_merged = 0
 g g_fn_aliases = 0
 g g_file = 0
@@ -760,6 +761,16 @@ main() I {
 
   if cmd == "pkg" {
     pkg_main(argv)
+    exit(0)
+  }
+
+  if cmd == "fmt" {
+    fmt_target = if argc >= 3 { argv.get(2) } else { "." }
+    fmt_output := ""
+    if argc >= 5 && argv.get(3) == "-o" {
+      fmt_output = argv.get(4)
+    }
+    fmt_main(fmt_target, fmt_output)
     exit(0)
   }
 

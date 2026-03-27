@@ -1,0 +1,310 @@
+// ------ Sans Formatter ------
+// Normalizes identifiers to short form and fixes indentation.
+
+g fmt_aliases = 0
+
+fmt_init_aliases() I {
+  if fmt_aliases != 0 { return 0 }
+  fmt_aliases = M()
+  // Type aliases
+  mset(fmt_aliases, "Int", "I")
+  mset(fmt_aliases, "String", "S")
+  mset(fmt_aliases, "Bool", "B")
+  mset(fmt_aliases, "Float", "F")
+  mset(fmt_aliases, "JsonValue", "J")
+  mset(fmt_aliases, "HttpServer", "HS")
+  mset(fmt_aliases, "HttpRequest", "HR")
+  // I/O
+  mset(fmt_aliases, "print", "p")
+  mset(fmt_aliases, "println", "p")
+  mset(fmt_aliases, "file_read", "fr")
+  mset(fmt_aliases, "read_file", "fr")
+  mset(fmt_aliases, "fread", "fr")
+  mset(fmt_aliases, "file_write", "fw")
+  mset(fmt_aliases, "write_file", "fw")
+  mset(fmt_aliases, "fwrite", "fw")
+  mset(fmt_aliases, "file_append", "fa")
+  mset(fmt_aliases, "append_file", "fa")
+  mset(fmt_aliases, "fappend", "fa")
+  mset(fmt_aliases, "file_exists", "fe")
+  mset(fmt_aliases, "fexists", "fe")
+  mset(fmt_aliases, "getenv", "genv")
+  mset(fmt_aliases, "stdin_read_line", "srl")
+  mset(fmt_aliases, "stdin_read_bytes", "srb")
+  mset(fmt_aliases, "print_err", "pe")
+  // Conversion
+  mset(fmt_aliases, "int_to_string", "str")
+  mset(fmt_aliases, "itos", "str")
+  mset(fmt_aliases, "string_to_int", "stoi")
+  mset(fmt_aliases, "int_to_float", "itof")
+  mset(fmt_aliases, "float_to_int", "ftoi")
+  mset(fmt_aliases, "float_to_string", "ftos")
+  mset(fmt_aliases, "string_to_float", "stof")
+  // JSON
+  mset(fmt_aliases, "json_parse", "jp")
+  mset(fmt_aliases, "jparse", "jp")
+  mset(fmt_aliases, "json_object", "jo")
+  mset(fmt_aliases, "jobj", "jo")
+  mset(fmt_aliases, "json_array", "ja")
+  mset(fmt_aliases, "jarr", "ja")
+  mset(fmt_aliases, "json_string", "js")
+  mset(fmt_aliases, "jstr", "js")
+  mset(fmt_aliases, "json_int", "ji")
+  mset(fmt_aliases, "json_bool", "jb")
+  mset(fmt_aliases, "json_null", "jn")
+  mset(fmt_aliases, "json_stringify", "jfy")
+  mset(fmt_aliases, "jstringify", "jfy")
+  // HTTP
+  mset(fmt_aliases, "http_get", "hg")
+  mset(fmt_aliases, "hget", "hg")
+  mset(fmt_aliases, "http_post", "hp")
+  mset(fmt_aliases, "hpost", "hp")
+  mset(fmt_aliases, "http_listen", "hl")
+  mset(fmt_aliases, "listen", "hl")
+  mset(fmt_aliases, "cors_all", "ca")
+  mset(fmt_aliases, "url_decode", "ud")
+  mset(fmt_aliases, "path_segment", "ps")
+  // Logging
+  mset(fmt_aliases, "log_debug", "ld")
+  mset(fmt_aliases, "log_info", "li")
+  mset(fmt_aliases, "log_warn", "lw")
+  mset(fmt_aliases, "log_error", "le")
+  mset(fmt_aliases, "log_set_level", "ll")
+  // File system
+  mset(fmt_aliases, "listdir", "ls")
+  mset(fmt_aliases, "remove", "rm")
+  mset(fmt_aliases, "gzip_compress", "gz")
+  mset(fmt_aliases, "shell", "sh")
+  mset(fmt_aliases, "system", "sys")
+  0
+}
+
+// Check if a character is part of an identifier
+fmt_is_ident(c:I) I {
+  if c >= 65 && c <= 90 { return 1 }
+  if c >= 97 && c <= 122 { return 1 }
+  if c >= 48 && c <= 57 { return 1 }
+  if c == 95 { return 1 }
+  0
+}
+
+// Replace long-form identifiers with short form on a single line.
+// Preserves strings and comments.
+fmt_normalize_line(line:S) S {
+  fmt_init_aliases()
+  len = slen(line)
+  if len == 0 { return "" }
+  result := ""
+  i := 0
+  while i < len {
+    c = char_at(line, i)
+
+    // Skip strings
+    if c == 34 {
+      // Found opening quote — copy until closing quote
+      result = result + "\""
+      i = i + 1
+      while i < len {
+        sc = char_at(line, i)
+        if sc == 92 && i + 1 < len {
+          // Escape sequence — copy two chars
+          result = result + line.substring(i, i + 2)
+          i = i + 2
+        } else if sc == 34 {
+          result = result + "\""
+          i = i + 1
+          break
+        } else {
+          result = result + line.substring(i, i + 1)
+          i = i + 1
+        }
+      }
+    } else if c == 47 && i + 1 < len && char_at(line, i + 1) == 47 {
+      // Line comment — copy rest of line as-is
+      result = result + line.substring(i, len)
+      i = len
+    } else if fmt_is_ident(c) == 1 {
+      // Identifier — extract full word
+      start = i
+      while i < len && fmt_is_ident(char_at(line, i)) == 1 { i = i + 1 }
+      word = line.substring(start, i)
+      // Check for alias
+      if mhas(fmt_aliases, word) {
+        result = result + mget(fmt_aliases, word)
+      } else {
+        result = result + word
+      }
+    } else {
+      result = result + line.substring(i, i + 1)
+      i = i + 1
+    }
+  }
+  result
+}
+
+// Count net brace changes on a line (ignoring strings and comments).
+// Returns (opens - closes).
+fmt_brace_delta(line:S) I {
+  len = slen(line)
+  delta := 0
+  in_string := 0
+  i := 0
+  while i < len {
+    c = char_at(line, i)
+    if in_string == 1 {
+      if c == 92 { i = i + 1 } // skip escape
+      else if c == 34 { in_string = 0 }
+      i = i + 1
+    } else {
+      if c == 34 { in_string = 1 }
+      else if c == 47 && i + 1 < len && char_at(line, i + 1) == 47 {
+        // Line comment — stop counting
+        i = len
+      }
+      else if c == 123 { delta = delta + 1 }
+      else if c == 125 { delta = delta - 1 }
+      i = i + 1
+    }
+  }
+  delta
+}
+
+// Check if a trimmed line starts with '}'
+fmt_starts_with_close(line:S) I {
+  len = slen(line)
+  i := 0
+  while i < len && (char_at(line, i) == 32 || char_at(line, i) == 9) { i = i + 1 }
+  if i < len && char_at(line, i) == 125 { 1 } else { 0 }
+}
+
+// Trim leading whitespace from a line
+fmt_trim_left(line:S) S {
+  len = slen(line)
+  i := 0
+  while i < len && (char_at(line, i) == 32 || char_at(line, i) == 9) { i = i + 1 }
+  if i == len { "" } else { line.substring(i, len) }
+}
+
+// Generate indentation string (2 spaces per level)
+fmt_indent(level:I) S {
+  result := ""
+  i := 0
+  while i < level {
+    result = result + "  "
+    i = i + 1
+  }
+  result
+}
+
+// Format a Sans source file.
+// Returns the formatted source as a string.
+fmt_format(src:S) S {
+  lines = src.split("\n")
+  result := ""
+  indent := 0
+  i := 0
+  num := lines.len()
+  // If source ends with \n, split produces a trailing empty element — skip it
+  ends_nl := 0
+  if slen(src) > 0 && char_at(src, slen(src) - 1) == 10 {
+    ends_nl = 1
+    num = num - 1
+  }
+  while i < num {
+    line = lines.get(i)
+    trimmed = fmt_trim_left(line)
+
+    if slen(trimmed) == 0 {
+      // Blank line — preserve as empty line
+      result = result + "\n"
+    } else {
+      // Normalize aliases
+      normalized = fmt_normalize_line(trimmed)
+
+      // Check if line starts with '}' — dedent before this line
+      if fmt_starts_with_close(normalized) == 1 && indent > 0 {
+        indent = indent - 1
+      }
+
+      // Emit indented line
+      result = result + fmt_indent(indent) + normalized + "\n"
+
+      // Calculate brace delta for next line's indent
+      delta = fmt_brace_delta(normalized)
+      // If line starts with } we already decremented, so only apply opens
+      if fmt_starts_with_close(normalized) == 1 {
+        // We already decremented for the close. Now add any opens.
+        // Net delta includes the close we handled. Re-add 1 for it.
+        indent = indent + delta + 1
+      } else {
+        indent = indent + delta
+      }
+      if indent < 0 { indent = 0 }
+    }
+
+    i = i + 1
+  }
+
+  // Ensure trailing newline matches original
+  if ends_nl == 1 {
+    // Original ended with newline — ensure result does too
+    if slen(result) > 0 && char_at(result, slen(result) - 1) != 10 {
+      result = result + "\n"
+    }
+  } else {
+    // Original did NOT end with newline — strip trailing newline if present
+    if slen(result) > 0 && char_at(result, slen(result) - 1) == 10 {
+      result = result.substring(0, slen(result) - 1)
+    }
+  }
+
+  result
+}
+
+// Format a file in place or write to output.
+fmt_file(path:S output:S) I {
+  src = fr(path)
+  if slen(src) == 0 {
+    p("sans fmt: cannot read file: " + path)
+    return 1
+  }
+  formatted = fmt_format(src)
+  if slen(output) > 0 {
+    fw(output, formatted)
+  } else {
+    // In-place formatting
+    fw(path, formatted)
+  }
+  0
+}
+
+// Format all .sans files in a directory.
+fmt_dir(dir:S) I {
+  files = ls(dir)
+  i := 0
+  while i < files.len() {
+    fname = files.get(i)
+    if fname.ends_with(".sans") == 1 {
+      path = dir + "/" + fname
+      fmt_file(path, "")
+      p("  formatted: " + path)
+    }
+    i = i + 1
+  }
+  0
+}
+
+// Entry point for `sans fmt`
+fmt_main(target:S output:S) I {
+  if is_dir(target) == 1 {
+    fmt_dir(target)
+  } else {
+    if slen(output) > 0 {
+      fmt_file(target, output)
+    } else {
+      fmt_file(target, "")
+    }
+    p("  formatted: " + target)
+  }
+  0
+}
