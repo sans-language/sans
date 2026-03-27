@@ -10,6 +10,7 @@ import "symbols"
 import "completion"
 import "semantic_tokens"
 import "references"
+import "folding"
 
 // --- Global state ---
 g doc_store_map = 0
@@ -241,6 +242,102 @@ handle_rename(id:J params:J) I {
   0
 }
 
+handle_folding_range(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, ja())
+    return 0
+  }
+  ranges = compute_folding_ranges(content)
+  rpc_respond(id, ranges)
+  0
+}
+
+handle_workspace_symbols(id:J params:J) I {
+  query = params.get("query")
+  q := ""
+  if query.type_of() == "string" { q = query.get_string() } else { q = "" }
+
+  symbols = ja()
+  if lsp_last_symbols == 0 {
+    rpc_respond(id, symbols)
+    return 0
+  }
+
+  // Functions
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 {
+    ks = fn_env.keys()
+    ki := 0
+    while ki < ks.len() {
+      k = ks.get(ki)
+      if slen(q) == 0 || k.contains(q) == 1 {
+        symbols.push(make_symbol_info(k, SK_FUNCTION, lsp_root_uri, 0))
+      }
+      ki += 1
+    }
+  }
+
+  // Structs
+  structs = load64(lsp_last_symbols)
+  if structs != 0 {
+    ks = structs.keys()
+    ki := 0
+    while ki < ks.len() {
+      k = ks.get(ki)
+      if slen(q) == 0 || k.contains(q) == 1 {
+        symbols.push(make_symbol_info(k, SK_STRUCT, lsp_root_uri, 0))
+      }
+      ki += 1
+    }
+  }
+
+  // Enums
+  enums = load64(lsp_last_symbols + 8)
+  if enums != 0 {
+    ks = enums.keys()
+    ki := 0
+    while ki < ks.len() {
+      k = ks.get(ki)
+      if slen(q) == 0 || k.contains(q) == 1 {
+        symbols.push(make_symbol_info(k, SK_ENUM, lsp_root_uri, 0))
+      }
+      ki += 1
+    }
+  }
+
+  rpc_respond(id, symbols)
+  0
+}
+
+handle_code_action(id:J params:J) I {
+  actions = ja()
+  ctx = params.get("context")
+  if ctx.type_of() != "null" {
+    diags = ctx.get("diagnostics")
+    if diags.type_of() != "null" {
+      di := 0
+      while di < diags.len() {
+        diag = diags.get_index(di)
+        msg_j = diag.get("message")
+        if msg_j.type_of() == "string" {
+          msg = msg_j.get_string()
+          if msg.contains("undefined") == 1 {
+            action = jo()
+            action.set("title", js("Suppress: " + msg))
+            action.set("kind", js("quickfix"))
+            actions.push(action)
+          }
+        }
+        di += 1
+      }
+    }
+  }
+  rpc_respond(id, actions)
+  0
+}
+
 // --- Main loop ---
 main() I {
   scope_disable()
@@ -283,6 +380,9 @@ main() I {
         handle_semantic_tokens(rpc_id(msg), params)
       } else if method == "textDocument/references" { handle_references(rpc_id(msg), rpc_params(msg))
       } else if method == "textDocument/rename" { handle_rename(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/foldingRange" { handle_folding_range(rpc_id(msg), rpc_params(msg))
+      } else if method == "workspace/symbol" { handle_workspace_symbols(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/codeAction" { handle_code_action(rpc_id(msg), rpc_params(msg))
       } else if method == "shutdown" {
         handle_shutdown(rpc_id(msg))
       } else if method == "exit" {

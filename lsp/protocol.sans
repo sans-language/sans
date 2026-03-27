@@ -84,6 +84,13 @@ make_server_capabilities() J {
   rn = jo()
   rn.set("prepareProvider", jb(0))
   caps.set("renameProvider", rn)
+  caps.set("foldingRangeProvider", jb(1))
+  caps.set("workspaceSymbolProvider", jb(1))
+  cao = jo()
+  kinds = ja()
+  kinds.push(js("quickfix"))
+  cao.set("codeActionKinds", kinds)
+  caps.set("codeActionProvider", cao)
   caps
 }
 
@@ -199,6 +206,20 @@ make_semantic_tokens_legend() J {
   mods = ja()
   legend.set("tokenModifiers", mods)
   legend
+}
+
+// LSP SymbolKind constants
+g SK_FUNCTION = 12
+g SK_STRUCT = 23
+g SK_ENUM = 10
+
+make_symbol_info(name:S kind:I uri:S line:I) J {
+  s = jo()
+  s.set("name", js(name))
+  s.set("kind", ji(kind))
+  loc = make_lsp_location(uri, line, 0, line, 0)
+  s.set("location", loc)
+  s
 }
 
 // Strip "file://" prefix from URI
