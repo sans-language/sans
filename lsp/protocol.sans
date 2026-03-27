@@ -80,6 +80,10 @@ make_server_capabilities() J {
   st.set("legend", make_semantic_tokens_legend())
   st.set("full", jb(1))
   caps.set("semanticTokensProvider", st)
+  caps.set("referencesProvider", jb(1))
+  rn = jo()
+  rn.set("prepareProvider", jb(0))
+  caps.set("renameProvider", rn)
   caps
 }
 

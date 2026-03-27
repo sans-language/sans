@@ -98,7 +98,7 @@ word_at_position(src:S line:I col:I) S {
   len = slen(src)
 
   while cur_line < line && pos < len {
-    ch = load8(src + pos)
+    ch = char_at(src, pos)
     if ch == 10 { cur_line += 1 }
     pos += 1
   }
@@ -110,14 +110,14 @@ word_at_position(src:S line:I col:I) S {
   if pos >= len { return "" }
 
   // Check if we're on an identifier character
-  ch = load8(src + pos)
+  ch = char_at(src, pos)
   if is_ident_char(ch) == 0 { return "" }
 
   // Walk backward to find start of identifier
   start := pos
   done := 0
   while start > line_start && done == 0 {
-    prev = load8(src + start - 1)
+    prev = char_at(src, start - 1)
     if is_ident_char(prev) == 1 { start -= 1 } else { done = 1 }
   }
 
@@ -125,7 +125,7 @@ word_at_position(src:S line:I col:I) S {
   end := pos
   done2 := 0
   while end < len && done2 == 0 {
-    c = load8(src + end)
+    c = char_at(src, end)
     if is_ident_char(c) == 1 { end += 1 } else { done2 = 1 }
   }
 

@@ -9,6 +9,7 @@ import "analyzer"
 import "symbols"
 import "completion"
 import "semantic_tokens"
+import "references"
 
 // --- Global state ---
 g doc_store_map = 0
@@ -209,6 +210,37 @@ handle_completion(id:J params:J) I {
   0
 }
 
+handle_references(id:J params:J) I {
+  uri = params_uri(params)
+  pos_encoded = params_position(params)
+  line = pos_encoded / 1000000
+  col = pos_encoded % 1000000
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, ja())
+    return 0
+  }
+  refs = find_references(uri, content, line, col)
+  rpc_respond(id, refs)
+  0
+}
+
+handle_rename(id:J params:J) I {
+  uri = params_uri(params)
+  pos_encoded = params_position(params)
+  line = pos_encoded / 1000000
+  col = pos_encoded % 1000000
+  new_name = params.get("newName").get_string()
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, jo())
+    return 0
+  }
+  edit = compute_rename(uri, content, line, col, new_name)
+  rpc_respond(id, edit)
+  0
+}
+
 // --- Main loop ---
 main() I {
   scope_disable()
@@ -249,6 +281,8 @@ main() I {
         handle_completion(rpc_id(msg), params)
       } else if method == "textDocument/semanticTokens/full" {
         handle_semantic_tokens(rpc_id(msg), params)
+      } else if method == "textDocument/references" { handle_references(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/rename" { handle_rename(rpc_id(msg), rpc_params(msg))
       } else if method == "shutdown" {
         handle_shutdown(rpc_id(msg))
       } else if method == "exit" {
