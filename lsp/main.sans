@@ -7,6 +7,7 @@ import "rpc"
 import "protocol"
 import "analyzer"
 import "symbols"
+import "completion"
 
 // --- Global state ---
 g doc_store_map = 0
@@ -140,6 +141,61 @@ handle_did_close(params:J) I {
   0
 }
 
+add_symbol_completions(items:J prefix:S) I {
+  if lsp_last_symbols == 0 { return 0 }
+  // Functions (fn_env at offset 16)
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 {
+    fkeys = fn_env.keys()
+    fi := 0
+    while fi < fkeys.len() {
+      fname = fkeys.get(fi)
+      if str_has_prefix(fname, prefix) == 1 {
+        fsig = mget(fn_env, fname)
+        fdetail = format_fn_signature(fname, fsig)
+        items.push(make_completion_item(fname, COMP_FUNCTION, fdetail))
+      }
+      fi += 1
+    }
+  }
+  // Structs (offset 0)
+  structs_map = load64(lsp_last_symbols)
+  if structs_map != 0 {
+    skeys = structs_map.keys()
+    si := 0
+    while si < skeys.len() {
+      sname = skeys.get(si)
+      if str_has_prefix(sname, prefix) == 1 {
+        items.push(make_completion_item(sname, COMP_STRUCT, "struct"))
+      }
+      si += 1
+    }
+  }
+  // Enums (offset 8)
+  enums_map = load64(lsp_last_symbols + 8)
+  if enums_map != 0 {
+    ekeys = enums_map.keys()
+    ei := 0
+    while ei < ekeys.len() {
+      ename = ekeys.get(ei)
+      if str_has_prefix(ename, prefix) == 1 {
+        items.push(make_completion_item(ename, COMP_ENUM, "enum"))
+      }
+      ei += 1
+    }
+  }
+  0
+}
+
+handle_completion(id:J params:J) I {
+  // Get keyword+builtin completions, then add symbols
+  result = get_completions("")
+  items = result.get("items")
+  add_symbol_completions(items, "")
+  rpc_respond(id, result)
+  0
+}
+
 // --- Main loop ---
 main() I {
   scope_disable()
@@ -176,6 +232,8 @@ main() I {
         handle_definition(rpc_id(msg), params)
       } else if method == "textDocument/signatureHelp" {
         handle_signature_help(rpc_id(msg), params)
+      } else if method == "textDocument/completion" {
+        handle_completion(rpc_id(msg), params)
       } else if method == "shutdown" {
         handle_shutdown(rpc_id(msg))
       } else if method == "exit" {

@@ -1,0 +1,186 @@
+// LSP Completion — provides autocomplete suggestions
+import "../compiler/typeck"
+import "protocol"
+
+// --- Lazy-initialized globals ---
+g lsp_keywords_arr = 0
+g lsp_builtin_names = 0
+g lsp_builtin_aliases = 0
+g lsp_builtin_details = 0
+
+// Initialize keywords array if needed
+init_keywords() I {
+  if lsp_keywords_arr != 0 { return 0 }
+  lsp_keywords_arr = array<S>()
+  lsp_keywords_arr.push("fn")
+  lsp_keywords_arr.push("let")
+  lsp_keywords_arr.push("mut")
+  lsp_keywords_arr.push("if")
+  lsp_keywords_arr.push("else")
+  lsp_keywords_arr.push("while")
+  lsp_keywords_arr.push("return")
+  lsp_keywords_arr.push("struct")
+  lsp_keywords_arr.push("enum")
+  lsp_keywords_arr.push("match")
+  lsp_keywords_arr.push("trait")
+  lsp_keywords_arr.push("impl")
+  lsp_keywords_arr.push("for")
+  lsp_keywords_arr.push("in")
+  lsp_keywords_arr.push("import")
+  lsp_keywords_arr.push("g")
+  lsp_keywords_arr.push("break")
+  lsp_keywords_arr.push("continue")
+  lsp_keywords_arr.push("defer")
+  lsp_keywords_arr.push("spawn")
+  lsp_keywords_arr.push("channel")
+  lsp_keywords_arr.push("mutex")
+  lsp_keywords_arr.push("true")
+  lsp_keywords_arr.push("false")
+  lsp_keywords_arr.push("select")
+  lsp_keywords_arr.push("pub")
+  0
+}
+
+// Helper to add a builtin entry
+add_builtin(name:S alias:S detail:S) I {
+  lsp_builtin_names.push(name)
+  lsp_builtin_aliases.push(alias)
+  lsp_builtin_details.push(detail)
+  0
+}
+
+// Initialize builtins arrays if needed
+init_builtins() I {
+  if lsp_builtin_names != 0 { return 0 }
+  lsp_builtin_names = array<S>()
+  lsp_builtin_aliases = array<S>()
+  lsp_builtin_details = array<S>()
+  add_builtin("p", "print", "() I")
+  add_builtin("fr", "file_read", "(path:S) S")
+  add_builtin("fw", "file_write", "(path:S content:S) I")
+  add_builtin("str", "", "I -> S")
+  add_builtin("stoi", "", "S -> I")
+  add_builtin("slen", "", "S -> I")
+  add_builtin("jo", "json_object", "() J")
+  add_builtin("ja", "json_array", "() J")
+  add_builtin("js", "json_string", "(s:S) J")
+  add_builtin("ji", "json_int", "(n:I) J")
+  add_builtin("jp", "json_parse", "(s:S) R<J>")
+  add_builtin("jfy", "json_stringify", "(j:J) S")
+  add_builtin("time", "", "() I")
+  add_builtin("exit", "", "(code:I) I")
+  add_builtin("sh", "shell", "(cmd:S) S")
+  add_builtin("genv", "getenv", "(name:S) S")
+  add_builtin("args", "", "() Array<S>")
+  add_builtin("ok", "", "(val) R<T>")
+  add_builtin("err", "", "(msg:S) R<T>")
+  add_builtin("some", "", "(val) O<T>")
+  add_builtin("none", "", "() O<T>")
+  add_builtin("srl", "stdin_read_line", "() S")
+  add_builtin("srb", "stdin_read_bytes", "(n:I) S")
+  add_builtin("alloc", "", "(n:I) I")
+  add_builtin("array", "", "() Array<T>")
+  add_builtin("map", "", "() Map")
+  0
+}
+
+// Check if string starts with prefix
+str_has_prefix(s:S prefix:S) I {
+  if slen(prefix) == 0 { return 1 }
+  if slen(s) < slen(prefix) { return 0 }
+  if s.starts_with(prefix) { 1 } else { 0 }
+}
+
+
+// Get completions matching a prefix
+get_completions(prefix:S) J {
+  init_keywords()
+  init_builtins()
+  items = ja()
+
+  // Keywords
+  ki := 0
+  while ki < lsp_keywords_arr.len() {
+    kw = lsp_keywords_arr.get(ki)
+    if str_has_prefix(kw, prefix) == 1 {
+      items.push(make_completion_item(kw, COMP_KEYWORD, "keyword"))
+    }
+    ki += 1
+  }
+
+  // Builtins
+  bi := 0
+  while bi < lsp_builtin_names.len() {
+    bname = lsp_builtin_names.get(bi)
+    balias = lsp_builtin_aliases.get(bi)
+    bdetail = lsp_builtin_details.get(bi)
+    // Check name
+    if str_has_prefix(bname, prefix) == 1 {
+      items.push(make_completion_item(bname, COMP_FUNCTION, bdetail))
+    }
+    // Check alias too
+    if slen(balias) > 0 && str_has_prefix(balias, prefix) == 1 {
+      items.push(make_completion_item(balias, COMP_FUNCTION, bdetail))
+    }
+    bi += 1
+  }
+
+  make_completion_list(items)
+}
+
+// Add method items to an array for a given type
+add_method_items(items:J methods:S) I {
+  // methods is space-separated list of method names
+  len = slen(methods)
+  start := 0
+  i := 0
+  while i <= len {
+    ch = if i < len { load8(methods + i) } else { 32 }
+    if ch == 32 && i > start {
+      mname = methods.substring(start, i)
+      items.push(make_completion_item(mname, COMP_METHOD, ""))
+      start = i + 1
+    } else if ch == 32 {
+      start = i + 1
+    }
+    i += 1
+  }
+  0
+}
+
+// Get method completions for a type
+get_method_completions(type_name:S) J {
+  items = ja()
+
+  if type_name.starts_with("Array") {
+    add_method_items(items, "push get set len pop remove map filter any find contains join sort reverse slice each reduce")
+  } else if type_name == "S" || type_name == "String" {
+    add_method_items(items, "len trim split contains starts_with ends_with replace substring index_of upper lower repeat char_at to_int pad_left pad_right")
+  } else if type_name.starts_with("Map") {
+    add_method_items(items, "get set has len keys vals delete entries")
+  } else if type_name == "J" || type_name == "Json" || type_name.starts_with("Json") {
+    add_method_items(items, "get get_index get_string get_int get_bool set push len type_of keys has delete stringify")
+  } else if type_name.starts_with("R<") || type_name.starts_with("Result") {
+    add_method_items(items, "is_ok is_err unwrap unwrap_or error map")
+  } else if type_name.starts_with("O<") || type_name.starts_with("Option") {
+    add_method_items(items, "is_some is_none unwrap unwrap_or")
+  } else {
+    // Check if it's a struct — look up fields
+    if lsp_last_symbols != 0 {
+      structs_map = load64(lsp_last_symbols)
+      if structs_map != 0 && mhas(structs_map, type_name) {
+        fields = mget(structs_map, type_name)
+        fkeys = fields.keys()
+        fi := 0
+        while fi < fkeys.len() {
+          fname = fkeys.get(fi)
+          ftype = mget(fields, fname)
+          items.push(make_completion_item(fname, COMP_FIELD, type_to_string(ftype)))
+          fi += 1
+        }
+      }
+    }
+  }
+
+  make_completion_list(items)
+}

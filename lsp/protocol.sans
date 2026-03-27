@@ -69,6 +69,12 @@ make_server_capabilities() J {
   triggers.push(js(","))
   sig.set("triggerCharacters", triggers)
   caps.set("signatureHelpProvider", sig)
+  // Completion with trigger characters
+  cp = jo()
+  triggers_c = ja()
+  triggers_c.push(js("."))
+  cp.set("triggerCharacters", triggers_c)
+  caps.set("completionProvider", cp)
   caps
 }
 
@@ -127,6 +133,31 @@ params_text(params:J) S {
 }
 
 // --- URI helpers ---
+
+// LSP CompletionItem kinds
+g COMP_FUNCTION = 3
+g COMP_FIELD = 5
+g COMP_VARIABLE = 6
+g COMP_KEYWORD = 14
+g COMP_STRUCT = 22
+g COMP_ENUM = 13
+g COMP_ENUM_MEMBER = 20
+g COMP_METHOD = 2
+
+make_completion_item(label:S kind:I detail:S) J {
+  item = jo()
+  item.set("label", js(label))
+  item.set("kind", ji(kind))
+  if slen(detail) > 0 { item.set("detail", js(detail)) }
+  item
+}
+
+make_completion_list(items:J) J {
+  r = jo()
+  r.set("isIncomplete", jb(0))
+  r.set("items", items)
+  r
+}
 
 // Strip "file://" prefix from URI
 uri_to_path(uri:S) S {
