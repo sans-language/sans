@@ -25,6 +25,8 @@ rpc_read() J {
     }
   }
   if found == 0 || content_len <= 0 { return jn() }
+  // Guard against DoS via absurd Content-Length (max 16 MB)
+  if content_len > 16777216 { return jn() }
   // Read exactly content_len bytes
   body = srb(content_len)
   if slen(body) == 0 { return jn() }

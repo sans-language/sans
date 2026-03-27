@@ -229,7 +229,16 @@ handle_rename(id:J params:J) I {
   pos_encoded = params_position(params)
   line = pos_encoded / 1000000
   col = pos_encoded % 1000000
-  new_name = params.get("newName").get_string()
+  nn = params.get("newName")
+  if nn.type_of() != "string" {
+    rpc_respond_error(id, 0 - 32602, "newName must be a string")
+    return 0
+  }
+  new_name = nn.get_string()
+  if slen(new_name) == 0 {
+    rpc_respond_error(id, 0 - 32602, "newName must not be empty")
+    return 0
+  }
   content = doc_get(uri)
   if slen(content) == 0 {
     rpc_respond(id, jo())

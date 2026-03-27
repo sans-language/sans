@@ -34,7 +34,10 @@ lsp_mod_name_of(path:S) S {
 // --- Import resolution ---
 
 // Resolve import path to a file. Tries relative to base_dir first, then project root.
+// Rejects paths with ".." to prevent path traversal.
 lsp_resolve_path(import_path:S base_dir:S) S {
+  // Guard against path traversal
+  if import_path.contains("..") == 1 { return "" }
   result := ""
   candidate = base_dir + "/" + import_path + ".sans"
   if fe(candidate) == 1 { result = candidate }
