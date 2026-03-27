@@ -315,6 +315,74 @@ handle_workspace_symbols(id:J params:J) I {
   0
 }
 
+handle_document_symbols(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 {
+    rpc_respond(id, ja())
+    return 0
+  }
+  symbols = ja()
+  if lsp_last_symbols == 0 {
+    rpc_respond(id, symbols)
+    return 0
+  }
+
+  // Functions (fn_env at offset 16)
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 {
+    fkeys = fn_env.keys()
+    fi := 0
+    while fi < fkeys.len() {
+      fname = fkeys.get(fi)
+      sym = jo()
+      sym.set("name", js(fname))
+      sym.set("kind", ji(SK_FUNCTION))
+      sym.set("range", make_lsp_range(0, 0, 0, 0))
+      sym.set("selectionRange", make_lsp_range(0, 0, 0, 0))
+      symbols.push(sym)
+      fi += 1
+    }
+  }
+
+  // Structs (offset 0)
+  structs_map = load64(lsp_last_symbols)
+  if structs_map != 0 {
+    skeys = structs_map.keys()
+    si := 0
+    while si < skeys.len() {
+      sname = skeys.get(si)
+      sym = jo()
+      sym.set("name", js(sname))
+      sym.set("kind", ji(SK_STRUCT))
+      sym.set("range", make_lsp_range(0, 0, 0, 0))
+      sym.set("selectionRange", make_lsp_range(0, 0, 0, 0))
+      symbols.push(sym)
+      si += 1
+    }
+  }
+
+  // Enums (offset 8)
+  enums_map = load64(lsp_last_symbols + 8)
+  if enums_map != 0 {
+    ekeys = enums_map.keys()
+    ei := 0
+    while ei < ekeys.len() {
+      ename = ekeys.get(ei)
+      sym = jo()
+      sym.set("name", js(ename))
+      sym.set("kind", ji(SK_ENUM))
+      sym.set("range", make_lsp_range(0, 0, 0, 0))
+      sym.set("selectionRange", make_lsp_range(0, 0, 0, 0))
+      symbols.push(sym)
+      ei += 1
+    }
+  }
+
+  rpc_respond(id, symbols)
+  0
+}
+
 handle_code_action(id:J params:J) I {
   actions = ja()
   ctx = params.get("context")
@@ -387,6 +455,7 @@ main() I {
       } else if method == "textDocument/foldingRange" { handle_folding_range(rpc_id(msg), rpc_params(msg))
       } else if method == "workspace/symbol" { handle_workspace_symbols(rpc_id(msg), rpc_params(msg))
       } else if method == "textDocument/codeAction" { handle_code_action(rpc_id(msg), rpc_params(msg))
+      } else if method == "textDocument/documentSymbol" { handle_document_symbols(rpc_id(msg), rpc_params(msg))
       } else if method == "shutdown" {
         handle_shutdown(rpc_id(msg))
       } else if method == "exit" {
