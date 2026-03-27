@@ -145,6 +145,8 @@ g tc_declared_vars = 0
 g tc_used_vars = 0
 g tc_warn_enabled = 0
 g mono_depth = 0
+g tc_collect_mode = 0
+g tc_collected_symbols = 0
 
 tc_init_diags() I {
   if tc_diags == 0 { tc_diags = array<I>() }
@@ -239,6 +241,10 @@ tc_error(msg:S) I {
   tc_init_diags()
   d = make_diag(DIAG_ERROR, 0, 0, msg, "")
   tc_diags.push(d)
+  if tc_collect_mode == 1 {
+    tc_has_error = 1
+    return 0
+  }
   // Print all diagnostics collected so far
   i := 0
   while i < tc_diags.len() {
@@ -247,6 +253,15 @@ tc_error(msg:S) I {
     0
   }
   exit(1)
+  0
+}
+
+// Non-exiting error with explicit line/col position
+tc_error_at_pos(line:I col:I msg:S) I {
+  tc_init_diags()
+  d = make_diag(DIAG_ERROR, line, col, msg, as_str(tc_current_file))
+  tc_diags.push(d)
+  tc_has_error = 1
   0
 }
 
@@ -295,6 +310,7 @@ tc_emit_diags() I {
   if tc_diags == 0 { return 0 }
   dlen = tc_diags.len()
   if dlen == 0 { return 0 }
+  if tc_collect_mode == 1 { return 0 }
   has_err := 0
   i := 0
   while i < dlen {
@@ -1237,6 +1253,16 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       return make_type(TY_INT)
     }
+    if name == "stdin_read_line" || name == "srl" {
+      if nargs != 0 { tc_error("stdin_read_line() takes no arguments") }
+      return make_type(TY_STRING)
+    }
+    if name == "stdin_read_bytes" || name == "srb" {
+      if nargs != 1 { tc_error("stdin_read_bytes() takes exactly 1 argument") }
+      at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if types_compatible(at, make_type(TY_INT)) != 1 { tc_error("stdin_read_bytes() requires Int argument, got " + type_to_string(at)) }
+      return make_type(TY_STRING)
+    }
     if name == "file_read" || name == "read_file" || name == "fread" || name == "fr" {
       if nargs != 1 { tc_error("file_read() takes exactly 1 argument") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
@@ -1864,6 +1890,16 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       while ci < 3 {
       at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       if is_i64_compat(at) != 1 { tc_error("srecv() argument must be Int, got " + type_to_string(at)) }
+      ci += 1
+      }
+      return make_type(TY_INT)
+    }
+    if name == "rfd" {
+      if nargs != 3 { tc_error("rfd() takes exactly 3 arguments (fd, buf, len)") }
+      ci := 0
+      while ci < 3 {
+      at = check_expr(args[ci], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+      if is_i64_compat(at) != 1 { tc_error("rfd() argument must be Int, got " + type_to_string(at)) }
       ci += 1
       }
       return make_type(TY_INT)
@@ -4233,6 +4269,15 @@ check_inner(program:I mod_exports:I require_main:I) I {
       mset(fn_exports, fname, mget(fn_env, fname))
     }
     fi += 1
+  }
+
+  if tc_collect_mode == 1 {
+    tc_collected_symbols = alloc(40)
+    store64(tc_collected_symbols, structs_map)
+    store64(tc_collected_symbols + 8, enums_map)
+    store64(tc_collected_symbols + 16, fn_env)
+    store64(tc_collected_symbols + 24, methods_map)
+    store64(tc_collected_symbols + 32, trait_registry)
   }
 
   // Emit any collected diagnostics (exits if errors)

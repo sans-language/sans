@@ -1,0 +1,264 @@
+// LSP Analyzer — wraps the compiler pipeline for LSP analysis
+import "../compiler/constants"
+import "../compiler/lexer"
+import "../compiler/parser"
+import "../compiler/typeck"
+import "protocol"
+
+// --- Persistent state ---
+g lsp_project_root = ""
+g lsp_last_diags = 0
+g lsp_last_symbols = 0
+
+// Store the project root path
+analyzer_set_root(root:S) I {
+  lsp_project_root = root
+  0
+}
+
+// Run full analysis (parse + typeck) on a file
+// Returns diagnostic count
+analyze_file(uri:S content:S) I {
+  path = uri_to_path(uri)
+
+  // Write content to temp file (compiler may reference it)
+  tmp = "/tmp/sans_lsp_" + str(time()) + ".sans"
+  fw(tmp, content)
+
+  // Enable collect mode so errors don't call exit(1)
+  tc_collect_mode = 1
+  p_collect_mode = 1
+
+  // Initialize diagnostics
+  tc_init_diags()
+  tc_has_error = 0
+
+  // Set source info for error reporting
+  tc_current_file = path
+  tc_current_source = content
+  tc_has_source = 1
+
+  // Parse source into AST
+  program = parse(content)
+
+  // Type-check as a module (no main required)
+  // Use empty map for mod_exports in Phase 1
+  if program != 0 {
+    check_module(program, M())
+  }
+
+  // Disable collect mode
+  tc_collect_mode = 0
+  p_collect_mode = 0
+
+  // Store results for later queries
+  lsp_last_diags = tc_diags
+  lsp_last_symbols = tc_collected_symbols
+
+  // Clean up temp file
+  rm(tmp)
+
+  // Return diagnostic count
+  if lsp_last_diags != 0 { lsp_last_diags.len() } else { 0 }
+}
+
+// Convert collected diagnostics to LSP JSON array
+get_diagnostics_json(uri:S) J {
+  arr = ja()
+  if lsp_last_diags == 0 { return arr }
+
+  i := 0
+  while i < lsp_last_diags.len() {
+    d = lsp_last_diags[i]
+    sev = diag_severity(d)
+    // Map: DIAG_ERROR(0) -> LSP Error(1), DIAG_WARN(1) -> LSP Warning(2)
+    lsp_sev = sev + 1
+    // Convert 1-based compiler lines to 0-based LSP lines
+    raw_line = diag_line(d) - 1
+    line = if raw_line < 0 { 0 } else { raw_line }
+    raw_col = diag_col(d) - 1
+    col = if raw_col < 0 { 0 } else { raw_col }
+    msg = diag_msg(d)
+    // End position: same line, end of word (approximate with col+1)
+    diag_j = make_lsp_diagnostic(line, col, line, col + 1, lsp_sev, msg)
+    arr.push(diag_j)
+    i += 1
+  }
+  arr
+}
+
+// Extract identifier at a given position (0-based line, 0-based col)
+// Returns the word or "" if none found
+word_at_position(src:S line:I col:I) S {
+  if slen(src) == 0 { return "" }
+
+  // Navigate to the target line (line is 0-based from LSP)
+  pos := 0
+  cur_line := 0
+  len = slen(src)
+
+  while cur_line < line && pos < len {
+    ch = load8(src + pos)
+    if ch == 10 { cur_line += 1 }
+    pos += 1
+  }
+
+  // Now pos is at the start of the target line
+  // Move to col position
+  line_start = pos
+  pos = pos + col
+  if pos >= len { return "" }
+
+  // Check if we're on an identifier character
+  ch = load8(src + pos)
+  if is_ident_char(ch) == 0 { return "" }
+
+  // Walk backward to find start of identifier
+  start := pos
+  done := 0
+  while start > line_start && done == 0 {
+    prev = load8(src + start - 1)
+    if is_ident_char(prev) == 1 { start -= 1 } else { done = 1 }
+  }
+
+  // Walk forward to find end of identifier
+  end := pos
+  done2 := 0
+  while end < len && done2 == 0 {
+    c = load8(src + end)
+    if is_ident_char(c) == 1 { end += 1 } else { done2 = 1 }
+  }
+
+  if end <= start { return "" }
+
+  // Extract substring
+  src.substring(start, end)
+}
+
+// Check if a byte is a valid identifier character
+is_ident_char(c:I) I {
+  // a-z
+  if c >= 97 && c <= 122 { return 1 }
+  // A-Z
+  if c >= 65 && c <= 90 { return 1 }
+  // 0-9
+  if c >= 48 && c <= 57 { return 1 }
+  // _
+  if c == 95 { return 1 }
+  0
+}
+
+// Look up hover info at a position
+// Returns formatted string or "" if nothing found
+lookup_hover_at(content:S line:I col:I) S {
+  word = word_at_position(content, line, col)
+  if slen(word) == 0 { return "" }
+  if lsp_last_symbols == 0 { return "" }
+
+  // Check fn_env (offset 16)
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 && mhas(fn_env, word) {
+    sig = mget(fn_env, word)
+    return format_fn_signature(word, sig)
+  }
+
+  // Check structs_map (offset 0)
+  structs = load64(lsp_last_symbols)
+  if structs != 0 && mhas(structs, word) {
+    fields = mget(structs, word)
+    return format_struct_signature(word, fields)
+  }
+
+  // Check enums_map (offset 8)
+  enums = load64(lsp_last_symbols + 8)
+  if enums != 0 && mhas(enums, word) {
+    variants = mget(enums, word)
+    return format_enum_signature(word, variants)
+  }
+
+  ""
+}
+
+// Look up definition location at a position
+// Returns "line:col" string or "" if not found
+lookup_definition_at(content:S line:I col:I) S {
+  word = word_at_position(content, line, col)
+  if slen(word) == 0 { return "" }
+  if lsp_last_symbols == 0 { return "" }
+
+  // Check fn_env (offset 16) — functions exist but fn_sig doesn't store location
+  fn_env = load64(lsp_last_symbols + 16)
+  if fn_env != 0 && mhas(fn_env, word) {
+    return word
+  }
+
+  // Check structs_map (offset 0)
+  structs = load64(lsp_last_symbols)
+  if structs != 0 && mhas(structs, word) {
+    return word
+  }
+
+  // Check enums_map (offset 8)
+  enums = load64(lsp_last_symbols + 8)
+  if enums != 0 && mhas(enums, word) {
+    return word
+  }
+
+  ""
+}
+
+// Format a function signature for hover display
+// fn_sig layout: offset 0 = params array ptr, offset 8 = ret type, offset 16 = required count
+format_fn_signature(name:S sig:I) S {
+  ret_type = load64(sig + 8)
+  params_ptr = load64(sig)
+  result := name + "("
+
+  if params_ptr != 0 {
+    num_params = load64(params_ptr + 8)
+    params_data = load64(params_ptr)
+    pi := 0
+    while pi < num_params {
+      if pi > 0 { result = result + " " }
+      pty = load64(params_data + pi * 8)
+      result = result + type_to_string(pty)
+      pi += 1
+    }
+  }
+
+  result = result + ") " + type_to_string(ret_type)
+  result
+}
+
+// Format a struct signature for hover display
+// fields is a map of field_name -> Type ptr
+format_struct_signature(name:S fields:I) S {
+  result := "struct " + name + " {"
+  ks = fields.keys()
+  i := 0
+  while i < ks.len() {
+    k = ks.get(i)
+    ty = mget(fields, k)
+    if i > 0 { result = result + "," }
+    result = result + " " + k + ":" + type_to_string(ty)
+    i += 1
+  }
+  result = result + " }"
+  result
+}
+
+// Format an enum signature for hover display
+// variants is a map of variant_name -> ptr to array of types
+format_enum_signature(name:S variants:I) S {
+  result := "enum " + name + " {"
+  ks = variants.keys()
+  i := 0
+  while i < ks.len() {
+    vname = ks.get(i)
+    if i > 0 { result = result + "," }
+    result = result + " " + vname
+    i += 1
+  }
+  result = result + " }"
+  result
+}

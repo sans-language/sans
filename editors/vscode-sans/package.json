@@ -1,7 +1,7 @@
 {
   "name": "sans-lang",
   "displayName": "Sans Language",
-  "description": "Syntax highlighting and hover docs for the Sans programming language",
+  "description": "Sans language support via LSP",
   "version": "0.8.5",
   "publisher": "sans-lang",
   "engines": {
@@ -34,7 +34,22 @@
         "scopeName": "source.sans",
         "path": "./syntaxes/sans.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Sans",
+      "properties": {
+        "sans.lspPath": {
+          "type": "string",
+          "default": "sans-lsp",
+          "description": "Path to the sans-lsp binary"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0",
+    "vscode-languageserver-protocol": "^3.17.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.75.0",

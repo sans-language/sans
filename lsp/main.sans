@@ -1,0 +1,193 @@
+// LSP server entry point — main message loop
+import "../compiler/constants"
+import "../compiler/lexer"
+import "../compiler/parser"
+import "../compiler/typeck"
+import "rpc"
+import "protocol"
+import "analyzer"
+import "symbols"
+
+// --- Global state ---
+g doc_store_map = 0
+g lsp_shutdown = 0
+g lsp_root_uri = ""
+
+// --- Document store helpers ---
+doc_store(uri:S content:S) I {
+  mset(doc_store_map, uri, content)
+  0
+}
+
+doc_get(uri:S) S {
+  if mhas(doc_store_map, uri) { mget(doc_store_map, uri) } else { "" }
+}
+
+doc_remove(uri:S) I {
+  if mhas(doc_store_map, uri) { doc_store_map.delete(uri) }
+  0
+}
+
+// --- Diagnostics ---
+run_diagnostics(uri:S content:S) I {
+  analyze_file(uri, content)
+  diags = get_diagnostics_json(uri)
+  params = make_publish_diagnostics(uri, diags)
+  rpc_notify("textDocument/publishDiagnostics", params)
+}
+
+// --- Request handlers ---
+
+handle_initialize(id:J params:J) I {
+  // Extract rootUri
+  root = params.get("rootUri")
+  if root.type_of() == "string" {
+    lsp_root_uri = root.get_string()
+    analyzer_set_root(uri_to_path(lsp_root_uri))
+  }
+  rpc_respond(id, make_initialize_result())
+}
+
+handle_shutdown(id:J) I {
+  lsp_shutdown = 1
+  rpc_respond(id, jn())
+}
+
+handle_hover(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 { return rpc_respond(id, jn()) }
+  pos = params_position(params)
+  line = pos / 1000000
+  col = pos % 1000000
+  // LSP sends 0-based, hover expects 1-based
+  text = lookup_hover_at(content, line + 1, col + 1)
+  if slen(text) == 0 { return rpc_respond(id, jn()) }
+  result = make_lsp_hover("```sans\n" + text + "\n```")
+  rpc_respond(id, result)
+}
+
+handle_definition(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 { return rpc_respond(id, jn()) }
+  pos = params_position(params)
+  line = pos / 1000000
+  col = pos % 1000000
+  // LSP sends 0-based, definition expects 1-based
+  loc_str = lookup_definition_at(content, line + 1, col + 1)
+  if slen(loc_str) == 0 { return rpc_respond(id, jn()) }
+  // loc_str is "line:col" or just a name (symbol found but no location)
+  // For now, if it's just a name, we can't navigate — respond null
+  colon_pos := 0
+  found_colon := 0
+  while colon_pos < slen(loc_str) && found_colon == 0 {
+    if load8(loc_str + colon_pos) == 58 { found_colon = 1 }
+    else { colon_pos += 1 }
+  }
+  if found_colon == 0 { return rpc_respond(id, jn()) }
+  line_str = loc_str.substring(0, colon_pos)
+  col_str = loc_str.substring(colon_pos + 1, slen(loc_str))
+  raw_def_line = stoi(line_str) - 1
+  def_line = if raw_def_line < 0 { 0 } else { raw_def_line }
+  raw_def_col = stoi(col_str) - 1
+  def_col = if raw_def_col < 0 { 0 } else { raw_def_col }
+  result = make_lsp_location(uri, def_line, def_col, def_line, def_col)
+  rpc_respond(id, result)
+}
+
+handle_signature_help(id:J params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) == 0 { return rpc_respond(id, jn()) }
+  pos = params_position(params)
+  line = pos / 1000000
+  col = pos % 1000000
+  // signature_at handles its own conversion (0-based)
+  result = lookup_signature_at(content, line, col)
+  if result.type_of() == "null" { return rpc_respond(id, jn()) }
+  rpc_respond(id, result)
+}
+
+handle_did_open(params:J) I {
+  uri = params_uri(params)
+  content = params_text(params)
+  doc_store(uri, content)
+  run_diagnostics(uri, content)
+}
+
+handle_did_change(params:J) I {
+  uri = params_uri(params)
+  content = params_text(params)
+  doc_store(uri, content)
+  0
+}
+
+handle_did_save(params:J) I {
+  uri = params_uri(params)
+  content = doc_get(uri)
+  if slen(content) > 0 { run_diagnostics(uri, content) }
+  0
+}
+
+handle_did_close(params:J) I {
+  uri = params_uri(params)
+  doc_remove(uri)
+  // Clear diagnostics by publishing empty array
+  params_out = make_publish_diagnostics(uri, ja())
+  rpc_notify("textDocument/publishDiagnostics", params_out)
+  0
+}
+
+// --- Main loop ---
+main() I {
+  scope_disable()
+  doc_store_map = M<S,S>()
+
+  rpc_log("sans-lsp starting")
+
+  running := 1
+  while running == 1 {
+    msg = rpc_read()
+    if msg.type_of() == "null" {
+      // EOF
+      running = 0
+    } else {
+      method = rpc_method(msg)
+      params = rpc_params(msg)
+      is_req = rpc_is_request(msg)
+
+      if method == "initialize" {
+        handle_initialize(rpc_id(msg), params)
+      } else if method == "initialized" {
+        0
+      } else if method == "textDocument/didOpen" {
+        handle_did_open(params)
+      } else if method == "textDocument/didChange" {
+        handle_did_change(params)
+      } else if method == "textDocument/didSave" {
+        handle_did_save(params)
+      } else if method == "textDocument/didClose" {
+        handle_did_close(params)
+      } else if method == "textDocument/hover" {
+        handle_hover(rpc_id(msg), params)
+      } else if method == "textDocument/definition" {
+        handle_definition(rpc_id(msg), params)
+      } else if method == "textDocument/signatureHelp" {
+        handle_signature_help(rpc_id(msg), params)
+      } else if method == "shutdown" {
+        handle_shutdown(rpc_id(msg))
+      } else if method == "exit" {
+        if lsp_shutdown == 1 { exit(0) } else { exit(1) }
+      } else {
+        // Unknown method
+        if is_req { rpc_respond_error(rpc_id(msg), 0 - 32601, "Method not found") }
+        // Unknown notifications are ignored
+        0
+      }
+      0
+    }
+  }
+  rpc_log("sans-lsp exiting")
+  0
+}

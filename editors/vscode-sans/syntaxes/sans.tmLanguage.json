@@ -106,7 +106,7 @@
       "patterns": [
         {
           "name": "support.function.io.sans",
-          "match": "\\b(print|p|file_read|fread|fr|file_write|fwrite|fw|file_append|fappend|fa|file_exists|fexists|fe|read_file|write_file|args)\\b"
+          "match": "\\b(print|p|file_read|fread|fr|file_write|fwrite|fw|file_append|fappend|fa|file_exists|fexists|fe|read_file|write_file|args|stdin_read_line|srl|stdin_read_bytes|srb)\\b"
         },
         {
           "name": "support.function.conversion.sans",

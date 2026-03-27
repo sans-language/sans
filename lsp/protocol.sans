@@ -1,0 +1,142 @@
+// LSP protocol type definitions and JSON conversion helpers
+
+// --- JSON builders (serialize to LSP format) ---
+
+// Create LSP Position (0-based line and character)
+make_lsp_position(line:I character:I) J {
+  pos = jo()
+  pos.set("line", ji(line))
+  pos.set("character", ji(character))
+  pos
+}
+
+// Create LSP Range from start/end line+char
+make_lsp_range(start_line:I start_char:I end_line:I end_char:I) J {
+  r = jo()
+  r.set("start", make_lsp_position(start_line, start_char))
+  r.set("end", make_lsp_position(end_line, end_char))
+  r
+}
+
+// Create LSP Location (uri + range)
+make_lsp_location(uri:S start_line:I start_char:I end_line:I end_char:I) J {
+  loc = jo()
+  loc.set("uri", js(uri))
+  loc.set("range", make_lsp_range(start_line, start_char, end_line, end_char))
+  loc
+}
+
+// Create LSP Diagnostic with severity and source "sans"
+// Severity: 1=Error, 2=Warning, 3=Info, 4=Hint
+make_lsp_diagnostic(start_line:I start_char:I end_line:I end_char:I severity:I message:S) J {
+  diag = jo()
+  diag.set("range", make_lsp_range(start_line, start_char, end_line, end_char))
+  diag.set("severity", ji(severity))
+  diag.set("source", js("sans"))
+  diag.set("message", js(message))
+  diag
+}
+
+// Create publishDiagnostics params
+make_publish_diagnostics(uri:S diagnostics:J) J {
+  params = jo()
+  params.set("uri", js(uri))
+  params.set("diagnostics", diagnostics)
+  params
+}
+
+// Create LSP Hover result with markdown content
+make_lsp_hover(content:S) J {
+  markup = jo()
+  markup.set("kind", js("markdown"))
+  markup.set("value", js(content))
+  hover = jo()
+  hover.set("contents", markup)
+  hover
+}
+
+// Build server capabilities object
+make_server_capabilities() J {
+  caps = jo()
+  // textDocumentSync = 1 (Full)
+  caps.set("textDocumentSync", ji(1))
+  caps.set("hoverProvider", jb(1))
+  caps.set("definitionProvider", jb(1))
+  // signatureHelpProvider with trigger characters
+  sig = jo()
+  triggers = ja()
+  triggers.push(js("("))
+  triggers.push(js(","))
+  sig.set("triggerCharacters", triggers)
+  caps.set("signatureHelpProvider", sig)
+  caps
+}
+
+// Build initialize result with capabilities and server info
+make_initialize_result() J {
+  result = jo()
+  result.set("capabilities", make_server_capabilities())
+  info = jo()
+  info.set("name", js("sans-lsp"))
+  info.set("version", js("0.9.0"))
+  result.set("serverInfo", info)
+  result
+}
+
+// --- Param extractors (deserialize from LSP format) ---
+
+// Extract textDocument.uri from params
+params_uri(params:J) S {
+  td = params.get("textDocument")
+  if td.type_of() == "null" { return "" }
+  u = td.get("uri")
+  if u.type_of() == "string" { u.get_string() } else { "" }
+}
+
+// Extract position as encoded int: line * 1000000 + character
+params_position(params:J) I {
+  pos = params.get("position")
+  if pos.type_of() == "null" { return 0 }
+  line = pos.get("line")
+  char = pos.get("character")
+  l = if line.type_of() == "null" { 0 } else { line.get_int() }
+  c = if char.type_of() == "null" { 0 } else { char.get_int() }
+  l * 1000000 + c
+}
+
+// Extract text from didOpen (textDocument.text) or didChange (contentChanges[0].text)
+params_text(params:J) S {
+  // Try didOpen: textDocument.text
+  td = params.get("textDocument")
+  if td.type_of() != "null" {
+    t = td.get("text")
+    if t.type_of() == "string" { return t.get_string() }
+    0
+  } else { 0 }
+  // Try didChange: contentChanges[0].text
+  cc = params.get("contentChanges")
+  if cc.type_of() != "null" {
+    if cc.len() > 0 {
+      first = cc.get_index(0)
+      t2 = first.get("text")
+      if t2.type_of() == "string" { return t2.get_string() }
+      0
+    } else { 0 }
+  } else { 0 }
+  ""
+}
+
+// --- URI helpers ---
+
+// Strip "file://" prefix from URI
+uri_to_path(uri:S) S {
+  prefix = "file://"
+  if uri.starts_with(prefix) {
+    uri.substring(7, slen(uri))
+  } else {
+    uri
+  }
+}
+
+// Prepend "file://" to path
+path_to_uri(path:S) S = "file://" + path

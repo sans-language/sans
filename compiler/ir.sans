@@ -588,6 +588,10 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "p" { lower_call_print(ctx, args) }
 
   // ------ I/O ------
+  else if name == "stdin_read_line" { lower_call_0(ctx, IR_STDIN_READ_LINE, IRTY_STR) }
+  else if name == "srl" { lower_call_0(ctx, IR_STDIN_READ_LINE, IRTY_STR) }
+  else if name == "stdin_read_bytes" { lower_call_1(ctx, args, IR_STDIN_READ_BYTES, IRTY_STR) }
+  else if name == "srb" { lower_call_1(ctx, args, IR_STDIN_READ_BYTES, IRTY_STR) }
   else if name == "file_read" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
   else if name == "read_file" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
   else if name == "fread" { lower_call_1(ctx, args, IR_FILE_READ, IRTY_STR) }
@@ -795,6 +799,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "slisten" { lower_call_2(ctx, args, IR_SLISTEN, IRTY_INT) }
   else if name == "saccept" { lower_call_1(ctx, args, IR_SACCEPT, IRTY_INT) }
   else if name == "srecv" { lower_call_3(ctx, args, IR_SRECV, IRTY_INT) }
+  else if name == "rfd" { lower_call_3(ctx, args, IR_RFD, IRTY_INT) }
   else if name == "ssend" { lower_call_3(ctx, args, IR_SSEND, IRTY_INT) }
   else if name == "sclose" { lower_call_1(ctx, args, IR_SCLOSE, IRTY_INT) }
   else if name == "rbind" { lower_call_3(ctx, args, IR_RBIND, IRTY_INT) }
@@ -4554,7 +4559,7 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
     else if ptype == "String" { ctx_set_reg_type(ctx, arg_reg, IRTY_STR) }
     else if ptype == "M" { ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) }
     else if ptype == "Map" { ctx_set_reg_type(ctx, arg_reg, IRTY_MAP) }
-    else if ptype == "JsonValue" { ctx_set_reg_type(ctx, arg_reg, IRTY_JSON) }
+    else if ptype == "JsonValue" || ptype == "J" { ctx_set_reg_type(ctx, arg_reg, IRTY_JSON) }
     else if ptype == "HttpResponse" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_RESP) }
     else if ptype == "HttpRequest" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) }
     else if ptype == "HR" { ctx_set_reg_type(ctx, arg_reg, IRTY_HTTP_REQ) }

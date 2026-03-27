@@ -151,7 +151,7 @@ resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I alias
     sub_node = imports_arr.get(ii)
     sub_path = imp_get_path(sub_node)
     sub_alias = imp_get_alias(sub_node)
-    resolve_import(sub_path, base_dir, resolved, visited, in_progress, sub_alias)
+    resolve_import(sub_path, dir_of(file_path), resolved, visited, in_progress, sub_alias)
     ii = ii + 1
     0
   }
@@ -597,6 +597,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("math")
   runtime_modules.push("fs")
   runtime_modules.push("process")
+  runtime_modules.push("io")
 
   runtime_o_paths = array<I>()
   ri := 0
@@ -607,16 +608,19 @@ do_link(ll_path:S output_path:S source_path:S) I {
     wfd(2, "\n")
     sans_path = runtime_dir + "/" + rname + ".sans"
     o_path = td + "/sans_" + rname + "_runtime.o"
-    rsrc = fr(sans_path)
-    rprog = parse(rsrc)
-    empty_exports = M()
-    check_module(rprog, empty_exports)
-    empty_fn_ret = M()
-    rir = lower(rprog, 0, empty_fn_ret)
-    r_ll = td + "/sans_" + rname + "_runtime.ll"
-    r_cg = compile_to_ll_runtime(rir, r_ll)
-    sys(c + llc + c + " -filetype=obj -O2 -o " + c + o_path + c + " " + c + r_ll + c)
-    del(r_ll)
+    if fexists(o_path) == 0 {
+      rsrc = fr(sans_path)
+      rprog = parse(rsrc)
+      empty_exports = M()
+      check_module(rprog, empty_exports)
+      empty_fn_ret = M()
+      rir = lower(rprog, 0, empty_fn_ret)
+      r_ll = td + "/sans_" + rname + "_runtime.ll"
+      r_cg = compile_to_ll_runtime(rir, r_ll)
+      sys(c + llc + c + " -filetype=obj -O2 -o " + c + o_path + c + " " + c + r_ll + c)
+      del(r_ll)
+      0
+    } else { 0 }
     runtime_o_paths.push(o_path)
     ri = ri + 1
     0
@@ -655,15 +659,9 @@ do_link(ll_path:S output_path:S source_path:S) I {
   }
   sys(link_cmd)
 
-  // 14. Cleanup
+  // 14. Cleanup (keep runtime .o files as cache for subsequent builds)
   del(ll_path)
   del(obj_path)
-  ri = 0
-  while ri < runtime_o_paths.len() {
-    del(runtime_o_paths.get(ri))
-    ri = ri + 1
-    0
-  }
   p("Built: " + output_path)
   0
 }
