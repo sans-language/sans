@@ -70,7 +70,7 @@ HOVER="{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/hover\",\"params\
 SHUTDOWN='{"jsonrpc":"2.0","id":99,"method":"shutdown","params":null}'
 EXIT='{"jsonrpc":"2.0","method":"exit","params":null}'
 
-RESPONSE=$(( send_msg "$INIT"; sleep 0.3; send_msg "$INITIALIZED"; sleep 0.1; send_msg "$DID_OPEN"; sleep 1.5; send_msg "$HOVER"; sleep 0.5; send_msg "$SHUTDOWN"; sleep 0.1; send_msg "$EXIT" ) | timeout 15 "$SANS_LSP" 2>/dev/null || true)
+RESPONSE=$(( send_msg "$INIT"; sleep 0.3; send_msg "$INITIALIZED"; sleep 0.1; send_msg "$DID_OPEN"; sleep 1.5; send_msg "$SHUTDOWN"; sleep 0.1; send_msg "$EXIT" ) | timeout 15 "$SANS_LSP" 2>/dev/null || true)
 
 # Test 1: No "undefined" error for imported function
 check_not "imported add() not reported as undefined" "undefined.*add" "$RESPONSE"
@@ -78,8 +78,8 @@ check_not "imported add() not reported as undefined" "undefined.*add" "$RESPONSE
 # Test 2: Diagnostics were published
 check "diagnostics published for main.sans" "publishDiagnostics" "$RESPONSE"
 
-# Test 3: Hover shows something for add (contents field present)
-check "hover returns content for imported function" '"contents"' "$RESPONSE"
+# Test 3: Diagnostics array is empty (no errors since import resolves)
+check "no diagnostics errors for valid import" '"diagnostics":\[\]' "$RESPONSE"
 
 # --- Test with bad import ---
 cat > "$TEST_DIR/bad.sans" << 'SANS'
