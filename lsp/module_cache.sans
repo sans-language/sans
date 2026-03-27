@@ -1,0 +1,43 @@
+// ------ Module cache for LSP incremental analysis ------
+// Caches parsed ASTs and type-checked module exports per file path.
+// Each cache entry is 24 bytes:
+//   offset 0: parsed Program AST pointer
+//   offset 8: module exports pointer (from check_module)
+//   offset 16: timestamp (from time()) when cached
+
+g mcache_map = 0
+
+mcache_init() I {
+  if mcache_map == 0 { mcache_map = M() }
+  0
+}
+
+// Get cached entry for a file path. Returns entry pointer or 0.
+mcache_get(path:S) I {
+  mcache_init()
+  if mhas(mcache_map, path) { mget(mcache_map, path) } else { 0 }
+}
+
+// Store a cache entry for a file path.
+mcache_put(path:S program:I exports:I) I {
+  mcache_init()
+  entry = alloc(24)
+  store64(entry, program)
+  store64(entry + 8, exports)
+  store64(entry + 16, time())
+  mset(mcache_map, path, entry)
+  0
+}
+
+// Invalidate cache entry for a file path.
+mcache_invalidate(path:S) I {
+  mcache_init()
+  if mhas(mcache_map, path) { mcache_map.delete(path) }
+  0
+}
+
+// Get cached program AST from entry.
+mcache_program(entry:I) I = load64(entry)
+
+// Get cached module exports from entry.
+mcache_exports(entry:I) I = load64(entry + 8)

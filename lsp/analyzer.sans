@@ -4,6 +4,7 @@ import "../compiler/lexer"
 import "../compiler/parser"
 import "../compiler/typeck"
 import "protocol"
+import "module_cache"
 
 // --- Persistent state ---
 g lsp_project_root = ""
@@ -16,49 +17,151 @@ analyzer_set_root(root:S) I {
   0
 }
 
+// --- Path utilities (local, avoids importing compiler/main) ---
+
+lsp_dir_of(path:S) S {
+  idx = find_last_char(path, 47)
+  if idx < 0 { "." } else { path.substring(0, idx) }
+}
+
+lsp_mod_name_of(path:S) S {
+  idx = find_last_char(path, 47)
+  start = if idx >= 0 { idx + 1 } else { 0 }
+  base = path.substring(start, slen(path))
+  if base.ends_with(".sans") == 1 { base.substring(0, slen(base) - 5) } else { base }
+}
+
+// --- Import resolution ---
+
+// Resolve import path to a file. Tries relative to base_dir first, then project root.
+lsp_resolve_path(import_path:S base_dir:S) S {
+  result := ""
+  candidate = base_dir + "/" + import_path + ".sans"
+  if fe(candidate) == 1 { result = candidate }
+  if slen(result) == 0 && slen(lsp_project_root) > 0 {
+    candidate2 = lsp_project_root + "/" + import_path + ".sans"
+    if fe(candidate2) == 1 { result = candidate2 }
+  }
+  result
+}
+
+// Recursively resolve imports for a file, populating mod_exports.
+lsp_resolve_imports(file_path:S mod_exports:I visited:I in_progress:I) I {
+  if mhas(visited, file_path) { return 0 }
+  if mhas(in_progress, file_path) { return 0 }
+  mset(in_progress, file_path, 1)
+
+  // Check cache first
+  cached = mcache_get(file_path)
+  program := 0
+  if cached != 0 {
+    program = mcache_program(cached)
+  } else {
+    src = fr(file_path)
+    if slen(src) == 0 { return 0 }
+    program = parse(src)
+    if program == 0 { return 0 }
+  }
+
+  // Resolve sub-imports first (dependency order)
+  base_dir = lsp_dir_of(file_path)
+  imports_arr = load64(program)
+  num_imports = imports_arr.len()
+  ii := 0
+  while ii < num_imports {
+    imp_node = imports_arr.get(ii)
+    imp_path = imp_get_path(imp_node)
+    resolved_path = lsp_resolve_path(imp_path, base_dir)
+    if slen(resolved_path) > 0 {
+      lsp_resolve_imports(resolved_path, mod_exports, visited, in_progress)
+    }
+    ii += 1
+  }
+
+  // Type-check this module if not cached
+  exports := 0
+  if cached != 0 && mcache_exports(cached) != 0 {
+    exports = mcache_exports(cached)
+  } else {
+    tc_collect_mode = 1
+    p_collect_mode = 1
+    tc_init_diags()
+    tc_has_error = 0
+    tc_current_file = file_path
+    tc_current_source = fr(file_path)
+    tc_has_source = 1
+    exports = check_module(program, mod_exports)
+    tc_collect_mode = 0
+    p_collect_mode = 0
+    mcache_put(file_path, program, exports)
+  }
+
+  // Register exports under module name
+  mod_name = lsp_mod_name_of(file_path)
+  mset(mod_exports, mod_name, exports)
+  mset(visited, file_path, 1)
+  0
+}
+
 // Run full analysis (parse + typeck) on a file
 // Returns diagnostic count
 analyze_file(uri:S content:S) I {
   path = uri_to_path(uri)
+  base_dir = lsp_dir_of(path)
 
-  // Write content to temp file (compiler may reference it)
-  tmp = "/tmp/sans_lsp_" + str(time()) + ".sans"
-  fw(tmp, content)
-
-  // Enable collect mode so errors don't call exit(1)
+  // Enable collect mode
   tc_collect_mode = 1
   p_collect_mode = 1
-
-  // Initialize diagnostics
   tc_init_diags()
   tc_has_error = 0
-
-  // Set source info for error reporting
   tc_current_file = path
   tc_current_source = content
   tc_has_source = 1
 
-  // Parse source into AST
+  // Parse the current file
   program = parse(content)
 
-  // Type-check as a module (no main required)
-  // Use empty map for mod_exports in Phase 1
   if program != 0 {
-    check_module(program, M())
+    // Resolve imports and build mod_exports
+    mod_exports = M()
+    visited = M()
+    in_progress = M()
+    mset(in_progress, path, 1)
+
+    imports_arr = load64(program)
+    num_imports = imports_arr.len()
+    ii := 0
+    while ii < num_imports {
+      imp_node = imports_arr.get(ii)
+      imp_path = imp_get_path(imp_node)
+      resolved_path = lsp_resolve_path(imp_path, base_dir)
+      if slen(resolved_path) > 0 {
+        lsp_resolve_imports(resolved_path, mod_exports, visited, in_progress)
+      }
+      ii += 1
+    }
+
+    // Re-enable collect mode (import resolution may have toggled it)
+    tc_collect_mode = 1
+    p_collect_mode = 1
+    tc_init_diags()
+    tc_has_error = 0
+    tc_current_file = path
+    tc_current_source = content
+    tc_has_source = 1
+
+    // Type-check current file with real imports
+    check_module(program, mod_exports)
   }
 
   // Disable collect mode
   tc_collect_mode = 0
   p_collect_mode = 0
 
-  // Store results for later queries
+  // Store results
   lsp_last_diags = tc_diags
   lsp_last_symbols = tc_collected_symbols
 
-  // Clean up temp file
-  rm(tmp)
-
-  // Return diagnostic count
   if lsp_last_diags != 0 { lsp_last_diags.len() } else { 0 }
 }
 
