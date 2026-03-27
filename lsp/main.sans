@@ -65,8 +65,8 @@ handle_hover(id:J params:J) I {
   pos = params_position(params)
   line = pos / 1000000
   col = pos % 1000000
-  // LSP sends 0-based, hover expects 1-based
-  text = lookup_hover_at(content, line + 1, col + 1)
+  // Both LSP and lookup_hover_at use 0-based coordinates
+  text = lookup_hover_at(content, line, col)
   if slen(text) == 0 { return rpc_respond(id, jn()) }
   result = make_lsp_hover("```sans\n" + text + "\n```")
   rpc_respond(id, result)
@@ -79,8 +79,8 @@ handle_definition(id:J params:J) I {
   pos = params_position(params)
   line = pos / 1000000
   col = pos % 1000000
-  // LSP sends 0-based, definition expects 1-based
-  loc_str = lookup_definition_at(content, line + 1, col + 1)
+  // Both LSP and lookup_definition_at use 0-based coordinates
+  loc_str = lookup_definition_at(content, line, col)
   if slen(loc_str) == 0 { return rpc_respond(id, jn()) }
   // loc_str is "line:col" or just a name (symbol found but no location)
   // For now, if it's just a name, we can't navigate — respond null
