@@ -123,6 +123,7 @@ main() {
 | **Assertions** | `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none` — line numbers in failure messages |
 | **Memory Safety** | Scope-based GC walks nested JSON types on return (no use-after-free); `json_parse` returns `Result<JsonValue>` with descriptive errors; JSON depth limit (512) prevents stack overflow |
 | **Runtime Safety** | Array/string bounds checking (exits with error on out-of-bounds); SIGPIPE ignored in HTTP servers; panic recovery via `setjmp`/`longjmp` (`panic_enable`, `panic_disable`, `panic_get_buf`, `panic_fire`) |
+| **Linter** | `sans lint <file\|dir>` — static analysis without building; rules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut; configurable in `sans.json` |
 | **Diagnostics** | `file:line:col: error: message` with source context, caret, multi-error reporting, and warnings |
 
 ## HTTP Server Example

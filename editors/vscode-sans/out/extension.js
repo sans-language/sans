@@ -103,6 +103,9 @@ const HOVER_DATA = {
     'channel': '**channel**<T>() — Create sender/receiver pair',
     'mutex': '**mutex**(value) — Create mutex wrapping a value',
     'import': '**import** "path" — Import a module',
+
+    // CLI tools
+    'lint': '**sans lint** <file|dir> — Static analysis without building.\n\nRules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut.\n\n`--error=<rule>` promotes to error. `--quiet` suppresses warnings.\n\nConfig in sans.json: `{"lint":{"rule":"error|warn|off"}}`.',
 };
 
 function activate(context) {
