@@ -45,6 +45,9 @@ jobs:
           rm -f runtime/server.sans.bak runtime/ssl.sans.bak runtime/server.sans.tmp runtime/ssl.sans.tmp
 
           # Stage 2: Rebuild with the stage-1 compiler (knows all builtins).
+          # Clear cached runtime .o files so Stage 2 recompiles them and
+          # generates .ll files we can capture for the Linux cross-compile.
+          rm -f /tmp/sans_*_runtime.o
           # Use rm wrapper to capture .ll files during this build.
           mkdir -p /tmp/wrap
           printf '#!/bin/bash\nARGS=()\nfor f in "$@"; do [[ "$f" == *.ll ]] || ARGS+=("$f"); done\n[ ${#ARGS[@]} -gt 0 ] && exec /bin/rm "${ARGS[@]}"\n' > /tmp/wrap/rm
