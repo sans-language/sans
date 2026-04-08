@@ -1,0 +1,100 @@
+// ------ Sans Lint Module ------
+// Static analysis: config, severity, diagnostics, and lint checks.
+// The pipeline orchestration (parse/typeck) lives in main.sans.
+
+import "typeck"
+
+// Severity levels
+g LINT_ERROR = 2
+g LINT_WARN = 1
+g LINT_OFF = 0
+
+// Per-rule severity config (defaults set in lint_init_config)
+g lint_severity_unused_import = 0
+g lint_severity_shadow = 0
+g lint_severity_unnecessary_mut = 0
+g lint_severity_empty_catch = 0
+
+// Counters
+g lint_errors = 0
+g lint_warnings = 0
+
+// Quiet mode flag
+g lint_quiet = 0
+
+// ------ Config Init -----------------------------------------------------------------------
+
+lint_init_config() I {
+  lint_severity_unused_import = LINT_WARN
+  lint_severity_shadow = LINT_WARN
+  lint_severity_unnecessary_mut = LINT_WARN
+  lint_severity_empty_catch = LINT_WARN
+  lint_errors = 0
+  lint_warnings = 0
+  0
+}
+
+// ------ Config Loading from sans.json -----------------------------------------------------
+// JSON builtins (json_parse, json_get, etc.) are runtime functions available
+// in user programs but not in the self-hosted compiler itself.
+// Config loading uses simple string matching on sans.json content.
+
+lint_load_config() I {
+  if fexists("sans.json") == 0 { return 0 }
+  src = fr("sans.json")
+  if slen(src) < 2 { return 0 }
+  // Parse rule overrides via string matching
+  lint_parse_rule(src, "unused-import", 1)
+  lint_parse_rule(src, "shadow", 2)
+  lint_parse_rule(src, "unnecessary-mut", 3)
+  lint_parse_rule(src, "empty-catch", 4)
+  0
+}
+
+lint_parse_severity(src:S) I {
+  if src.contains("\"error\"") == 1 { return LINT_ERROR }
+  if src.contains("\"off\"") == 1 { return LINT_OFF }
+  LINT_WARN
+}
+
+lint_parse_rule(src:S name:S which:I) I {
+  key = "\"" + name + "\""
+  if src.contains(key) == 0 { return 0 }
+  // Find the value after the key — look for the severity string nearby
+  idx = src.index_of(key)
+  if idx < 0 { return 0 }
+  // Extract a small window after the key to find the value
+  rest_start = idx + slen(key)
+  rest_end = rest_start + 30
+  if rest_end > slen(src) { rest_end = slen(src) }
+  window = src.substring(rest_start, rest_end)
+  sev = lint_parse_severity(window)
+  if which == 1 { lint_severity_unused_import = sev }
+  if which == 2 { lint_severity_shadow = sev }
+  if which == 3 { lint_severity_unnecessary_mut = sev }
+  if which == 4 { lint_severity_empty_catch = sev }
+  0
+}
+
+// ------ Emit Diagnostic -------------------------------------------------------------------
+
+lint_emit(node:I msg:S rule:S) I {
+  tagged = "[" + rule + "] " + msg
+  tc_warn_at(node, tagged)
+  lint_warnings = lint_warnings + 1
+  0
+}
+
+lint_emit_error(node:I msg:S rule:S) I {
+  tagged = "[" + rule + "] " + msg
+  tc_error_at(node, tagged)
+  lint_errors = lint_errors + 1
+  0
+}
+
+// ------ Lint Check (stub -- rules added in later tasks) -----------------------------------
+
+lint_check(program:I) I {
+  // Rule implementations will be added here
+  0
+}
