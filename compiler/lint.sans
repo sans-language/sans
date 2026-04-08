@@ -477,9 +477,309 @@ lint_unused_imports(program:I mod_exports:I) I {
   0
 }
 
+// ------ Shadowed Variables Rule -----------------------------------------------------------
+
+lint_shadow_check_stmts(stmts_p:I num_stmts:I outer_vars:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      // ST_LET: check if name shadows an outer variable
+      if tag == ST_LET {
+        name = load64(stmt + 16)
+        if mhas(outer_vars, name) {
+          lint_emit(stmt, "variable '" + as_str(name) + "' shadows outer declaration", "shadowed-vars")
+        }
+      }
+
+      // ST_IF: enter inner scope for then/else bodies
+      if tag == ST_IF {
+        // Build combined outer set: outer_vars + current scope vars up to this point
+        inner_outer = M()
+        okeys = outer_vars.keys()
+        oki := 0
+        while oki < okeys.len() {
+          mset(inner_outer, okeys.get(oki), 1)
+          oki = oki + 1
+        }
+        // Add all ST_LET names from current scope
+        si := 0
+        while si < num_stmts {
+          s2 = load64(stmts_p + si * 8)
+          if s2 != 0 {
+            if load64(s2) == ST_LET {
+              mset(inner_outer, load64(s2 + 16), 1)
+            }
+          }
+          si = si + 1
+        }
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), inner_outer)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_shadow_check_stmts(load64(else_arr), load64(else_arr + 8), inner_outer)
+        }
+      }
+
+      // ST_WHILE: enter inner scope for body
+      if tag == ST_WHILE {
+        inner_outer = M()
+        okeys = outer_vars.keys()
+        oki := 0
+        while oki < okeys.len() {
+          mset(inner_outer, okeys.get(oki), 1)
+          oki = oki + 1
+        }
+        si := 0
+        while si < num_stmts {
+          s2 = load64(stmts_p + si * 8)
+          if s2 != 0 {
+            if load64(s2) == ST_LET {
+              mset(inner_outer, load64(s2 + 16), 1)
+            }
+          }
+          si = si + 1
+        }
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), inner_outer)
+        }
+      }
+
+      // ST_FOR_IN: enter inner scope for body
+      if tag == ST_FOR_IN {
+        inner_outer = M()
+        okeys = outer_vars.keys()
+        oki := 0
+        while oki < okeys.len() {
+          mset(inner_outer, okeys.get(oki), 1)
+          oki = oki + 1
+        }
+        si := 0
+        while si < num_stmts {
+          s2 = load64(stmts_p + si * 8)
+          if s2 != 0 {
+            if load64(s2) == ST_LET {
+              mset(inner_outer, load64(s2 + 16), 1)
+            }
+          }
+          si = si + 1
+        }
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), inner_outer)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_shadow_check_func(func:I) I {
+  body_arr = load64(func + 24)
+  if body_arr == 0 { return 0 }
+  outer = M()
+  lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), outer)
+  0
+}
+
+lint_shadowed_vars(program:I) I {
+  if lint_severity_shadow == LINT_OFF { return 0 }
+
+  // Walk function bodies
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    lint_shadow_check_func(func)
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      lint_shadow_check_func(mdef)
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+  0
+}
+
+// ------ Unnecessary Mutable Rule ---------------------------------------------------------
+
+lint_collect_assigns_stmts(stmts_p:I num_stmts:I assigns:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      if tag == ST_ASSIGN {
+        mset(assigns, load64(stmt + 16), 1)
+      }
+
+      // Recurse into nested blocks
+      if tag == ST_IF {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_assigns_stmts(load64(body_arr), load64(body_arr + 8), assigns)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_collect_assigns_stmts(load64(else_arr), load64(else_arr + 8), assigns)
+        }
+      }
+
+      if tag == ST_WHILE {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_assigns_stmts(load64(body_arr), load64(body_arr + 8), assigns)
+        }
+      }
+
+      if tag == ST_FOR_IN {
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_collect_assigns_stmts(load64(body_arr), load64(body_arr + 8), assigns)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_collect_mut_lets_stmts(stmts_p:I num_stmts:I muts:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      if tag == ST_LET {
+        if load64(stmt + 24) == 1 {
+          // Store the stmt pointer so we can emit at the right location
+          mset(muts, load64(stmt + 16), stmt)
+        }
+      }
+
+      // Recurse into nested blocks
+      if tag == ST_IF {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(body_arr), load64(body_arr + 8), muts)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(else_arr), load64(else_arr + 8), muts)
+        }
+      }
+
+      if tag == ST_WHILE {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(body_arr), load64(body_arr + 8), muts)
+        }
+      }
+
+      if tag == ST_FOR_IN {
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(body_arr), load64(body_arr + 8), muts)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_unnecessary_mut_func(func:I) I {
+  body_arr = load64(func + 24)
+  if body_arr == 0 { return 0 }
+
+  stmts_p = load64(body_arr)
+  count = load64(body_arr + 8)
+
+  // Pass 1: collect mutable let declarations
+  muts = M()
+  lint_collect_mut_lets_stmts(stmts_p, count, muts)
+
+  // Pass 2: collect all assignment target names
+  assigns = M()
+  lint_collect_assigns_stmts(stmts_p, count, assigns)
+
+  // Pass 3: warn on mutable vars not in the reassignment set
+  mut_keys = muts.keys()
+  ki := 0
+  while ki < mut_keys.len() {
+    name = mut_keys.get(ki)
+    if mhas(assigns, name) == 0 {
+      stmt_node = mget(muts, name)
+      lint_emit(stmt_node, "variable '" + as_str(name) + "' declared mutable but never reassigned", "unnecessary-mut")
+    }
+    ki = ki + 1
+  }
+  0
+}
+
+lint_unnecessary_mut(program:I) I {
+  if lint_severity_unnecessary_mut == LINT_OFF { return 0 }
+
+  // Walk function bodies
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    lint_unnecessary_mut_func(func)
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      lint_unnecessary_mut_func(mdef)
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+  0
+}
+
 // ------ Lint Check ------------------------------------------------------------------------
 
 lint_check(program:I mod_exports:I) I {
   lint_unused_imports(program, mod_exports)
+  lint_shadowed_vars(program)
   0
 }
