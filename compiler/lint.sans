@@ -3,6 +3,7 @@
 // The pipeline orchestration (parse/typeck) lives in main.sans.
 
 import "typeck"
+import "parser"
 
 // Severity levels
 g LINT_ERROR = 2
@@ -110,9 +111,375 @@ lint_emit(node:I msg:S rule:S) I {
   0
 }
 
-// ------ Lint Check (stub -- rules added in later tasks) -----------------------------------
+// ------ AST Name Collector ----------------------------------------------------------------
+// Walk the AST collecting all referenced names (calls, idents, struct lits, enum variants).
+// The collected names are stored in a Map for O(1) lookup.
 
-lint_check(program:I) I {
-  // Rule implementations will be added here
+lint_collect_names_expr(expr:I names:I) I {
+  if expr == 0 { return 0 }
+  tag = load64(expr)
+
+  // EX_IDENT: [tag size name]
+  if tag == EX_IDENT {
+    mset(names, load64(expr + 16), 1)
+    return 0
+  }
+
+  // EX_CALL: [tag size name args_arr]
+  if tag == EX_CALL {
+    mset(names, load64(expr + 16), 1)
+    args_arr = load64(expr + 24)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_METHOD_CALL: [tag size receiver method args_arr]
+  if tag == EX_METHOD_CALL {
+    lint_collect_names_expr(load64(expr + 16), names)
+    args_arr = load64(expr + 32)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_BINOP: [tag size op left right]
+  if tag == EX_BINOP {
+    lint_collect_names_expr(load64(expr + 24), names)
+    lint_collect_names_expr(load64(expr + 32), names)
+    return 0
+  }
+
+  // EX_UNARYOP: [tag size op operand]
+  if tag == EX_UNARYOP {
+    lint_collect_names_expr(load64(expr + 24), names)
+    return 0
+  }
+
+  // EX_IF: [tag size cond then_stmts then_expr else_stmts else_expr]
+  if tag == EX_IF {
+    lint_collect_names_expr(load64(expr + 16), names)
+    then_stmts = load64(expr + 24)
+    if then_stmts != 0 {
+      lint_collect_names_stmts(load64(then_stmts), load64(then_stmts + 8), names)
+    }
+    lint_collect_names_expr(load64(expr + 32), names)
+    else_stmts = load64(expr + 40)
+    if else_stmts != 0 {
+      lint_collect_names_stmts(load64(else_stmts), load64(else_stmts + 8), names)
+    }
+    lint_collect_names_expr(load64(expr + 48), names)
+    return 0
+  }
+
+  // EX_STRUCT_LIT: [tag size name field_names field_values]
+  if tag == EX_STRUCT_LIT {
+    mset(names, load64(expr + 16), 1)
+    field_values_arr = load64(expr + 32)
+    if field_values_arr != 0 {
+      fv_p = load64(field_values_arr)
+      nfv = load64(field_values_arr + 8)
+      fi := 0
+      while fi < nfv {
+        lint_collect_names_expr(load64(fv_p + fi * 8), names)
+        fi = fi + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_ENUM_VARIANT: [tag size enum_name variant_name args]
+  if tag == EX_ENUM_VARIANT {
+    mset(names, load64(expr + 16), 1)
+    args_arr = load64(expr + 32)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_ARRAY_LIT: [tag size elems_arr]
+  if tag == EX_ARRAY_LIT {
+    elems_arr = load64(expr + 16)
+    if elems_arr != 0 {
+      elems_p = load64(elems_arr)
+      nelems = load64(elems_arr + 8)
+      ei := 0
+      while ei < nelems {
+        lint_collect_names_expr(load64(elems_p + ei * 8), names)
+        ei = ei + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_LAMBDA: [tag size params ret_type body_stmts_arr]
+  if tag == EX_LAMBDA {
+    body_stmts = load64(expr + 32)
+    if body_stmts != 0 {
+      lint_collect_names_stmts(load64(body_stmts), load64(body_stmts + 8), names)
+    }
+    return 0
+  }
+
+  // EX_SPAWN: [tag size func_name args_arr]
+  if tag == EX_SPAWN {
+    mset(names, load64(expr + 16), 1)
+    args_arr = load64(expr + 24)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  0
+}
+
+lint_collect_names_stmt(stmt:I names:I) I {
+  if stmt == 0 { return 0 }
+  tag = load64(stmt)
+
+  if tag == ST_LET {
+    lint_collect_names_expr(load64(stmt + 40), names)
+    return 0
+  }
+
+  if tag == ST_WHILE {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    body_arr = load64(stmt + 24)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_RETURN {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    return 0
+  }
+
+  if tag == ST_ASSIGN {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    return 0
+  }
+
+  if tag == ST_IF {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    body_arr = load64(stmt + 24)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_FOR_IN {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    body_arr = load64(stmt + 32)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_FOR_IN_DESTR {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    body_arr = load64(stmt + 32)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_EXPR {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    return 0
+  }
+
+  if tag == ST_DEFER {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    return 0
+  }
+
+  if tag == ST_LET_DESTR {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    return 0
+  }
+
+  0
+}
+
+lint_collect_names_stmts(stmts_p:I num_stmts:I names:I) I {
+  i := 0
+  while i < num_stmts {
+    lint_collect_names_stmt(load64(stmts_p + i * 8), names)
+    i = i + 1
+  }
+  0
+}
+
+// ------ Module name helper (inline to avoid circular import with main.sans) ---------------
+
+lint_mod_name_of(import_path:S) S {
+  idx = find_last_char(import_path, 47)
+  if idx < 0 { import_path } else { import_path.substring(idx + 1, slen(import_path)) }
+}
+
+// ------ Unused Imports Rule ---------------------------------------------------------------
+
+lint_unused_imports(program:I mod_exports:I) I {
+  if lint_severity_unused_import == LINT_OFF { return 0 }
+
+  // Step 1: Collect all referenced names from function bodies and impl method bodies
+  names = M()
+
+  // Walk function bodies
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    body_arr = load64(func + 24)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      mbody_arr = load64(mdef + 24)
+      if mbody_arr != 0 {
+        lint_collect_names_stmts(load64(mbody_arr), load64(mbody_arr + 8), names)
+      }
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+
+  // Step 2: For each import, check if any exported symbol is referenced
+  imports_arr = load64(program)
+  imports_p = load64(imports_arr)
+  num_imports = load64(imports_arr + 8)
+  i := 0
+  while i < num_imports {
+    imp_node = load64(imports_p + i * 8)
+    imp_path = imp_get_path(imp_node)
+    mod_name = lint_mod_name_of(imp_path)
+
+    if mhas(mod_exports, mod_name) {
+      exports = mget(mod_exports, mod_name)
+      used := 0
+
+      // Check if module name itself is used (cross-module calls: math.add())
+      if mhas(names, mod_name) { used = 1 }
+
+      // Also check alias if present
+      imp_alias = imp_get_alias(imp_node)
+      if imp_alias != 0 {
+        if mhas(names, imp_alias) { used = 1 }
+      }
+
+      // Check exported functions
+      fn_map = load64(exports + 16)
+      if fn_map != 0 {
+        fn_keys = fn_map.keys()
+        fki := 0
+        while fki < fn_keys.len() {
+          if mhas(names, fn_keys.get(fki)) { used = 1 }
+          fki = fki + 1
+        }
+      }
+
+      // Check exported structs
+      if used == 0 {
+        st_map = load64(exports)
+        if st_map != 0 {
+          st_keys = st_map.keys()
+          ski := 0
+          while ski < st_keys.len() {
+            if mhas(names, st_keys.get(ski)) { used = 1 }
+            ski = ski + 1
+          }
+        }
+      }
+
+      // Check exported enums
+      if used == 0 {
+        en_map = load64(exports + 8)
+        if en_map != 0 {
+          en_keys = en_map.keys()
+          eki := 0
+          while eki < en_keys.len() {
+            if mhas(names, en_keys.get(eki)) { used = 1 }
+            eki = eki + 1
+          }
+        }
+      }
+
+      // Check exported globals
+      if used == 0 {
+        gl_map = load64(exports + 24)
+        if gl_map != 0 {
+          gl_keys = gl_map.keys()
+          gli := 0
+          while gli < gl_keys.len() {
+            if mhas(names, gl_keys.get(gli)) { used = 1 }
+            gli = gli + 1
+          }
+        }
+      }
+
+      if used == 0 {
+        lint_emit(imp_node, "unused import '" + mod_name + "'", "unused-imports")
+      }
+    }
+
+    i = i + 1
+  }
+  0
+}
+
+// ------ Lint Check ------------------------------------------------------------------------
+
+lint_check(program:I mod_exports:I) I {
+  lint_unused_imports(program, mod_exports)
   0
 }

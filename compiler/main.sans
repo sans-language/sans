@@ -772,7 +772,7 @@ lint_file(path:S) I {
   tc_warn_enabled = 1
   check_module(program, mod_exports)
   tc_warn_enabled = 0
-  lint_check(program)
+  lint_check(program, mod_exports)
   0
 }
 

@@ -1,0 +1,6 @@
+import "utils"
+import "unused"
+
+main() I {
+  utils.add(1 2)
+}
