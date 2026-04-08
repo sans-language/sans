@@ -76,19 +76,37 @@ lint_parse_rule(src:S name:S which:I) I {
   0
 }
 
-// ------ Emit Diagnostic -------------------------------------------------------------------
+// ------ Severity Lookup ------------------------------------------------------------------
 
-lint_emit(node:I msg:S rule:S) I {
-  tagged = "[" + rule + "] " + msg
-  tc_warn_at(node, tagged)
-  lint_warnings = lint_warnings + 1
+lint_get_severity(rule:S) I {
+  if rule == "unused-imports" { return lint_severity_unused_import }
+  if rule == "shadowed-vars" { return lint_severity_shadow }
+  if rule == "unnecessary-mut" { return lint_severity_unnecessary_mut }
+  if rule == "empty-catch" { return lint_severity_empty_catch }
+  LINT_WARN
+}
+
+lint_set_severity(rule:S sev:I) I {
+  if rule == "unused-imports" { lint_severity_unused_import = sev }
+  if rule == "shadowed-vars" { lint_severity_shadow = sev }
+  if rule == "unnecessary-mut" { lint_severity_unnecessary_mut = sev }
+  if rule == "empty-catch" { lint_severity_empty_catch = sev }
   0
 }
 
-lint_emit_error(node:I msg:S rule:S) I {
-  tagged = "[" + rule + "] " + msg
-  tc_error_at(node, tagged)
-  lint_errors = lint_errors + 1
+// ------ Emit Diagnostic -------------------------------------------------------------------
+
+lint_emit(node:I msg:S rule:S) I {
+  sev = lint_get_severity(rule)
+  if sev == LINT_OFF { return 0 }
+  tagged = msg + " [" + rule + "]"
+  if sev == LINT_ERROR {
+    tc_error_at(node, tagged)
+    lint_errors = lint_errors + 1
+  } else {
+    tc_warn_at(node, tagged)
+    lint_warnings = lint_warnings + 1
+  }
   0
 }
 

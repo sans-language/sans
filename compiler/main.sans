@@ -803,6 +803,10 @@ lint_entry(target:S argv:I argc:I) I {
     if flag == "--quiet" || flag == "-q" {
       lint_quiet = 1
     }
+    if flag.starts_with("--error=") == 1 {
+      rule = flag.slice(8, slen(flag))
+      lint_set_severity(rule, LINT_ERROR)
+    }
     fi = fi + 1
   }
   lint_load_config()
