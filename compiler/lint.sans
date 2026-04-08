@@ -61,13 +61,11 @@ lint_parse_severity(src:S) I {
 lint_parse_rule(src:S name:S which:I) I {
   key = "\"" + name + "\""
   if src.contains(key) == 0 { return 0 }
-  // Find the value after the key — look for the severity string nearby
   idx = src.index_of(key)
   if idx < 0 { return 0 }
-  // Extract a small window after the key to find the value
   rest_start = idx + slen(key)
-  rest_end = rest_start + 30
-  if rest_end > slen(src) { rest_end = slen(src) }
+  src_len = slen(src)
+  rest_end = if rest_start + 30 > src_len { src_len } else { rest_start + 30 }
   window = src.substring(rest_start, rest_end)
   sev = lint_parse_severity(window)
   if which == 1 { lint_severity_unused_import = sev }
