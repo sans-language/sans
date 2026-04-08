@@ -1,0 +1,217 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Sans",
+  "scopeName": "source.sans",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#operators" },
+    { "include": "#functions" },
+    { "include": "#variables" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.sans",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.sans",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            {
+              "name": "meta.interpolation.sans",
+              "match": "\\{[a-zA-Z_][a-zA-Z0-9_]*\\}",
+              "captures": {
+                "0": { "name": "variable.other.interpolated.sans" }
+              }
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.sans",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.sans",
+              "match": "\\\\[ntr\\\\\"\\{]"
+            },
+            {
+              "name": "meta.interpolation.sans",
+              "match": "\\{[a-zA-Z_][a-zA-Z0-9_]*\\}",
+              "captures": {
+                "0": { "name": "variable.other.interpolated.sans" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.sans",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.sans",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.sans",
+          "match": "\\b(if|else|while|for|in|match|return|spawn|break|continue|defer|select)\\b"
+        },
+        {
+          "name": "keyword.declaration.sans",
+          "match": "\\b(fn|let|mut|struct|enum|trait|impl|import|pub|g)\\b"
+        },
+        {
+          "name": "constant.language.boolean.sans",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "keyword.other.sans",
+          "match": "\\b(self|Self|channel|mutex|array)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.sans",
+          "match": "\\b(Int|Float|Bool|String|I|F|B|S)\\b"
+        },
+        {
+          "name": "support.type.builtin.sans",
+          "match": "\\b(Array|Option|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|O|M|HS|HR|Fn|Map|J)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.io.sans",
+          "match": "\\b(print|p|file_read|fread|fr|file_write|fwrite|fw|file_append|fappend|fa|file_exists|fexists|fe|read_file|write_file|args|stdin_read_line|srl|stdin_read_bytes|srb)\\b"
+        },
+        {
+          "name": "support.function.conversion.sans",
+          "match": "\\b(int_to_string|str|itos|string_to_int|stoi|int_to_float|itof|float_to_int|ftoi|float_to_string|ftos|string_to_float|stof)\\b"
+        },
+        {
+          "name": "support.function.math.sans",
+          "match": "\\b(abs|min|max|range)\\b"
+        },
+        {
+          "name": "support.function.system.sans",
+          "match": "\\b(sleep|time|now|random|rand|print_err)\\b"
+        },
+        {
+          "name": "support.function.json.sans",
+          "match": "\\b(json_parse|jparse|jp|json_object|jobj|jo|json_array|jarr|ja|json_string|jstr|js|json_int|ji|json_bool|jb|json_null|jn|json_stringify|jstringify|jfy)\\b"
+        },
+        {
+          "name": "support.function.http.sans",
+          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ca|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws|serve_file|url_decode|ud|path_segment|ps|respond_json|rj|respond_stream|query|path_only|content_length|cl|set_header|set_max_workers|set_read_timeout|set_keepalive_timeout|set_drain_timeout|set_max_body|set_max_headers|set_max_header_count|set_max_url)\\b"
+        },
+        {
+          "name": "support.function.log.sans",
+          "match": "\\b(log_debug|ld|log_info|li|log_warn|lw|log_error|le|log_set_level|ll|get_log_level|set_log_level)\\b"
+        },
+        {
+          "name": "support.function.result.sans",
+          "match": "\\b(ok|err|some|none)\\b"
+        },
+        {
+          "name": "support.function.assert.sans",
+          "match": "\\b(assert|assert_eq|assert_ne|assert_ok|assert_err|assert_some|assert_none)\\b"
+        },
+        {
+          "name": "support.function.memory.sans",
+          "match": "\\b(alloc|dealloc|ralloc|mcpy|mcmp|mzero|slen|load8|store8|load16|store16|load32|store32|load64|store64|strstr|bswap16|bxor|band|bor|bshl|bshr|exit|system|sys|wfd|arena_begin|arena_alloc|arena_end|ab|aa|ae|mget|mset|mhas|signal_handler|signal_check|sigh|sigc|spoll|gzip_compress|gz|setjmp|longjmp|panic_enable|panic_disable|panic_is_active|panic_get_buf|panic_fire|pmutex_init|pmutex_lock|pmutex_unlock)\\b"
+        },
+        {
+          "name": "support.function.pointer.sans",
+          "match": "\\b(fptr|fcall|fcall2|fcall3|ptr|char_at)\\b"
+        },
+        {
+          "name": "support.function.fs.sans",
+          "match": "\\b(getenv|genv|mkdir|rmdir|remove|rm|listdir|ls|is_dir|sh|shell)\\b"
+        },
+        {
+          "name": "support.function.socket.sans",
+          "match": "\\b(sock|sbind|slisten|saccept|srecv|ssend|sclose|rbind|rsetsockopt)\\b"
+        },
+        {
+          "name": "support.function.curl.sans",
+          "match": "\\b(cinit|csets|cseti|cperf|cclean|cinfo|curl_slist_append|curl_slist_free)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.sans",
+          "match": "(:=|\\+=|-=|\\*=|/=|%=|=)"
+        },
+        {
+          "name": "keyword.operator.comparison.sans",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.logical.sans",
+          "match": "(&&|\\|\\||!)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.sans",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.ternary.sans",
+          "match": "[?:]"
+        },
+        {
+          "name": "keyword.operator.arrow.sans",
+          "match": "=>"
+        },
+        {
+          "name": "keyword.operator.namespace.sans",
+          "match": "::"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.sans",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "entity.name.function.sans" }
+          }
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.sans",
+          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}
