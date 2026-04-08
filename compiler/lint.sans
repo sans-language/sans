@@ -781,5 +781,6 @@ lint_unnecessary_mut(program:I) I {
 lint_check(program:I mod_exports:I) I {
   lint_unused_imports(program, mod_exports)
   lint_shadowed_vars(program)
+  lint_unnecessary_mut(program)
   0
 }
