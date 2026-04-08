@@ -776,11 +776,122 @@ lint_unnecessary_mut(program:I) I {
   0
 }
 
+// ------ Empty Catch Rule -----------------------------------------------------------------
+
+lint_ec_check_stmts(stmts_p:I num_stmts:I result_fns:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      // ST_EXPR containing EX_CALL to a Result-returning function
+      if tag == ST_EXPR {
+        expr = load64(stmt + 16)
+        if expr != 0 {
+          if load64(expr) == EX_CALL {
+            callee = load64(expr + 16)
+            if mhas(result_fns, callee) {
+              lint_emit(stmt, "Result from '" + as_str(callee) + "()' is discarded; error will be silently ignored", "empty-catch")
+            }
+          }
+        }
+      }
+
+      // Recurse into nested blocks
+      if tag == ST_IF {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_ec_check_stmts(load64(else_arr), load64(else_arr + 8), result_fns)
+        }
+      }
+
+      if tag == ST_WHILE {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+        }
+      }
+
+      if tag == ST_FOR_IN {
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_empty_catch(program:I) I {
+  if lint_severity_empty_catch == LINT_OFF { return 0 }
+
+  // Pass 1: collect names of functions that return Result types
+  result_fns = M()
+
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    ret_type = load64(func + 16)
+    if ret_type != 0 {
+      ret_str = as_str(ret_type)
+      if ret_str.starts_with("R<") == 1 || ret_str.starts_with("Result<") == 1 {
+        mset(result_fns, load64(func), 1)
+      }
+    }
+    fi = fi + 1
+  }
+
+  // Pass 2: walk all function bodies checking for discarded Result calls
+  fi = 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    body_arr = load64(func + 24)
+    if body_arr != 0 {
+      lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+    }
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      mbody_arr = load64(mdef + 24)
+      if mbody_arr != 0 {
+        lint_ec_check_stmts(load64(mbody_arr), load64(mbody_arr + 8), result_fns)
+      }
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+  0
+}
+
 // ------ Lint Check ------------------------------------------------------------------------
 
 lint_check(program:I mod_exports:I) I {
   lint_unused_imports(program, mod_exports)
   lint_shadowed_vars(program)
   lint_unnecessary_mut(program)
+  lint_empty_catch(program)
   0
 }
