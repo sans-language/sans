@@ -795,6 +795,15 @@ lint_dir(dir:S) I {
   0
 }
 
+lint_parse_error_flag(flag:S) I {
+  if flag.starts_with("--error=") == 1 {
+    flen = slen(flag)
+    rule = flag.substring(8, flen)
+    lint_set_severity(rule, LINT_ERROR)
+  }
+  0
+}
+
 lint_entry(target:S argv:I argc:I) I {
   lint_init_config()
   fi := 3
@@ -803,10 +812,7 @@ lint_entry(target:S argv:I argc:I) I {
     if flag == "--quiet" || flag == "-q" {
       lint_quiet = 1
     }
-    if flag.starts_with("--error=") == 1 {
-      rule = flag.substring(8, slen(flag))
-      lint_set_severity(rule, LINT_ERROR)
-    }
+    lint_parse_error_flag(flag)
     fi = fi + 1
   }
   lint_load_config()
