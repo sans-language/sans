@@ -1,0 +1,11 @@
+might_fail() R<I> {
+  ok(42)
+}
+
+main() I {
+  might_fail()
+  r = might_fail()
+  v = r!
+  p(str(v))
+  0
+}

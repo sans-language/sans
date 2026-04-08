@@ -1220,6 +1220,52 @@ Packages are cached at `~/.sans/packages/<url>/<version>/`. Each version is a sh
 
 Dependencies are resolved transitively via BFS. Each package's `sans.json` is checked for its own dependencies. Version conflicts (same package, different versions) are rejected with an error.
 
+## Linter
+
+`sans lint` runs static analysis (parse + type check) without building. It reports diagnostics for common issues.
+
+### Usage
+
+```
+sans lint foo.sans                        # lint single file
+sans lint compiler/                       # lint all .sans files recursively
+sans lint .                               # lint current directory
+sans lint --error=unused-imports foo.sans  # promote rule to error
+sans lint --quiet foo.sans                # suppress warnings
+```
+
+### Rules
+
+| Rule | Default | Description |
+|------|---------|-------------|
+| `unused-imports` | warn | Imported module never referenced |
+| `unreachable-code` | warn | Code after return statement |
+| `empty-catch` | warn | Result value silently discarded |
+| `shadowed-vars` | warn | Inner scope redeclares outer variable |
+| `unnecessary-mut` | warn | Variable declared `:=` but never reassigned |
+
+### Configuration
+
+Rules can be configured in `sans.json`:
+
+```json
+{
+  "lint": {
+    "unused-imports": "error",
+    "shadowed-vars": "off"
+  }
+}
+```
+
+Valid severities: `"error"`, `"warn"`, `"off"`.
+
+CLI `--error=<rule>` overrides the config file severity for that rule. `sans build --quiet` suppresses warnings during build.
+
+### Exit Codes
+
+- **0** — no error-severity diagnostics
+- **1** — one or more error-severity diagnostics
+
 ## Concurrency
 
 ```sans

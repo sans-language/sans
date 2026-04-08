@@ -1,0 +1,895 @@
+// ------ Sans Lint Module ------
+// Static analysis: config, severity, diagnostics, and lint checks.
+// The pipeline orchestration (parse/typeck) lives in main.sans.
+
+import "typeck"
+import "parser"
+
+// Severity levels
+g LINT_ERROR = 2
+g LINT_WARN = 1
+g LINT_OFF = 0
+
+// Per-rule severity config (defaults set in lint_init_config)
+g lint_severity_unused_import = 0
+g lint_severity_shadow = 0
+g lint_severity_unnecessary_mut = 0
+g lint_severity_empty_catch = 0
+
+// Counters
+g lint_errors = 0
+g lint_warnings = 0
+
+// Quiet mode flag
+g lint_quiet = 0
+
+// ------ Config Init -----------------------------------------------------------------------
+
+lint_init_config() I {
+  lint_severity_unused_import = LINT_WARN
+  lint_severity_shadow = LINT_WARN
+  lint_severity_unnecessary_mut = LINT_WARN
+  lint_severity_empty_catch = LINT_WARN
+  lint_errors = 0
+  lint_warnings = 0
+  0
+}
+
+// ------ Config Loading from sans.json -----------------------------------------------------
+// JSON builtins (json_parse, json_get, etc.) are runtime functions available
+// in user programs but not in the self-hosted compiler itself.
+// Config loading uses simple string matching on sans.json content.
+
+lint_load_config() I {
+  if fexists("sans.json") == 0 { return 0 }
+  src = fr("sans.json")
+  if slen(src) < 2 { return 0 }
+  // Parse rule overrides via string matching
+  lint_parse_rule(src, "unused-import", 1)
+  lint_parse_rule(src, "shadow", 2)
+  lint_parse_rule(src, "unnecessary-mut", 3)
+  lint_parse_rule(src, "empty-catch", 4)
+  0
+}
+
+lint_parse_severity(src:S) I {
+  if src.contains("\"error\"") == 1 { return LINT_ERROR }
+  if src.contains("\"off\"") == 1 { return LINT_OFF }
+  LINT_WARN
+}
+
+lint_parse_rule(src:S name:S which:I) I {
+  key = "\"" + name + "\""
+  if src.contains(key) == 0 { return 0 }
+  idx = src.index_of(key)
+  if idx < 0 { return 0 }
+  rest_start = idx + slen(key)
+  src_len = slen(src)
+  rest_end = if rest_start + 30 > src_len { src_len } else { rest_start + 30 }
+  window = src.substring(rest_start, rest_end)
+  sev = lint_parse_severity(window)
+  if which == 1 { lint_severity_unused_import = sev }
+  if which == 2 { lint_severity_shadow = sev }
+  if which == 3 { lint_severity_unnecessary_mut = sev }
+  if which == 4 { lint_severity_empty_catch = sev }
+  0
+}
+
+// ------ Severity Lookup ------------------------------------------------------------------
+
+lint_get_severity(rule:S) I {
+  if rule == "unused-imports" { return lint_severity_unused_import }
+  if rule == "shadowed-vars" { return lint_severity_shadow }
+  if rule == "unnecessary-mut" { return lint_severity_unnecessary_mut }
+  if rule == "empty-catch" { return lint_severity_empty_catch }
+  LINT_WARN
+}
+
+lint_set_severity(rule:S sev:I) I {
+  if rule == "unused-imports" { lint_severity_unused_import = sev }
+  if rule == "shadowed-vars" { lint_severity_shadow = sev }
+  if rule == "unnecessary-mut" { lint_severity_unnecessary_mut = sev }
+  if rule == "empty-catch" { lint_severity_empty_catch = sev }
+  0
+}
+
+// ------ Emit Diagnostic -------------------------------------------------------------------
+
+lint_emit(node:I msg:S rule:S) I {
+  sev = lint_get_severity(rule)
+  if sev == LINT_OFF { return 0 }
+  tagged = msg + " [" + rule + "]"
+  if sev == LINT_ERROR {
+    tc_error_at(node, tagged)
+    lint_errors = lint_errors + 1
+  } else {
+    tc_warn_at(node, tagged)
+    lint_warnings = lint_warnings + 1
+  }
+  0
+}
+
+// ------ AST Name Collector ----------------------------------------------------------------
+// Walk the AST collecting all referenced names (calls, idents, struct lits, enum variants).
+// The collected names are stored in a Map for O(1) lookup.
+
+lint_collect_names_expr(expr:I names:I) I {
+  if expr == 0 { return 0 }
+  tag = load64(expr)
+
+  // EX_IDENT: [tag size name]
+  if tag == EX_IDENT {
+    mset(names, load64(expr + 16), 1)
+    return 0
+  }
+
+  // EX_CALL: [tag size name args_arr]
+  if tag == EX_CALL {
+    mset(names, load64(expr + 16), 1)
+    args_arr = load64(expr + 24)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_METHOD_CALL: [tag size receiver method args_arr]
+  if tag == EX_METHOD_CALL {
+    lint_collect_names_expr(load64(expr + 16), names)
+    args_arr = load64(expr + 32)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_BINOP: [tag size op left right]
+  if tag == EX_BINOP {
+    lint_collect_names_expr(load64(expr + 24), names)
+    lint_collect_names_expr(load64(expr + 32), names)
+    return 0
+  }
+
+  // EX_UNARYOP: [tag size op operand]
+  if tag == EX_UNARYOP {
+    lint_collect_names_expr(load64(expr + 24), names)
+    return 0
+  }
+
+  // EX_IF: [tag size cond then_stmts then_expr else_stmts else_expr]
+  if tag == EX_IF {
+    lint_collect_names_expr(load64(expr + 16), names)
+    then_stmts = load64(expr + 24)
+    if then_stmts != 0 {
+      lint_collect_names_stmts(load64(then_stmts), load64(then_stmts + 8), names)
+    }
+    lint_collect_names_expr(load64(expr + 32), names)
+    else_stmts = load64(expr + 40)
+    if else_stmts != 0 {
+      lint_collect_names_stmts(load64(else_stmts), load64(else_stmts + 8), names)
+    }
+    lint_collect_names_expr(load64(expr + 48), names)
+    return 0
+  }
+
+  // EX_STRUCT_LIT: [tag size name field_names field_values]
+  if tag == EX_STRUCT_LIT {
+    mset(names, load64(expr + 16), 1)
+    field_values_arr = load64(expr + 32)
+    if field_values_arr != 0 {
+      fv_p = load64(field_values_arr)
+      nfv = load64(field_values_arr + 8)
+      fi := 0
+      while fi < nfv {
+        lint_collect_names_expr(load64(fv_p + fi * 8), names)
+        fi = fi + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_ENUM_VARIANT: [tag size enum_name variant_name args]
+  if tag == EX_ENUM_VARIANT {
+    mset(names, load64(expr + 16), 1)
+    args_arr = load64(expr + 32)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_ARRAY_LIT: [tag size elems_arr]
+  if tag == EX_ARRAY_LIT {
+    elems_arr = load64(expr + 16)
+    if elems_arr != 0 {
+      elems_p = load64(elems_arr)
+      nelems = load64(elems_arr + 8)
+      ei := 0
+      while ei < nelems {
+        lint_collect_names_expr(load64(elems_p + ei * 8), names)
+        ei = ei + 1
+      }
+    }
+    return 0
+  }
+
+  // EX_LAMBDA: [tag size params ret_type body_stmts_arr]
+  if tag == EX_LAMBDA {
+    body_stmts = load64(expr + 32)
+    if body_stmts != 0 {
+      lint_collect_names_stmts(load64(body_stmts), load64(body_stmts + 8), names)
+    }
+    return 0
+  }
+
+  // EX_SPAWN: [tag size func_name args_arr]
+  if tag == EX_SPAWN {
+    mset(names, load64(expr + 16), 1)
+    args_arr = load64(expr + 24)
+    if args_arr != 0 {
+      args_p = load64(args_arr)
+      nargs = load64(args_arr + 8)
+      ai := 0
+      while ai < nargs {
+        lint_collect_names_expr(load64(args_p + ai * 8), names)
+        ai = ai + 1
+      }
+    }
+    return 0
+  }
+
+  0
+}
+
+lint_collect_names_stmt(stmt:I names:I) I {
+  if stmt == 0 { return 0 }
+  tag = load64(stmt)
+
+  if tag == ST_LET {
+    lint_collect_names_expr(load64(stmt + 40), names)
+    return 0
+  }
+
+  if tag == ST_WHILE {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    body_arr = load64(stmt + 24)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_RETURN {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    return 0
+  }
+
+  if tag == ST_ASSIGN {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    return 0
+  }
+
+  if tag == ST_IF {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    body_arr = load64(stmt + 24)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_FOR_IN {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    body_arr = load64(stmt + 32)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_FOR_IN_DESTR {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    body_arr = load64(stmt + 32)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    return 0
+  }
+
+  if tag == ST_EXPR {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    return 0
+  }
+
+  if tag == ST_DEFER {
+    lint_collect_names_expr(load64(stmt + 16), names)
+    return 0
+  }
+
+  if tag == ST_LET_DESTR {
+    lint_collect_names_expr(load64(stmt + 24), names)
+    return 0
+  }
+
+  0
+}
+
+lint_collect_names_stmts(stmts_p:I num_stmts:I names:I) I {
+  i := 0
+  while i < num_stmts {
+    lint_collect_names_stmt(load64(stmts_p + i * 8), names)
+    i = i + 1
+  }
+  0
+}
+
+// ------ Module name helper (inline to avoid circular import with main.sans) ---------------
+
+lint_mod_name_of(import_path:S) S {
+  idx = find_last_char(import_path, 47)
+  if idx < 0 { import_path } else { import_path.substring(idx + 1, slen(import_path)) }
+}
+
+// ------ Unused Imports Rule ---------------------------------------------------------------
+
+lint_unused_imports(program:I mod_exports:I) I {
+  if lint_severity_unused_import == LINT_OFF { return 0 }
+
+  // Step 1: Collect all referenced names from function bodies and impl method bodies
+  names = M()
+
+  // Walk function bodies
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    body_arr = load64(func + 24)
+    if body_arr != 0 {
+      lint_collect_names_stmts(load64(body_arr), load64(body_arr + 8), names)
+    }
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      mbody_arr = load64(mdef + 24)
+      if mbody_arr != 0 {
+        lint_collect_names_stmts(load64(mbody_arr), load64(mbody_arr + 8), names)
+      }
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+
+  // Step 2: For each import, check if any exported symbol is referenced
+  imports_arr = load64(program)
+  imports_p = load64(imports_arr)
+  num_imports = load64(imports_arr + 8)
+  i := 0
+  while i < num_imports {
+    imp_node = load64(imports_p + i * 8)
+    imp_path = imp_get_path(imp_node)
+    mod_name = lint_mod_name_of(imp_path)
+
+    if mhas(mod_exports, mod_name) {
+      exports = mget(mod_exports, mod_name)
+      used := 0
+
+      // Check if module name itself is used (cross-module calls: math.add())
+      if mhas(names, mod_name) { used = 1 }
+
+      // Also check alias if present
+      imp_alias = imp_get_alias(imp_node)
+      if imp_alias != 0 {
+        if mhas(names, imp_alias) { used = 1 }
+      }
+
+      // Check exported functions
+      fn_map = load64(exports + 16)
+      if fn_map != 0 {
+        fn_keys = fn_map.keys()
+        fki := 0
+        while fki < fn_keys.len() {
+          if mhas(names, fn_keys.get(fki)) { used = 1 }
+          fki = fki + 1
+        }
+      }
+
+      // Check exported structs
+      if used == 0 {
+        st_map = load64(exports)
+        if st_map != 0 {
+          st_keys = st_map.keys()
+          ski := 0
+          while ski < st_keys.len() {
+            if mhas(names, st_keys.get(ski)) { used = 1 }
+            ski = ski + 1
+          }
+        }
+      }
+
+      // Check exported enums
+      if used == 0 {
+        en_map = load64(exports + 8)
+        if en_map != 0 {
+          en_keys = en_map.keys()
+          eki := 0
+          while eki < en_keys.len() {
+            if mhas(names, en_keys.get(eki)) { used = 1 }
+            eki = eki + 1
+          }
+        }
+      }
+
+      // Check exported globals
+      if used == 0 {
+        gl_map = load64(exports + 24)
+        if gl_map != 0 {
+          gl_keys = gl_map.keys()
+          gli := 0
+          while gli < gl_keys.len() {
+            if mhas(names, gl_keys.get(gli)) { used = 1 }
+            gli = gli + 1
+          }
+        }
+      }
+
+      if used == 0 {
+        lint_emit(imp_node, "unused import '" + mod_name + "'", "unused-imports")
+      }
+    }
+
+    i = i + 1
+  }
+  0
+}
+
+// ------ Shadowed Variables Rule -----------------------------------------------------------
+
+lint_shadow_check_stmts(stmts_p:I num_stmts:I outer_vars:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      // ST_LET: check if name shadows an outer variable
+      if tag == ST_LET {
+        name = load64(stmt + 16)
+        if mhas(outer_vars, name) {
+          lint_emit(stmt, "variable '" + as_str(name) + "' shadows outer declaration", "shadowed-vars")
+        }
+      }
+
+      // ST_IF: enter inner scope for then/else bodies
+      if tag == ST_IF {
+        // Build combined outer set: outer_vars + current scope vars up to this point
+        inner_outer = M()
+        okeys = outer_vars.keys()
+        oki := 0
+        while oki < okeys.len() {
+          mset(inner_outer, okeys.get(oki), 1)
+          oki = oki + 1
+        }
+        // Add all ST_LET names from current scope
+        si := 0
+        while si < num_stmts {
+          s2 = load64(stmts_p + si * 8)
+          if s2 != 0 {
+            if load64(s2) == ST_LET {
+              mset(inner_outer, load64(s2 + 16), 1)
+            }
+          }
+          si = si + 1
+        }
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), inner_outer)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_shadow_check_stmts(load64(else_arr), load64(else_arr + 8), inner_outer)
+        }
+      }
+
+      // ST_WHILE: enter inner scope for body
+      if tag == ST_WHILE {
+        inner_outer = M()
+        okeys = outer_vars.keys()
+        oki := 0
+        while oki < okeys.len() {
+          mset(inner_outer, okeys.get(oki), 1)
+          oki = oki + 1
+        }
+        si := 0
+        while si < num_stmts {
+          s2 = load64(stmts_p + si * 8)
+          if s2 != 0 {
+            if load64(s2) == ST_LET {
+              mset(inner_outer, load64(s2 + 16), 1)
+            }
+          }
+          si = si + 1
+        }
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), inner_outer)
+        }
+      }
+
+      // ST_FOR_IN: enter inner scope for body
+      if tag == ST_FOR_IN {
+        inner_outer = M()
+        okeys = outer_vars.keys()
+        oki := 0
+        while oki < okeys.len() {
+          mset(inner_outer, okeys.get(oki), 1)
+          oki = oki + 1
+        }
+        si := 0
+        while si < num_stmts {
+          s2 = load64(stmts_p + si * 8)
+          if s2 != 0 {
+            if load64(s2) == ST_LET {
+              mset(inner_outer, load64(s2 + 16), 1)
+            }
+          }
+          si = si + 1
+        }
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), inner_outer)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_shadow_check_func(func:I) I {
+  body_arr = load64(func + 24)
+  if body_arr == 0 { return 0 }
+  outer = M()
+  lint_shadow_check_stmts(load64(body_arr), load64(body_arr + 8), outer)
+  0
+}
+
+lint_shadowed_vars(program:I) I {
+  if lint_severity_shadow == LINT_OFF { return 0 }
+
+  // Walk function bodies
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    lint_shadow_check_func(func)
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      lint_shadow_check_func(mdef)
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+  0
+}
+
+// ------ Unnecessary Mutable Rule ---------------------------------------------------------
+
+lint_collect_assigns_stmts(stmts_p:I num_stmts:I assigns:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      if tag == ST_ASSIGN {
+        mset(assigns, load64(stmt + 16), 1)
+      }
+
+      // Recurse into nested blocks
+      if tag == ST_IF {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_assigns_stmts(load64(body_arr), load64(body_arr + 8), assigns)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_collect_assigns_stmts(load64(else_arr), load64(else_arr + 8), assigns)
+        }
+      }
+
+      if tag == ST_WHILE {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_assigns_stmts(load64(body_arr), load64(body_arr + 8), assigns)
+        }
+      }
+
+      if tag == ST_FOR_IN {
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_collect_assigns_stmts(load64(body_arr), load64(body_arr + 8), assigns)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_collect_mut_lets_stmts(stmts_p:I num_stmts:I muts:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      if tag == ST_LET {
+        if load64(stmt + 24) == 1 {
+          // Store the stmt pointer so we can emit at the right location
+          mset(muts, load64(stmt + 16), stmt)
+        }
+      }
+
+      // Recurse into nested blocks
+      if tag == ST_IF {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(body_arr), load64(body_arr + 8), muts)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(else_arr), load64(else_arr + 8), muts)
+        }
+      }
+
+      if tag == ST_WHILE {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(body_arr), load64(body_arr + 8), muts)
+        }
+      }
+
+      if tag == ST_FOR_IN {
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_collect_mut_lets_stmts(load64(body_arr), load64(body_arr + 8), muts)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_unnecessary_mut_func(func:I) I {
+  body_arr = load64(func + 24)
+  if body_arr == 0 { return 0 }
+
+  stmts_p = load64(body_arr)
+  count = load64(body_arr + 8)
+
+  // Pass 1: collect mutable let declarations
+  muts = M()
+  lint_collect_mut_lets_stmts(stmts_p, count, muts)
+
+  // Pass 2: collect all assignment target names
+  assigns = M()
+  lint_collect_assigns_stmts(stmts_p, count, assigns)
+
+  // Pass 3: warn on mutable vars not in the reassignment set
+  mut_keys = muts.keys()
+  ki := 0
+  while ki < mut_keys.len() {
+    name = mut_keys.get(ki)
+    if mhas(assigns, name) == 0 {
+      stmt_node = mget(muts, name)
+      lint_emit(stmt_node, "variable '" + as_str(name) + "' declared mutable but never reassigned", "unnecessary-mut")
+    }
+    ki = ki + 1
+  }
+  0
+}
+
+lint_unnecessary_mut(program:I) I {
+  if lint_severity_unnecessary_mut == LINT_OFF { return 0 }
+
+  // Walk function bodies
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    lint_unnecessary_mut_func(func)
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      lint_unnecessary_mut_func(mdef)
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+  0
+}
+
+// ------ Empty Catch Rule -----------------------------------------------------------------
+
+lint_ec_check_stmts(stmts_p:I num_stmts:I result_fns:I) I {
+  i := 0
+  while i < num_stmts {
+    stmt = load64(stmts_p + i * 8)
+    if stmt != 0 {
+      tag = load64(stmt)
+
+      // ST_EXPR containing EX_CALL to a Result-returning function
+      if tag == ST_EXPR {
+        expr = load64(stmt + 16)
+        if expr != 0 {
+          if load64(expr) == EX_CALL {
+            callee = load64(expr + 16)
+            if mhas(result_fns, callee) {
+              lint_emit(stmt, "Result from '" + as_str(callee) + "()' is discarded; error will be silently ignored", "empty-catch")
+            }
+          }
+        }
+      }
+
+      // Recurse into nested blocks
+      if tag == ST_IF {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+        }
+        else_arr = load64(stmt + 32)
+        if else_arr != 0 {
+          lint_ec_check_stmts(load64(else_arr), load64(else_arr + 8), result_fns)
+        }
+      }
+
+      if tag == ST_WHILE {
+        body_arr = load64(stmt + 24)
+        if body_arr != 0 {
+          lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+        }
+      }
+
+      if tag == ST_FOR_IN {
+        body_arr = load64(stmt + 32)
+        if body_arr != 0 {
+          lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+        }
+      }
+    }
+    i = i + 1
+  }
+  0
+}
+
+lint_empty_catch(program:I) I {
+  if lint_severity_empty_catch == LINT_OFF { return 0 }
+
+  // Pass 1: collect names of functions that return Result types
+  result_fns = M()
+
+  funcs_arr = load64(program + 16)
+  funcs_p = load64(funcs_arr)
+  num_funcs = load64(funcs_arr + 8)
+  fi := 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    ret_type = load64(func + 16)
+    if ret_type != 0 {
+      ret_str = as_str(ret_type)
+      if ret_str.starts_with("R<") == 1 || ret_str.starts_with("Result<") == 1 {
+        mset(result_fns, load64(func), 1)
+      }
+    }
+    fi = fi + 1
+  }
+
+  // Pass 2: walk all function bodies checking for discarded Result calls
+  fi = 0
+  while fi < num_funcs {
+    func = load64(funcs_p + fi * 8)
+    body_arr = load64(func + 24)
+    if body_arr != 0 {
+      lint_ec_check_stmts(load64(body_arr), load64(body_arr + 8), result_fns)
+    }
+    fi = fi + 1
+  }
+
+  // Walk impl block method bodies
+  impls_arr = load64(program + 48)
+  impls_p = load64(impls_arr)
+  num_impls = load64(impls_arr + 8)
+  ii := 0
+  while ii < num_impls {
+    impl_block = load64(impls_p + ii * 8)
+    impl_methods_arr = load64(impl_block + 16)
+    impl_methods_p = load64(impl_methods_arr)
+    num_methods = load64(impl_methods_arr + 8)
+    mi := 0
+    while mi < num_methods {
+      mdef = load64(impl_methods_p + mi * 8)
+      mbody_arr = load64(mdef + 24)
+      if mbody_arr != 0 {
+        lint_ec_check_stmts(load64(mbody_arr), load64(mbody_arr + 8), result_fns)
+      }
+      mi = mi + 1
+    }
+    ii = ii + 1
+  }
+  0
+}
+
+// ------ Lint Check ------------------------------------------------------------------------
+
+lint_check(program:I mod_exports:I) I {
+  lint_unused_imports(program, mod_exports)
+  lint_shadowed_vars(program)
+  lint_unnecessary_mut(program)
+  lint_empty_catch(program)
+  0
+}

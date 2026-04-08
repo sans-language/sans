@@ -144,6 +144,7 @@ g tc_has_source = 0
 g tc_declared_vars = 0
 g tc_used_vars = 0
 g tc_warn_enabled = 0
+g g_build_quiet = 0
 g mono_depth = 0
 g tc_collect_mode = 0
 g tc_collected_symbols = 0
@@ -4293,7 +4294,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
 
 // ------ check: top-level type checking entry point ---------------------------------------------------------
 check(program:I mod_exports:I) I {
-  tc_warn_enabled = 1
+  if g_build_quiet == 0 { tc_warn_enabled = 1 }
   r = check_inner(program, mod_exports, 1)
   tc_warn_enabled = 0
   r

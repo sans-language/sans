@@ -391,3 +391,6 @@ sans pkg search <query>                // search index
 sans.json: `{"name":"mylib","version":"0.1.0","deps":{"github.com/user/repo":"v1.0.0"}}`
 Cache: `~/.sans/packages/<url>/<version>/` — git clone per version tag
 Transitive deps resolved via BFS from each dep's sans.json
+
+## Lint
+`sans lint <file|dir>` — static analysis, no build. Rules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut. `--error=<rule>` promotes to error. `--quiet` suppresses warnings. Config: sans.json `{"lint":{"rule":"error|warn|off"}}`. Exit 0 if no errors, 1 if errors.
