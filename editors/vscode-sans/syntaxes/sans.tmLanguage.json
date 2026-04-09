@@ -158,7 +158,7 @@
         },
         {
           "name": "support.function.crypto.sans",
-          "match": "\\b(sha256|sha512|md5|hmac_sha256|hmac256|random_bytes|randb)\\b"
+          "match": "\\b(sha256|sha512|md5|hmac_sha256|hmac256|random_bytes|randb|regex_match|rmatch|regex_find|rfind|regex_replace|rrepl)\\b"
         },
         {
           "name": "support.function.fs.sans",

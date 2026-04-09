@@ -131,6 +131,9 @@ sha512(s)                               S -> S (SHA-512 hex digest)
 md5(s)                                  S -> S (MD5 hex digest)
 hmac256(k msg)    hmac_sha256(k msg)    S S -> S (HMAC-SHA256 hex digest)
 randb(n)          random_bytes(n)       I -> S (n crypto random bytes as hex)
+rmatch(pat txt)   regex_match(pat txt)  S S -> I (1 if matches, 0 otherwise; POSIX ERE)
+rfind(pat txt)    regex_find(pat txt)   S S -> S (first match substring, or "")
+rrepl(pat txt r)  regex_replace(p t r)  S S S -> S (replace first match)
 fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I

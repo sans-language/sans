@@ -121,6 +121,7 @@ main() {
 | **Error handling** | `Result<T>` with `ok`, `err(msg)`/`err(code msg)`, `?` propagation, `!` unwrap, `.code()`, `.map()`, `.and_then()`, `.map_err()`, `.or_else()` |
 | **Date/Time** | `tnow`, `tfmt`/`time_format`, `tyear`/`tmon`/`tday`/`thour`/`tmin`/`tsec`/`twday`, `tadd`/`tdiff` — all operate on unix timestamps |
 | **Low-level** | `alloc`, `load8`/`store8`, `mcpy`, sockets, curl, SSL, arena allocator, `pmutex_init`/`pmutex_lock`/`pmutex_unlock` |
+| **Regex** | `regex_match`/`rmatch`, `regex_find`/`rfind`, `regex_replace`/`rrepl` — POSIX Extended Regular Expressions |
 | **Assertions** | `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none` — line numbers in failure messages |
 | **Memory Safety** | Scope-based GC walks nested JSON types on return (no use-after-free); `json_parse` returns `Result<JsonValue>` with descriptive errors; JSON depth limit (512) prevents stack overflow |
 | **Runtime Safety** | Array/string bounds checking (exits with error on out-of-bounds); SIGPIPE ignored in HTTP servers; panic recovery via `setjmp`/`longjmp` (`panic_enable`, `panic_disable`, `panic_get_buf`, `panic_fire`) |

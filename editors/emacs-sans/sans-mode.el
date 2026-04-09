@@ -167,7 +167,10 @@
     "rbind" "rsetsockopt"
     ;; Curl
     "cinit" "csets" "cseti" "cperf" "cclean" "cinfo"
-    "curl_slist_append" "curl_slist_free")
+    "curl_slist_append" "curl_slist_free"
+    ;; Regex
+    "regex_match" "rmatch" "regex_find" "rfind"
+    "regex_replace" "rrepl")
   "Sans built-in functions.")
 
 (defconst sans-constants

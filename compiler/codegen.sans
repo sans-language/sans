@@ -840,6 +840,11 @@ emit_externals(cg:I) I {
   emit(cg, "declare i32 @deflateEnd(ptr)")
   emit(cg, "declare i64 @deflateBound(ptr, i64)")
 
+  // ------ POSIX Regex ------
+  emit(cg, "declare i32 @regcomp(ptr, ptr, i32)")
+  emit(cg, "declare i32 @regexec(ptr, ptr, i64, ptr, i32)")
+  emit(cg, "declare void @regfree(ptr)")
+
   // ------ LLVM intrinsics ------
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
 
@@ -1496,6 +1501,214 @@ compile_random_bytes(cg:I inst:I) I {
   emit(cg, merge_lbl + ":")
   r = cg_fresh_reg(cg)
   emit(cg, "  " + r + " = phi i64 [" + empty_i + ", %" + chk_lbl + "], [" + hex_i + ", %" + from_lbl + "]")
+  cg_set_val(cg, ir_dest(inst), r)
+  0
+}
+
+// ------ Regex codegen (POSIX regcomp/regexec/regfree, inline LLVM IR) -----------------------------------------------------------------
+
+// regex_match(pattern, text) -> I: returns 1 if text matches pattern, 0 otherwise
+compile_regex_match(cg:I inst:I) I {
+  pat_val = cg_get_val(cg, ir_field(inst, 16))
+  txt_val = cg_get_val(cg, ir_field(inst, 24))
+  pat_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + pat_ptr + " = inttoptr i64 " + pat_val + " to ptr")
+  txt_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + txt_ptr + " = inttoptr i64 " + txt_val + " to ptr")
+  // Alloca regex_t (128 bytes for safety)
+  regex_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + regex_buf + " = alloca [128 x i8]")
+  // regcomp(regex_buf, pattern, REG_EXTENDED=1)
+  comp_r = cg_fresh_reg(cg)
+  emit(cg, "  " + comp_r + " = call i32 @regcomp(ptr " + regex_buf + ", ptr " + pat_ptr + ", i32 1)")
+  // regexec(regex_buf, text, 0, null, 0)
+  exec_r = cg_fresh_reg(cg)
+  emit(cg, "  " + exec_r + " = call i32 @regexec(ptr " + regex_buf + ", ptr " + txt_ptr + ", i64 0, ptr null, i32 0)")
+  // regfree
+  emit(cg, "  call void @regfree(ptr " + regex_buf + ")")
+  // result = (exec_r == 0) ? 1 : 0
+  cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + cmp + " = icmp eq i32 " + exec_r + ", 0")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = zext i1 " + cmp + " to i64")
+  cg_set_val(cg, ir_dest(inst), r)
+  0
+}
+
+// regex_find(pattern, text) -> S: returns first match substring, or empty string
+compile_regex_find(cg:I inst:I) I {
+  pat_val = cg_get_val(cg, ir_field(inst, 16))
+  txt_val = cg_get_val(cg, ir_field(inst, 24))
+  uid = cg_label_id(cg)
+  pat_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + pat_ptr + " = inttoptr i64 " + pat_val + " to ptr")
+  txt_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + txt_ptr + " = inttoptr i64 " + txt_val + " to ptr")
+  // Alloca regex_t
+  regex_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + regex_buf + " = alloca [128 x i8]")
+  // Alloca regmatch_t[1] (8 bytes: rm_so i32, rm_eo i32)
+  match_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + match_buf + " = alloca [8 x i8]")
+  // regcomp
+  comp_r = cg_fresh_reg(cg)
+  emit(cg, "  " + comp_r + " = call i32 @regcomp(ptr " + regex_buf + ", ptr " + pat_ptr + ", i32 1)")
+  // regexec with 1 match
+  exec_r = cg_fresh_reg(cg)
+  emit(cg, "  " + exec_r + " = call i32 @regexec(ptr " + regex_buf + ", ptr " + txt_ptr + ", i64 1, ptr " + match_buf + ", i32 0)")
+  // regfree
+  emit(cg, "  call void @regfree(ptr " + regex_buf + ")")
+  // Branch on match
+  matched = cg_fresh_reg(cg)
+  emit(cg, "  " + matched + " = icmp eq i32 " + exec_r + ", 0")
+  match_lbl = "rfind_match_" + uid
+  nomatch_lbl = "rfind_nomatch_" + uid
+  merge_lbl = "rfind_merge_" + uid
+  emit(cg, "  br i1 " + matched + ", label %" + match_lbl + ", label %" + nomatch_lbl)
+  // No match: return empty string
+  emit(cg, nomatch_lbl + ":")
+  empty_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + empty_buf + " = call ptr @malloc(i64 1)")
+  emit(cg, "  store i8 0, ptr " + empty_buf)
+  empty_i = cg_fresh_reg(cg)
+  emit(cg, "  " + empty_i + " = ptrtoint ptr " + empty_buf + " to i64")
+  emit(cg, "  br label %" + merge_lbl)
+  // Match: extract substring
+  emit(cg, match_lbl + ":")
+  rm_so_32 = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_so_32 + " = load i32, ptr " + match_buf)
+  rm_so = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_so + " = sext i32 " + rm_so_32 + " to i64")
+  rm_eo_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_eo_ptr + " = getelementptr i8, ptr " + match_buf + ", i64 4")
+  rm_eo_32 = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_eo_32 + " = load i32, ptr " + rm_eo_ptr)
+  rm_eo = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_eo + " = sext i32 " + rm_eo_32 + " to i64")
+  match_len = cg_fresh_reg(cg)
+  emit(cg, "  " + match_len + " = sub i64 " + rm_eo + ", " + rm_so)
+  alloc_sz = cg_fresh_reg(cg)
+  emit(cg, "  " + alloc_sz + " = add i64 " + match_len + ", 1")
+  result_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + result_buf + " = call ptr @malloc(i64 " + alloc_sz + ")")
+  src_start = cg_fresh_reg(cg)
+  emit(cg, "  " + src_start + " = getelementptr i8, ptr " + txt_ptr + ", i64 " + rm_so)
+  mc1 = cg_fresh_reg(cg)
+  emit(cg, "  " + mc1 + " = call ptr @memcpy(ptr " + result_buf + ", ptr " + src_start + ", i64 " + match_len + ")")
+  term_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + term_ptr + " = getelementptr i8, ptr " + result_buf + ", i64 " + match_len)
+  emit(cg, "  store i8 0, ptr " + term_ptr)
+  result_i = cg_fresh_reg(cg)
+  emit(cg, "  " + result_i + " = ptrtoint ptr " + result_buf + " to i64")
+  emit(cg, "  br label %" + merge_lbl)
+  // Merge
+  emit(cg, merge_lbl + ":")
+  cg_set_current_block(cg, merge_lbl)
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = phi i64 [" + empty_i + ", %" + nomatch_lbl + "], [" + result_i + ", %" + match_lbl + "]")
+  cg_set_val(cg, ir_dest(inst), r)
+  0
+}
+
+// regex_replace(pattern, text, replacement) -> S: replace first match
+compile_regex_replace(cg:I inst:I) I {
+  pat_val = cg_get_val(cg, ir_field(inst, 16))
+  txt_val = cg_get_val(cg, ir_field(inst, 24))
+  repl_val = cg_get_val(cg, ir_field(inst, 32))
+  uid = cg_label_id(cg)
+  pat_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + pat_ptr + " = inttoptr i64 " + pat_val + " to ptr")
+  txt_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + txt_ptr + " = inttoptr i64 " + txt_val + " to ptr")
+  repl_ptr = cg_fresh_reg(cg)
+  emit(cg, "  " + repl_ptr + " = inttoptr i64 " + repl_val + " to ptr")
+  // Alloca regex_t
+  regex_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + regex_buf + " = alloca [128 x i8]")
+  // Alloca regmatch_t[1]
+  match_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + match_buf + " = alloca [8 x i8]")
+  // regcomp
+  comp_r = cg_fresh_reg(cg)
+  emit(cg, "  " + comp_r + " = call i32 @regcomp(ptr " + regex_buf + ", ptr " + pat_ptr + ", i32 1)")
+  // regexec with 1 match
+  exec_r = cg_fresh_reg(cg)
+  emit(cg, "  " + exec_r + " = call i32 @regexec(ptr " + regex_buf + ", ptr " + txt_ptr + ", i64 1, ptr " + match_buf + ", i32 0)")
+  // regfree
+  emit(cg, "  call void @regfree(ptr " + regex_buf + ")")
+  // Branch on match
+  matched = cg_fresh_reg(cg)
+  emit(cg, "  " + matched + " = icmp eq i32 " + exec_r + ", 0")
+  match_lbl = "rrepl_match_" + uid
+  nomatch_lbl = "rrepl_nomatch_" + uid
+  merge_lbl = "rrepl_merge_" + uid
+  emit(cg, "  br i1 " + matched + ", label %" + match_lbl + ", label %" + nomatch_lbl)
+  // No match: return copy of original text
+  emit(cg, nomatch_lbl + ":")
+  orig_len = cg_fresh_reg(cg)
+  emit(cg, "  " + orig_len + " = call i64 @strlen(ptr " + txt_ptr + ")")
+  orig_sz = cg_fresh_reg(cg)
+  emit(cg, "  " + orig_sz + " = add i64 " + orig_len + ", 1")
+  orig_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + orig_buf + " = call ptr @malloc(i64 " + orig_sz + ")")
+  omc = cg_fresh_reg(cg)
+  emit(cg, "  " + omc + " = call ptr @memcpy(ptr " + orig_buf + ", ptr " + txt_ptr + ", i64 " + orig_sz + ")")
+  orig_i = cg_fresh_reg(cg)
+  emit(cg, "  " + orig_i + " = ptrtoint ptr " + orig_buf + " to i64")
+  emit(cg, "  br label %" + merge_lbl)
+  // Match: build prefix + replacement + suffix
+  emit(cg, match_lbl + ":")
+  rm_so_32 = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_so_32 + " = load i32, ptr " + match_buf)
+  rm_so = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_so + " = sext i32 " + rm_so_32 + " to i64")
+  rm_eo_gep = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_eo_gep + " = getelementptr i8, ptr " + match_buf + ", i64 4")
+  rm_eo_32 = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_eo_32 + " = load i32, ptr " + rm_eo_gep)
+  rm_eo = cg_fresh_reg(cg)
+  emit(cg, "  " + rm_eo + " = sext i32 " + rm_eo_32 + " to i64")
+  // prefix_len = rm_so, suffix needs total text length
+  txt_len = cg_fresh_reg(cg)
+  emit(cg, "  " + txt_len + " = call i64 @strlen(ptr " + txt_ptr + ")")
+  suffix_len = cg_fresh_reg(cg)
+  emit(cg, "  " + suffix_len + " = sub i64 " + txt_len + ", " + rm_eo)
+  repl_len = cg_fresh_reg(cg)
+  emit(cg, "  " + repl_len + " = call i64 @strlen(ptr " + repl_ptr + ")")
+  // total = prefix_len + repl_len + suffix_len + 1
+  t1 = cg_fresh_reg(cg)
+  emit(cg, "  " + t1 + " = add i64 " + rm_so + ", " + repl_len)
+  t2 = cg_fresh_reg(cg)
+  emit(cg, "  " + t2 + " = add i64 " + t1 + ", " + suffix_len)
+  total = cg_fresh_reg(cg)
+  emit(cg, "  " + total + " = add i64 " + t2 + ", 1")
+  rbuf = cg_fresh_reg(cg)
+  emit(cg, "  " + rbuf + " = call ptr @malloc(i64 " + total + ")")
+  // memcpy prefix: text[0..rm_so]
+  mc1 = cg_fresh_reg(cg)
+  emit(cg, "  " + mc1 + " = call ptr @memcpy(ptr " + rbuf + ", ptr " + txt_ptr + ", i64 " + rm_so + ")")
+  // memcpy replacement
+  mid = cg_fresh_reg(cg)
+  emit(cg, "  " + mid + " = getelementptr i8, ptr " + rbuf + ", i64 " + rm_so)
+  mc2 = cg_fresh_reg(cg)
+  emit(cg, "  " + mc2 + " = call ptr @memcpy(ptr " + mid + ", ptr " + repl_ptr + ", i64 " + repl_len + ")")
+  // memcpy suffix: text[rm_eo..end]
+  sfx_dst = cg_fresh_reg(cg)
+  emit(cg, "  " + sfx_dst + " = getelementptr i8, ptr " + mid + ", i64 " + repl_len)
+  sfx_src = cg_fresh_reg(cg)
+  emit(cg, "  " + sfx_src + " = getelementptr i8, ptr " + txt_ptr + ", i64 " + rm_eo)
+  sfx_cp_sz = cg_fresh_reg(cg)
+  emit(cg, "  " + sfx_cp_sz + " = add i64 " + suffix_len + ", 1")
+  mc3 = cg_fresh_reg(cg)
+  emit(cg, "  " + mc3 + " = call ptr @memcpy(ptr " + sfx_dst + ", ptr " + sfx_src + ", i64 " + sfx_cp_sz + ")")
+  result_i = cg_fresh_reg(cg)
+  emit(cg, "  " + result_i + " = ptrtoint ptr " + rbuf + " to i64")
+  emit(cg, "  br label %" + merge_lbl)
+  // Merge
+  emit(cg, merge_lbl + ":")
+  cg_set_current_block(cg, merge_lbl)
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = phi i64 [" + orig_i + ", %" + nomatch_lbl + "], [" + result_i + ", %" + match_lbl + "]")
   cg_set_val(cg, ir_dest(inst), r)
   0
 }
@@ -5392,6 +5605,11 @@ compile_inst(cg:I inst:I) I {
   if op == IR_MD5 { compile_sha_generic(cg, inst, "MD5", 16) return 0 }
   if op == IR_HMAC_SHA256 { compile_hmac_sha256(cg, inst) return 0 }
   if op == IR_RANDOM_BYTES { compile_random_bytes(cg, inst) return 0 }
+
+  // ------ Regex: regex_match/regex_find/regex_replace ------
+  if op == IR_REGEX_MATCH { compile_regex_match(cg, inst) return 0 }
+  if op == IR_REGEX_FIND { compile_regex_find(cg, inst) return 0 }
+  if op == IR_REGEX_REPLACE { compile_regex_replace(cg, inst) return 0 }
 
   // ------ Math: abs/min/max (223-225) ------
   if op == IR_ABS {

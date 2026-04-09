@@ -159,6 +159,10 @@
         {
           "name": "support.function.curl.sans",
           "match": "\\b(cinit|csets|cseti|cperf|cclean|cinfo|curl_slist_append|curl_slist_free)\\b"
+        },
+        {
+          "name": "support.function.regex.sans",
+          "match": "\\b(regex_match|rmatch|regex_find|rfind|regex_replace|rrepl)\\b"
         }
       ]
     },
