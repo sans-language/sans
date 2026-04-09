@@ -1685,6 +1685,28 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       return make_type(TY_STRING)
     }
 
+    // ------ Crypto ---------------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "sha256" {
+      if nargs != 1 { tc_error("sha256() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+    if name == "sha512" {
+      if nargs != 1 { tc_error("sha512() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+    if name == "md5" {
+      if nargs != 1 { tc_error("md5() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+    if name == "hmac_sha256" || name == "hmac256" {
+      if nargs != 2 { tc_error("hmac_sha256() takes exactly 2 arguments") }
+      return make_type(TY_STRING)
+    }
+    if name == "random_bytes" || name == "randb" {
+      if nargs != 1 { tc_error("random_bytes() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+
     // ------ Math ---------------------------------------------------------------------------------------------------------------------------------------------------------
     if name == "abs" {
       if nargs != 1 { tc_error("abs() takes exactly 1 argument") }

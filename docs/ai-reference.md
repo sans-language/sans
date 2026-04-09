@@ -126,6 +126,11 @@ urle(s)           url_encode(s)         S -> S (percent-encode for URLs)
 urld(s)           url_decode(s)         S -> S (decode percent-encoded; + -> space)
 hexe(s)           hex_encode(s)         S -> S (hex encode, lowercase)
 hexd(s)           hex_decode(s)         S -> S (hex decode)
+sha256(s)                               S -> S (SHA-256 hex digest)
+sha512(s)                               S -> S (SHA-512 hex digest)
+md5(s)                                  S -> S (MD5 hex digest)
+hmac256(k msg)    hmac_sha256(k msg)    S S -> S (HMAC-SHA256 hex digest)
+randb(n)          random_bytes(n)       I -> S (n crypto random bytes as hex)
 fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I

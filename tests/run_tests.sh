@@ -539,6 +539,9 @@ run_test "path_basic"              "$REPO_ROOT/tests/fixtures/path_basic.sans"  
 # Encoding
 run_test "encoding_basic"          "$REPO_ROOT/tests/fixtures/encoding_basic.sans"          0
 
+# Crypto
+run_test "crypto_basic"            "$REPO_ROOT/tests/fixtures/crypto_basic.sans"            0
+
 # ---------------------------------------------------------------------------
 # Runtime error tests (expected to compile but fail at runtime)
 # ---------------------------------------------------------------------------

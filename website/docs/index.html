@@ -49,6 +49,7 @@
         <li><a href="#assertions">Assertions</a></li>
         <li><a href="#path">Path Manipulation</a></li>
         <li><a href="#encoding">Encoding</a></li>
+        <li><a href="#crypto">Crypto</a></li>
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
         <li><a href="#runtime-safety">Runtime Safety</a></li>
@@ -783,6 +784,25 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
 <span class="fn">url_decode</span>(<span class="str">"hello%20world"</span>)  <span class="comment">// "hello world"</span>
 <span class="fn">hex_encode</span>(<span class="str">"ABC"</span>)  <span class="comment">// "414243"</span>
 <span class="fn">hex_decode</span>(<span class="str">"414243"</span>)  <span class="comment">// "ABC"</span></code></pre>
+
+    <h3 id="crypto">Crypto</h3>
+    <p>Hash functions, HMAC, and cryptographic random bytes via OpenSSL. All return lowercase hex-encoded strings.</p>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>sha256(s)</code></td><td>&mdash;</td><td><code>(S) -&gt; S</code></td><td>SHA-256 hash (64-char hex).</td></tr>
+        <tr><td><code>sha512(s)</code></td><td>&mdash;</td><td><code>(S) -&gt; S</code></td><td>SHA-512 hash (128-char hex).</td></tr>
+        <tr><td><code>md5(s)</code></td><td>&mdash;</td><td><code>(S) -&gt; S</code></td><td>MD5 hash (32-char hex).</td></tr>
+        <tr><td><code>hmac_sha256(key, msg)</code></td><td><code>hmac256</code></td><td><code>(S, S) -&gt; S</code></td><td>HMAC-SHA256 (64-char hex).</td></tr>
+        <tr><td><code>random_bytes(n)</code></td><td><code>randb</code></td><td><code>(I) -&gt; S</code></td><td>n crypto random bytes as hex (2*n chars).</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="fn">sha256</span>(<span class="str">"hello"</span>)              <span class="comment">// "2cf24dba5fb0a30e..."</span>
+<span class="fn">md5</span>(<span class="str">"hello"</span>)                 <span class="comment">// "5d41402abc4b2a76..."</span>
+<span class="fn">hmac_sha256</span>(<span class="str">"secret"</span> <span class="str">"msg"</span>)  <span class="comment">// HMAC-SHA256 hex digest</span>
+<span class="fn">hmac256</span>(<span class="str">"key"</span> <span class="str">"data"</span>)       <span class="comment">// alias</span>
+r = <span class="fn">random_bytes</span>(<span class="num">16</span>)        <span class="comment">// 32-char random hex string</span>
+r = <span class="fn">randb</span>(<span class="num">8</span>)                 <span class="comment">// 16-char random hex string</span></code></pre>
 
     <h3 id="filesystem">Filesystem &amp; Process</h3>
     <table>

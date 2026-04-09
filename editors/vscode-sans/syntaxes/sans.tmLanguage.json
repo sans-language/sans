@@ -157,6 +157,10 @@
           "match": "\\b(base64_encode|b64e|base64_decode|b64d|url_encode|urle|url_decode|urld|hex_encode|hexe|hex_decode|hexd)\\b"
         },
         {
+          "name": "support.function.crypto.sans",
+          "match": "\\b(sha256|sha512|md5|hmac_sha256|hmac256|random_bytes|randb)\\b"
+        },
+        {
           "name": "support.function.fs.sans",
           "match": "\\b(getenv|genv|mkdir|rmdir|remove|rm|listdir|ls|is_dir|sh|shell)\\b"
         },

@@ -786,6 +786,13 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "hex_encode" || name == "hexe" { lower_call_1(ctx, args, IR_HEX_ENCODE, IRTY_STR) }
   else if name == "hex_decode" || name == "hexd" { lower_call_1(ctx, args, IR_HEX_DECODE, IRTY_STR) }
 
+  // ------ Crypto ------
+  else if name == "sha256" { lower_call_1(ctx, args, IR_SHA256, IRTY_STR) }
+  else if name == "sha512" { lower_call_1(ctx, args, IR_SHA512, IRTY_STR) }
+  else if name == "md5" { lower_call_1(ctx, args, IR_MD5, IRTY_STR) }
+  else if name == "hmac_sha256" || name == "hmac256" { lower_call_2(ctx, args, IR_HMAC_SHA256, IRTY_STR) }
+  else if name == "random_bytes" || name == "randb" { lower_call_1(ctx, args, IR_RANDOM_BYTES, IRTY_STR) }
+
   // ------ Math ------
   else if name == "abs" { lower_call_1(ctx, args, IR_ABS, IRTY_INT) }
   else if name == "min" { lower_call_2(ctx, args, IR_MIN, IRTY_INT) }

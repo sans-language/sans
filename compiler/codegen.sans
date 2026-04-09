@@ -425,7 +425,6 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare i32 @SSL_shutdown(ptr)")
   emit(cg, "declare void @SSL_free(ptr)")
 
-
   // ------ zlib ------
   emit(cg, "declare i32 @deflateInit2_(ptr, i32, i32, i32, i32, i32, ptr, i32)")
   emit(cg, "declare i32 @deflate(ptr, i32)")
@@ -823,6 +822,15 @@ emit_externals(cg:I) I {
   emit(cg, "declare i32 @SSL_write(ptr, ptr, i32)")
   emit(cg, "declare i32 @SSL_shutdown(ptr)")
   emit(cg, "declare void @SSL_free(ptr)")
+
+  // ------ OpenSSL Crypto (hash/HMAC/random) ------
+  emit(cg, "declare ptr @SHA256(ptr, i64, ptr)")
+  emit(cg, "declare ptr @SHA512(ptr, i64, ptr)")
+  emit(cg, "declare ptr @MD5(ptr, i64, ptr)")
+  emit(cg, "declare ptr @EVP_sha256()")
+  emit(cg, "declare ptr @HMAC(ptr, ptr, i32, ptr, i64, ptr, ptr)")
+  emit(cg, "declare i32 @RAND_bytes(ptr, i32)")
+  emit(cg, "@.hex_table = private unnamed_addr constant [17 x i8] c\"0123456789abcdef\\00\"")
 
   // __sans_args is defined inline (not declared as external)
 
@@ -1268,6 +1276,210 @@ cg_label_id(cg:I) S {
   n = load64(cg + 72)
   store64(cg + 72, n + 1)
   "L" + str(n)
+}
+
+// ------ Crypto codegen helpers (inline LLVM IR, no C runtime) ------
+
+compile_bytes_to_hex(cg:I raw_buf:S raw_len:I entry_lbl:S) S {
+  uid = cg_label_id(cg)
+  hex_len = raw_len * 2
+  hex_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + hex_buf + " = call ptr @malloc(i64 " + str(hex_len + 1) + ")")
+  loop_lbl = "hex_loop_" + uid
+  done_lbl = "hex_done_" + uid
+  phi_i = "%hex_i_" + uid
+  i_next = "%hex_inx_" + uid
+  emit(cg, "  br label %" + loop_lbl)
+  emit(cg, loop_lbl + ":")
+  emit(cg, "  " + phi_i + " = phi i64 [0, %" + entry_lbl + "], [" + i_next + ", %" + loop_lbl + "]")
+  bp = cg_fresh_reg(cg)
+  emit(cg, "  " + bp + " = getelementptr i8, ptr " + raw_buf + ", i64 " + phi_i)
+  bv = cg_fresh_reg(cg)
+  emit(cg, "  " + bv + " = load i8, ptr " + bp)
+  bext = cg_fresh_reg(cg)
+  emit(cg, "  " + bext + " = zext i8 " + bv + " to i64")
+  hi_idx = cg_fresh_reg(cg)
+  emit(cg, "  " + hi_idx + " = lshr i64 " + bext + ", 4")
+  lo_idx = cg_fresh_reg(cg)
+  emit(cg, "  " + lo_idx + " = and i64 " + bext + ", 15")
+  hi_p = cg_fresh_reg(cg)
+  emit(cg, "  " + hi_p + " = getelementptr i8, ptr @.hex_table, i64 " + hi_idx)
+  lo_p = cg_fresh_reg(cg)
+  emit(cg, "  " + lo_p + " = getelementptr i8, ptr @.hex_table, i64 " + lo_idx)
+  hi_ch = cg_fresh_reg(cg)
+  emit(cg, "  " + hi_ch + " = load i8, ptr " + hi_p)
+  lo_ch = cg_fresh_reg(cg)
+  emit(cg, "  " + lo_ch + " = load i8, ptr " + lo_p)
+  oi = cg_fresh_reg(cg)
+  emit(cg, "  " + oi + " = shl i64 " + phi_i + ", 1")
+  oi1 = cg_fresh_reg(cg)
+  emit(cg, "  " + oi1 + " = or i64 " + oi + ", 1")
+  op_hi = cg_fresh_reg(cg)
+  emit(cg, "  " + op_hi + " = getelementptr i8, ptr " + hex_buf + ", i64 " + oi)
+  op_lo = cg_fresh_reg(cg)
+  emit(cg, "  " + op_lo + " = getelementptr i8, ptr " + hex_buf + ", i64 " + oi1)
+  emit(cg, "  store i8 " + hi_ch + ", ptr " + op_hi)
+  emit(cg, "  store i8 " + lo_ch + ", ptr " + op_lo)
+  emit(cg, "  " + i_next + " = add i64 " + phi_i + ", 1")
+  done_cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + done_cmp + " = icmp eq i64 " + i_next + ", " + str(raw_len))
+  emit(cg, "  br i1 " + done_cmp + ", label %" + done_lbl + ", label %" + loop_lbl)
+  emit(cg, done_lbl + ":")
+  term_p = cg_fresh_reg(cg)
+  emit(cg, "  " + term_p + " = getelementptr i8, ptr " + hex_buf + ", i64 " + str(hex_len))
+  emit(cg, "  store i8 0, ptr " + term_p)
+  hex_buf
+}
+
+compile_bytes_to_hex_rt(cg:I raw_buf:S raw_len_reg:S entry_lbl:S) S {
+  uid = cg_label_id(cg)
+  hex_len_r = cg_fresh_reg(cg)
+  emit(cg, "  " + hex_len_r + " = shl i64 " + raw_len_reg + ", 1")
+  alloc_sz = cg_fresh_reg(cg)
+  emit(cg, "  " + alloc_sz + " = add i64 " + hex_len_r + ", 1")
+  hex_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + hex_buf + " = call ptr @malloc(i64 " + alloc_sz + ")")
+  zero_cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + zero_cmp + " = icmp eq i64 " + raw_len_reg + ", 0")
+  loop_lbl = "hxrt_loop_" + uid
+  body_done_lbl = "hxrt_bdone_" + uid
+  done_lbl = "hxrt_done_" + uid
+  phi_i = "%hxrt_i_" + uid
+  i_next = "%hxrt_inx_" + uid
+  emit(cg, "  br i1 " + zero_cmp + ", label %" + done_lbl + ", label %" + loop_lbl)
+  emit(cg, loop_lbl + ":")
+  emit(cg, "  " + phi_i + " = phi i64 [0, %" + entry_lbl + "], [" + i_next + ", %" + loop_lbl + "]")
+  bp = cg_fresh_reg(cg)
+  emit(cg, "  " + bp + " = getelementptr i8, ptr " + raw_buf + ", i64 " + phi_i)
+  bv = cg_fresh_reg(cg)
+  emit(cg, "  " + bv + " = load i8, ptr " + bp)
+  bext = cg_fresh_reg(cg)
+  emit(cg, "  " + bext + " = zext i8 " + bv + " to i64")
+  hi_idx = cg_fresh_reg(cg)
+  emit(cg, "  " + hi_idx + " = lshr i64 " + bext + ", 4")
+  lo_idx = cg_fresh_reg(cg)
+  emit(cg, "  " + lo_idx + " = and i64 " + bext + ", 15")
+  hi_p = cg_fresh_reg(cg)
+  emit(cg, "  " + hi_p + " = getelementptr i8, ptr @.hex_table, i64 " + hi_idx)
+  lo_p = cg_fresh_reg(cg)
+  emit(cg, "  " + lo_p + " = getelementptr i8, ptr @.hex_table, i64 " + lo_idx)
+  hi_ch = cg_fresh_reg(cg)
+  emit(cg, "  " + hi_ch + " = load i8, ptr " + hi_p)
+  lo_ch = cg_fresh_reg(cg)
+  emit(cg, "  " + lo_ch + " = load i8, ptr " + lo_p)
+  oi = cg_fresh_reg(cg)
+  emit(cg, "  " + oi + " = shl i64 " + phi_i + ", 1")
+  oi1 = cg_fresh_reg(cg)
+  emit(cg, "  " + oi1 + " = or i64 " + oi + ", 1")
+  op_hi = cg_fresh_reg(cg)
+  emit(cg, "  " + op_hi + " = getelementptr i8, ptr " + hex_buf + ", i64 " + oi)
+  op_lo = cg_fresh_reg(cg)
+  emit(cg, "  " + op_lo + " = getelementptr i8, ptr " + hex_buf + ", i64 " + oi1)
+  emit(cg, "  store i8 " + hi_ch + ", ptr " + op_hi)
+  emit(cg, "  store i8 " + lo_ch + ", ptr " + op_lo)
+  emit(cg, "  " + i_next + " = add i64 " + phi_i + ", 1")
+  done_cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + done_cmp + " = icmp eq i64 " + i_next + ", " + raw_len_reg)
+  emit(cg, "  br i1 " + done_cmp + ", label %" + body_done_lbl + ", label %" + loop_lbl)
+  emit(cg, body_done_lbl + ":")
+  emit(cg, "  br label %" + done_lbl)
+  emit(cg, done_lbl + ":")
+  term_p = cg_fresh_reg(cg)
+  emit(cg, "  " + term_p + " = getelementptr i8, ptr " + hex_buf + ", i64 " + hex_len_r)
+  emit(cg, "  store i8 0, ptr " + term_p)
+  hex_buf
+}
+
+compile_sha_generic(cg:I inst:I hash_fn:S raw_len:I) I {
+  val = cg_get_val(cg, ir_field(inst, 16))
+  uid = cg_label_id(cg)
+  entry_lbl = "sha_entry_" + uid
+  p = cg_fresh_reg(cg)
+  emit(cg, "  " + p + " = inttoptr i64 " + val + " to ptr")
+  slen_r = cg_fresh_reg(cg)
+  emit(cg, "  " + slen_r + " = call i64 @strlen(ptr " + p + ")")
+  hash_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + hash_buf + " = alloca [" + str(raw_len) + " x i8]")
+  dummy = cg_fresh_reg(cg)
+  emit(cg, "  " + dummy + " = call ptr @" + hash_fn + "(ptr " + p + ", i64 " + slen_r + ", ptr " + hash_buf + ")")
+  emit(cg, "  br label %" + entry_lbl)
+  emit(cg, entry_lbl + ":")
+  hex_ptr = compile_bytes_to_hex(cg, hash_buf, raw_len, entry_lbl)
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = ptrtoint ptr " + hex_ptr + " to i64")
+  cg_set_val(cg, ir_dest(inst), r)
+  0
+}
+
+compile_hmac_sha256(cg:I inst:I) I {
+  key_val = cg_get_val(cg, ir_field(inst, 16))
+  msg_val = cg_get_val(cg, ir_field(inst, 24))
+  uid = cg_label_id(cg)
+  entry_lbl = "hmac_entry_" + uid
+  key_p = cg_fresh_reg(cg)
+  emit(cg, "  " + key_p + " = inttoptr i64 " + key_val + " to ptr")
+  msg_p = cg_fresh_reg(cg)
+  emit(cg, "  " + msg_p + " = inttoptr i64 " + msg_val + " to ptr")
+  key_len = cg_fresh_reg(cg)
+  emit(cg, "  " + key_len + " = call i64 @strlen(ptr " + key_p + ")")
+  msg_len = cg_fresh_reg(cg)
+  emit(cg, "  " + msg_len + " = call i64 @strlen(ptr " + msg_p + ")")
+  key_len32 = cg_fresh_reg(cg)
+  emit(cg, "  " + key_len32 + " = trunc i64 " + key_len + " to i32")
+  hash_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + hash_buf + " = alloca [32 x i8]")
+  out_len = cg_fresh_reg(cg)
+  emit(cg, "  " + out_len + " = alloca i32")
+  emit(cg, "  store i32 32, ptr " + out_len)
+  evp = cg_fresh_reg(cg)
+  emit(cg, "  " + evp + " = call ptr @EVP_sha256()")
+  hmac_r = cg_fresh_reg(cg)
+  emit(cg, "  " + hmac_r + " = call ptr @HMAC(ptr " + evp + ", ptr " + key_p + ", i32 " + key_len32 + ", ptr " + msg_p + ", i64 " + msg_len + ", ptr " + hash_buf + ", ptr " + out_len + ")")
+  emit(cg, "  br label %" + entry_lbl)
+  emit(cg, entry_lbl + ":")
+  hex_ptr = compile_bytes_to_hex(cg, hash_buf, 32, entry_lbl)
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = ptrtoint ptr " + hex_ptr + " to i64")
+  cg_set_val(cg, ir_dest(inst), r)
+  0
+}
+
+compile_random_bytes(cg:I inst:I) I {
+  n_val = cg_get_val(cg, ir_field(inst, 16))
+  uid = cg_label_id(cg)
+  chk_lbl = "randb_chk_" + uid
+  pos_lbl = "randb_pos_" + uid
+  merge_lbl = "randb_merge_" + uid
+  emit(cg, "  br label %" + chk_lbl)
+  emit(cg, chk_lbl + ":")
+  n_cmp = cg_fresh_reg(cg)
+  emit(cg, "  " + n_cmp + " = icmp sle i64 " + n_val + ", 0")
+  empty_r = cg_fresh_reg(cg)
+  emit(cg, "  " + empty_r + " = call ptr @malloc(i64 1)")
+  emit(cg, "  store i8 0, ptr " + empty_r)
+  empty_i = cg_fresh_reg(cg)
+  emit(cg, "  " + empty_i + " = ptrtoint ptr " + empty_r + " to i64")
+  emit(cg, "  br i1 " + n_cmp + ", label %" + merge_lbl + ", label %" + pos_lbl)
+  emit(cg, pos_lbl + ":")
+  raw_buf = cg_fresh_reg(cg)
+  emit(cg, "  " + raw_buf + " = call ptr @malloc(i64 " + n_val + ")")
+  n32 = cg_fresh_reg(cg)
+  emit(cg, "  " + n32 + " = trunc i64 " + n_val + " to i32")
+  rand_r = cg_fresh_reg(cg)
+  emit(cg, "  " + rand_r + " = call i32 @RAND_bytes(ptr " + raw_buf + ", i32 " + n32 + ")")
+  hex_ptr = compile_bytes_to_hex_rt(cg, raw_buf, n_val, pos_lbl)
+  emit(cg, "  call void @free(ptr " + raw_buf + ")")
+  hex_i = cg_fresh_reg(cg)
+  emit(cg, "  " + hex_i + " = ptrtoint ptr " + hex_ptr + " to i64")
+  from_lbl = "randb_from_" + uid
+  emit(cg, "  br label %" + from_lbl)
+  emit(cg, from_lbl + ":")
+  emit(cg, "  br label %" + merge_lbl)
+  emit(cg, merge_lbl + ":")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = phi i64 [" + empty_i + ", %" + chk_lbl + "], [" + hex_i + ", %" + from_lbl + "]")
+  cg_set_val(cg, ir_dest(inst), r)
+  0
 }
 
 // ------ Generic runtime call helpers ---------------------------------------------------------------------------------------------------
@@ -5155,6 +5367,13 @@ compile_inst(cg:I inst:I) I {
   if op == IR_URL_ENCODE { compile_rt1(cg, inst, "sans_url_encode") return 0 }
   if op == IR_HEX_ENCODE { compile_rt1(cg, inst, "sans_hex_encode") return 0 }
   if op == IR_HEX_DECODE { compile_rt1(cg, inst, "sans_hex_decode") return 0 }
+
+  // ------ Crypto: sha256/sha512/md5/hmac/random (inline LLVM IR) ------
+  if op == IR_SHA256 { compile_sha_generic(cg, inst, "SHA256", 32) return 0 }
+  if op == IR_SHA512 { compile_sha_generic(cg, inst, "SHA512", 64) return 0 }
+  if op == IR_MD5 { compile_sha_generic(cg, inst, "MD5", 16) return 0 }
+  if op == IR_HMAC_SHA256 { compile_hmac_sha256(cg, inst) return 0 }
+  if op == IR_RANDOM_BYTES { compile_random_bytes(cg, inst) return 0 }
 
   // ------ Math: abs/min/max (223-225) ------
   if op == IR_ABS {

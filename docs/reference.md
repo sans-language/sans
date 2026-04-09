@@ -373,6 +373,28 @@ hex_encode("ABC")  // "414243"
 hex_decode("414243")  // "ABC"
 ```
 
+### Crypto
+
+Hash functions, HMAC, and cryptographic random bytes via OpenSSL. All return lowercase hex-encoded strings.
+
+| Function | Alias | Signature | Description |
+|----------|-------|-----------|-------------|
+| `sha256(s)` | — | `(String) -> String` | SHA-256 hash, returns 64-char hex string. |
+| `sha512(s)` | — | `(String) -> String` | SHA-512 hash, returns 128-char hex string. |
+| `md5(s)` | — | `(String) -> String` | MD5 hash, returns 32-char hex string. |
+| `hmac_sha256(key, msg)` | `hmac256` | `(String, String) -> String` | HMAC-SHA256, returns 64-char hex string. |
+| `random_bytes(n)` | `randb` | `(Int) -> String` | n cryptographically random bytes as hex (2*n chars). |
+
+```sans
+sha256("hello")              // "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+sha512("hello")              // "9b71d224bd62f378..."
+md5("hello")                 // "5d41402abc4b2a76b9719d911017c592"
+hmac_sha256("secret" "msg")  // HMAC-SHA256 hex digest
+hmac256("key" "data")        // alias
+r = random_bytes(16)         // 32-char random hex string
+r = randb(8)                 // 16-char random hex string
+```
+
 ### Filesystem & Process
 
 | Function | Alias | Signature | Description |

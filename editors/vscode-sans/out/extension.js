@@ -153,6 +153,15 @@ const HOVER_DATA = {
     'hex_decode': '**hex_decode**(s: String) -> String\n\nHex decode: each pair of hex chars becomes 1 byte.',
     'hexd': '**hex_decode**(s: String) -> String\n\nHex decode: each pair of hex chars becomes 1 byte.',
 
+    // Crypto
+    'sha256': '**sha256**(s: String) -> String\n\nSHA-256 hash. Returns 64-char lowercase hex string.',
+    'sha512': '**sha512**(s: String) -> String\n\nSHA-512 hash. Returns 128-char lowercase hex string.',
+    'md5': '**md5**(s: String) -> String\n\nMD5 hash. Returns 32-char lowercase hex string.',
+    'hmac_sha256': '**hmac_sha256**(key: String, msg: String) -> String\n\nHMAC-SHA256. Returns 64-char lowercase hex string.',
+    'hmac256': '**hmac_sha256**(key: String, msg: String) -> String\n\nHMAC-SHA256. Returns 64-char lowercase hex string.',
+    'random_bytes': '**random_bytes**(n: Int) -> String\n\nn cryptographically random bytes as hex string (2*n chars).',
+    'randb': '**random_bytes**(n: Int) -> String\n\nn cryptographically random bytes as hex string (2*n chars).',
+
     // CLI tools
     'lint': '**sans lint** <file|dir> — Static analysis without building.\n\nRules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut.\n\n`--error=<rule>` promotes to error. `--quiet` suppresses warnings.\n\nConfig in sans.json: `{"lint":{"rule":"error|warn|off"}}`.',
 };
