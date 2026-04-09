@@ -2,7 +2,7 @@
   "name": "sans-lang",
   "displayName": "Sans Language",
   "description": "Sans language support via LSP",
-  "version": "0.8.7",
+  "version": "0.9.0",
   "publisher": "sans-lang",
   "engines": {
     "vscode": "^1.75.0"
