@@ -1,0 +1,27 @@
+main() I {
+  // char_count on ASCII equals slen
+  p(str(char_count("hello")))
+  p(str(ccount("abc")))
+
+  // is_ascii
+  p(str(is_ascii("hello")))
+
+  // utf8_valid
+  p(str(utf8_valid("hello")))
+
+  // string_reverse on ASCII
+  p(string_reverse("hello"))
+  p(srev("abc"))
+
+  // chars on ASCII — check count
+  c = chars("hi")
+  p(str(c.len()))
+
+  // slen returns bytes
+  p(str(slen("hello")))
+
+  // char_count on ASCII should equal slen
+  p(str(char_count("abc") == slen("abc")))
+
+  0
+}

@@ -102,6 +102,7 @@ main() {
 | **Option** | `Option<T>` / `O<T>` — `some(v)`, `none()`, `.is_some`, `.unwrap_or(d)`, `opt!`, `opt?` |
 | **Maps** | `M<K,V>()` (default `M<S,I>`) with `set`, `get` (returns `Option<V>`), `has`, `keys`, `vals` |
 | **String methods** | `len`, `trim`, `split`, `starts_with`, `contains`, `replace`, `[0:5]` slicing |
+| **Unicode / UTF-8** | `char_count`/`ccount`, `chars`, `is_ascii`, `utf8_valid`, `string_reverse`/`srev` |
 | **String interpolation** | `"Hello {name}!"` with expression support `"{x + 1}"` |
 | **Modules** | `import "math"`, `pub import "mod"` (re-exports) |
 | **Package Manager** | `sans pkg init`, `sans pkg add <url>`, `sans pkg install`, `sans pkg remove <url>` |

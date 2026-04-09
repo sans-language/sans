@@ -50,6 +50,7 @@
         <li><a href="#path">Path Manipulation</a></li>
         <li><a href="#encoding">Encoding</a></li>
         <li><a href="#crypto">Crypto</a></li>
+        <li><a href="#unicode">Unicode / UTF-8</a></li>
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
         <li><a href="#runtime-safety">Runtime Safety</a></li>
@@ -204,6 +205,13 @@ s.<span class="fn">pad_left</span>(<span class="num">5</span>, <span class="str"
 s.<span class="fn">pad_right</span>(<span class="num">6</span>, <span class="str">"."</span>)             <span class="comment">// "hi...."</span>
 s.<span class="fn">bytes</span>()                       <span class="comment">// [65, 66, 67] — byte values</span>
 s.<span class="fn">to_int</span>()                      <span class="comment">// "42".to_int() = 42</span>
+
+<span class="comment">// Unicode / UTF-8</span>
+<span class="fn">char_count</span>(s) <span class="fn">ccount</span>(s)         <span class="comment">// UTF-8 codepoint count</span>
+<span class="fn">chars</span>(s)                        <span class="comment">// split into UTF-8 char array</span>
+<span class="fn">is_ascii</span>(s)                     <span class="comment">// 1 if all bytes &lt; 128</span>
+<span class="fn">utf8_valid</span>(s)                   <span class="comment">// 1 if valid UTF-8</span>
+<span class="fn">string_reverse</span>(s) <span class="fn">srev</span>(s)      <span class="comment">// UTF-8 aware reverse</span>
 <span class="num">42</span>.<span class="fn">to_str</span>()                     <span class="comment">// 42.to_str() = "42"</span>
 
 <span class="comment">// Math &amp; range</span>
@@ -840,6 +848,25 @@ r = <span class="fn">randb</span>(<span class="num">8</span>)                 <s
 <span class="fn">regex_replace</span>(<span class="str">"[0-9]+"</span> <span class="str">"hello123world"</span> <span class="str">"XXX"</span>)  <span class="comment">// "helloXXXworld"</span>
 <span class="fn">rrepl</span>(<span class="str">"[0-9]+"</span> <span class="str">"no digits"</span> <span class="str">"XXX"</span>)              <span class="comment">// "no digits"</span></code></pre>
 
+    <h3 id="unicode">Unicode / UTF-8</h3>
+    <p>Sans strings are byte arrays. These functions interpret bytes as UTF-8 without changing the underlying representation. <code>slen(s)</code> returns byte length; use <code>char_count(s)</code> for codepoint count.</p>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>char_count(s)</code></td><td><code>ccount</code></td><td><code>(S) -&gt; I</code></td><td>Count UTF-8 codepoints (not bytes).</td></tr>
+        <tr><td><code>chars(s)</code></td><td>&mdash;</td><td><code>(S) -&gt; Array&lt;S&gt;</code></td><td>Split string into array of UTF-8 characters.</td></tr>
+        <tr><td><code>is_ascii(s)</code></td><td>&mdash;</td><td><code>(S) -&gt; I</code></td><td>Returns 1 if all bytes are ASCII (&lt; 128).</td></tr>
+        <tr><td><code>utf8_valid(s)</code></td><td>&mdash;</td><td><code>(S) -&gt; I</code></td><td>Returns 1 if string is valid UTF-8.</td></tr>
+        <tr><td><code>string_reverse(s)</code></td><td><code>srev</code></td><td><code>(S) -&gt; S</code></td><td>UTF-8 aware reverse (preserves multi-byte chars).</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="fn">char_count</span>(<span class="str">"hello"</span>)         <span class="comment">// 5</span>
+<span class="fn">is_ascii</span>(<span class="str">"hello"</span>)           <span class="comment">// 1</span>
+<span class="fn">utf8_valid</span>(<span class="str">"hello"</span>)         <span class="comment">// 1</span>
+<span class="fn">string_reverse</span>(<span class="str">"hello"</span>)    <span class="comment">// "olleh"</span>
+<span class="fn">srev</span>(<span class="str">"abc"</span>)                <span class="comment">// "cba"</span>
+c = <span class="fn">chars</span>(<span class="str">"hi"</span>)            <span class="comment">// ["h" "i"]</span></code></pre>
+
     <h3 id="filesystem">Filesystem &amp; Process</h3>
     <table>
       <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
@@ -878,7 +905,7 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
         <tr><td><code>ralloc(ptr, size)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>realloc</td></tr>
         <tr><td><code>mcpy(dst, src, n)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>memcpy</td></tr>
         <tr><td><code>mcmp(a, b, n)</code></td><td><code>(Int, Int, Int) -&gt; Int</code></td><td>memcmp</td></tr>
-        <tr><td><code>slen(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>strlen on raw pointer</td></tr>
+        <tr><td><code>slen(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>strlen on raw pointer (byte length &mdash; use <code>char_count()</code> for UTF-8)</td></tr>
         <tr><td><code>load8(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>load byte (0-255)</td></tr>
         <tr><td><code>store8(ptr, val)</code></td><td><code>(Int, Int) -&gt; Int</code></td><td>store byte</td></tr>
         <tr><td><code>load16(ptr)</code></td><td><code>(Int) -&gt; Int</code></td><td>load 16-bit value</td></tr>
