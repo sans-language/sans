@@ -149,6 +149,9 @@
     "pmutex_init" "pmutex_lock" "pmutex_unlock"
     ;; Pointer
     "fptr" "fcall" "fcall2" "fcall3" "ptr" "char_at"
+    ;; Path
+    "path_join" "pjoin" "path_dir" "pdir" "path_base" "pbase"
+    "path_ext" "pext" "path_stem" "pstem" "path_is_abs" "pabs"
     ;; Filesystem
     "getenv" "genv" "mkdir" "rmdir" "remove" "rm"
     "listdir" "ls" "is_dir" "sh" "shell"

@@ -94,6 +94,10 @@ syntax keyword sansBuiltinFn pmutex_init pmutex_lock pmutex_unlock
 " Pointers
 syntax keyword sansBuiltinFn fptr fcall fcall2 fcall3 ptr char_at
 
+" Path
+syntax keyword sansBuiltinFn path_join pjoin path_dir pdir path_base pbase
+syntax keyword sansBuiltinFn path_ext pext path_stem pstem path_is_abs pabs
+
 " File system
 syntax keyword sansBuiltinFn getenv genv mkdir rmdir remove rm listdir ls is_dir sh shell
 

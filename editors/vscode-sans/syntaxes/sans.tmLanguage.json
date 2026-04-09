@@ -149,6 +149,10 @@
           "match": "\\b(fptr|fcall|fcall2|fcall3|ptr|char_at)\\b"
         },
         {
+          "name": "support.function.path.sans",
+          "match": "\\b(path_join|pjoin|path_dir|pdir|path_base|pbase|path_ext|pext|path_stem|pstem|path_is_abs|pabs)\\b"
+        },
+        {
           "name": "support.function.fs.sans",
           "match": "\\b(getenv|genv|mkdir|rmdir|remove|rm|listdir|ls|is_dir|sh|shell)\\b"
         },

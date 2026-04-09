@@ -103,6 +103,12 @@ stof(s)           string_to_float(s)    S -> F
 sleep(ms)                               I -> I (pause ms)
 time()/now()                            -> I (unix timestamp)
 random(max)/rand(max)                   I -> I [0..max) — cryptographically seeded
+pjoin(a b)        path_join(a b)        S S -> S (join with /)
+pdir(p)           path_dir(p)           S -> S (dir component)
+pbase(p)          path_base(p)          S -> S (filename component)
+pext(p)           path_ext(p)           S -> S (extension incl .)
+pstem(p)          path_stem(p)          S -> S (filename without ext)
+pabs(p)           path_is_abs(p)        S -> I (1 if absolute)
 fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I

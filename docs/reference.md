@@ -307,6 +307,26 @@ Failure output example:
 assert_eq failed: expected 42, got 99 at line 5
 ```
 
+### Path Manipulation
+
+| Function | Alias | Signature | Description |
+|----------|-------|-----------|-------------|
+| `path_join(a, b)` | `pjoin` | `(String, String) -> String` | Join two path segments with `/`. If `b` is absolute, returns `b`. |
+| `path_dir(p)` | `pdir` | `(String) -> String` | Directory component (everything before last `/`). Returns `"."` if no `/`. |
+| `path_base(p)` | `pbase` | `(String) -> String` | Filename component (everything after last `/`). Returns whole string if no `/`. |
+| `path_ext(p)` | `pext` | `(String) -> String` | File extension including `.`. Returns `""` if no extension. |
+| `path_stem(p)` | `pstem` | `(String) -> String` | Filename without extension. |
+| `path_is_abs(p)` | `pabs` | `(String) -> Int` | Returns `1` if path starts with `/`, else `0`. |
+
+```sans
+path_join("foo" "bar")            // "foo/bar"
+path_dir("/home/user/file.sans")  // "/home/user"
+path_base("/home/user/file.sans") // "file.sans"
+path_ext("file.sans")             // ".sans"
+path_stem("file.sans")            // "file"
+path_is_abs("/home")              // 1
+```
+
 ### Filesystem & Process
 
 | Function | Alias | Signature | Description |

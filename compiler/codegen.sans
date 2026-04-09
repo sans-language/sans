@@ -673,6 +673,14 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_string_to_float(i64)")
   emit(cg, "declare i64 @sans_string_repeat(i64, i64)")
 
+  // ------ Sans runtime: Path ------
+  emit(cg, "declare i64 @sans_path_join(i64, i64)")
+  emit(cg, "declare i64 @sans_path_dir(i64)")
+  emit(cg, "declare i64 @sans_path_base(i64)")
+  emit(cg, "declare i64 @sans_path_ext(i64)")
+  emit(cg, "declare i64 @sans_path_stem(i64)")
+  emit(cg, "declare i64 @sans_path_is_abs(i64)")
+
   // ------ Sans runtime: Math ------
   emit(cg, "declare i64 @sans_abs(i64)")
   emit(cg, "declare i64 @sans_min(i64, i64)")
@@ -5045,6 +5053,32 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_ARRAY_REVERSE {
     compile_rt1(cg, inst, "sans_array_reverse")
+    return 0
+  }
+
+  // ------ Path (334-339) ------
+  if op == IR_PATH_JOIN {
+    compile_rt2(cg, inst, "sans_path_join")
+    return 0
+  }
+  if op == IR_PATH_DIR {
+    compile_rt1(cg, inst, "sans_path_dir")
+    return 0
+  }
+  if op == IR_PATH_BASE {
+    compile_rt1(cg, inst, "sans_path_base")
+    return 0
+  }
+  if op == IR_PATH_EXT {
+    compile_rt1(cg, inst, "sans_path_ext")
+    return 0
+  }
+  if op == IR_PATH_STEM {
+    compile_rt1(cg, inst, "sans_path_stem")
+    return 0
+  }
+  if op == IR_PATH_IS_ABS {
+    compile_rt1(cg, inst, "sans_path_is_abs")
     return 0
   }
 

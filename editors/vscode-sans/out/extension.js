@@ -126,6 +126,20 @@ const HOVER_DATA = {
     'mutex': '**mutex**(value) — Create mutex wrapping a value',
     'import': '**import** "path" — Import a module',
 
+    // Path
+    'path_join': '**path_join**(a: String, b: String) -> String\n\nJoin two path segments with `/`. If `b` is absolute, returns `b`.',
+    'pjoin': '**path_join**(a: String, b: String) -> String\n\nJoin two path segments with `/`. If `b` is absolute, returns `b`.',
+    'path_dir': '**path_dir**(p: String) -> String\n\nDirectory component (everything before last `/`). Returns `"."` if no `/`.',
+    'pdir': '**path_dir**(p: String) -> String\n\nDirectory component (everything before last `/`). Returns `"."` if no `/`.',
+    'path_base': '**path_base**(p: String) -> String\n\nFilename component (everything after last `/`).',
+    'pbase': '**path_base**(p: String) -> String\n\nFilename component (everything after last `/`).',
+    'path_ext': '**path_ext**(p: String) -> String\n\nFile extension including `.`. Returns `""` if no extension.',
+    'pext': '**path_ext**(p: String) -> String\n\nFile extension including `.`. Returns `""` if no extension.',
+    'path_stem': '**path_stem**(p: String) -> String\n\nFilename without extension.',
+    'pstem': '**path_stem**(p: String) -> String\n\nFilename without extension.',
+    'path_is_abs': '**path_is_abs**(p: String) -> Int\n\nReturns `1` if path starts with `/`, else `0`.',
+    'pabs': '**path_is_abs**(p: String) -> Int\n\nReturns `1` if path starts with `/`, else `0`.',
+
     // CLI tools
     'lint': '**sans lint** <file|dir> — Static analysis without building.\n\nRules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut.\n\n`--error=<rule>` promotes to error. `--quiet` suppresses warnings.\n\nConfig in sans.json: `{"lint":{"rule":"error|warn|off"}}`.',
 };
