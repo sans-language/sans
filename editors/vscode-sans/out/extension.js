@@ -33,6 +33,28 @@ const HOVER_DATA = {
     'ftos': '**float_to_string**(f: Float) → String\n\nConvert float to string.',
     'float_to_string': '**float_to_string**(f: Float) → String\n\nConvert float to string.',
 
+    // Float Math
+    'floor': '**floor**(x: Float) -> Float\n\nRound down to nearest integer.',
+    'ceil': '**ceil**(x: Float) -> Float\n\nRound up to nearest integer.',
+    'round': '**round**(x: Float) -> Float\n\nRound to nearest integer.',
+    'sqrt': '**sqrt**(x: Float) -> Float\n\nSquare root.',
+    'sin': '**sin**(x: Float) -> Float\n\nSine (radians).',
+    'cos': '**cos**(x: Float) -> Float\n\nCosine (radians).',
+    'tan': '**tan**(x: Float) -> Float\n\nTangent (radians).',
+    'asin': '**asin**(x: Float) -> Float\n\nInverse sine.',
+    'acos': '**acos**(x: Float) -> Float\n\nInverse cosine.',
+    'atan': '**atan**(x: Float) -> Float\n\nInverse tangent.',
+    'atan2': '**atan2**(y: Float, x: Float) -> Float\n\nTwo-argument arctangent.',
+    'log': '**log**(x: Float) -> Float\n\nNatural logarithm.',
+    'log10': '**log10**(x: Float) -> Float\n\nBase-10 logarithm.',
+    'exp': '**exp**(x: Float) -> Float\n\nExponential (e^x).',
+    'pow': '**pow**(base: Float, exp: Float) -> Float\n\nRaise base to power.',
+    'fabs': '**fabs**(x: Float) -> Float\n\nAbsolute value (float).',
+    'fmin': '**fmin**(a: Float, b: Float) -> Float\n\nMinimum of two floats.',
+    'fmax': '**fmax**(a: Float, b: Float) -> Float\n\nMaximum of two floats.',
+    'PI': '**PI**() -> Float\n\nPi constant (3.141592653589793).',
+    'E_CONST': '**E_CONST**() -> Float\n\nEuler\'s number (2.718281828459045).',
+
     // JSON
     'jo': '**json_object**() → JsonValue\n\nCreate empty JSON object `{}`.',
     'jobj': '**json_object**() → JsonValue\n\nCreate empty JSON object `{}`.',

@@ -1,0 +1,36 @@
+main() I {
+  a = floor(3.7)
+  b = ceil(3.2)
+  c = sqrt(4.0)
+  d = sin(0.0)
+  e = cos(0.0)
+  f = pow(2.0 3.0)
+  g_val = fabs(5.5)
+  h = log(1.0)
+  i = exp(0.0)
+  j = round(3.5)
+  k = tan(0.0)
+  l = atan2(1.0 1.0)
+  m = fmin(2.0 3.0)
+  n = fmax(2.0 3.0)
+  o = log10(100.0)
+  // floor(3.7) = 3.0, ceil(3.2) = 4.0, sqrt(4.0) = 2.0
+  // sin(0) = 0, cos(0) = 1.0, pow(2,3) = 8.0
+  // fabs(5.5) = 5.5, log(1) = 0, exp(0) = 1.0
+  p(ftos(a))
+  p(ftos(b))
+  p(ftos(c))
+  p(ftos(d))
+  p(ftos(e))
+  p(ftos(f))
+  p(ftos(g_val))
+  p(ftos(h))
+  p(ftos(i))
+  p(ftos(j))
+  p(ftos(k))
+  p(ftos(l))
+  p(ftos(m))
+  p(ftos(n))
+  p(ftos(o))
+  0
+}

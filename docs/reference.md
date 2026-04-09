@@ -238,6 +238,31 @@ p(data)
 | `min(a, b)` | `(Int, Int) -> Int` |
 | `max(a, b)` | `(Int, Int) -> Int` |
 
+### Float Math
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `floor(x)` | `(Float) -> Float` | Round down to nearest integer |
+| `ceil(x)` | `(Float) -> Float` | Round up to nearest integer |
+| `round(x)` | `(Float) -> Float` | Round to nearest integer |
+| `sqrt(x)` | `(Float) -> Float` | Square root |
+| `sin(x)` | `(Float) -> Float` | Sine (radians) |
+| `cos(x)` | `(Float) -> Float` | Cosine (radians) |
+| `tan(x)` | `(Float) -> Float` | Tangent (radians) |
+| `asin(x)` | `(Float) -> Float` | Inverse sine |
+| `acos(x)` | `(Float) -> Float` | Inverse cosine |
+| `atan(x)` | `(Float) -> Float` | Inverse tangent |
+| `atan2(y, x)` | `(Float, Float) -> Float` | Two-argument arctangent |
+| `log(x)` | `(Float) -> Float` | Natural logarithm |
+| `log10(x)` | `(Float) -> Float` | Base-10 logarithm |
+| `exp(x)` | `(Float) -> Float` | Exponential (e^x) |
+| `pow(base, exp)` | `(Float, Float) -> Float` | Raise base to power |
+| `fabs(x)` | `(Float) -> Float` | Absolute value (float) |
+| `fmin(a, b)` | `(Float, Float) -> Float` | Minimum of two floats |
+| `fmax(a, b)` | `(Float, Float) -> Float` | Maximum of two floats |
+| `PI()` | `() -> Float` | Pi constant (3.141592653589793) |
+| `E_CONST()` | `() -> Float` | Euler's number (2.718281828459045) |
+
 ### Collections
 
 | Function | Signature | Description |

@@ -114,7 +114,7 @@
         },
         {
           "name": "support.function.math.sans",
-          "match": "\\b(abs|min|max|range)\\b"
+          "match": "\\b(abs|min|max|range|floor|ceil|round|sqrt|sin|cos|tan|asin|acos|atan|atan2|log|log10|exp|pow|fabs|fmin|fmax|PI|E_CONST)\\b"
         },
         {
           "name": "support.function.system.sans",

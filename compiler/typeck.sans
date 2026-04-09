@@ -1647,6 +1647,28 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       return make_type(TY_INT)
     }
 
+    // ------ Float Math (1-arg) ------
+    if name == "floor" || name == "ceil" || name == "round" || name == "sqrt" || name == "sin" || name == "cos" || name == "tan" || name == "asin" || name == "acos" || name == "atan" || name == "log" || name == "log10" || name == "exp" || name == "fabs" {
+      if nargs != 1 { tc_error(name + "() takes exactly 1 argument") }
+      return make_type(TY_FLOAT)
+    }
+
+    // ------ Float Math (2-arg) ------
+    if name == "pow" || name == "atan2" || name == "fmin" || name == "fmax" {
+      if nargs != 2 { tc_error(name + "() takes exactly 2 arguments") }
+      return make_type(TY_FLOAT)
+    }
+
+    // ------ Float Math Constants ------
+    if name == "PI" {
+      if nargs != 0 { tc_error("PI takes no arguments") }
+      return make_type(TY_FLOAT)
+    }
+    if name == "E_CONST" {
+      if nargs != 0 { tc_error("E_CONST takes no arguments") }
+      return make_type(TY_FLOAT)
+    }
+
     // ------ System ---------------------------------------------------------------------------------------------------------------------------------------------------------
     if name == "sleep" {
       if nargs != 1 { tc_error("sleep() takes exactly 1 argument (milliseconds)") }

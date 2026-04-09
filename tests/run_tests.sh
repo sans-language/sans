@@ -276,6 +276,7 @@ run_test "defer_basic"               "$REPO_ROOT/tests/fixtures/defer_basic.sans
 run_test "defer_early_return"        "$REPO_ROOT/tests/fixtures/defer_early_return.sans"        0
 run_test "basic_test"                "$REPO_ROOT/tests/fixtures/basic_test.sans"                0
 run_test "math_test"                 "$REPO_ROOT/tests/fixtures/math_test.sans"                 0
+run_test "math_float"                "$REPO_ROOT/tests/fixtures/math_float.sans"                0
 
 # ---------------------------------------------------------------------------
 # Bitwise operations & SipHash

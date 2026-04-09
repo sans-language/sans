@@ -84,6 +84,19 @@ ftos(f)           float_to_string(f)    F -> S
 abs(n)                                  I -> I
 min(a b)                                I I -> I
 max(a b)                                I I -> I
+floor(x)                                F -> F
+ceil(x)                                 F -> F
+round(x)                                F -> F
+sqrt(x)                                 F -> F
+sin(x) cos(x) tan(x)                   F -> F
+asin(x) acos(x) atan(x)                F -> F
+atan2(y x)                              F F -> F
+log(x) log10(x) exp(x)                 F -> F
+pow(base exp)                           F F -> F
+fabs(x)                                 F -> F
+fmin(a b) fmax(a b)                     F F -> F
+PI()                                    -> F (3.141592653589793)
+E_CONST()                               -> F (2.718281828459045)
 range(n)                                I -> Array<I> [0..n)
 range(a b)                              I I -> Array<I> [a..b)
 stof(s)           string_to_float(s)    S -> F
