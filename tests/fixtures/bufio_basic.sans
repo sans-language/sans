@@ -1,0 +1,38 @@
+main() I {
+  path = "/tmp/sans_test_bufio_basic.txt"
+
+  // write_lines: write 3 lines
+  lines = ["hello" "world" "sans"]
+  ok = write_lines(path, lines)
+
+  // read_lines: read them back
+  got = read_lines(path)
+
+  // append_line: add a 4th line
+  append_line(path, "extra")
+
+  // read_lines again to verify append
+  got2 = rl(path)
+
+  // Also test wl/al aliases
+  path2 = "/tmp/sans_test_bufio_alias.txt"
+  wl(path2, ["a" "b"])
+  al(path2, "c")
+  got3 = rl(path2)
+
+  // Validate:
+  // got.len() == 3, got[0] == "hello", got[1] == "world", got[2] == "sans"
+  // got2.len() == 4, got2[3] == "extra"
+  // got3.len() == 3, got3[2] == "c"
+  result := 0
+  if got.len() == 3 { result = result + 1 }
+  if got[0] == "hello" { result = result + 1 }
+  if got[1] == "world" { result = result + 1 }
+  if got[2] == "sans" { result = result + 1 }
+  if got2.len() == 4 { result = result + 1 }
+  if got2[3] == "extra" { result = result + 1 }
+  if got3.len() == 3 { result = result + 1 }
+  if got3[2] == "c" { result = result + 1 }
+  if ok == 1 { result = result + 1 }
+  result
+}
