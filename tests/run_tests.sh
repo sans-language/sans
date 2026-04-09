@@ -234,6 +234,7 @@ run_test "array_enumerate"           "$REPO_ROOT/tests/fixtures/array_enumerate.
 run_test "array_zip"                 "$REPO_ROOT/tests/fixtures/array_zip.sans"                 22
 run_test "string_slice"              "$REPO_ROOT/tests/fixtures/string_slice.sans"              10
 run_test "string_interp_expr"        "$REPO_ROOT/tests/fixtures/string_interp_expr.sans"        6
+run_test "string_interpolation"      "$REPO_ROOT/tests/fixtures/string_interpolation.sans"      19
 run_test "try_operator"              "$REPO_ROOT/tests/fixtures/try_operator.sans"              6
 run_test "try_operator_err"          "$REPO_ROOT/tests/fixtures/try_operator_err.sans"          99
 run_test "break_basic"               "$REPO_ROOT/tests/fixtures/break_basic.sans"               10
