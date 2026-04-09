@@ -1,0 +1,19 @@
+main() I {
+  // Base64
+  encoded = base64_encode("Hello, World!")
+  p(encoded)
+  decoded = base64_decode(encoded)
+  p(decoded)
+
+  // URL encoding
+  url = url_encode("hello world&foo=bar")
+  p(url)
+  p(url_decode(url))
+
+  // Hex
+  h = hex_encode("ABC")
+  p(h)
+  p(hex_decode(h))
+
+  0
+}

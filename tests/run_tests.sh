@@ -536,6 +536,9 @@ run_test "unwrap_panic_recovery" "$REPO_ROOT/tests/fixtures/unwrap_panic_recover
 # Path manipulation
 run_test "path_basic"              "$REPO_ROOT/tests/fixtures/path_basic.sans"              0
 
+# Encoding
+run_test "encoding_basic"          "$REPO_ROOT/tests/fixtures/encoding_basic.sans"          0
+
 # ---------------------------------------------------------------------------
 # Runtime error tests (expected to compile but fail at runtime)
 # ---------------------------------------------------------------------------

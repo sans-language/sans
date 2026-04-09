@@ -1460,7 +1460,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       if type_tag(at) != TY_HTTP_REQ && is_i64_compat(at) != 1 { tc_error("cors_all() req must be HttpRequest, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
-    if name == "url_decode" || name == "ud" {
+    if name == "url_decode" || name == "ud" || name == "urld" {
       if nargs != 1 { tc_error("url_decode() takes exactly 1 argument") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       if is_i64_compat(at) != 1 { tc_error("url_decode() requires String argument, got " + type_to_string(at)) }
@@ -1661,6 +1661,28 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if name == "path_is_abs" || name == "pabs" {
       if nargs != 1 { tc_error("path_is_abs() takes exactly 1 argument") }
       return make_type(TY_INT)
+    }
+
+    // ------ Encoding ---------------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "base64_encode" || name == "b64e" {
+      if nargs != 1 { tc_error("base64_encode() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+    if name == "base64_decode" || name == "b64d" {
+      if nargs != 1 { tc_error("base64_decode() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+    if name == "url_encode" || name == "urle" {
+      if nargs != 1 { tc_error("url_encode() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+    if name == "hex_encode" || name == "hexe" {
+      if nargs != 1 { tc_error("hex_encode() takes exactly 1 argument") }
+      return make_type(TY_STRING)
+    }
+    if name == "hex_decode" || name == "hexd" {
+      if nargs != 1 { tc_error("hex_decode() takes exactly 1 argument") }
+      return make_type(TY_STRING)
     }
 
     // ------ Math ---------------------------------------------------------------------------------------------------------------------------------------------------------

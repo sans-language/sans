@@ -1,0 +1,216 @@
+// Encoding — base64, URL encode, hex encode/decode
+
+// ------ Helpers ------
+
+// Convert 0-15 to lowercase hex ASCII char
+sans_enc_hex_digit(n:I) I {
+  if n < 10 { n + 48 } else { n + 87 }
+}
+
+// Convert 0-15 to uppercase hex ASCII char
+sans_enc_hex_upper(n:I) I {
+  if n < 10 { n + 48 } else { n + 55 }
+}
+
+// Convert hex ASCII char to 0-15, or -1 on invalid
+sans_enc_from_hex(c:I) I {
+  if c >= 48 && c <= 57 { return c - 48 }
+  if c >= 65 && c <= 70 { return c - 55 }
+  if c >= 97 && c <= 102 { return c - 87 }
+  0 - 1
+}
+
+// Check if byte is unreserved for URL encoding
+sans_enc_is_unreserved(ch:I) I {
+  if ch >= 65 && ch <= 90 { return 1 }
+  if ch >= 97 && ch <= 122 { return 1 }
+  if ch >= 48 && ch <= 57 { return 1 }
+  if ch == 45 { return 1 }
+  if ch == 95 { return 1 }
+  if ch == 46 { return 1 }
+  if ch == 126 { return 1 }
+  0
+}
+
+// Build base64 alphabet lookup table (alloc 64 bytes)
+sans_enc_b64_table() I {
+  tbl = alloc(64)
+  i := 0
+  while i < 26 { store8(tbl + i, 65 + i) i += 1 }
+  while i < 52 { store8(tbl + i, 97 + i - 26) i += 1 }
+  while i < 62 { store8(tbl + i, 48 + i - 52) i += 1 }
+  store8(tbl + 62, 43)
+  store8(tbl + 63, 47)
+  tbl
+}
+
+// ------ Base64 Encode ------
+
+sans_base64_encode(s:I) I {
+  len = slen(s)
+  if len == 0 {
+    out = alloc(1)
+    store8(out, 0)
+    return out
+  } else { 0 }
+  tbl = sans_enc_b64_table()
+  // Output length: ceil(len/3) * 4
+  out_len = ((len + 2) / 3) * 4
+  out = alloc(out_len + 1)
+  si := 0
+  di := 0
+  while si < len {
+    remaining = len - si
+    b0 = load8(s + si)
+    b1 := 0
+    b2 := 0
+    if remaining > 1 { b1 = load8(s + si + 1) } else { 0 }
+    if remaining > 2 { b2 = load8(s + si + 2) } else { 0 }
+
+    // 6-bit group 0: top 6 bits of b0
+    store8(out + di, load8(tbl + b0 / 4))
+    // 6-bit group 1: bottom 2 of b0 + top 4 of b1
+    store8(out + di + 1, load8(tbl + (b0 % 4) * 16 + b1 / 16))
+
+    // 6-bit group 2
+    if remaining > 1 {
+      store8(out + di + 2, load8(tbl + (b1 % 16) * 4 + b2 / 64))
+    } else {
+      store8(out + di + 2, 61)
+    }
+    // 6-bit group 3
+    if remaining > 2 {
+      store8(out + di + 3, load8(tbl + b2 % 64))
+    } else {
+      store8(out + di + 3, 61)
+    }
+
+    si += 3
+    di += 4
+    0
+  }
+  store8(out + out_len, 0)
+  out
+}
+
+// ------ Base64 Decode ------
+
+// Map a base64 char to its 6-bit value
+sans_enc_b64_val(c:I) I {
+  if c >= 65 && c <= 90 { return c - 65 }
+  if c >= 97 && c <= 122 { return c - 71 }
+  if c >= 48 && c <= 57 { return c + 4 }
+  if c == 43 { return 62 }
+  if c == 47 { return 63 }
+  0
+}
+
+sans_base64_decode(s:I) I {
+  len = slen(s)
+  if len == 0 {
+    out = alloc(1)
+    store8(out, 0)
+    return out
+  } else { 0 }
+  // Count padding
+  pad := 0
+  if load8(s + len - 1) == 61 { pad = pad + 1 } else { 0 }
+  if len > 1 {
+    if load8(s + len - 2) == 61 { pad = pad + 1 } else { 0 }
+  } else { 0 }
+  // Output length: (len/4)*3 - padding
+  out_len := (len / 4) * 3 - pad
+  if out_len < 0 { out_len = 0 } else { 0 }
+  out = alloc(out_len + 1)
+  si := 0
+  di := 0
+  while si + 3 < len {
+    v0 = sans_enc_b64_val(load8(s + si))
+    v1 = sans_enc_b64_val(load8(s + si + 1))
+    v2 = sans_enc_b64_val(load8(s + si + 2))
+    v3 = sans_enc_b64_val(load8(s + si + 3))
+
+    if di < out_len {
+      store8(out + di, v0 * 4 + v1 / 16)
+    } else { 0 }
+    if di + 1 < out_len {
+      store8(out + di + 1, (v1 % 16) * 16 + v2 / 4)
+    } else { 0 }
+    if di + 2 < out_len {
+      store8(out + di + 2, (v2 % 4) * 64 + v3)
+    } else { 0 }
+
+    si += 4
+    di += 3
+    0
+  }
+  store8(out + out_len, 0)
+  out
+}
+
+// ------ URL Encode ------
+
+sans_url_encode(s:I) I {
+  len = slen(s)
+  // Worst case: every byte becomes %XX (3x)
+  out = alloc(len * 3 + 1)
+  si := 0
+  di := 0
+  while si < len {
+    ch = load8(s + si)
+    if sans_enc_is_unreserved(ch) == 1 {
+      store8(out + di, ch)
+      di += 1
+    } else {
+      hi = ch / 16
+      lo = ch % 16
+      store8(out + di, 37)
+      store8(out + di + 1, sans_enc_hex_upper(hi))
+      store8(out + di + 2, sans_enc_hex_upper(lo))
+      di += 3
+    }
+    si += 1
+    0
+  }
+  store8(out + di, 0)
+  out
+}
+
+// ------ Hex Encode ------
+
+sans_hex_encode(s:I) I {
+  len = slen(s)
+  out = alloc(len * 2 + 1)
+  i := 0
+  while i < len {
+    ch = load8(s + i)
+    store8(out + i * 2, sans_enc_hex_digit(ch / 16))
+    store8(out + i * 2 + 1, sans_enc_hex_digit(ch % 16))
+    i += 1
+    0
+  }
+  store8(out + len * 2, 0)
+  out
+}
+
+// ------ Hex Decode ------
+
+sans_hex_decode(s:I) I {
+  len = slen(s)
+  out_len = len / 2
+  out = alloc(out_len + 1)
+  i := 0
+  while i < out_len {
+    h1 = sans_enc_from_hex(load8(s + i * 2))
+    h2 = sans_enc_from_hex(load8(s + i * 2 + 1))
+    if h1 >= 0 && h2 >= 0 {
+      store8(out + i, h1 * 16 + h2)
+    } else {
+      store8(out + i, 0)
+    }
+    i += 1
+    0
+  }
+  store8(out + out_len, 0)
+  out
+}

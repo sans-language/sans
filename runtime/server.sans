@@ -2363,7 +2363,7 @@ sans_sha1_write32(buf:I off:I val:I) I {
 }
 
 // ------ Base64 Encode ---------------------------------------------------------------------------------------------------------------------------------------------
-sans_base64_encode(data:I len:I) I {
+sans_ws_base64_encode(data:I len:I) I {
   tbl = alloc(64)
   i := 0
   while i < 26 { store8(tbl + i, 65 + i) i += 1 }
@@ -2467,7 +2467,7 @@ sans_ws_upgrade(req:I) I {
   store8(concat + concat_len, 0)
 
   hash = sans_sha1(concat, concat_len)
-  accept = sans_base64_encode(hash, 20)
+  accept = sans_ws_base64_encode(hash, 20)
   accept_len = slen(accept)
 
   prefix = sans_ws_101_prefix()

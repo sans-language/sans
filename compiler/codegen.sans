@@ -681,6 +681,13 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_path_stem(i64)")
   emit(cg, "declare i64 @sans_path_is_abs(i64)")
 
+  // ------ Sans runtime: Encoding ------
+  emit(cg, "declare i64 @sans_base64_encode(i64)")
+  emit(cg, "declare i64 @sans_base64_decode(i64)")
+  emit(cg, "declare i64 @sans_url_encode(i64)")
+  emit(cg, "declare i64 @sans_hex_encode(i64)")
+  emit(cg, "declare i64 @sans_hex_decode(i64)")
+
   // ------ Sans runtime: Math ------
   emit(cg, "declare i64 @sans_abs(i64)")
   emit(cg, "declare i64 @sans_min(i64, i64)")
@@ -5081,6 +5088,13 @@ compile_inst(cg:I inst:I) I {
     compile_rt1(cg, inst, "sans_path_is_abs")
     return 0
   }
+
+  // ------ Encoding: base64/url/hex ------
+  if op == IR_BASE64_ENCODE { compile_rt1(cg, inst, "sans_base64_encode") return 0 }
+  if op == IR_BASE64_DECODE { compile_rt1(cg, inst, "sans_base64_decode") return 0 }
+  if op == IR_URL_ENCODE { compile_rt1(cg, inst, "sans_url_encode") return 0 }
+  if op == IR_HEX_ENCODE { compile_rt1(cg, inst, "sans_hex_encode") return 0 }
+  if op == IR_HEX_DECODE { compile_rt1(cg, inst, "sans_hex_decode") return 0 }
 
   // ------ Math: abs/min/max (223-225) ------
   if op == IR_ABS {

@@ -153,6 +153,10 @@
           "match": "\\b(path_join|pjoin|path_dir|pdir|path_base|pbase|path_ext|pext|path_stem|pstem|path_is_abs|pabs)\\b"
         },
         {
+          "name": "support.function.encoding.sans",
+          "match": "\\b(base64_encode|b64e|base64_decode|b64d|url_encode|urle|url_decode|urld|hex_encode|hexe|hex_decode|hexd)\\b"
+        },
+        {
           "name": "support.function.fs.sans",
           "match": "\\b(getenv|genv|mkdir|rmdir|remove|rm|listdir|ls|is_dir|sh|shell)\\b"
         },

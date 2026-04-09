@@ -48,6 +48,7 @@
         <li><a href="#builtins">Built-ins</a></li>
         <li><a href="#assertions">Assertions</a></li>
         <li><a href="#path">Path Manipulation</a></li>
+        <li><a href="#encoding">Encoding</a></li>
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
         <li><a href="#runtime-safety">Runtime Safety</a></li>
@@ -754,6 +755,25 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
 <span class="fn">path_ext</span>(<span class="str">"file.sans"</span>)             <span class="comment">// ".sans"</span>
 <span class="fn">path_stem</span>(<span class="str">"file.sans"</span>)            <span class="comment">// "file"</span>
 <span class="fn">pabs</span>(<span class="str">"/home"</span>)                     <span class="comment">// 1</span></code></pre>
+
+    <h3 id="encoding">Encoding</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>base64_encode(s)</code></td><td><code>b64e</code></td><td><code>(S) -&gt; S</code></td><td>Base64 encode a string.</td></tr>
+        <tr><td><code>base64_decode(s)</code></td><td><code>b64d</code></td><td><code>(S) -&gt; S</code></td><td>Base64 decode a string.</td></tr>
+        <tr><td><code>url_encode(s)</code></td><td><code>urle</code></td><td><code>(S) -&gt; S</code></td><td>Percent-encode for URLs.</td></tr>
+        <tr><td><code>url_decode(s)</code></td><td><code>urld</code> / <code>ud</code></td><td><code>(S) -&gt; S</code></td><td>Decode percent-encoded string (<code>+</code> becomes space).</td></tr>
+        <tr><td><code>hex_encode(s)</code></td><td><code>hexe</code></td><td><code>(S) -&gt; S</code></td><td>Hex encode (each byte &rarr; 2 lowercase hex chars).</td></tr>
+        <tr><td><code>hex_decode(s)</code></td><td><code>hexd</code></td><td><code>(S) -&gt; S</code></td><td>Hex decode (2 hex chars &rarr; byte).</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="fn">base64_encode</span>(<span class="str">"Hello, World!"</span>)  <span class="comment">// "SGVsbG8sIFdvcmxkIQ=="</span>
+<span class="fn">base64_decode</span>(<span class="str">"SGVsbG8sIFdvcmxkIQ=="</span>)  <span class="comment">// "Hello, World!"</span>
+<span class="fn">url_encode</span>(<span class="str">"hello world&amp;foo=bar"</span>)  <span class="comment">// "hello%20world%26foo%3Dbar"</span>
+<span class="fn">url_decode</span>(<span class="str">"hello%20world"</span>)  <span class="comment">// "hello world"</span>
+<span class="fn">hex_encode</span>(<span class="str">"ABC"</span>)  <span class="comment">// "414243"</span>
+<span class="fn">hex_decode</span>(<span class="str">"414243"</span>)  <span class="comment">// "ABC"</span></code></pre>
 
     <h3 id="filesystem">Filesystem &amp; Process</h3>
     <table>

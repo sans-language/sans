@@ -109,6 +109,12 @@ pbase(p)          path_base(p)          S -> S (filename component)
 pext(p)           path_ext(p)           S -> S (extension incl .)
 pstem(p)          path_stem(p)          S -> S (filename without ext)
 pabs(p)           path_is_abs(p)        S -> I (1 if absolute)
+b64e(s)           base64_encode(s)      S -> S (base64 encode)
+b64d(s)           base64_decode(s)      S -> S (base64 decode)
+urle(s)           url_encode(s)         S -> S (percent-encode for URLs)
+urld(s)           url_decode(s)         S -> S (decode percent-encoded; + -> space)
+hexe(s)           hex_encode(s)         S -> S (hex encode, lowercase)
+hexd(s)           hex_decode(s)         S -> S (hex decode)
 fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I

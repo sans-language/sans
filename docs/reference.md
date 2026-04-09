@@ -327,6 +327,26 @@ path_stem("file.sans")            // "file"
 path_is_abs("/home")              // 1
 ```
 
+### Encoding
+
+| Function | Alias | Signature | Description |
+|----------|-------|-----------|-------------|
+| `base64_encode(s)` | `b64e` | `(String) -> String` | Base64 encode a string. |
+| `base64_decode(s)` | `b64d` | `(String) -> String` | Base64 decode a string. |
+| `url_encode(s)` | `urle` | `(String) -> String` | Percent-encode for URLs (unreserved chars pass through). |
+| `url_decode(s)` | `urld` / `ud` | `(String) -> String` | Decode percent-encoded string (`+` becomes space). |
+| `hex_encode(s)` | `hexe` | `(String) -> String` | Hex encode (each byte to 2 lowercase hex chars). |
+| `hex_decode(s)` | `hexd` | `(String) -> String` | Hex decode (2 hex chars to byte). |
+
+```sans
+base64_encode("Hello, World!")  // "SGVsbG8sIFdvcmxkIQ=="
+base64_decode("SGVsbG8sIFdvcmxkIQ==")  // "Hello, World!"
+url_encode("hello world&foo=bar")  // "hello%20world%26foo%3Dbar"
+url_decode("hello%20world")  // "hello world"
+hex_encode("ABC")  // "414243"
+hex_decode("414243")  // "ABC"
+```
+
 ### Filesystem & Process
 
 | Function | Alias | Signature | Description |
