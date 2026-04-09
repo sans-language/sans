@@ -199,6 +199,31 @@ String comparison (`==`, `!=`) is supported.
 | `file_write(path, content)` | `fw` | `(String, String) -> Int` |
 | `file_append(path, content)` | `fa` | `(String, String) -> Int` |
 | `file_exists(path)` | `fe` | `(String) -> Bool` |
+| `read_lines(path)` | `rl` | `(String) -> Array<String>` |
+| `write_lines(path, lines)` | `wl` | `(String, Array<String>) -> Int` |
+| `append_line(path, line)` | `al` | `(String, String) -> Int` |
+| `read_line(prompt)` | -- | `(String) -> String` |
+
+#### Buffered I/O
+
+Line-oriented file I/O for common read/write patterns:
+
+```sans
+// Write lines to a file (each line terminated by \n)
+wl("/tmp/data.txt", ["hello" "world" "sans"])
+
+// Read all lines from a file
+lines = rl("/tmp/data.txt")
+p(lines[0])  // "hello"
+
+// Append a single line (with trailing \n)
+al("/tmp/data.txt", "extra")
+
+// Interactive prompt (prints prompt, reads line, trims)
+name = read_line("Enter name: ")
+```
+
+`read_lines` strips the trailing newline before splitting, so a file with content `"a\nb\n"` returns `["a", "b"]` (not `["a", "b", ""]`). `write_lines` adds a trailing newline after each line. `append_line` appends the line followed by a newline.
 
 ### Stdin I/O
 
@@ -1704,7 +1729,7 @@ The compiler is 7 modules in `compiler/` (~11,600 LOC): lexer, parser, typeck, c
 
 ### Reserved Builtin Names
 
-User-defined functions take precedence over builtins of the same name. However, to avoid confusion, avoid redefining builtins unless intentional. The following names have builtin implementations: `p`, `print`, `str`, `stoi`, `itos`, `itof`, `ftoi`, `ftos`, `fr`, `fw`, `fa`, `fe`, `file_read`, `file_write`, `file_append`, `file_exists`, `listen`, `serve`, `serve_file`, `serve_tls`, `alloc`, `dealloc`, `load8`, `load16`, `load32`, `load64`, `store8`, `store16`, `store32`, `store64`, `mcpy`, `mcmp`, `slen`, `wfd`, `exit`, `system`, `sys`, `ok`, `err`, `map`, `M`, `jp`, `jparse`, `jfy`, `jo`, `ja`, `js`, `ji`, `jb`, `jn`, `hg`, `hp`, `sock`, `saccept`, `srecv`, `ssend`, `sclose`, `args`, `spawn`, `signal_handler`, `signal_check`, `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none`, and all other documented built-in names.
+User-defined functions take precedence over builtins of the same name. However, to avoid confusion, avoid redefining builtins unless intentional. The following names have builtin implementations: `p`, `print`, `str`, `stoi`, `itos`, `itof`, `ftoi`, `ftos`, `fr`, `fw`, `fa`, `fe`, `rl`, `wl`, `al`, `read_lines`, `write_lines`, `append_line`, `read_line`, `file_read`, `file_write`, `file_append`, `file_exists`, `listen`, `serve`, `serve_file`, `serve_tls`, `alloc`, `dealloc`, `load8`, `load16`, `load32`, `load64`, `store8`, `store16`, `store32`, `store64`, `mcpy`, `mcmp`, `slen`, `wfd`, `exit`, `system`, `sys`, `ok`, `err`, `map`, `M`, `jp`, `jparse`, `jfy`, `jo`, `ja`, `js`, `ji`, `jb`, `jn`, `hg`, `hp`, `sock`, `saccept`, `srecv`, `ssend`, `sclose`, `args`, `spawn`, `signal_handler`, `signal_check`, `assert`, `assert_eq`, `assert_ne`, `assert_ok`, `assert_err`, `assert_some`, `assert_none`, and all other documented built-in names.
 
 ---
 

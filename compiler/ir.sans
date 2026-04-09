@@ -640,6 +640,13 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "append_file" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
   else if name == "fappend" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
   else if name == "fa" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
+  else if name == "read_lines" { lower_call_1(ctx, args, IR_READ_LINES, IRTY_ARRAY) }
+  else if name == "rl" { lower_call_1(ctx, args, IR_READ_LINES, IRTY_ARRAY) }
+  else if name == "read_line" { lower_call_1(ctx, args, IR_READ_LINE, IRTY_STR) }
+  else if name == "write_lines" { lower_call_2(ctx, args, IR_WRITE_LINES, IRTY_INT) }
+  else if name == "wl" { lower_call_2(ctx, args, IR_WRITE_LINES, IRTY_INT) }
+  else if name == "append_line" { lower_call_2(ctx, args, IR_APPEND_LINE, IRTY_INT) }
+  else if name == "al" { lower_call_2(ctx, args, IR_APPEND_LINE, IRTY_INT) }
   else if name == "file_exists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
   else if name == "fexists" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }
   else if name == "fe" { lower_call_1(ctx, args, IR_FILE_EXISTS, IRTY_BOOL) }

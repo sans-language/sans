@@ -182,6 +182,7 @@ run_test "string_conversion"         "$REPO_ROOT/tests/fixtures/string_conversio
 run_test "file_write_read"           "$REPO_ROOT/tests/fixtures/file_write_read.sans"           11
 run_test "file_exists_check"         "$REPO_ROOT/tests/fixtures/file_exists_check.sans"         1
 run_test "read_file_alias"           "$REPO_ROOT/tests/fixtures/read_file_alias.sans"           9
+run_test "bufio_basic"               "$REPO_ROOT/tests/fixtures/bufio_basic.sans"               9
 run_test "args_builtin"              "$REPO_ROOT/tests/fixtures/args_builtin.sans"              1
 run_test "json_object_stringify"     "$REPO_ROOT/tests/fixtures/json_object_stringify.sans"     2
 run_test "json_int_roundtrip"        "$REPO_ROOT/tests/fixtures/json_int_roundtrip.sans"        42

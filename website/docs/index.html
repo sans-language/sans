@@ -574,8 +574,28 @@ sans lint --quiet foo.sans                <span class="comment">// suppress warn
         <tr><td><code>file_write(path, content)</code></td><td><code>fw</code></td><td><code>(String, String) -&gt; Int</code></td></tr>
         <tr><td><code>file_append(path, content)</code></td><td><code>fa</code></td><td><code>(String, String) -&gt; Int</code></td></tr>
         <tr><td><code>file_exists(path)</code></td><td><code>fe</code></td><td><code>(String) -&gt; Bool</code></td></tr>
+        <tr><td><code>read_lines(path)</code></td><td><code>rl</code></td><td><code>(String) -&gt; Array&lt;String&gt;</code></td></tr>
+        <tr><td><code>write_lines(path, lines)</code></td><td><code>wl</code></td><td><code>(String, Array&lt;String&gt;) -&gt; Int</code></td></tr>
+        <tr><td><code>append_line(path, line)</code></td><td><code>al</code></td><td><code>(String, String) -&gt; Int</code></td></tr>
+        <tr><td><code>read_line(prompt)</code></td><td>--</td><td><code>(String) -&gt; String</code></td></tr>
       </tbody>
     </table>
+
+    <h4>Buffered I/O</h4>
+    <p>Line-oriented file I/O for common read/write patterns:</p>
+    <pre><code>// Write lines to a file (each line terminated by \n)
+wl("/tmp/data.txt", ["hello" "world" "sans"])
+
+// Read all lines from a file
+lines = rl("/tmp/data.txt")
+p(lines[0])  // "hello"
+
+// Append a single line (with trailing \n)
+al("/tmp/data.txt", "extra")
+
+// Interactive prompt (prints prompt, reads line, trims)
+name = read_line("Enter name: ")</code></pre>
+    <p><code>read_lines</code> strips the trailing newline before splitting, so a file with content <code>"a\nb\n"</code> returns <code>["a", "b"]</code>. <code>write_lines</code> adds a trailing newline after each line. <code>append_line</code> appends the line followed by a newline.</p>
 
     <h3>Type Conversion</h3>
     <table>
@@ -1183,7 +1203,7 @@ if rv != 0 {
 
     <h3>Builtin Names</h3>
     <p>The compiler has builtin mappings for a large set of names. <strong>User-defined functions take precedence over builtins of the same name.</strong> Builtin names include:</p>
-    <p><code>p</code>, <code>print</code>, <code>str</code>, <code>stoi</code>, <code>itof</code>, <code>ftoi</code>, <code>ftos</code>, <code>fr</code>, <code>fw</code>, <code>fa</code>, <code>fe</code>, <code>file_read</code>, <code>file_write</code>, <code>file_exists</code>, <code>listen</code>, <code>serve</code>, <code>serve_file</code>, <code>serve_tls</code>, <code>alloc</code>, <code>dealloc</code>, <code>load8/16/32/64</code>, <code>store8/16/32/64</code>, <code>mcpy</code>, <code>slen</code>, <code>wfd</code>, <code>exit</code>, <code>system</code>, <code>ok</code>, <code>err</code>, <code>map</code>, <code>M</code>, <code>jp</code>, <code>jfy</code>, <code>jo</code>, <code>ja</code>, <code>sock</code>, <code>saccept</code>, <code>args</code>, <code>signal_handler</code>, <code>signal_check</code>, <code>tnow</code>, <code>tfmt</code>, <code>tyear</code>, <code>tmon</code>, <code>tday</code>, <code>thour</code>, <code>tmin</code>, <code>tsec</code>, <code>twday</code>, <code>tadd</code>, <code>tdiff</code>, and all others listed in the reference.</p>
+    <p><code>p</code>, <code>print</code>, <code>str</code>, <code>stoi</code>, <code>itof</code>, <code>ftoi</code>, <code>ftos</code>, <code>fr</code>, <code>fw</code>, <code>fa</code>, <code>fe</code>, <code>rl</code>, <code>wl</code>, <code>al</code>, <code>read_lines</code>, <code>write_lines</code>, <code>append_line</code>, <code>read_line</code>, <code>file_read</code>, <code>file_write</code>, <code>file_exists</code>, <code>listen</code>, <code>serve</code>, <code>serve_file</code>, <code>serve_tls</code>, <code>alloc</code>, <code>dealloc</code>, <code>load8/16/32/64</code>, <code>store8/16/32/64</code>, <code>mcpy</code>, <code>slen</code>, <code>wfd</code>, <code>exit</code>, <code>system</code>, <code>ok</code>, <code>err</code>, <code>map</code>, <code>M</code>, <code>jp</code>, <code>jfy</code>, <code>jo</code>, <code>ja</code>, <code>sock</code>, <code>saccept</code>, <code>args</code>, <code>signal_handler</code>, <code>signal_check</code>, <code>tnow</code>, <code>tfmt</code>, <code>tyear</code>, <code>tmon</code>, <code>tday</code>, <code>thour</code>, <code>tmin</code>, <code>tsec</code>, <code>twday</code>, <code>tadd</code>, <code>tdiff</code>, and all others listed in the reference.</p>
 
     <h2 id="diagnostics">Compiler Diagnostics</h2>
     <p>The Sans compiler reports errors with source location, the offending source line, and a caret pointing to the token:</p>

@@ -1207,6 +1207,24 @@ cg_fmode_a(cg:I) S {
   name
 }
 
+cg_newline_str(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__newline") { return mget(pool, "__newline") }
+  name = "@str.newline"
+  mset(pool, "__newline", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [2 x i8] c\"\\0A\\00\"")
+  name
+}
+
+cg_fmt_str_noline(cg:I) S {
+  pool = cg_string_pool(cg)
+  if mhas(pool, "__fmt_str_noline") { return mget(pool, "__fmt_str_noline") }
+  name = "@fmt.str.noline"
+  mset(pool, "__fmt_str_noline", ptr(name))
+  emit_global_const(cg, name + " = private unnamed_addr constant [3 x i8] c\"%s\\00\"")
+  name
+}
+
 cg_fmt_assert(cg:I) S {
   pool = cg_string_pool(cg)
   if mhas(pool, "__fmt_assert") { return mget(pool, "__fmt_assert") }
@@ -6173,6 +6191,235 @@ compile_inst(cg:I inst:I) I {
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = sub i64 " + av + ", " + bv)
     cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ Buffered I/O: read_lines, read_line, write_lines, append_line (361-364) ------
+
+  // read_lines(path) -> Array<S>: file_read(path).split("\n")
+  if op == IR_READ_LINES {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    uid = cg_label_id(cg)
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    mode = cg_fmode_r(cg)
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = call ptr @fopen(ptr " + pp + ", ptr " + mode + ")")
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = ptrtoint ptr " + fp + " to i64")
+    isn = cg_fresh_reg(cg)
+    emit(cg, "  " + isn + " = icmp eq i64 " + fi + ", 0")
+    err_lbl = "rl_err_" + uid
+    ok_lbl = "rl_ok_" + uid
+    merge_lbl = "rl_merge_" + uid
+    emit(cg, "  br i1 " + isn + ", label %" + err_lbl + ", label %" + ok_lbl)
+    // Error path: return empty string then split (gives 1-element array with "")
+    emit(cg, err_lbl + ":")
+    eb = cg_fresh_reg(cg)
+    emit(cg, "  " + eb + " = call ptr @malloc(i64 1)")
+    emit(cg, "  store i8 0, ptr " + eb)
+    ei = cg_fresh_reg(cg)
+    emit(cg, "  " + ei + " = ptrtoint ptr " + eb + " to i64")
+    emit(cg, "  br label %" + merge_lbl)
+    // Success path: fseek/ftell/fread
+    emit(cg, ok_lbl + ":")
+    fs1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fs1 + " = call i32 @fseek(ptr " + fp + ", i64 0, i32 2)")
+    fsz = cg_fresh_reg(cg)
+    emit(cg, "  " + fsz + " = call i64 @ftell(ptr " + fp + ")")
+    fs2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fs2 + " = call i32 @fseek(ptr " + fp + ", i64 0, i32 0)")
+    bsz = cg_fresh_reg(cg)
+    emit(cg, "  " + bsz + " = add i64 " + fsz + ", 1")
+    buf = cg_fresh_reg(cg)
+    emit(cg, "  " + buf + " = call ptr @malloc(i64 " + bsz + ")")
+    frd = cg_fresh_reg(cg)
+    emit(cg, "  " + frd + " = call i64 @fread(ptr " + buf + ", i64 1, i64 " + fsz + ", ptr " + fp + ")")
+    endp = cg_fresh_reg(cg)
+    emit(cg, "  " + endp + " = getelementptr i8, ptr " + buf + ", i64 " + fsz)
+    emit(cg, "  store i8 0, ptr " + endp)
+    fcl = cg_fresh_reg(cg)
+    emit(cg, "  " + fcl + " = call i32 @fclose(ptr " + fp + ")")
+    bi = cg_fresh_reg(cg)
+    emit(cg, "  " + bi + " = ptrtoint ptr " + buf + " to i64")
+    emit(cg, "  br label %" + merge_lbl)
+    // Merge
+    emit(cg, merge_lbl + ":")
+    contents = cg_fresh_reg(cg)
+    emit(cg, "  " + contents + " = phi i64 [" + ei + ", %" + err_lbl + "], [" + bi + ", %" + ok_lbl + "]")
+    cg_set_current_block(cg, merge_lbl)
+    // Strip trailing newline from contents before splitting
+    cp = cg_fresh_reg(cg)
+    emit(cg, "  " + cp + " = inttoptr i64 " + contents + " to ptr")
+    slen = cg_fresh_reg(cg)
+    emit(cg, "  " + slen + " = call i64 @strlen(ptr " + cp + ")")
+    has_len = cg_fresh_reg(cg)
+    emit(cg, "  " + has_len + " = icmp sgt i64 " + slen + ", 0")
+    uid2 = cg_label_id(cg)
+    strip_lbl = "rl_strip_" + uid2
+    nostrip_lbl = "rl_nostrip_" + uid2
+    emit(cg, "  br i1 " + has_len + ", label %" + strip_lbl + ", label %" + nostrip_lbl)
+    emit(cg, strip_lbl + ":")
+    last_idx = cg_fresh_reg(cg)
+    emit(cg, "  " + last_idx + " = sub i64 " + slen + ", 1")
+    last_ptr = cg_fresh_reg(cg)
+    emit(cg, "  " + last_ptr + " = getelementptr i8, ptr " + cp + ", i64 " + last_idx)
+    last_byte = cg_fresh_reg(cg)
+    emit(cg, "  " + last_byte + " = load i8, ptr " + last_ptr)
+    is_nl = cg_fresh_reg(cg)
+    emit(cg, "  " + is_nl + " = icmp eq i8 " + last_byte + ", 10")
+    do_strip_lbl = "rl_dostrip_" + uid2
+    emit(cg, "  br i1 " + is_nl + ", label %" + do_strip_lbl + ", label %" + nostrip_lbl)
+    emit(cg, do_strip_lbl + ":")
+    emit(cg, "  store i8 0, ptr " + last_ptr)
+    emit(cg, "  br label %" + nostrip_lbl)
+    emit(cg, nostrip_lbl + ":")
+    cg_set_current_block(cg, nostrip_lbl)
+    // Split by newline
+    nl = cg_newline_str(cg)
+    nl_i64 = cg_fresh_reg(cg)
+    emit(cg, "  " + nl_i64 + " = ptrtoint ptr " + nl + " to i64")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_split(i64 " + contents + ", i64 " + nl_i64 + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, r, 1)
+    return 0
+  }
+
+  // read_line(prompt) -> S: print prompt, read stdin line, trim
+  if op == IR_READ_LINE {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    fmt = cg_fmt_str_noline(cg)
+    pr = cg_fresh_reg(cg)
+    emit(cg, "  " + pr + " = call i64 (ptr, ...) @printf(ptr " + fmt + ", ptr " + pp + ")")
+    line = cg_fresh_reg(cg)
+    emit(cg, "  " + line + " = call i64 @sans_stdin_read_line()")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @sans_string_trim(i64 " + line + ")")
+    cg_set_val(cg, dest, r)
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, r, 5)
+    return 0
+  }
+
+  // write_lines(path, lines) -> I: join lines with "\n", add trailing "\n", write to file
+  if op == IR_WRITE_LINES {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    av = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    // Join array with newline
+    nl = cg_newline_str(cg)
+    nl_i64 = cg_fresh_reg(cg)
+    emit(cg, "  " + nl_i64 + " = ptrtoint ptr " + nl + " to i64")
+    joined = cg_fresh_reg(cg)
+    emit(cg, "  " + joined + " = call i64 @sans_array_join(i64 " + av + ", i64 " + nl_i64 + ")")
+    // Append trailing newline: joined + "\n"
+    jp = cg_fresh_reg(cg)
+    emit(cg, "  " + jp + " = inttoptr i64 " + joined + " to ptr")
+    jl = cg_fresh_reg(cg)
+    emit(cg, "  " + jl + " = call i64 @strlen(ptr " + jp + ")")
+    tot = cg_fresh_reg(cg)
+    emit(cg, "  " + tot + " = add i64 " + jl + ", 1")
+    asz = cg_fresh_reg(cg)
+    emit(cg, "  " + asz + " = add i64 " + tot + ", 1")
+    wbuf = cg_fresh_reg(cg)
+    emit(cg, "  " + wbuf + " = call ptr @malloc(i64 " + asz + ")")
+    mc1 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc1 + " = call ptr @memcpy(ptr " + wbuf + ", ptr " + jp + ", i64 " + jl + ")")
+    mid = cg_fresh_reg(cg)
+    emit(cg, "  " + mid + " = getelementptr i8, ptr " + wbuf + ", i64 " + jl)
+    emit(cg, "  store i8 10, ptr " + mid)
+    endp = cg_fresh_reg(cg)
+    emit(cg, "  " + endp + " = getelementptr i8, ptr " + wbuf + ", i64 " + tot)
+    emit(cg, "  store i8 0, ptr " + endp)
+    // Write to file (inline file_write pattern)
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    mode = cg_fmode_w(cg)
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = call ptr @fopen(ptr " + pp + ", ptr " + mode + ")")
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = ptrtoint ptr " + fp + " to i64")
+    isn = cg_fresh_reg(cg)
+    emit(cg, "  " + isn + " = icmp eq i64 " + fi + ", 0")
+    chk_lbl = "wl_chk_" + uid
+    ok_lbl = "wl_ok_" + uid
+    merge_lbl = "wl_merge_" + uid
+    emit(cg, "  br label %" + chk_lbl)
+    emit(cg, chk_lbl + ":")
+    emit(cg, "  br i1 " + isn + ", label %" + merge_lbl + ", label %" + ok_lbl)
+    emit(cg, ok_lbl + ":")
+    fw1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fw1 + " = call i64 @fwrite(ptr " + wbuf + ", i64 1, i64 " + tot + ", ptr " + fp + ")")
+    fc1 = cg_fresh_reg(cg)
+    emit(cg, "  " + fc1 + " = call i32 @fclose(ptr " + fp + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [0, %" + chk_lbl + "], [1, %" + ok_lbl + "]")
+    cg_set_val(cg, dest, r)
+    cg_set_current_block(cg, merge_lbl)
+    return 0
+  }
+
+  // append_line(path, line) -> I: concat line + "\n", file_append
+  if op == IR_APPEND_LINE {
+    pv = cg_get_val(cg, ir_field(inst, 16))
+    lv = cg_get_val(cg, ir_field(inst, 24))
+    uid = cg_label_id(cg)
+    // Concat line + "\n"
+    lp = cg_fresh_reg(cg)
+    emit(cg, "  " + lp + " = inttoptr i64 " + lv + " to ptr")
+    nl = cg_newline_str(cg)
+    l1 = cg_fresh_reg(cg)
+    emit(cg, "  " + l1 + " = call i64 @strlen(ptr " + lp + ")")
+    tot = cg_fresh_reg(cg)
+    emit(cg, "  " + tot + " = add i64 " + l1 + ", 1")
+    asz = cg_fresh_reg(cg)
+    emit(cg, "  " + asz + " = add i64 " + tot + ", 1")
+    cbuf = cg_fresh_reg(cg)
+    emit(cg, "  " + cbuf + " = call ptr @malloc(i64 " + asz + ")")
+    mc1 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc1 + " = call ptr @memcpy(ptr " + cbuf + ", ptr " + lp + ", i64 " + l1 + ")")
+    mid = cg_fresh_reg(cg)
+    emit(cg, "  " + mid + " = getelementptr i8, ptr " + cbuf + ", i64 " + l1)
+    mc2 = cg_fresh_reg(cg)
+    emit(cg, "  " + mc2 + " = call ptr @memcpy(ptr " + mid + ", ptr " + nl + ", i64 1)")
+    endp = cg_fresh_reg(cg)
+    emit(cg, "  " + endp + " = getelementptr i8, ptr " + cbuf + ", i64 " + tot)
+    emit(cg, "  store i8 0, ptr " + endp)
+    // File append (inline pattern)
+    pp = cg_fresh_reg(cg)
+    emit(cg, "  " + pp + " = inttoptr i64 " + pv + " to ptr")
+    cl = cg_fresh_reg(cg)
+    emit(cg, "  " + cl + " = call i64 @strlen(ptr " + cbuf + ")")
+    mode = cg_fmode_a(cg)
+    fp = cg_fresh_reg(cg)
+    emit(cg, "  " + fp + " = call ptr @fopen(ptr " + pp + ", ptr " + mode + ")")
+    fi = cg_fresh_reg(cg)
+    emit(cg, "  " + fi + " = ptrtoint ptr " + fp + " to i64")
+    isn = cg_fresh_reg(cg)
+    emit(cg, "  " + isn + " = icmp eq i64 " + fi + ", 0")
+    chk_lbl = "al_chk_" + uid
+    ok_lbl = "al_ok_" + uid
+    merge_lbl = "al_merge_" + uid
+    emit(cg, "  br label %" + chk_lbl)
+    emit(cg, chk_lbl + ":")
+    emit(cg, "  br i1 " + isn + ", label %" + merge_lbl + ", label %" + ok_lbl)
+    emit(cg, ok_lbl + ":")
+    fw2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fw2 + " = call i64 @fwrite(ptr " + cbuf + ", i64 1, i64 " + cl + ", ptr " + fp + ")")
+    fc2 = cg_fresh_reg(cg)
+    emit(cg, "  " + fc2 + " = call i32 @fclose(ptr " + fp + ")")
+    emit(cg, "  br label %" + merge_lbl)
+    emit(cg, merge_lbl + ":")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = phi i64 [0, %" + chk_lbl + "], [1, %" + ok_lbl + "]")
+    cg_set_val(cg, dest, r)
+    cg_set_current_block(cg, merge_lbl)
     return 0
   }
 

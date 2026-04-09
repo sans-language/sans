@@ -135,6 +135,10 @@ fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I
 fe(path)          file_exists(path)     S -> B
+rl(path)          read_lines(path)      S -> [S] (read file, split lines)
+wl(path lines)    write_lines(p l)      S [S] -> I (join + trailing \n)
+al(path line)     append_line(p l)      S S -> I (append line + \n)
+read_line(prompt)                       S -> S (print prompt, read stdin, trim)
 srl()             stdin_read_line()     -> S (read line from stdin)
 srb(n)            stdin_read_bytes(n)   I -> S (read n bytes from stdin)
 getenv(name)/genv(name)                 S -> S (read env var, "" if unset)
@@ -368,10 +372,11 @@ a.zip(b)                         // [(I I)] — paired tuples
 `?` try (on R<T>: unwrap or early-return err; on O<T>: unwrap or early-return none())
 
 ## Builtin Names (user-defined functions take precedence)
-User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check set_max_workers set_read_timeout set_keepalive_timeout set_drain_timeout set_max_body set_max_headers set_max_header_count set_max_url pmutex_init pmutex_lock pmutex_unlock` and all others listed above.
+User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe rl wl al read_line jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check set_max_workers set_read_timeout set_keepalive_timeout set_drain_timeout set_max_body set_max_headers set_max_header_count set_max_url pmutex_init pmutex_lock pmutex_unlock` and all others listed above.
 
 ## All Aliases (short | medium | long)
 fread/fr/file_read  fwrite/fw/file_write  fappend/fa/file_append  fexists/fe/file_exists
+rl/read_lines  wl/write_lines  al/append_line
 itos/str/int_to_string  jparse/jp/json_parse  jobj/jo/json_object  jarr/ja/json_array
 jstr/js/json_string  jstringify/jfy/json_stringify  hget/hg/http_get  hpost/hp/http_post
 hl/listen/http_listen  HS=HttpServer  HR=HttpRequest
