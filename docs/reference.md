@@ -654,7 +654,7 @@ These enable Sans to replace its own C runtime. Pointers are stored as Int (i64)
 | `ralloc(ptr, size)` | `(Int, Int) -> Int` | realloc |
 | `mcpy(dst, src, n)` | `(Int, Int, Int) -> Int` | memcpy |
 | `mcmp(a, b, n)` | `(Int, Int, Int) -> Int` | memcmp |
-| `slen(ptr)` | `(Int) -> Int` | strlen on raw pointer |
+| `slen(ptr)` | `(Int) -> Int` | strlen on raw pointer (byte length, not character count — use `char_count()` for UTF-8 codepoint count) |
 | `load8(ptr)` | `(Int) -> Int` | load byte (0-255) |
 | `store8(ptr, val)` | `(Int, Int) -> Int` | store byte |
 | `load16(ptr)` | `(Int) -> Int` | load 16-bit value |
@@ -687,6 +687,30 @@ mask = band(val 0xFF)  // low byte
 flags = bor(a b)       // combine flags
 shifted = bshl(1 8)    // 256
 high = bshr(val 32)    // upper 32 bits
+```
+
+#### Unicode / UTF-8
+
+Sans strings are byte arrays. These functions interpret bytes as UTF-8 without changing the underlying representation.
+
+**Note:** `slen(s)` returns byte length, not character count. Use `char_count(s)` for UTF-8 codepoint count.
+
+| Function | Alias | Signature | Description |
+|----------|-------|-----------|-------------|
+| `char_count(s)` | `ccount` | `(String) -> Int` | Count UTF-8 codepoints (not bytes) |
+| `chars(s)` | -- | `(String) -> Array<String>` | Split string into array of UTF-8 characters |
+| `is_ascii(s)` | -- | `(String) -> Int` | Returns 1 if all bytes are ASCII (< 128) |
+| `utf8_valid(s)` | -- | `(String) -> Int` | Returns 1 if string is valid UTF-8 |
+| `string_reverse(s)` | `srev` | `(String) -> String` | UTF-8 aware reverse (preserves multi-byte chars) |
+
+```sans
+p(char_count("hello"))        // 5
+p(is_ascii("hello"))          // 1
+p(utf8_valid("hello"))        // 1
+p(string_reverse("hello"))    // olleh
+p(srev("abc"))                // cba
+c = chars("hi")               // ["h" "i"]
+p(str(c.len()))                // 2
 ```
 
 #### Low-Level Threading

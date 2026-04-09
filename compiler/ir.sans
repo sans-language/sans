@@ -897,6 +897,13 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "bshr" { lower_call_2(ctx, args, IR_BSHR, IRTY_INT) }
   else if name == "char_at" { lower_call_char_at(ctx, args) }
 
+  // ------ Unicode ------
+  else if name == "char_count" || name == "ccount" { lower_call_1(ctx, args, IR_CHAR_COUNT, IRTY_INT) }
+  else if name == "chars" { lower_call_1(ctx, args, IR_CHARS, IRTY_ARRAY) }
+  else if name == "is_ascii" { lower_call_1(ctx, args, IR_IS_ASCII, IRTY_INT) }
+  else if name == "utf8_valid" { lower_call_1(ctx, args, IR_UTF8_VALID, IRTY_INT) }
+  else if name == "string_reverse" || name == "srev" { lower_call_1(ctx, args, IR_STRING_REVERSE, IRTY_STR) }
+
   // ------ Arena ------
   else if name == "arena_begin" || name == "ab" { lower_call_0(ctx, IR_ARENA_BEGIN, IRTY_INT) }
   else if name == "arena_alloc" || name == "aa" { lower_call_1(ctx, args, IR_ARENA_ALLOC, IRTY_INT) }

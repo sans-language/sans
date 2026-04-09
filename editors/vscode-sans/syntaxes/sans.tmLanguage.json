@@ -161,6 +161,10 @@
           "match": "\\b(sha256|sha512|md5|hmac_sha256|hmac256|random_bytes|randb|regex_match|rmatch|regex_find|rfind|regex_replace|rrepl)\\b"
         },
         {
+          "name": "support.function.unicode.sans",
+          "match": "\\b(char_count|ccount|chars|is_ascii|utf8_valid|string_reverse|srev)\\b"
+        },
+        {
           "name": "support.function.fs.sans",
           "match": "\\b(getenv|genv|mkdir|rmdir|remove|rm|listdir|ls|is_dir|sh|shell)\\b"
         },

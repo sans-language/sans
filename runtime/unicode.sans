@@ -1,0 +1,87 @@
+sans_utf8_char_len(b:I) I {
+  if band(b, 128) == 0 { 1 }
+  else if band(b, 224) == 192 { 2 }
+  else if band(b, 240) == 224 { 3 }
+  else if band(b, 248) == 240 { 4 }
+  else { 1 }
+}
+
+sans_char_count(s:I) I {
+  len = slen(s)
+  count := 0
+  i := 0
+  while i < len {
+    b = load8(s + i)
+    cl = sans_utf8_char_len(b)
+    count = count + 1
+    i = i + cl
+  }
+  count
+}
+
+sans_chars(s:I) I {
+  len = slen(s)
+  count = sans_char_count(s)
+  arr = alloc(24)
+  data = alloc(if count > 0 { count * 8 } else { 8 })
+  store64(arr, data)
+  store64(arr + 8, count)
+  store64(arr + 16, count)
+  i := 0
+  ci := 0
+  while i < len {
+    b = load8(s + i)
+    cl = sans_utf8_char_len(b)
+    ch = alloc(cl + 1)
+    mcpy(ch, s + i, cl)
+    store8(ch + cl, 0)
+    store64(data + ci * 8, ch)
+    ci = ci + 1
+    i = i + cl
+  }
+  arr
+}
+
+sans_is_ascii(s:I) I {
+  len = slen(s)
+  i := 0
+  while i < len {
+    if load8(s + i) >= 128 { return 0 }
+    i = i + 1
+  }
+  1
+}
+
+sans_utf8_valid(s:I) I {
+  len = slen(s)
+  i := 0
+  while i < len {
+    b = load8(s + i)
+    cl = sans_utf8_char_len(b)
+    if i + cl > len { return 0 }
+    j := 1
+    while j < cl {
+      cb = load8(s + i + j)
+      if band(cb, 192) != 128 { return 0 }
+      j = j + 1
+    }
+    i = i + cl
+  }
+  1
+}
+
+sans_string_reverse(s:I) I {
+  len = slen(s)
+  result = alloc(len + 1)
+  store8(result + len, 0)
+  i := 0
+  pos := len
+  while i < len {
+    b = load8(s + i)
+    cl = sans_utf8_char_len(b)
+    pos = pos - cl
+    mcpy(result + pos, s + i, cl)
+    i = i + cl
+  }
+  result
+}
