@@ -534,6 +534,11 @@ build_step8(program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_
   wfd(2, "+STEP=1 FILE=")
   wfd(2, g_file)
   wfd(2, "\n")
+  // Set debug file/dir for codegen DWARF metadata
+  if g_build_debug == 1 {
+    cg_debug_file = g_file
+    cg_debug_dir = sh("pwd").trim()
+  }
   compile_to_ll(g_merged, g_ll)
   wfd(2, "+STEP=2 FILE=")
   wfd(2, g_file)
@@ -574,7 +579,8 @@ do_link(ll_path:S output_path:S source_path:S) I {
 
   // 11. Invoke llc to produce object file
   obj_path = output_path + ".o"
-  sys(c + llc + c + " -filetype=obj -O2 -o " + c + obj_path + c + " " + c + ll_path + c)
+  llc_opt = if g_build_debug == 1 { " -O0" } else { " -O2" }
+  sys(c + llc + c + " -filetype=obj" + llc_opt + " -o " + c + obj_path + c + " " + c + ll_path + c)
 
   // 12. Compile runtime
   runtime_dir_cwd = "runtime"
@@ -629,7 +635,8 @@ do_link(ll_path:S output_path:S source_path:S) I {
   }
 
   // 13. Link
-  link_cmd := "cc " + c + obj_path + c
+  cc_dbg = if g_build_debug == 1 { "-g " } else { "" }
+  link_cmd := "cc " + cc_dbg + c + obj_path + c
   li := 0
   while li < runtime_o_paths.len() {
     link_cmd = link_cmd + " " + c + runtime_o_paths.get(li) + c
@@ -835,7 +842,7 @@ main() I {
   argc = argv.len()
 
   if argc < 2 {
-    p("usage: sans <build|run|test|lint> <file.sans|dir>")
+    p("usage: sans <build|run|test|lint> <file.sans|dir> [--debug|-g] [-o output]")
     exit(1)
   }
 
@@ -874,7 +881,7 @@ main() I {
   }
 
   if argc < 3 {
-    p("usage: sans <build|run|test|lint> <file.sans|dir>")
+    p("usage: sans <build|run|test|lint> <file.sans|dir> [--debug|-g] [-o output]")
     exit(1)
   }
 
@@ -891,6 +898,9 @@ main() I {
     }
     if bflag == "--quiet" || bflag == "-q" {
       g_build_quiet = 1
+    }
+    if bflag == "--debug" || bflag == "-g" {
+      g_build_debug = 1
     }
     bi = bi + 1
   }
