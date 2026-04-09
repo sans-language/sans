@@ -118,7 +118,7 @@
         },
         {
           "name": "support.function.system.sans",
-          "match": "\\b(sleep|time|now|random|rand|print_err)\\b"
+          "match": "\\b(sleep|time|now|random|rand|print_err|time_now|tnow|time_format|tfmt|time_year|tyear|time_month|tmon|time_day|tday|time_hour|thour|time_minute|tmin|time_second|tsec|time_weekday|twday|time_add|tadd|time_diff|tdiff)\\b"
         },
         {
           "name": "support.function.json.sans",

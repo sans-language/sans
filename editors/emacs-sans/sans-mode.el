@@ -110,6 +110,10 @@
     "pow" "fabs" "fmin" "fmax" "PI" "E_CONST"
     ;; System
     "sleep" "time" "now" "random" "rand" "print_err" "exit"
+    "time_now" "tnow" "time_format" "tfmt" "time_year" "tyear"
+    "time_month" "tmon" "time_day" "tday" "time_hour" "thour"
+    "time_minute" "tmin" "time_second" "tsec" "time_weekday" "twday"
+    "time_add" "tadd" "time_diff" "tdiff"
     ;; JSON
     "json_parse" "jparse" "jp" "json_object" "jobj" "jo"
     "json_array" "jarr" "ja" "json_string" "jstr" "js"

@@ -363,6 +363,8 @@ emit_externals_core(cg:I) I {
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
   emit(cg, "declare i32 @gettimeofday(ptr, ptr)")
+  emit(cg, "declare ptr @localtime_r(ptr, ptr)")
+  emit(cg, "declare i64 @strftime(ptr, i64, ptr, ptr)")
   emit(cg, "declare void @srand(i32)")
   emit(cg, "declare i32 @rand()")
   emit(cg, "declare double @strtod(ptr, ptr)")
@@ -488,6 +490,8 @@ emit_externals(cg:I) I {
   emit(cg, "declare i32 @usleep(i32)")
   emit(cg, "declare i64 @time(i64)")
   emit(cg, "declare i32 @gettimeofday(ptr, ptr)")
+  emit(cg, "declare ptr @localtime_r(ptr, ptr)")
+  emit(cg, "declare i64 @strftime(ptr, i64, ptr, ptr)")
   emit(cg, "declare void @srand(i32)")
   emit(cg, "declare i32 @rand()")
   emit(cg, "declare double @strtod(ptr, ptr)")
@@ -1315,6 +1319,62 @@ compile_rt4(cg:I inst:I fname:S) I {
   d = cg_fresh_reg(cg)
   emit(cg, "  " + d + " = call i64 @" + fname + "(i64 " + a + ", i64 " + b + ", i64 " + c + ", i64 " + e + ")")
   cg_set_val(cg, ir_dest(inst), d)
+  0
+}
+
+// ------ Date/time codegen helpers ---------------------------------------------------------------------------------------------------
+
+// Emit localtime_r call pattern, extract i32 field at given byte offset, sext to i64, add adjustment
+compile_time_field(cg:I inst:I dest:I offset:I adjustment:I) I {
+  val = cg_get_val(cg, ir_field(inst, 16))
+  tp = cg_fresh_reg(cg)
+  emit(cg, "  " + tp + " = alloca i64")
+  emit(cg, "  store i64 " + val + ", ptr " + tp)
+  tm = cg_fresh_reg(cg)
+  emit(cg, "  " + tm + " = alloca [64 x i8]")
+  cg_fresh_reg(cg)
+  emit(cg, "  call ptr @localtime_r(ptr " + tp + ", ptr " + tm + ")")
+  fp = cg_fresh_reg(cg)
+  emit(cg, "  " + fp + " = getelementptr i8, ptr " + tm + ", i64 " + str(offset))
+  vi = cg_fresh_reg(cg)
+  emit(cg, "  " + vi + " = load i32, ptr " + fp)
+  v64 = cg_fresh_reg(cg)
+  emit(cg, "  " + v64 + " = sext i32 " + vi + " to i64")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = add i64 " + v64 + ", " + str(adjustment))
+  cg_set_val(cg, dest, r)
+  0
+}
+
+// Emit time_format: localtime_r + strftime + malloc + memcpy
+compile_time_format(cg:I inst:I dest:I) I {
+  ts_val = cg_get_val(cg, ir_field(inst, 16))
+  fmt_val = cg_get_val(cg, ir_field(inst, 24))
+  tp = cg_fresh_reg(cg)
+  emit(cg, "  " + tp + " = alloca i64")
+  emit(cg, "  store i64 " + ts_val + ", ptr " + tp)
+  tm = cg_fresh_reg(cg)
+  emit(cg, "  " + tm + " = alloca [64 x i8]")
+  cg_fresh_reg(cg)
+  emit(cg, "  call ptr @localtime_r(ptr " + tp + ", ptr " + tm + ")")
+  buf = cg_fresh_reg(cg)
+  emit(cg, "  " + buf + " = alloca [256 x i8]")
+  fp = cg_fresh_reg(cg)
+  emit(cg, "  " + fp + " = inttoptr i64 " + fmt_val + " to ptr")
+  written = cg_fresh_reg(cg)
+  emit(cg, "  " + written + " = call i64 @strftime(ptr " + buf + ", i64 256, ptr " + fp + ", ptr " + tm + ")")
+  slen = cg_fresh_reg(cg)
+  emit(cg, "  " + slen + " = call i64 @strlen(ptr " + buf + ")")
+  sz = cg_fresh_reg(cg)
+  emit(cg, "  " + sz + " = add i64 " + slen + ", 1")
+  hp = cg_fresh_reg(cg)
+  emit(cg, "  " + hp + " = call ptr @malloc(i64 " + sz + ")")
+  cg_fresh_reg(cg)
+  emit(cg, "  call ptr @memcpy(ptr " + hp + ", ptr " + buf + ", i64 " + sz + ")")
+  r = cg_fresh_reg(cg)
+  emit(cg, "  " + r + " = ptrtoint ptr " + hp + " to i64")
+  cg_set_val(cg, dest, r)
+  emit_scope_track(cg, r, 0)
   0
 }
 
@@ -5862,6 +5922,40 @@ compile_inst(cg:I inst:I) I {
 
   if op == IR_DYN_TRAIT_CREATE { return compile_dyn_trait_create(cg, inst) }
   if op == IR_DYN_TRAIT_CALL { return compile_dyn_trait_call(cg, inst) }
+
+  // ------ Date/time builtins (345-355) ------
+  if op == IR_TIME_NOW {
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = call i64 @time(i64 0)")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_TIME_YEAR { return compile_time_field(cg, inst, dest, 20, 1900) }
+  if op == IR_TIME_MONTH { return compile_time_field(cg, inst, dest, 16, 1) }
+  if op == IR_TIME_DAY { return compile_time_field(cg, inst, dest, 12, 0) }
+  if op == IR_TIME_HOUR { return compile_time_field(cg, inst, dest, 8, 0) }
+  if op == IR_TIME_MINUTE { return compile_time_field(cg, inst, dest, 4, 0) }
+  if op == IR_TIME_SECOND { return compile_time_field(cg, inst, dest, 0, 0) }
+  if op == IR_TIME_WEEKDAY { return compile_time_field(cg, inst, dest, 24, 0) }
+  if op == IR_TIME_FORMAT {
+    return compile_time_format(cg, inst, dest)
+  }
+  if op == IR_TIME_ADD {
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = add i64 " + av + ", " + bv)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_TIME_DIFF {
+    av = cg_get_val(cg, ir_field(inst, 16))
+    bv = cg_get_val(cg, ir_field(inst, 24))
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = sub i64 " + av + ", " + bv)
+    cg_set_val(cg, dest, r)
+    return 0
+  }
 
   // Unknown opcode --- emit comment
   emit(cg, "  ; unknown opcode " + str(op))

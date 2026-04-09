@@ -1,0 +1,24 @@
+main() I {
+  t = time_now()
+  y = time_year(t)
+  m = time_month(t)
+  d = time_day(t)
+  h = time_hour(t)
+  mn = time_minute(t)
+  s = time_second(t)
+  w = time_weekday(t)
+  if y < 2020 || y > 2100 { p("FAIL: year") }
+  if m < 1 || m > 12 { p("FAIL: month") }
+  if d < 1 || d > 31 { p("FAIL: day") }
+  if h < 0 || h > 23 { p("FAIL: hour") }
+  if mn < 0 || mn > 59 { p("FAIL: minute") }
+  if s < 0 || s > 59 { p("FAIL: second") }
+  if w < 0 || w > 6 { p("FAIL: weekday") }
+  formatted = time_format(t "%H:%M:%S")
+  p(formatted)
+  future = time_add(t 7200)
+  diff = time_diff(future t)
+  if diff != 7200 { p("FAIL: diff") }
+  p("longform ok")
+  0
+}

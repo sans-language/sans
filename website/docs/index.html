@@ -219,6 +219,15 @@ s.<span class="fn">to_int</span>()                      <span class="comment">//
 <span class="fn">sleep</span>(<span class="num">1000</span>)  <span class="fn">time</span>()  <span class="fn">random</span>(<span class="num">100</span>)  <span class="comment">// system</span>
 <span class="fn">stof</span>(<span class="str">"3.14"</span>)                       <span class="comment">// string to float</span>
 
+<span class="comment">// Date/time (all operate on unix timestamps)</span>
+t = <span class="fn">tnow</span>()
+<span class="fn">tfmt</span>(t <span class="str">"%Y-%m-%d %H:%M:%S"</span>)       <span class="comment">// format with strftime</span>
+<span class="fn">tyear</span>(t) <span class="fn">tmon</span>(t) <span class="fn">tday</span>(t)         <span class="comment">// year, month 1-12, day 1-31</span>
+<span class="fn">thour</span>(t) <span class="fn">tmin</span>(t) <span class="fn">tsec</span>(t)         <span class="comment">// hour 0-23, min 0-59, sec 0-59</span>
+<span class="fn">twday</span>(t)                          <span class="comment">// weekday 0=Sun..6=Sat</span>
+<span class="fn">tadd</span>(t <span class="num">3600</span>)                      <span class="comment">// add seconds</span>
+<span class="fn">tdiff</span>(a b)                        <span class="comment">// a - b in seconds</span>
+
 <span class="comment">// Match expressions</span>
 <span class="kw">match</span> x { <span class="num">1</span> => <span class="str">"one"</span>, <span class="num">2</span> => <span class="str">"two"</span>, _ => <span class="str">"other"</span> }
 <span class="kw">match</span> cmd { <span class="str">"build"</span> => <span class="num">1</span>, <span class="str">"run"</span> => <span class="num">2</span>, _ => <span class="num">0</span> }
@@ -1154,7 +1163,7 @@ if rv != 0 {
 
     <h3>Builtin Names</h3>
     <p>The compiler has builtin mappings for a large set of names. <strong>User-defined functions take precedence over builtins of the same name.</strong> Builtin names include:</p>
-    <p><code>p</code>, <code>print</code>, <code>str</code>, <code>stoi</code>, <code>itof</code>, <code>ftoi</code>, <code>ftos</code>, <code>fr</code>, <code>fw</code>, <code>fa</code>, <code>fe</code>, <code>file_read</code>, <code>file_write</code>, <code>file_exists</code>, <code>listen</code>, <code>serve</code>, <code>serve_file</code>, <code>serve_tls</code>, <code>alloc</code>, <code>dealloc</code>, <code>load8/16/32/64</code>, <code>store8/16/32/64</code>, <code>mcpy</code>, <code>slen</code>, <code>wfd</code>, <code>exit</code>, <code>system</code>, <code>ok</code>, <code>err</code>, <code>map</code>, <code>M</code>, <code>jp</code>, <code>jfy</code>, <code>jo</code>, <code>ja</code>, <code>sock</code>, <code>saccept</code>, <code>args</code>, <code>signal_handler</code>, <code>signal_check</code>, and all others listed in the reference.</p>
+    <p><code>p</code>, <code>print</code>, <code>str</code>, <code>stoi</code>, <code>itof</code>, <code>ftoi</code>, <code>ftos</code>, <code>fr</code>, <code>fw</code>, <code>fa</code>, <code>fe</code>, <code>file_read</code>, <code>file_write</code>, <code>file_exists</code>, <code>listen</code>, <code>serve</code>, <code>serve_file</code>, <code>serve_tls</code>, <code>alloc</code>, <code>dealloc</code>, <code>load8/16/32/64</code>, <code>store8/16/32/64</code>, <code>mcpy</code>, <code>slen</code>, <code>wfd</code>, <code>exit</code>, <code>system</code>, <code>ok</code>, <code>err</code>, <code>map</code>, <code>M</code>, <code>jp</code>, <code>jfy</code>, <code>jo</code>, <code>ja</code>, <code>sock</code>, <code>saccept</code>, <code>args</code>, <code>signal_handler</code>, <code>signal_check</code>, <code>tnow</code>, <code>tfmt</code>, <code>tyear</code>, <code>tmon</code>, <code>tday</code>, <code>thour</code>, <code>tmin</code>, <code>tsec</code>, <code>twday</code>, <code>tadd</code>, <code>tdiff</code>, and all others listed in the reference.</p>
 
     <h2 id="diagnostics">Compiler Diagnostics</h2>
     <p>The Sans compiler reports errors with source location, the offending source line, and a caret pointing to the token:</p>

@@ -278,6 +278,32 @@ p(data)
 | `time()` / `now()` | `() -> Int` | Current Unix timestamp (seconds) |
 | `random(max)` / `rand(max)` | `(Int) -> Int` | Cryptographically seeded random integer in `[0, max)` |
 
+### Date/Time
+
+All functions operate on Unix timestamps (i64 seconds since epoch). Timestamps are `I`, formatted strings are `S`. Uses local time via `localtime_r`.
+
+| Function | Alias | Signature | Description |
+|----------|-------|-----------|-------------|
+| `time_now()` | `tnow` | `() -> Int` | Current Unix timestamp (same as `time()`) |
+| `time_format(t, fmt)` | `tfmt` | `(Int, String) -> String` | Format timestamp with strftime pattern (e.g. `"%Y-%m-%d"`) |
+| `time_year(t)` | `tyear` | `(Int) -> Int` | Extract year (e.g. 2026) |
+| `time_month(t)` | `tmon` | `(Int) -> Int` | Extract month (1-12) |
+| `time_day(t)` | `tday` | `(Int) -> Int` | Extract day of month (1-31) |
+| `time_hour(t)` | `thour` | `(Int) -> Int` | Extract hour (0-23) |
+| `time_minute(t)` | `tmin` | `(Int) -> Int` | Extract minute (0-59) |
+| `time_second(t)` | `tsec` | `(Int) -> Int` | Extract second (0-59) |
+| `time_weekday(t)` | `twday` | `(Int) -> Int` | Day of week (0=Sunday, 6=Saturday) |
+| `time_add(t, secs)` | `tadd` | `(Int, Int) -> Int` | Add seconds to timestamp |
+| `time_diff(a, b)` | `tdiff` | `(Int, Int) -> Int` | Difference in seconds (a - b) |
+
+```sans
+t = tnow()
+p(tfmt(t "%Y-%m-%d %H:%M:%S"))
+p("year: " + str(tyear(t)))
+tomorrow = tadd(t 86400)
+p("hours until tomorrow: " + str(tdiff(tomorrow t) / 3600))
+```
+
 ### Assertions
 
 Built-in assertion functions for testing. Each prints a diagnostic with the source line number on failure and exits with code 1.
