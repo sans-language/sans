@@ -4,6 +4,15 @@ import "ir"
 // Global flag: 1 when compiling a runtime module, 0 for user code
 // Used to skip scope instrumentation in runtime modules (avoids double-definition of sans_scope_track)
 g cg_is_runtime_flag = 0
+
+// Debug info globals
+g cg_debug = 0
+g cg_debug_file = 0
+g cg_debug_dir = 0
+g cg_dbg_counter = 0
+g cg_dbg_metadata = 0
+g cg_dbg_sub_type_emitted = 0
+g cg_dbg_loc_suffix = 0
 g cg_fn_ret_types = 0
 g cg_fn_aliases = 0
 g cg_trait_impls = 0
@@ -96,13 +105,28 @@ cg_get_label_end(cg:I ir_label:I) I {
 
 // ------ Core helpers ------------------------------------------------------------------------------------------------------------------------------------------------
 
+// Check if an LLVM IR line is an instruction that should get !dbg annotation
+emit_is_inst(line:S) I {
+  if slen(line) < 3 { return 0 }
+  if char_at(line, 0) != 32 { return 0 }
+  if char_at(line, 1) != 32 { return 0 }
+  // Not a comment (;)
+  if char_at(line, 2) == 59 { return 0 }
+  // Not a label (ends with :)
+  if char_at(line, slen(line) - 1) == 58 { return 0 }
+  1
+}
+
 // Emit a line of LLVM IR --- streams to file when output_path set
 emit(cg:I line:S) I {
   opath = load64(cg + 112)
   if opath != 0 {
-    // Streaming mode: write line to file
-    fa(opath, line)
-    fa(opath, "\n")
+    // Streaming mode: write line to file --- append !dbg suffix for instructions in debug mode
+    if cg_debug == 1 && cg_dbg_loc_suffix != 0 && emit_is_inst(line) == 1 {
+      fa(opath, line + cg_str(cg_dbg_loc_suffix) + "\n")
+    } else {
+      fa(opath, line + "\n")
+    }
   } else {
     // Buffer mode (for small compilations)
     lines = cg_lines(cg)
@@ -110,6 +134,7 @@ emit(cg:I line:S) I {
   }
   0
 }
+
 
 // Flush any remaining buffered lines to file
 cg_flush(cg:I) I {
@@ -129,6 +154,13 @@ cg_fresh_reg(cg:I) S {
   n = cg_reg_counter(cg)
   cg_set_reg_counter(cg, n + 1)
   "%" + str(n)
+}
+
+// Allocate next debug metadata node ID
+cg_dbg_next() I {
+  n = cg_dbg_counter
+  cg_dbg_counter = cg_dbg_counter + 1
+  n
 }
 
 // Map an IR register to an LLVM value string
@@ -5607,7 +5639,26 @@ emit_function_body(cg:I func:I) I {
     0
   }
 
-  emit(cg, "define i64 @" + llvm_name + "(" + param_str + ") {")
+  // Debug info: create DISubprogram for this function
+  dbg_sp := 0
+  if cg_debug == 1 {
+    dbg_sp = cg_dbg_next()
+    fn_line := 1
+    dbg_lines_fn = irf_debug_lines(func)
+    if dbg_lines_fn != 0 {
+      if dbg_lines_fn.len() > 0 { fn_line = dbg_lines_fn.get(0) }
+    }
+    // Ensure subroutine type metadata is emitted once
+    if cg_dbg_sub_type_emitted == 0 {
+      cg_dbg_metadata.push("!5 = !DISubroutineType(types: !6)")
+      cg_dbg_metadata.push("!6 = !{" + "nu" + "ll" + "}")
+      cg_dbg_sub_type_emitted = 1
+    }
+    cg_dbg_metadata.push("!" + str(dbg_sp) + " = distinct !DISubprogram(name: " + "\"" + cg_str(irf_name(func)) + "\"" + ", file: !1, line: " + str(fn_line) + ", type: !5, scopeLine: " + str(fn_line) + ", unit: !0, spFlags: DISPFlagDefinition)")
+    emit(cg, "define i64 @" + llvm_name + "(" + param_str + ") !dbg !" + str(dbg_sp) + " {")
+  } else {
+    emit(cg, "define i64 @" + llvm_name + "(" + param_str + ") {")
+  }
   emit(cg, "entry:")
 
   // Reset per-function state
@@ -5641,6 +5692,23 @@ emit_function_body(cg:I func:I) I {
     0
   }
 
+  // Set up debug location for this function
+  dbg_fn_lines := 0
+  dbg_loc_map := 0
+  if cg_debug == 1 {
+    dbg_fn_lines = irf_debug_lines(func)
+    dbg_loc_map = M()
+    // Set a default debug location for the function entry
+    dbg_entry_id = cg_dbg_next()
+    fn_entry_line := 1
+    if dbg_fn_lines != 0 {
+      if dbg_fn_lines.len() > 0 { fn_entry_line = dbg_fn_lines.get(0) }
+    }
+    cg_dbg_metadata.push("!" + str(dbg_entry_id) + " = !DILocation(line: " + str(fn_entry_line) + ", column: 0, scope: !" + str(dbg_sp) + ")")
+    mset(dbg_loc_map, str(fn_entry_line), dbg_entry_id)
+    cg_dbg_loc_suffix = ptr(", !dbg !" + str(dbg_entry_id))
+  }
+
   // Pre-scan: hoist all ALLOCA instructions to the entry block
   // LLVM requires allocas to be in the entry block for correct domination
   aj := 0
@@ -5671,13 +5739,28 @@ emit_function_body(cg:I func:I) I {
     se = cg_fresh_reg(cg)
     emit(cg, "  " + se + " = call i64 @sans_scope_enter()")
   }
-
-  // Compile instructions with dead-code elimination after terminators
   terminated := 0
   j := 0
   while j < ni {
     inst = instrs.get(j)
     op = ir_op(inst)
+    // Update debug location for this instruction
+    if cg_debug == 1 && dbg_fn_lines != 0 {
+      if j < dbg_fn_lines.len() {
+        dil = dbg_fn_lines.get(j)
+        if dil > 0 {
+          dil_key = str(dil)
+          if mhas(dbg_loc_map, dil_key) {
+            cg_dbg_loc_suffix = ptr(", !dbg !" + str(mget(dbg_loc_map, dil_key)))
+          } else {
+            dil_id = cg_dbg_next()
+            mset(dbg_loc_map, dil_key, dil_id)
+            cg_dbg_metadata.push("!" + str(dil_id) + " = !DILocation(line: " + str(dil) + ", column: 0, scope: !" + str(dbg_sp) + ")")
+            cg_dbg_loc_suffix = ptr(", !dbg !" + str(dil_id))
+          }
+        }
+      }
+    }
     if terminated {
       // Skip dead code until next label
       if op == IR_LABEL {
@@ -5704,6 +5787,8 @@ emit_function_body(cg:I func:I) I {
     emit(cg, "  ret i64 0")
   }
 
+  // Clear debug location suffix after function body
+  cg_dbg_loc_suffix = 0
   emit(cg, "}")
   emit(cg, "")
   0
@@ -5968,6 +6053,15 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
     0
   }
 
+  // Set up debug info state (before externals, so we can declare llvm.donothing)
+  cg_debug = if g_build_debug == 1 && is_runtime == 0 { 1 } else { 0 }
+  if cg_debug == 1 {
+    cg_dbg_metadata = array<I>()
+    // Fixed metadata IDs: 0=CU, 1=file, 2-4=module flags, 5=subroutine type, 6=type args
+    cg_dbg_counter = 7
+    cg_dbg_sub_type_emitted = 0
+  }
+
   // 1. Emit LLVM IR header
   emit_header(cg)
 
@@ -6024,6 +6118,26 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
     fa(output_path, sc_lines.get(sci) + "\n")
     sci = sci + 1
     0
+  }
+
+  // Emit DWARF debug metadata at end of module
+  if cg_debug == 1 {
+    ob = "!{" // open brace for metadata (avoid string interpolation)
+    fa(output_path, "\n")
+    fa(output_path, "!llvm.dbg.cu = " + ob + "!0}\n")
+    fa(output_path, "!llvm.module.flags = " + ob + "!2, !3, !4}\n")
+    fa(output_path, "!0 = distinct !DICompileUnit(language: DW_LANG_C, file: !1, producer: " + "\"" + "sans 0.8.6" + "\"" + ", isOptimized: false, emissionKind: FullDebug)\n")
+    fa(output_path, "!1 = !DIFile(filename: " + "\"" + cg_str(cg_debug_file) + "\"" + ", directory: " + "\"" + cg_str(cg_debug_dir) + "\"" + ")\n")
+    fa(output_path, "!2 = " + ob + "i32 2, !" + "\"" + "Dwarf Version" + "\"" + ", i32 4}\n")
+    fa(output_path, "!3 = " + ob + "i32 2, !" + "\"" + "Debug Info Version" + "\"" + ", i32 3}\n")
+    fa(output_path, "!4 = " + ob + "i32 7, !" + "\"" + "frame-pointer" + "\"" + ", i32 2}\n")
+    // Emit all collected metadata nodes
+    dmi := 0
+    while dmi < cg_dbg_metadata.len() {
+      fa(output_path, cg_dbg_metadata.get(dmi) + "\n")
+      dmi = dmi + 1
+      0
+    }
   }
   0
 }

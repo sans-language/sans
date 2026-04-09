@@ -1,0 +1,7 @@
+add(a:I b:I) I = a + b
+
+main() I {
+  x = add(1 2)
+  p(str(x))
+  0
+}

@@ -145,6 +145,7 @@ g tc_declared_vars = 0
 g tc_used_vars = 0
 g tc_warn_enabled = 0
 g g_build_quiet = 0
+g g_build_debug = 0
 g mono_depth = 0
 g tc_collect_mode = 0
 g tc_collected_symbols = 0

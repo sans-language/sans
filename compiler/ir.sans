@@ -30,6 +30,12 @@ g IRTY_DYN_TRAIT = 20
 // Global: dyn trait create info - maps dest reg name to "TypeName::TraitName"
 g ir_dyn_create_info = 0
 
+// Debug info: parallel arrays tracking source locations per instruction
+g ir_debug_lines = 0
+g ir_debug_cols = 0
+g ir_current_line = 0
+g ir_current_col = 0
+
 // ------ IrBinOp constants ------------------------------------------------------------------------------------------------------------------------------
 g IROP_ADD = 0
 g IROP_SUB = 1
@@ -194,12 +200,14 @@ ir_mutex_unlock(mtx:I value:I) I = ir_inst1(IR_MUTEX_UNLOCK, mtx, value)
 // offset 32: param_struct_sizes (I) --- Array of Ints (0=scalar, >0=struct fields)
 
 make_ir_function(name:I params:I instrs:I ret_type:I param_sizes:I) I {
-  f = alloc(40)
+  f = alloc(56)
   store64(f, name)
   store64(f + 8, params)
   store64(f + 16, instrs)
   store64(f + 24, ret_type)
   store64(f + 32, param_sizes)
+  store64(f + 40, ir_debug_lines)
+  store64(f + 48, ir_debug_cols)
   f
 }
 
@@ -208,6 +216,8 @@ irf_params(f:I) I = load64(f + 8)
 irf_instrs(f:I) I = load64(f + 16)
 irf_ret_type(f:I) I = load64(f + 24)
 irf_param_sizes(f:I) I = load64(f + 32)
+irf_debug_lines(f:I) I = load64(f + 40)
+irf_debug_cols(f:I) I = load64(f + 48)
 
 // ------ IrModule (40 bytes) ------------------------------------------------------------------------------------------------------------------------
 // offset 0:  functions (I) --- Array of IrFunction pointers
@@ -356,6 +366,11 @@ ctx_fresh_lambda_id(ctx:I) I {
 ctx_emit(ctx:I inst:I) I {
   arr := load64(ctx)
   arr.push(inst)
+  // Record source location in parallel debug arrays
+  if ir_debug_lines != 0 {
+    ir_debug_lines.push(ir_current_line)
+    ir_debug_cols.push(ir_current_col)
+  }
   0
 }
 
@@ -1128,6 +1143,8 @@ lower_call_user(ctx:I name:I args:I) I {
 
 lower_expr(ctx:I expr:I) I {
   tag = load64(expr)
+  ir_current_line = node_line(expr)
+  ir_current_col = node_col(expr)
 
   // ------ EX_INT_LIT ------
   if tag == EX_INT_LIT {
@@ -1500,6 +1517,8 @@ lower_stmts(ctx:I stmts:I) I {
 // Minimal stub --- enough for if-expr body lowering.
 lower_stmt(ctx:I stmt:I) I {
   tag = load64(stmt)
+  ir_current_line = node_line(stmt)
+  ir_current_col = node_col(stmt)
 
   // ST_EXPR --- lower the expression, discard result
   if tag == ST_EXPR {
@@ -3873,6 +3892,11 @@ lower_lambda(ctx:I expr:I) I {
 
   // Create IrFunction for the lifted lambda
   lifted_fn = make_ir_function(lambda_name, lifted_param_names, ctx_instrs(lctx), IRTY_INT, lifted_param_sizes)
+  // Reset debug arrays for the next function
+  if ir_debug_lines != 0 {
+    ir_debug_lines = array<I>()
+    ir_debug_cols = array<I>()
+  }
 
   // Add to lifted functions list (parent ctx)
   lifted = ctx_lifted_fns(ctx)
@@ -4623,6 +4647,11 @@ lower_function_body(func:I func_name:I struct_defs:I enum_defs:I fn_ret_types:I 
   ret_type = if ret_type_name != 0 { ir_type_for_return(ret_type_name, struct_defs, enum_defs) } else { IRTY_INT }
 
   ir_fn = make_ir_function(func_name, param_names, ctx_instrs(ctx), ret_type, param_sizes)
+  // Reset debug arrays for the next function
+  if ir_debug_lines != 0 {
+    ir_debug_lines = array<I>()
+    ir_debug_cols = array<I>()
+  }
 
   // Collect lifted functions (lambdas) from this function's context
   // We return them by storing in a temporary global-like mechanism:
@@ -4980,6 +5009,12 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
       egi = egi + 1
       0
     }
+  }
+
+  // Initialize debug arrays if debug mode is enabled
+  if g_build_debug == 1 {
+    ir_debug_lines = array<I>()
+    ir_debug_cols = array<I>()
   }
 
   // 5. Lower each function
