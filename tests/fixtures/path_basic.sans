@@ -1,0 +1,10 @@
+main() I {
+  p(path_join("foo" "bar"))
+  p(path_dir("/home/user/file.sans"))
+  p(path_base("/home/user/file.sans"))
+  p(path_ext("file.sans"))
+  p(path_stem("file.sans"))
+  p(str(path_is_abs("/home")))
+  p(str(path_is_abs("relative")))
+  0
+}

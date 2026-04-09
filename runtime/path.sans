@@ -1,0 +1,195 @@
+// Path manipulation — pure string operations
+
+sans_path_join(a:I b:I) I {
+  blen = slen(b)
+  // If b starts with '/', return b
+  if blen > 0 {
+    if char_at(b, 0) == 47 {
+      result = alloc(blen + 1)
+      mcpy(result, b, blen)
+      store8(result + blen, 0)
+      return result
+    } else { 0 }
+  } else { 0 }
+
+  alen = slen(a)
+  // If a is empty, return b
+  if alen == 0 {
+    result = alloc(blen + 1)
+    mcpy(result, b, blen)
+    store8(result + blen, 0)
+    return result
+  } else { 0 }
+
+  // If b is empty, return a
+  if blen == 0 {
+    result = alloc(alen + 1)
+    mcpy(result, a, alen)
+    store8(result + alen, 0)
+    return result
+  } else { 0 }
+
+  // If a ends with '/', don't double it
+  if char_at(a, alen - 1) == 47 {
+    result = alloc(alen + blen + 1)
+    mcpy(result, a, alen)
+    mcpy(result + alen, b, blen)
+    store8(result + alen + blen, 0)
+    return result
+  } else { 0 }
+
+  // Normal: a + "/" + b
+  result = alloc(alen + 1 + blen + 1)
+  mcpy(result, a, alen)
+  store8(result + alen, 47)
+  mcpy(result + alen + 1, b, blen)
+  store8(result + alen + 1 + blen, 0)
+  result
+}
+
+sans_path_dir(p:I) I {
+  len = slen(p)
+  // Find last '/'
+  i := len - 1
+  found := 0 - 1
+  while i >= 0 {
+    if char_at(p, i) == 47 {
+      found = i
+      i = 0 - 1
+    } else {
+      i = i - 1
+    }
+  }
+  if found < 0 {
+    // No '/', return "."
+    result = alloc(2)
+    store8(result, 46)
+    store8(result + 1, 0)
+    return result
+  } else { 0 }
+  // If found == 0, return "/"
+  if found == 0 {
+    result = alloc(2)
+    store8(result, 47)
+    store8(result + 1, 0)
+    return result
+  } else { 0 }
+  // Return p[0..found)
+  result = alloc(found + 1)
+  mcpy(result, p, found)
+  store8(result + found, 0)
+  result
+}
+
+sans_path_base(p:I) I {
+  len = slen(p)
+  // Find last '/'
+  i := len - 1
+  found := 0 - 1
+  while i >= 0 {
+    if char_at(p, i) == 47 {
+      found = i
+      i = 0 - 1
+    } else {
+      i = i - 1
+    }
+  }
+  if found < 0 {
+    // No '/', return whole string
+    result = alloc(len + 1)
+    mcpy(result, p, len)
+    store8(result + len, 0)
+    return result
+  } else { 0 }
+  // Return p[found+1..len)
+  start = found + 1
+  rlen = len - start
+  result = alloc(rlen + 1)
+  mcpy(result, p + start, rlen)
+  store8(result + rlen, 0)
+  result
+}
+
+sans_path_ext(p:I) I {
+  len = slen(p)
+  // First find the basename (after last '/')
+  base_start := 0
+  i := len - 1
+  while i >= 0 {
+    if char_at(p, i) == 47 {
+      base_start = i + 1
+      i = 0 - 1
+    } else {
+      i = i - 1
+    }
+  }
+  // Find last '.' in basename
+  i = len - 1
+  found := 0 - 1
+  while i >= base_start {
+    if char_at(p, i) == 46 {
+      found = i
+      i = base_start - 1
+    } else {
+      i = i - 1
+    }
+  }
+  if found < 0 {
+    // No '.', return ""
+    result = alloc(1)
+    store8(result, 0)
+    return result
+  } else { 0 }
+  // Return p[found..len)
+  rlen = len - found
+  result = alloc(rlen + 1)
+  mcpy(result, p + found, rlen)
+  store8(result + rlen, 0)
+  result
+}
+
+sans_path_stem(p:I) I {
+  len = slen(p)
+  // First find the basename (after last '/')
+  base_start := 0
+  i := len - 1
+  while i >= 0 {
+    if char_at(p, i) == 47 {
+      base_start = i + 1
+      i = 0 - 1
+    } else {
+      i = i - 1
+    }
+  }
+  // Find last '.' in basename
+  i = len - 1
+  dot := 0 - 1
+  while i >= base_start {
+    if char_at(p, i) == 46 {
+      dot = i
+      i = base_start - 1
+    } else {
+      i = i - 1
+    }
+  }
+  if dot < 0 {
+    // No '.', return whole basename
+    rlen = len - base_start
+    result = alloc(rlen + 1)
+    mcpy(result, p + base_start, rlen)
+    store8(result + rlen, 0)
+    return result
+  } else { 0 }
+  // Return p[base_start..dot)
+  rlen = dot - base_start
+  result = alloc(rlen + 1)
+  mcpy(result, p + base_start, rlen)
+  store8(result + rlen, 0)
+  result
+}
+
+sans_path_is_abs(p:I) I {
+  if slen(p) > 0 {
+    if char_at(p, 0) == 47 { 1 } else { 0 }
+  } else { 0 }
+}

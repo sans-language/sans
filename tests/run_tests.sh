@@ -533,6 +533,9 @@ run_test "bounds_check_string"  "$REPO_ROOT/tests/fixtures/bounds_check_string.s
 # Panic recovery
 run_test "unwrap_panic_recovery" "$REPO_ROOT/tests/fixtures/unwrap_panic_recovery.sans" 30
 
+# Path manipulation
+run_test "path_basic"              "$REPO_ROOT/tests/fixtures/path_basic.sans"              0
+
 # ---------------------------------------------------------------------------
 # Runtime error tests (expected to compile but fail at runtime)
 # ---------------------------------------------------------------------------

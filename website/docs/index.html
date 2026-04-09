@@ -47,6 +47,7 @@
         <li><a href="#concurrency">Concurrency</a></li>
         <li><a href="#builtins">Built-ins</a></li>
         <li><a href="#assertions">Assertions</a></li>
+        <li><a href="#path">Path Manipulation</a></li>
         <li><a href="#filesystem">Filesystem &amp; Process</a></li>
         <li><a href="#methods">Methods</a></li>
         <li><a href="#runtime-safety">Runtime Safety</a></li>
@@ -734,6 +735,25 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
 <span class="fn">assert_err</span>(<span class="fn">err</span>(<span class="str">"bad"</span>))
 <span class="fn">assert_some</span>(<span class="fn">some</span>(<span class="num">1</span>))
 <span class="fn">assert_none</span>(<span class="fn">none</span>())</code></pre>
+
+    <h3 id="path">Path Manipulation</h3>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>path_join(a, b)</code></td><td><code>pjoin</code></td><td><code>(S, S) -&gt; S</code></td><td>Join two path segments with <code>/</code>. If <code>b</code> is absolute, returns <code>b</code>.</td></tr>
+        <tr><td><code>path_dir(p)</code></td><td><code>pdir</code></td><td><code>(S) -&gt; S</code></td><td>Directory component (before last <code>/</code>). Returns <code>"."</code> if none.</td></tr>
+        <tr><td><code>path_base(p)</code></td><td><code>pbase</code></td><td><code>(S) -&gt; S</code></td><td>Filename component (after last <code>/</code>).</td></tr>
+        <tr><td><code>path_ext(p)</code></td><td><code>pext</code></td><td><code>(S) -&gt; S</code></td><td>File extension including <code>.</code>. Returns <code>""</code> if none.</td></tr>
+        <tr><td><code>path_stem(p)</code></td><td><code>pstem</code></td><td><code>(S) -&gt; S</code></td><td>Filename without extension.</td></tr>
+        <tr><td><code>path_is_abs(p)</code></td><td><code>pabs</code></td><td><code>(S) -&gt; I</code></td><td>Returns <code>1</code> if path starts with <code>/</code>, else <code>0</code>.</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="fn">path_join</span>(<span class="str">"foo"</span> <span class="str">"bar"</span>)            <span class="comment">// "foo/bar"</span>
+<span class="fn">path_dir</span>(<span class="str">"/home/user/file.sans"</span>)  <span class="comment">// "/home/user"</span>
+<span class="fn">path_base</span>(<span class="str">"/home/user/file.sans"</span>) <span class="comment">// "file.sans"</span>
+<span class="fn">path_ext</span>(<span class="str">"file.sans"</span>)             <span class="comment">// ".sans"</span>
+<span class="fn">path_stem</span>(<span class="str">"file.sans"</span>)            <span class="comment">// "file"</span>
+<span class="fn">pabs</span>(<span class="str">"/home"</span>)                     <span class="comment">// 1</span></code></pre>
 
     <h3 id="filesystem">Filesystem &amp; Process</h3>
     <table>

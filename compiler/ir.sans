@@ -771,6 +771,14 @@ lower_call(ctx:I name:I args:I) I {
     }
   }
 
+  // ------ Path ------
+  else if name == "path_join" || name == "pjoin" { lower_call_2(ctx, args, IR_PATH_JOIN, IRTY_STR) }
+  else if name == "path_dir" || name == "pdir" { lower_call_1(ctx, args, IR_PATH_DIR, IRTY_STR) }
+  else if name == "path_base" || name == "pbase" { lower_call_1(ctx, args, IR_PATH_BASE, IRTY_STR) }
+  else if name == "path_ext" || name == "pext" { lower_call_1(ctx, args, IR_PATH_EXT, IRTY_STR) }
+  else if name == "path_stem" || name == "pstem" { lower_call_1(ctx, args, IR_PATH_STEM, IRTY_STR) }
+  else if name == "path_is_abs" || name == "pabs" { lower_call_1(ctx, args, IR_PATH_IS_ABS, IRTY_INT) }
+
   // ------ Math ------
   else if name == "abs" { lower_call_1(ctx, args, IR_ABS, IRTY_INT) }
   else if name == "min" { lower_call_2(ctx, args, IR_MIN, IRTY_INT) }
