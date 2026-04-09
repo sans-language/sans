@@ -528,8 +528,29 @@ lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I
   eff_type = if left_type == IRTY_STR || right_type == IRTY_STR { IRTY_STR } else { if left_type == IRTY_FLOAT || right_type == IRTY_FLOAT { IRTY_FLOAT } else { left_type } }
   if op == OP_ADD {
     if eff_type == IRTY_STR {
+      // Auto-coerce non-string operands to string before concat
+      actual_left := left_reg
+      if left_type != IRTY_STR {
+        actual_left = ctx_fresh_reg(ctx)
+        if left_type == IRTY_FLOAT {
+          ctx_emit(ctx, ir_inst1(IR_FLOAT_TO_STRING, actual_left, left_reg))
+        } else {
+          ctx_emit(ctx, ir_inst1(IR_INT_TO_STRING, actual_left, left_reg))
+        }
+        ctx_set_reg_type(ctx, actual_left, IRTY_STR)
+      }
+      actual_right := right_reg
+      if right_type != IRTY_STR {
+        actual_right = ctx_fresh_reg(ctx)
+        if right_type == IRTY_FLOAT {
+          ctx_emit(ctx, ir_inst1(IR_FLOAT_TO_STRING, actual_right, right_reg))
+        } else {
+          ctx_emit(ctx, ir_inst1(IR_INT_TO_STRING, actual_right, right_reg))
+        }
+        ctx_set_reg_type(ctx, actual_right, IRTY_STR)
+      }
       dest = ctx_fresh_reg(ctx)
-      ctx_emit(ctx, ir_string_concat(dest, left_reg, right_reg))
+      ctx_emit(ctx, ir_string_concat(dest, actual_left, actual_right))
       ctx_set_reg_type(ctx, dest, IRTY_STR)
       dest
     } else { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }

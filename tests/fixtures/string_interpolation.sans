@@ -1,0 +1,7 @@
+main() I {
+  name = "Sans"
+  version = 8
+  s = "Welcome to {name} v{version}!"
+  p(s)
+  s.len()
+}
