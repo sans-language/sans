@@ -712,7 +712,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "mhas" { lower_call_2(ctx, args, IR_MAP_HAS, IRTY_INT) }
   else if name == "cors" { lower_call_2(ctx, args, IR_CORS, IRTY_INT) }
   else if name == "cors_all" || name == "ca" { lower_call_1(ctx, args, IR_CORS_ALL, IRTY_INT) }
-  else if name == "url_decode" || name == "ud" { lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) }
+  else if name == "url_decode" || name == "ud" || name == "urld" { lower_call_1(ctx, args, IR_URL_DECODE, IRTY_STR) }
   else if name == "path_segment" || name == "ps" { lower_call_2(ctx, args, IR_PATH_SEGMENT, IRTY_STR) }
   else if name == "serve_file" { lower_call_2(ctx, args, IR_SERVE_FILE, IRTY_INT) }
   else if name == "ws_send" { lower_call_2(ctx, args, IR_WS_SEND, IRTY_INT) }
@@ -778,6 +778,13 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "path_ext" || name == "pext" { lower_call_1(ctx, args, IR_PATH_EXT, IRTY_STR) }
   else if name == "path_stem" || name == "pstem" { lower_call_1(ctx, args, IR_PATH_STEM, IRTY_STR) }
   else if name == "path_is_abs" || name == "pabs" { lower_call_1(ctx, args, IR_PATH_IS_ABS, IRTY_INT) }
+
+  // ------ Encoding ------
+  else if name == "base64_encode" || name == "b64e" { lower_call_1(ctx, args, IR_BASE64_ENCODE, IRTY_STR) }
+  else if name == "base64_decode" || name == "b64d" { lower_call_1(ctx, args, IR_BASE64_DECODE, IRTY_STR) }
+  else if name == "url_encode" || name == "urle" { lower_call_1(ctx, args, IR_URL_ENCODE, IRTY_STR) }
+  else if name == "hex_encode" || name == "hexe" { lower_call_1(ctx, args, IR_HEX_ENCODE, IRTY_STR) }
+  else if name == "hex_decode" || name == "hexd" { lower_call_1(ctx, args, IR_HEX_DECODE, IRTY_STR) }
 
   // ------ Math ------
   else if name == "abs" { lower_call_1(ctx, args, IR_ABS, IRTY_INT) }

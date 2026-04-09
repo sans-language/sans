@@ -63,6 +63,11 @@ fmt_init_aliases() I {
   mset(fmt_aliases, "listen", "hl")
   mset(fmt_aliases, "cors_all", "ca")
   mset(fmt_aliases, "url_decode", "ud")
+  mset(fmt_aliases, "base64_encode", "b64e")
+  mset(fmt_aliases, "base64_decode", "b64d")
+  mset(fmt_aliases, "url_encode", "urle")
+  mset(fmt_aliases, "hex_encode", "hexe")
+  mset(fmt_aliases, "hex_decode", "hexd")
   mset(fmt_aliases, "path_segment", "ps")
   // Logging
   mset(fmt_aliases, "log_debug", "ld")

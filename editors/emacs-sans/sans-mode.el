@@ -152,6 +152,9 @@
     ;; Path
     "path_join" "pjoin" "path_dir" "pdir" "path_base" "pbase"
     "path_ext" "pext" "path_stem" "pstem" "path_is_abs" "pabs"
+    ;; Encoding
+    "base64_encode" "b64e" "base64_decode" "b64d"
+    "url_encode" "urle" "urld" "hex_encode" "hexe" "hex_decode" "hexd"
     ;; Filesystem
     "getenv" "genv" "mkdir" "rmdir" "remove" "rm"
     "listdir" "ls" "is_dir" "sh" "shell"

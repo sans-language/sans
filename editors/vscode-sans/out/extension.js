@@ -140,6 +140,19 @@ const HOVER_DATA = {
     'path_is_abs': '**path_is_abs**(p: String) -> Int\n\nReturns `1` if path starts with `/`, else `0`.',
     'pabs': '**path_is_abs**(p: String) -> Int\n\nReturns `1` if path starts with `/`, else `0`.',
 
+    // Encoding
+    'base64_encode': '**base64_encode**(s: String) -> String\n\nBase64 encode a string.',
+    'b64e': '**base64_encode**(s: String) -> String\n\nBase64 encode a string.',
+    'base64_decode': '**base64_decode**(s: String) -> String\n\nBase64 decode a string.',
+    'b64d': '**base64_decode**(s: String) -> String\n\nBase64 decode a string.',
+    'url_encode': '**url_encode**(s: String) -> String\n\nPercent-encode a string for URLs. Unreserved chars (A-Z, a-z, 0-9, -, _, ., ~) pass through.',
+    'urle': '**url_encode**(s: String) -> String\n\nPercent-encode a string for URLs.',
+    'urld': '**url_decode**(s: String) -> String\n\nDecode a percent-encoded string. `+` becomes space.',
+    'hex_encode': '**hex_encode**(s: String) -> String\n\nHex encode: each byte becomes 2 lowercase hex chars.',
+    'hexe': '**hex_encode**(s: String) -> String\n\nHex encode: each byte becomes 2 lowercase hex chars.',
+    'hex_decode': '**hex_decode**(s: String) -> String\n\nHex decode: each pair of hex chars becomes 1 byte.',
+    'hexd': '**hex_decode**(s: String) -> String\n\nHex decode: each pair of hex chars becomes 1 byte.',
+
     // CLI tools
     'lint': '**sans lint** <file|dir> — Static analysis without building.\n\nRules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut.\n\n`--error=<rule>` promotes to error. `--quiet` suppresses warnings.\n\nConfig in sans.json: `{"lint":{"rule":"error|warn|off"}}`.',
 };
