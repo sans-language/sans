@@ -691,15 +691,6 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_hex_encode(i64)")
   emit(cg, "declare i64 @sans_hex_decode(i64)")
 
-  // ------ OpenSSL Crypto (hash/HMAC/random -- inline codegen, no C helper) ------
-  emit(cg, "declare ptr @SHA256(ptr, i64, ptr)")
-  emit(cg, "declare ptr @SHA512(ptr, i64, ptr)")
-  emit(cg, "declare ptr @MD5(ptr, i64, ptr)")
-  emit(cg, "declare ptr @EVP_sha256()")
-  emit(cg, "declare ptr @HMAC(ptr, ptr, i32, ptr, i64, ptr, ptr)")
-  emit(cg, "declare i32 @RAND_bytes(ptr, i32)")
-  emit(cg, "@.hex_table = private unnamed_addr constant [17 x i8] c\"0123456789abcdef\\00\"")
-
   // ------ Sans runtime: Math ------
   emit(cg, "declare i64 @sans_abs(i64)")
   emit(cg, "declare i64 @sans_min(i64, i64)")
