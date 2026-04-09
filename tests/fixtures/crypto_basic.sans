@@ -1,0 +1,21 @@
+main() I {
+  // SHA-256 of empty string
+  p(sha256(""))
+  // SHA-256 of "hello"
+  p(sha256("hello"))
+  // SHA-512 of "hello"
+  p(sha512("hello"))
+  // MD5 of "hello"
+  p(md5("hello"))
+  // HMAC-SHA256
+  p(hmac_sha256("secret" "message"))
+  // Alias
+  p(hmac256("key" "data"))
+  // random_bytes returns hex string of length 2*n
+  r = random_bytes(16)
+  p(str(slen(r)))
+  // Alias
+  r2 = randb(8)
+  p(str(slen(r2)))
+  0
+}

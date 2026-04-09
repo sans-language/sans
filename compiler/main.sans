@@ -645,6 +645,9 @@ do_link(ll_path:S output_path:S source_path:S) I {
     li = li + 1
     0
   }
+  // Crypto functions (sha256/sha512/md5/hmac/random_bytes) are emitted as
+  // inline LLVM IR calling OpenSSL directly -- no C helper needed.
+
   if win == 1 {
     // Windows (MinGW): link win_compat shim, winsock2, pthreads
     compat_o = td + "/sans_win_compat.o"
