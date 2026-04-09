@@ -433,6 +433,26 @@ emit_externals_core(cg:I) I {
   // ------ LLVM intrinsics ------
   emit(cg, "declare i16 @llvm.bswap.i16(i16)")
 
+  // ------ libc math (float builtins) ------
+  emit(cg, "declare double @floor(double)")
+  emit(cg, "declare double @ceil(double)")
+  emit(cg, "declare double @round(double)")
+  emit(cg, "declare double @sqrt(double)")
+  emit(cg, "declare double @sin(double)")
+  emit(cg, "declare double @cos(double)")
+  emit(cg, "declare double @tan(double)")
+  emit(cg, "declare double @asin(double)")
+  emit(cg, "declare double @acos(double)")
+  emit(cg, "declare double @atan(double)")
+  emit(cg, "declare double @atan2(double, double)")
+  emit(cg, "declare double @log(double)")
+  emit(cg, "declare double @log10(double)")
+  emit(cg, "declare double @exp(double)")
+  emit(cg, "declare double @pow(double, double)")
+  emit(cg, "declare double @fabs(double)")
+  emit(cg, "declare double @fmin(double, double)")
+  emit(cg, "declare double @fmax(double, double)")
+
   emit(cg, "@.empty_str = private unnamed_addr constant [1 x i8] zeroinitializer")
   emit(cg, "@.str.too_many_caps = private unnamed_addr constant [36 x i8] c\"closure: too many captures (max 8)\\0a\\00\"")
   emit(cg, "@.str.unwrap_err = private unnamed_addr constant [29 x i8] c\"error: unwrap called on err\\0a\\00\"")
@@ -471,6 +491,26 @@ emit_externals(cg:I) I {
   emit(cg, "declare void @srand(i32)")
   emit(cg, "declare i32 @rand()")
   emit(cg, "declare double @strtod(ptr, ptr)")
+
+  // ------ libc math (float builtins) ------
+  emit(cg, "declare double @floor(double)")
+  emit(cg, "declare double @ceil(double)")
+  emit(cg, "declare double @round(double)")
+  emit(cg, "declare double @sqrt(double)")
+  emit(cg, "declare double @sin(double)")
+  emit(cg, "declare double @cos(double)")
+  emit(cg, "declare double @tan(double)")
+  emit(cg, "declare double @asin(double)")
+  emit(cg, "declare double @acos(double)")
+  emit(cg, "declare double @atan(double)")
+  emit(cg, "declare double @atan2(double, double)")
+  emit(cg, "declare double @log(double)")
+  emit(cg, "declare double @log10(double)")
+  emit(cg, "declare double @exp(double)")
+  emit(cg, "declare double @pow(double, double)")
+  emit(cg, "declare double @fabs(double)")
+  emit(cg, "declare double @fmin(double, double)")
+  emit(cg, "declare double @fmax(double, double)")
 
   // ------ File I/O ------
   emit(cg, "declare ptr @fopen(ptr, ptr)")
@@ -5019,6 +5059,220 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_MAX {
     compile_rt2(cg, inst, "sans_max")
+    return 0
+  }
+
+  // ------ Float Math: 1-arg (316-329) ------
+  if op == IR_FLOOR {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @floor(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_CEIL {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @ceil(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_ROUND {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @round(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SQRT {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @sqrt(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_SIN {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @sin(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_COS {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @cos(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_TAN {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @tan(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_ASIN {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @asin(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_ACOS {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @acos(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_ATAN {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @atan(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_LOG {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @log(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_LOG10 {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @log10(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_EXP {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @exp(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FABS {
+    val = cg_get_val(cg, ir_field(inst, 16))
+    fv = cg_fresh_reg(cg)
+    emit(cg, "  " + fv + " = bitcast i64 " + val + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @fabs(double " + fv + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+
+  // ------ Float Math: 2-arg (330-333) ------
+  if op == IR_POW {
+    va = cg_get_val(cg, ir_field(inst, 16))
+    vb = cg_get_val(cg, ir_field(inst, 24))
+    fa = cg_fresh_reg(cg)
+    emit(cg, "  " + fa + " = bitcast i64 " + va + " to double")
+    fb = cg_fresh_reg(cg)
+    emit(cg, "  " + fb + " = bitcast i64 " + vb + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @pow(double " + fa + ", double " + fb + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_ATAN2 {
+    va = cg_get_val(cg, ir_field(inst, 16))
+    vb = cg_get_val(cg, ir_field(inst, 24))
+    fa = cg_fresh_reg(cg)
+    emit(cg, "  " + fa + " = bitcast i64 " + va + " to double")
+    fb = cg_fresh_reg(cg)
+    emit(cg, "  " + fb + " = bitcast i64 " + vb + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @atan2(double " + fa + ", double " + fb + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FMIN {
+    va = cg_get_val(cg, ir_field(inst, 16))
+    vb = cg_get_val(cg, ir_field(inst, 24))
+    fa = cg_fresh_reg(cg)
+    emit(cg, "  " + fa + " = bitcast i64 " + va + " to double")
+    fb = cg_fresh_reg(cg)
+    emit(cg, "  " + fb + " = bitcast i64 " + vb + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @fmin(double " + fa + ", double " + fb + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
+    return 0
+  }
+  if op == IR_FMAX {
+    va = cg_get_val(cg, ir_field(inst, 16))
+    vb = cg_get_val(cg, ir_field(inst, 24))
+    fa = cg_fresh_reg(cg)
+    emit(cg, "  " + fa + " = bitcast i64 " + va + " to double")
+    fb = cg_fresh_reg(cg)
+    emit(cg, "  " + fb + " = bitcast i64 " + vb + " to double")
+    rd = cg_fresh_reg(cg)
+    emit(cg, "  " + rd + " = call double @fmax(double " + fa + ", double " + fb + ")")
+    r = cg_fresh_reg(cg)
+    emit(cg, "  " + r + " = bitcast double " + rd + " to i64")
+    cg_set_val(cg, dest, r)
     return 0
   }
 

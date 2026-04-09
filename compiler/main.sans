@@ -658,7 +658,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
     platform = sh("uname -s")
     is_mac := 0
     if load8(platform) == 68 { is_mac = 1 } else { 0 }
-    link_cmd = link_cmd + " -lcurl -lz"
+    link_cmd = link_cmd + " -lcurl -lz -lm"
     if is_mac == 1 {
       link_cmd = link_cmd + " -Wl,-stack_size,0x10000000 -Wl,-headerpad_max_install_names $(pkg-config --libs openssl 2>/dev/null || echo '-lssl -lcrypto') -Wl,-rpath,/opt/homebrew/opt/openssl@3/lib -Wl,-rpath,/usr/local/opt/openssl@3/lib -Wl,-rpath,$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/lib"
     } else {

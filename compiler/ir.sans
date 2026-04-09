@@ -776,6 +776,42 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "min" { lower_call_2(ctx, args, IR_MIN, IRTY_INT) }
   else if name == "max" { lower_call_2(ctx, args, IR_MAX, IRTY_INT) }
 
+  // ------ Float Math (1-arg) ------
+  else if name == "floor" { lower_call_1(ctx, args, IR_FLOOR, IRTY_FLOAT) }
+  else if name == "ceil" { lower_call_1(ctx, args, IR_CEIL, IRTY_FLOAT) }
+  else if name == "round" { lower_call_1(ctx, args, IR_ROUND, IRTY_FLOAT) }
+  else if name == "sqrt" { lower_call_1(ctx, args, IR_SQRT, IRTY_FLOAT) }
+  else if name == "sin" { lower_call_1(ctx, args, IR_SIN, IRTY_FLOAT) }
+  else if name == "cos" { lower_call_1(ctx, args, IR_COS, IRTY_FLOAT) }
+  else if name == "tan" { lower_call_1(ctx, args, IR_TAN, IRTY_FLOAT) }
+  else if name == "asin" { lower_call_1(ctx, args, IR_ASIN, IRTY_FLOAT) }
+  else if name == "acos" { lower_call_1(ctx, args, IR_ACOS, IRTY_FLOAT) }
+  else if name == "atan" { lower_call_1(ctx, args, IR_ATAN, IRTY_FLOAT) }
+  else if name == "log" { lower_call_1(ctx, args, IR_LOG, IRTY_FLOAT) }
+  else if name == "log10" { lower_call_1(ctx, args, IR_LOG10, IRTY_FLOAT) }
+  else if name == "exp" { lower_call_1(ctx, args, IR_EXP, IRTY_FLOAT) }
+  else if name == "fabs" { lower_call_1(ctx, args, IR_FABS, IRTY_FLOAT) }
+
+  // ------ Float Math (2-arg) ------
+  else if name == "pow" { lower_call_2(ctx, args, IR_POW, IRTY_FLOAT) }
+  else if name == "atan2" { lower_call_2(ctx, args, IR_ATAN2, IRTY_FLOAT) }
+  else if name == "fmin" { lower_call_2(ctx, args, IR_FMIN, IRTY_FLOAT) }
+  else if name == "fmax" { lower_call_2(ctx, args, IR_FMAX, IRTY_FLOAT) }
+
+  // ------ Float Math Constants ------
+  else if name == "PI" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_float_const(dest, ptr("3.141592653589793")))
+    ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+    dest
+  }
+  else if name == "E_CONST" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_float_const(dest, ptr("2.718281828459045")))
+    ctx_set_reg_type(ctx, dest, IRTY_FLOAT)
+    dest
+  }
+
   // ------ System ------
   else if name == "sleep" { lower_call_1(ctx, args, IR_SLEEP, IRTY_INT) }
   else if name == "time" || name == "now" { lower_call_0(ctx, IR_TIME, IRTY_INT) }

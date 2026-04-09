@@ -105,6 +105,9 @@
     "float_to_string" "ftos" "string_to_float" "stof"
     ;; Math
     "abs" "min" "max" "range"
+    "floor" "ceil" "round" "sqrt" "sin" "cos" "tan"
+    "asin" "acos" "atan" "atan2" "log" "log10" "exp"
+    "pow" "fabs" "fmin" "fmax" "PI" "E_CONST"
     ;; System
     "sleep" "time" "now" "random" "rand" "print_err" "exit"
     ;; JSON
