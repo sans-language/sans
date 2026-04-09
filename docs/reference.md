@@ -420,6 +420,25 @@ r = random_bytes(16)         // 32-char random hex string
 r = randb(8)                 // 16-char random hex string
 ```
 
+### Regex (POSIX ERE)
+
+| Function | Alias | Signature | Description |
+|----------|-------|-----------|-------------|
+| `regex_match(pattern, text)` | `rmatch` | `(String, String) -> Int` | Returns 1 if text matches pattern, 0 otherwise. |
+| `regex_find(pattern, text)` | `rfind` | `(String, String) -> String` | Returns first match substring, or empty string `""` if none. |
+| `regex_replace(pattern, text, replacement)` | `rrepl` | `(String, String, String) -> String` | Replace first match with replacement. Returns original text if no match. |
+
+Uses POSIX Extended Regular Expressions (ERE) via `regcomp`/`regexec`. **Note:** Available on Linux and macOS only. Not available on Windows (a pure Sans regex engine is planned).
+
+```sans
+regex_match("[0-9]+" "hello123")    // 1
+rmatch("[0-9]+" "hello")            // 0
+regex_find("[0-9]+" "hello123world") // "123"
+rfind("[a-z]+" "123abc456")         // "abc"
+regex_replace("[0-9]+" "hello123world" "XXX")  // "helloXXXworld"
+rrepl("[0-9]+" "no digits" "XXX")              // "no digits"
+```
+
 ### Filesystem & Process
 
 | Function | Alias | Signature | Description |

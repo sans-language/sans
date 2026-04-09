@@ -1,0 +1,9 @@
+main() I {
+  p(str(regex_match("[0-9]+" "hello123world")))
+  p(str(rmatch("[0-9]+" "hello")))
+  p(regex_find("[0-9]+" "hello123world"))
+  p(rfind("[a-z]+" "123abc456"))
+  p(regex_replace("[0-9]+" "hello123world" "XXX"))
+  p(rrepl("[0-9]+" "no digits here" "XXX"))
+  0
+}

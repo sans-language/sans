@@ -800,6 +800,11 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "hmac_sha256" || name == "hmac256" { lower_call_2(ctx, args, IR_HMAC_SHA256, IRTY_STR) }
   else if name == "random_bytes" || name == "randb" { lower_call_1(ctx, args, IR_RANDOM_BYTES, IRTY_STR) }
 
+  // ------ Regex ------
+  else if name == "regex_match" || name == "rmatch" { lower_call_2(ctx, args, IR_REGEX_MATCH, IRTY_INT) }
+  else if name == "regex_find" || name == "rfind" { lower_call_2(ctx, args, IR_REGEX_FIND, IRTY_STR) }
+  else if name == "regex_replace" || name == "rrepl" { lower_call_3(ctx, args, IR_REGEX_REPLACE, IRTY_STR) }
+
   // ------ Math ------
   else if name == "abs" { lower_call_1(ctx, args, IR_ABS, IRTY_INT) }
   else if name == "min" { lower_call_2(ctx, args, IR_MIN, IRTY_INT) }

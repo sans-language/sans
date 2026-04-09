@@ -115,6 +115,9 @@ syntax keyword sansBuiltinFn sock sbind slisten saccept srecv ssend sclose rbind
 " Curl
 syntax keyword sansBuiltinFn cinit csets cseti cperf cclean cinfo curl_slist_append curl_slist_free
 
+" Regex
+syntax keyword sansBuiltinFn regex_match rmatch regex_find rfind regex_replace rrepl
+
 " --- Strings ---
 
 " Triple-quoted strings (must come before regular strings)

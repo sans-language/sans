@@ -543,6 +543,9 @@ run_test "encoding_basic"          "$REPO_ROOT/tests/fixtures/encoding_basic.san
 # Crypto
 run_test "crypto_basic"            "$REPO_ROOT/tests/fixtures/crypto_basic.sans"            0
 
+# Regex
+run_test "regex_basic"             "$REPO_ROOT/tests/fixtures/regex_basic.sans"             0
+
 # ---------------------------------------------------------------------------
 # Runtime error tests (expected to compile but fail at runtime)
 # ---------------------------------------------------------------------------
