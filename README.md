@@ -125,6 +125,7 @@ main() {
 | **Runtime Safety** | Array/string bounds checking (exits with error on out-of-bounds); SIGPIPE ignored in HTTP servers; panic recovery via `setjmp`/`longjmp` (`panic_enable`, `panic_disable`, `panic_get_buf`, `panic_fire`) |
 | **Linter** | `sans lint <file\|dir>` — static analysis without building; rules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut; configurable in `sans.json` |
 | **Diagnostics** | `file:line:col: error: message` with source context, caret, multi-error reporting, and warnings |
+| **Editor Support** | [VSCode](editors/vscode-sans/), [Neovim](editors/neovim-sans/), [Emacs](editors/emacs-sans/), [JetBrains](editors/jetbrains-sans/) — all via shared `sans-lsp` server |
 
 ## HTTP Server Example
 

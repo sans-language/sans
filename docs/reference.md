@@ -1266,6 +1266,19 @@ CLI `--error=<rule>` overrides the config file severity for that rule. `sans bui
 - **0** — no error-severity diagnostics
 - **1** — one or more error-severity diagnostics
 
+## Editor Support
+
+All editors connect to the shared `sans-lsp` language server for hover, go-to-definition, completion, diagnostics, semantic tokens, references, rename, folding, and more.
+
+| Editor | Setup |
+|---|---|
+| **VSCode** | Install the Sans extension from the marketplace |
+| **Neovim** | Copy `editors/neovim-sans/` to `~/.config/nvim/`, add `require("sans").setup()` |
+| **Emacs** | Add `editors/emacs-sans/` to load-path, add `(require 'sans-mode)` — eglot auto-connects |
+| **JetBrains** | Import TextMate bundle from `editors/jetbrains-sans/`, install LSP4IJ plugin, configure `sans-lsp` |
+
+Prerequisite: `sans-lsp` must be on PATH. See each editor's README for detailed instructions.
+
 ## Concurrency
 
 ```sans
