@@ -1,0 +1,32 @@
+main() I {
+  t = time_now()
+  y = tyear(t)
+  m = tmon(t)
+  d = tday(t)
+  h = thour(t)
+  mn = tmin(t)
+  s = tsec(t)
+  w = twday(t)
+  // Validate ranges
+  if y < 2020 || y > 2100 { p("FAIL: year out of range") }
+  if m < 1 || m > 12 { p("FAIL: month out of range") }
+  if d < 1 || d > 31 { p("FAIL: day out of range") }
+  if h < 0 || h > 23 { p("FAIL: hour out of range") }
+  if mn < 0 || mn > 59 { p("FAIL: minute out of range") }
+  if s < 0 || s > 59 { p("FAIL: second out of range") }
+  if w < 0 || w > 6 { p("FAIL: weekday out of range") }
+  p("ranges ok")
+  // time_format
+  formatted = tfmt(t "%Y-%m-%d")
+  p(formatted)
+  // time_add / time_diff
+  future = tadd(t 3600)
+  diff = tdiff(future t)
+  if diff != 3600 { p("FAIL: diff should be 3600") }
+  p("diff ok")
+  // time_now is same as time()
+  t2 = tnow()
+  if t2 < t { p("FAIL: tnow < t") }
+  p("all ok")
+  0
+}

@@ -830,6 +830,17 @@ lower_call(ctx:I name:I args:I) I {
   // ------ System ------
   else if name == "sleep" { lower_call_1(ctx, args, IR_SLEEP, IRTY_INT) }
   else if name == "time" || name == "now" { lower_call_0(ctx, IR_TIME, IRTY_INT) }
+  else if name == "time_now" || name == "tnow" { lower_call_0(ctx, IR_TIME_NOW, IRTY_INT) }
+  else if name == "time_format" || name == "tfmt" { lower_call_2(ctx, args, IR_TIME_FORMAT, IRTY_STR) }
+  else if name == "time_year" || name == "tyear" { lower_call_1(ctx, args, IR_TIME_YEAR, IRTY_INT) }
+  else if name == "time_month" || name == "tmon" { lower_call_1(ctx, args, IR_TIME_MONTH, IRTY_INT) }
+  else if name == "time_day" || name == "tday" { lower_call_1(ctx, args, IR_TIME_DAY, IRTY_INT) }
+  else if name == "time_hour" || name == "thour" { lower_call_1(ctx, args, IR_TIME_HOUR, IRTY_INT) }
+  else if name == "time_minute" || name == "tmin" { lower_call_1(ctx, args, IR_TIME_MINUTE, IRTY_INT) }
+  else if name == "time_second" || name == "tsec" { lower_call_1(ctx, args, IR_TIME_SECOND, IRTY_INT) }
+  else if name == "time_weekday" || name == "twday" { lower_call_1(ctx, args, IR_TIME_WEEKDAY, IRTY_INT) }
+  else if name == "time_add" || name == "tadd" { lower_call_2(ctx, args, IR_TIME_ADD, IRTY_INT) }
+  else if name == "time_diff" || name == "tdiff" { lower_call_2(ctx, args, IR_TIME_DIFF, IRTY_INT) }
   else if name == "random" || name == "rand" { lower_call_1(ctx, args, IR_RANDOM, IRTY_INT) }
 
   // ------ String to float ------

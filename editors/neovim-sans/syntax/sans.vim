@@ -49,6 +49,10 @@ syntax keyword sansBuiltinFn pow fabs fmin fmax PI E_CONST
 
 " System
 syntax keyword sansBuiltinFn sleep time now random rand print_err
+syntax keyword sansBuiltinFn time_now tnow time_format tfmt time_year tyear
+syntax keyword sansBuiltinFn time_month tmon time_day tday time_hour thour
+syntax keyword sansBuiltinFn time_minute tmin time_second tsec time_weekday twday
+syntax keyword sansBuiltinFn time_add tadd time_diff tdiff
 
 " JSON
 syntax keyword sansBuiltinFn json_parse jparse jp json_object jobj jo
