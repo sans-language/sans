@@ -45,8 +45,8 @@ lint_load_config() I {
   src = fr("sans.json")
   if slen(src) < 2 { return 0 }
   // Parse rule overrides via string matching
-  lint_parse_rule(src, "unused-import", 1)
-  lint_parse_rule(src, "shadow", 2)
+  lint_parse_rule(src, "unused-imports", 1)
+  lint_parse_rule(src, "shadowed-vars", 2)
   lint_parse_rule(src, "unnecessary-mut", 3)
   lint_parse_rule(src, "empty-catch", 4)
   0

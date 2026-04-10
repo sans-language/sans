@@ -313,11 +313,8 @@ llvm_escape_string_UNUSED(s:S) S {
 
 emit_string_const(cg:I value:S) S {
   pool = cg_string_pool(cg)
-  hash = djb2_hash(value)
-  key = str(hash)
-  if mhas(pool, key) {
-    return mget(pool, key)
-  }
+  key = str(djb2_hash(value))
+  if mhas(pool, key) == 1 { return mget(pool, key) }
   name = "@str." + key
   mset(pool, key, ptr(name))
   escaped = llvm_escape_string(value)
