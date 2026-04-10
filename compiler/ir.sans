@@ -4,6 +4,21 @@ import "parser"
 // ------ Helper: cast I to S for string operations ---
 ir_s(v:I) S = v
 
+// ------ Helper: resolve array element IRTY from struct_name ---
+// struct_name format: "elem::S", "elem::I", "elem::F", "elem::B", "dyn::TraitName"
+// Returns IRTY tag for the element, or 0 (IRTY_INT) if unknown.
+arr_elem_irty(ctx:I obj_reg:I) I {
+  sn = ctx_get_struct_name(ctx, obj_reg)
+  if sn == 0 { return 0 }
+  s = ir_s(sn)
+  if s.sw("elem::") != 1 { return 0 }
+  e = s.substring(6, slen(s))
+  if e == "S" || e == "String" { IRTY_STR }
+  else if e == "F" || e == "Float" { IRTY_FLOAT }
+  else if e == "B" || e == "Bool" { IRTY_BOOL }
+  else { IRTY_INT }
+}
+
 // ------ IrType constants ------------------------------------------------------------------------------------------------------------------------------------
 g IRTY_INT = 0
 g IRTY_FLOAT = 1
@@ -557,8 +572,8 @@ lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I
   }
   // Arithmetic operators (SUB, MUL, DIV, MOD --- ADD handled above)
   else if is_arith_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
-  // Comparison operators
-  else if is_cmp_op(op) == 1 { lower_binop_arith_or_cmp(ctx, op, left_reg, right_reg, eff_type) }
+  // Comparison operators --- use eff_type so string comparison uses strcmp
+  else if is_cmp_op(op) == 1 { lower_binop_cmp(ctx, op, left_reg, right_reg, eff_type) }
   else {
     // Fallback --- should not reach for valid programs
     dest = ctx_fresh_reg(ctx)
@@ -566,6 +581,25 @@ lower_binop_normal(ctx:I op:I left_reg:I right_reg:I left_type:I right_type:I) I
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   }
+}
+
+// Dispatch comparison using eff_type (checks both operands for string)
+lower_binop_cmp(ctx:I op:I left_reg:I right_reg:I eff_type:I) I {
+  dest = ctx_fresh_reg(ctx)
+  cmpop = binop_to_ircmpop(op)
+  if eff_type == IRTY_FLOAT {
+    ctx_emit(ctx, ir_float_cmpop(dest, cmpop, left_reg, right_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } else { if eff_type == IRTY_STR {
+    ctx_emit(ctx, ir_string_cmpop(dest, cmpop, left_reg, right_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } else {
+    ctx_emit(ctx, ir_cmpop(dest, cmpop, left_reg, right_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  } }
 }
 
 // Dispatch arithmetic or comparison based on op value
@@ -640,8 +674,8 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "append_file" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
   else if name == "fappend" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
   else if name == "fa" { lower_call_2(ctx, args, IR_FILE_APPEND, IRTY_INT) }
-  else if name == "read_lines" { lower_call_1(ctx, args, IR_READ_LINES, IRTY_ARRAY) }
-  else if name == "rl" { lower_call_1(ctx, args, IR_READ_LINES, IRTY_ARRAY) }
+  else if name == "read_lines" { lower_call_1_sa(ctx, args, IR_READ_LINES) }
+  else if name == "rl" { lower_call_1_sa(ctx, args, IR_READ_LINES) }
   else if name == "read_line" { lower_call_1(ctx, args, IR_READ_LINE, IRTY_STR) }
   else if name == "write_lines" { lower_call_2(ctx, args, IR_WRITE_LINES, IRTY_INT) }
   else if name == "wl" { lower_call_2(ctx, args, IR_WRITE_LINES, IRTY_INT) }
@@ -657,8 +691,8 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "rm" { lower_call_1(ctx, args, IR_REMOVE, IRTY_INT) }
   else if name == "mkdir" { lower_call_1(ctx, args, IR_MKDIR, IRTY_INT) }
   else if name == "is_dir" { lower_call_1(ctx, args, IR_IS_DIR, IRTY_BOOL) }
-  else if name == "listdir" { lower_call_1(ctx, args, IR_LISTDIR, IRTY_ARRAY) }
-  else if name == "ls" { lower_call_1(ctx, args, IR_LISTDIR, IRTY_ARRAY) }
+  else if name == "listdir" { lower_call_1_sa(ctx, args, IR_LISTDIR) }
+  else if name == "ls" { lower_call_1_sa(ctx, args, IR_LISTDIR) }
   else if name == "sh" { lower_call_1(ctx, args, IR_SH, IRTY_STR) }
   else if name == "shell" { lower_call_1(ctx, args, IR_SH, IRTY_STR) }
   else if name == "scope_disable" { lower_call_0(ctx, IR_SCOPE_DISABLE, IRTY_INT) }
@@ -899,7 +933,7 @@ lower_call(ctx:I name:I args:I) I {
 
   // ------ Unicode ------
   else if name == "char_count" || name == "ccount" { lower_call_1(ctx, args, IR_CHAR_COUNT, IRTY_INT) }
-  else if name == "chars" { lower_call_1(ctx, args, IR_CHARS, IRTY_ARRAY) }
+  else if name == "chars" { lower_call_1_sa(ctx, args, IR_CHARS) }
   else if name == "is_ascii" { lower_call_1(ctx, args, IR_IS_ASCII, IRTY_INT) }
   else if name == "utf8_valid" { lower_call_1(ctx, args, IR_UTF8_VALID, IRTY_INT) }
   else if name == "string_reverse" || name == "srev" { lower_call_1(ctx, args, IR_STRING_REVERSE, IRTY_STR) }
@@ -981,7 +1015,7 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "panic_fire" { lower_call_0(ctx, IR_PANIC_FIRE, IRTY_INT) }
 
   // ------ Misc ------
-  else if name == "args" { lower_call_0(ctx, IR_ARGS, IRTY_ARRAY) }
+  else if name == "args" { lower_call_0_sa(ctx, IR_ARGS) }
   else if name == "exit" { lower_call_1(ctx, args, IR_EXIT, IRTY_INT) }
   else if name == "system" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
   else if name == "sys" { lower_call_1(ctx, args, IR_SYSTEM, IRTY_INT) }
@@ -996,6 +1030,20 @@ lower_call_0(ctx:I opcode:I irtype:I) I {
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst0(opcode, dest))
   ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+// 0-arg built-in returning string array
+lower_call_0_sa(ctx:I opcode:I) I {
+  dest = lower_call_0(ctx, opcode, IRTY_ARRAY)
+  ctx_set_struct_name(ctx, dest, ptr("elem::S"))
+  dest
+}
+
+// 1-arg built-in returning string array
+lower_call_1_sa(ctx:I args:I opcode:I) I {
+  dest = lower_call_1(ctx, args, opcode, IRTY_ARRAY)
+  ctx_set_struct_name(ctx, dest, ptr("elem::S"))
   dest
 }
 
@@ -2399,6 +2447,7 @@ lower_method_call(ctx:I expr:I) I {
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_inst1(IR_MAP_KEYS, dest, obj_reg))
       ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      ctx_set_struct_name(ctx, dest, ptr("elem::S"))
       dest
     } else if method == "vals" {
       dest = ctx_fresh_reg(ctx)
@@ -2446,6 +2495,7 @@ lower_method_call(ctx:I expr:I) I {
       dest = ctx_fresh_reg(ctx)
       ctx_emit(ctx, ir_inst2(IR_STRING_SPLIT, dest, obj_reg, arg_reg))
       ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      ctx_set_struct_name(ctx, dest, ptr("elem::S"))
       dest
     } else if method == "replace" {
       a0 = lower_expr(ctx, args.get(0))
@@ -2632,13 +2682,14 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     idx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_GET, dest, obj_reg, idx_reg))
-    // Check if array holds dyn trait elements
+    // Resolve element type from tracked array info
     ag_sn = ctx_get_struct_name(ctx, obj_reg)
     if ag_sn != 0 && ir_s(ag_sn).sw("dyn::") == 1 {
       ctx_set_reg_type(ctx, dest, IRTY_DYN_TRAIT)
       ctx_set_struct_name(ctx, dest, ag_sn)
     } else {
-      ctx_set_reg_type(ctx, dest, IRTY_INT)
+      ety = arr_elem_irty(ctx, obj_reg)
+      ctx_set_reg_type(ctx, dest, ety)
     }
     dest
   }
@@ -2669,6 +2720,8 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_FILTER, dest, obj_reg, fn_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    fsn = ctx_get_struct_name(ctx, obj_reg)
+    if fsn != 0 { ctx_set_struct_name(ctx, dest, fsn) }
     dest
   }
   else if method == "any" {
@@ -2701,7 +2754,8 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
   else if method == "pop" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_ARRAY_POP, dest, obj_reg))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    ety = arr_elem_irty(ctx, obj_reg)
+    ctx_set_reg_type(ctx, dest, ety)
     dest
   }
   else if method == "contains" {
@@ -2715,7 +2769,8 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     idx_reg = lower_expr(ctx, args.get(0))
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_ARRAY_REMOVE, dest, obj_reg, idx_reg))
-    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    ety = arr_elem_irty(ctx, obj_reg)
+    ctx_set_reg_type(ctx, dest, ety)
     dest
   }
   else if method == "sum" {
@@ -2748,6 +2803,8 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst3(IR_ARRAY_SLICE, dest, obj_reg, start_reg, end_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    ssn = ctx_get_struct_name(ctx, obj_reg)
+    if ssn != 0 { ctx_set_struct_name(ctx, dest, ssn) }
     dest
   }
   else if method == "reduce" {
@@ -2776,12 +2833,16 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_ARRAY_SORT, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    sosn = ctx_get_struct_name(ctx, obj_reg)
+    if sosn != 0 { ctx_set_struct_name(ctx, dest, sosn) }
     dest
   }
   else if method == "reverse" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_ARRAY_REVERSE, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    rsn = ctx_get_struct_name(ctx, obj_reg)
+    if rsn != 0 { ctx_set_struct_name(ctx, dest, rsn) }
     dest
   }
   else if method == "join" {
@@ -2814,6 +2875,7 @@ lower_string_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst2(IR_STRING_SPLIT, dest, obj_reg, delim_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    ctx_set_struct_name(ctx, dest, ptr("elem::S"))
     dest
   }
   else if method == "replace" {
@@ -2992,6 +3054,7 @@ lower_map_method(ctx:I obj_reg:I method:I args:I) I {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_MAP_KEYS, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    ctx_set_struct_name(ctx, dest, ptr("elem::S"))
     dest
   }
   else if method == "vals" {
@@ -4243,7 +4306,13 @@ lower_array_lit(ctx:I expr:I) I {
   while i < elements.len() {
     val_reg = lower_expr(ctx, elements.get(i))
     // Track element type from first element
-    if i == 0 { ctx_set_reg_type(ctx, dest, IRTY_ARRAY) }
+    if i == 0 {
+      ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+      first_ty = ctx_get_reg_type(ctx, val_reg)
+      if first_ty == IRTY_STR { ctx_set_struct_name(ctx, dest, ptr("elem::S")) }
+      else if first_ty == IRTY_FLOAT { ctx_set_struct_name(ctx, dest, ptr("elem::F")) }
+      else if first_ty == IRTY_BOOL { ctx_set_struct_name(ctx, dest, ptr("elem::B")) }
+    }
     ctx_emit(ctx, ir_inst1(IR_ARRAY_PUSH, dest, val_reg))
     i = i + 1
     0
@@ -4547,12 +4616,14 @@ lower_array_create(ctx:I expr:I) I {
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst0(IR_ARRAY_CREATE, dest))
   ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
-  // Track dyn trait element type for polymorphic dispatch
+  // Track element type for correct .get()/.pop() return typing
   if ac_elem_type != 0 {
     ac_et_s = ir_s(ac_elem_type)
     if ac_et_s.sw("dyn ") == 1 {
       ac_tname = ac_et_s.substring(4, slen(ac_et_s))
       ctx_set_struct_name(ctx, dest, ptr("dyn::" + ac_tname))
+    } else {
+      ctx_set_struct_name(ctx, dest, ptr("elem::" + ac_et_s))
     }
   }
   dest

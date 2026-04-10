@@ -62,6 +62,10 @@ find_llc() S {
   "llc"
 }
 
+// ------ Type cast helpers ---------------------------------------------------------------------------------------------------------------------------------------
+// Cast i64 back to string (array<I>.get() loses type info in IR)
+tos(v:I) S = v
+
 // ------ String helpers ------------------------------------------------------------------------------------------------------------------------------------------
 
 // Find last occurrence of character ch in string s, return index or -1
@@ -530,7 +534,7 @@ build_step8(program:I module_fn_ret_types:I module_fn_ret_snames:I extra_struct_
   // Pass re-export aliases to codegen
   cg_fn_aliases = g_fn_aliases
   // Run codegen and link in the SAME scope to prevent scope GC from freeing IR data
-  g_ll = g_out + ".ll"
+  g_ll = tos(g_out) + ".ll"
   wfd(2, "+STEP=1 FILE=")
   wfd(2, g_file)
   wfd(2, "\n")
@@ -564,7 +568,7 @@ do_codegen_and_link(merged:I ll_path:S output_path:S source_path:S) I {
 do_link(ll_path:S output_path:S source_path:S) I {
   // Find llc binary
   if g_llc == 0 { g_llc = find_llc() }
-  llc = g_llc
+  llc = tos(g_llc)
   // Platform-specific quoting and temp dir
   c := "'"
   td := "/tmp"
@@ -613,7 +617,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_o_paths = array<I>()
   ri := 0
   while ri < runtime_modules.len() {
-    rname = runtime_modules.get(ri)
+    rname = tos(runtime_modules.get(ri))
     wfd(2, "R:")
     wfd(2, rname)
     wfd(2, "\n")
@@ -642,7 +646,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   link_cmd := "cc " + cc_dbg + c + obj_path + c
   li := 0
   while li < runtime_o_paths.len() {
-    link_cmd = link_cmd + " " + c + runtime_o_paths.get(li) + c
+    link_cmd = link_cmd + " " + c + tos(runtime_o_paths.get(li)) + c
     li = li + 1
     0
   }
