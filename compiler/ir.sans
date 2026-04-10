@@ -1247,7 +1247,7 @@ lower_call_user(ctx:I name:I args:I) I {
     lfn_set = ctx_local_fn_set(ctx)
     imp_fns = ctx_imported_fn_names(ctx)
     call_name = if mod_name != 0 && mhas(lfn_set, name) == 1 {
-      mod_name + "__" + name
+      ir_s(mod_name) + "__" + ir_s(name)
     } else { if imp_fns != 0 && mhas(imp_fns, name) == 1 {
       mget(imp_fns, name)
     } else { name } }
@@ -2638,14 +2638,16 @@ lower_dyn_trait_method_call(ctx:I obj_reg:I method:I args:I) I {
 lower_method_fallback(ctx:I obj_reg:I method:I args:I) I {
   // Mangle name as "Type_method" or "module__Type__method" for module context
   type_name = ctx_get_struct_name(ctx, obj_reg)
-  base_mangled = if type_name != 0 { type_name + "_" + method } else { method }
+  tn_s = ir_s(type_name)
+  m_s = ir_s(method)
+  base_mangled = if type_name != 0 { tn_s + "_" + m_s } else { method }
   mod_name = ctx_module_name(ctx)
   lfn_set = ctx_local_fn_set(ctx)
   // For impl methods, local_fn_set stores "Type__method" keys
-  impl_key = if type_name != 0 { type_name + "__" + method } else { "" }
+  impl_key = if type_name != 0 { tn_s + "__" + m_s } else { "" }
   imp_fns = ctx_imported_fn_names(ctx)
   mangled = if mod_name != 0 && impl_key != "" && mhas(lfn_set, impl_key) == 1 {
-    mod_name + "__" + type_name + "__" + method
+    ir_s(mod_name) + "__" + tn_s + "__" + m_s
   } else { if imp_fns != 0 && mhas(imp_fns, base_mangled) == 1 {
     mget(imp_fns, base_mangled)
   } else { base_mangled } }
@@ -4983,21 +4985,21 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
       if IRTY_INT != rt {
         mset(fn_ret_types, fname, rt)
         // Also store with mangled name for intra-module call resolution
-        if module_name != 0 { mset(fn_ret_types, module_name + "__" + fname, rt) }
+        if module_name != 0 { mset(fn_ret_types, ir_s(module_name) + "__" + ir_s(fname), rt) }
       }
       if rt == IRTY_RESULT {
         mset(fn_ret_struct_names, fname, ret_type_name)
-        if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ret_type_name) }
+        if module_name != 0 { mset(fn_ret_struct_names, ir_s(module_name) + "__" + ir_s(fname), ret_type_name) }
       }
       if rt == IRTY_STRUCT {
         mset(fn_ret_struct_names, fname, ret_type_name)
-        if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ret_type_name) }
+        if module_name != 0 { mset(fn_ret_struct_names, ir_s(module_name) + "__" + ir_s(fname), ret_type_name) }
       }
       if rt == IRTY_DYN_TRAIT {
         drt_tname = ir_s(ret_type_name).substring(4, slen(ret_type_name))
         drt_sn = "dyn::" + drt_tname
         mset(fn_ret_struct_names, fname, ptr(drt_sn))
-        if module_name != 0 { mset(fn_ret_struct_names, module_name + "__" + fname, ptr(drt_sn)) }
+        if module_name != 0 { mset(fn_ret_struct_names, ir_s(module_name) + "__" + ir_s(fname), ptr(drt_sn)) }
       }
     }
     fri = fri + 1
@@ -5051,7 +5053,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     }
     if has_defaults == 1 {
       mset(fn_param_defaults, fname, defaults)
-      if module_name != 0 { mset(fn_param_defaults, module_name + "__" + fname, defaults) }
+      if module_name != 0 { mset(fn_param_defaults, ir_s(module_name) + "__" + ir_s(fname), defaults) }
     }
     fpdi += 1
     0
@@ -5064,7 +5066,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     while lfni < nfns {
       lfn = prog_fns.get(lfni)
       lfname = load64(lfn)
-      mangled_fn = module_name + "__" + lfname
+      mangled_fn = ir_s(module_name) + "__" + ir_s(lfname)
       // Always register with at least IRTY_INT so the name is findable
       if mhas(fn_ret_types, mangled_fn) == 0 {
         mset(fn_ret_types, mangled_fn, IRTY_INT)
@@ -5098,7 +5100,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
       while lfs_mi < lfs_methods.len() {
         lfs_m = lfs_methods.get(lfs_mi)
         lfs_mname = load64(lfs_m)
-        mset(local_fn_set, lfs_ttype + "__" + lfs_mname, 1)
+        mset(local_fn_set, ir_s(lfs_ttype) + "__" + ir_s(lfs_mname), 1)
         lfs_mi = lfs_mi + 1
         0
       }
@@ -5128,7 +5130,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
         0
       }
       imp_name = if imp_slash < 0 { imp_raw } else { imp_raw.substring(imp_slash + 1, slen(imp_raw)) }
-      imp_prefix = imp_name + "__"
+      imp_prefix = ir_s(imp_name) + "__"
       imp_prefix_len = slen(imp_prefix)
       mfrt_ki := 0
       while mfrt_ki < mfrt_keys.len() {
@@ -5206,7 +5208,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
     func = prog_fns.get(fi2)
     fname = load64(func)
     // Handle module name mangling
-    func_name = if module_name != 0 { module_name + "__" + fname } else { fname }
+    func_name = if module_name != 0 { ir_s(module_name) + "__" + ir_s(fname) } else { fname }
     fn_result = lower_function_body(func, func_name, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names, fn_param_defaults)
     // fn_result is [ir_fn, lifted0, lifted1, ...]
     ir_functions.push(fn_result.get(0))
@@ -5255,7 +5257,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
           while gmi < methods.len() {
             method = methods.get(gmi)
             mname = load64(method)
-            mangled = if module_name != 0 { module_name + "__" + sd_key + "__" + mname } else { sd_key + "_" + mname }
+            mangled = if module_name != 0 { ir_s(module_name) + "__" + ir_s(sd_key) + "__" + ir_s(mname) } else { ir_s(sd_key) + "_" + ir_s(mname) }
             // Patch self param type to monomorphized name for correct struct resolution
             m_params_arr = load64(method + 8)
             self_param = m_params_arr.get(0)
@@ -5284,7 +5286,7 @@ lower_full(program:I module_name:I module_fn_ret_types:I extra_struct_defs:I ext
       method = methods.get(mi)
       mname = load64(method)
       // Mangle: module__Type__method or Type_method
-      mangled = if module_name != 0 { module_name + "__" + target_type + "__" + mname } else { target_type + "_" + mname }
+      mangled = if module_name != 0 { ir_s(module_name) + "__" + ir_s(target_type) + "__" + ir_s(mname) } else { ir_s(target_type) + "_" + ir_s(mname) }
       mfn_result = lower_function_body(method, mangled, struct_defs, enum_defs, fn_ret_types, global_names, variant_tag_map, variant_fields_map, fn_ret_struct_names, module_name, local_fn_set, imported_fn_names, fn_param_defaults)
       ir_functions.push(mfn_result.get(0))
       mfri := 1
