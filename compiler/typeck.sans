@@ -411,8 +411,13 @@ types_compatible(actual:I expected:I) I {
   et = type_tag(expected)
   // ResultErr matches any Result<T>
   if at == TY_RESULT_ERR && et == TY_RESULT { return 1 }
-  // Int and Bool are interchangeable (booleans are integers in Sans)
-  if (at == TY_INT || at == TY_BOOL) && (et == TY_INT || et == TY_BOOL) { return 1 }
+  // Int (I) is the universal type — accepts any i64-compatible value
+  // This is needed because Sans uses I as a generic "any" parameter type
+  if et == TY_INT && is_i64_compat(actual) == 1 { return 1 }
+  // Bool is compatible with Int (booleans are integers)
+  if at == TY_BOOL && et == TY_INT { return 1 }
+  if at == TY_INT && et == TY_BOOL { return 1 }
+  // Specific pointer types (String, Array, Map, etc.) require exact match
   0
 }
 
