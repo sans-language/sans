@@ -313,13 +313,10 @@ llvm_escape_string_UNUSED(s:S) S {
 
 emit_string_const(cg:I value:S) S {
   pool = cg_string_pool(cg)
-  // Deduplicate by string content: reuse existing constant if same value was emitted
-  if mhas(pool, value) {
-    return mget(pool, value)
-  }
-  idx = djb2_hash(value)
-  name = "@str." + str(idx)
-  mset(pool, value, ptr(name))
+  key = str(djb2_hash(value))
+  if mhas(pool, key) == 1 { return mget(pool, key) }
+  name = "@str." + key
+  mset(pool, key, ptr(name))
   escaped = llvm_escape_string(value)
   len = slen(value) + 1
   line = name + " = private unnamed_addr constant [" + str(len) + " x i8] c\"" + escaped + "\\00\""
