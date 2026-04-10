@@ -3,12 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.sans.dev; font-src 'self'">
-  <meta name="sans-version" content="0.8.3">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://api.sans.dev; font-src 'self'">
+  <meta name="sans-version" content="0.9.0">
   <title>Sans by Example</title>
-  <script>
-    (function(){var t=localStorage.getItem('sans-theme');if(t)document.documentElement.setAttribute('data-theme',t);else if(matchMedia('(prefers-color-scheme:dark)').matches)document.documentElement.setAttribute('data-theme','dark');})();
-  </script>
+  <script src="/js/theme.js"></script>
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/components.js" defer></script>
 <style>
@@ -762,22 +760,6 @@
 
   <sans-footer base=""></sans-footer>
 
-  <script>
-    document.querySelectorAll('.btn-try').forEach(btn => {
-      btn.addEventListener('click', function(e) {
-        e.preventDefault();
-        const card = this.closest('.example-card');
-        const code = card.querySelector('pre code').textContent;
-        fetch('https://api.sans.dev/api/share', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code }),
-        })
-        .then(r => r.json())
-        .then(data => { window.open('/play/?s=' + data.id, '_blank'); })
-        .catch(() => { window.open('/play/', '_blank'); });
-      });
-    });
-  </script>
+  <script src="/js/examples.js"></script>
 </body>
 </html>
