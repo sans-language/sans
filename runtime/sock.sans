@@ -8,7 +8,10 @@ sans_bind_port(fd:I port:I) I {
   opt = alloc(4)
   store32(opt, 1)
   rsetsockopt(fd, 65535, 4, opt, 4)
-  rbind(fd, addr, 16)
+  r = rbind(fd, addr, 16)
+  free(opt)
+  free(addr)
+  r
 }
 
 sans_http_listen(port:I) I {

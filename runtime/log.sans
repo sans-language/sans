@@ -1,3 +1,6 @@
+// Thread-safety: sans_log_level is a plain global with no synchronization.
+// Concurrent reads/writes from multiple threads may race. Call sans_log_set_level
+// before spawning threads to avoid undefined behavior.
 g sans_log_level = 0
 
 sans_log_debug(msg:S) I {
