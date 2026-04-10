@@ -116,7 +116,8 @@ params_uri(params:J) S {
   if u.type_of() == "string" { u.get_string() } else { "" }
 }
 
-// Extract position as encoded int: line * 1000000 + character
+// Extract position as encoded int: line * 10000000000 + character
+// Supports lines up to ~9.9 billion characters (i64 safe)
 params_position(params:J) I {
   pos = params.get("position")
   if pos.type_of() == "null" { return 0 }
@@ -124,7 +125,7 @@ params_position(params:J) I {
   char = pos.get("character")
   l = if line.type_of() == "null" { 0 } else { line.get_int() }
   c = if char.type_of() == "null" { 0 } else { char.get_int() }
-  l * 1000000 + c
+  l * 10000000000 + c
 }
 
 // Extract text from didOpen (textDocument.text) or didChange (contentChanges[0].text)
