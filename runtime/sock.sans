@@ -9,8 +9,8 @@ sans_bind_port(fd:I port:I) I {
   store32(opt, 1)
   rsetsockopt(fd, 65535, 4, opt, 4)
   r = rbind(fd, addr, 16)
-  free(opt)
-  free(addr)
+  dealloc(opt)
+  dealloc(addr)
   r
 }
 
