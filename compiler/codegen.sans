@@ -2595,12 +2595,12 @@ emit_closure_aware_call3(cg:I dest:I fp_val:S a1:S a2:S a3:S) I {
 compile_dyn_trait_create(cg:I inst:I) I {
   dtc_dest = ir_dest(inst)
   dtc_src_val = cg_get_val(cg, ir_field(inst, 16))
-  dtc_type_name = ir_field(inst, 24)
-  dtc_trait_name = ir_field(inst, 32)
+  dtc_type_name = ir_field_s(inst, 24)
+  dtc_trait_name = ir_field_s(inst, 32)
   dtc_fp = cg_fresh_reg(cg)
   emit(cg, "  " + dtc_fp + " = call ptr @malloc(i64 16)")
   emit(cg, "  store i64 " + dtc_src_val + ", ptr " + dtc_fp)
-  dtc_vt_name = cg_str(dtc_type_name) + "." + cg_str(dtc_trait_name)
+  dtc_vt_name = dtc_type_name + "." + dtc_trait_name
   dtc_vt_ref = cg_fresh_reg(cg)
   emit(cg, "  " + dtc_vt_ref + " = ptrtoint ptr @vtable." + dtc_vt_name + " to i64")
   dtc_vt_gep = cg_fresh_reg(cg)
@@ -2633,9 +2633,9 @@ dyn_lookup_method_idx(trait_name:I method_name:I) I {
 compile_dyn_trait_call(cg:I inst:I) I {
   dtcl_dest = ir_dest(inst)
   dtcl_obj_val = cg_get_val(cg, ir_field(inst, 16))
-  dtcl_method_name = ir_field(inst, 24)
+  dtcl_method_name = ir_field_s(inst, 24)
   dtcl_args = ir_field(inst, 32)
-  dtcl_trait_name = ir_field(inst, 40)
+  dtcl_trait_name = ir_field_s(inst, 40)
   dtcl_method_idx = dyn_lookup_method_idx(dtcl_trait_name, dtcl_method_name)
   dtcl_fp = cg_fresh_reg(cg)
   emit(cg, "  " + dtcl_fp + " = inttoptr i64 " + dtcl_obj_val + " to ptr")
@@ -2673,7 +2673,7 @@ compile_inst(cg:I inst:I) I {
 
   // ------ IR_FLOAT_CONST (1): [op, dest, float_str_ptr] ------
   if op == IR_FLOAT_CONST {
-    float_str = cg_str(ir_field(inst, 16))
+    float_str = ir_field_s(inst, 16)
     // float_str is a string pointer containing the float text (e.g. "3.14")
     // Emit LLVM bitcast from double to i64
     ftmp = cg_fresh_reg(cg)
@@ -2693,7 +2693,7 @@ compile_inst(cg:I inst:I) I {
 
   // ------ IR_STRING_CONST (3): [op, dest, string_ptr] ------
   if op == IR_STRING_CONST {
-    str_raw = ir_field(inst, 16)
+    str_raw = ir_field_s(inst, 16)
     str_val = if str_raw == 0 { ptr("") } else { str_raw }
     global_name = emit_string_const(cg, str_val)
     len = slen(str_val) + 1
@@ -2814,7 +2814,7 @@ compile_inst(cg:I inst:I) I {
 
   // ------ IR_CALL (12): [op, dest, fname, args_array] ------
   if op == IR_CALL {
-    fname_ptr = ir_field(inst, 16)
+    fname_ptr = ir_field_s(inst, 16)
     fname = resolve_fn_alias(fname_ptr)
     args = ir_field(inst, 24)
     nargs = args.len()
@@ -2880,8 +2880,8 @@ compile_inst(cg:I inst:I) I {
   // ------ IR_BRANCH (15): [op, cond, then_label, else_label] ------
   if op == IR_BRANCH {
     cond_val = cg_get_val(cg, dest)
-    then_label = cg_str(ir_field(inst, 16))
-    else_label = cg_str(ir_field(inst, 24))
+    then_label = ir_field_s(inst, 16)
+    else_label = ir_field_s(inst, 24)
     // Record parent relationships: then_label and else_label are children of current label
     ir_lbl = cg_current_label(cg)
     lp = cg_label_parent(cg)
@@ -2929,9 +2929,9 @@ compile_inst(cg:I inst:I) I {
   // ------ IR_PHI (17): [op, dest, a_val, a_label, b_val, b_label] ------
   if op == IR_PHI {
     a_val = cg_get_val(cg, ir_field(inst, 16))
-    a_label_ir = cg_str(ir_field(inst, 24))
+    a_label_ir = ir_field_s(inst, 24)
     b_val = cg_get_val(cg, ir_field(inst, 32))
-    b_label_ir = cg_str(ir_field(inst, 40))
+    b_label_ir = ir_field_s(inst, 40)
     // Use the actual end labels (handles nested if/else creating extra blocks)
     a_label = cg_get_label_end(cg, a_label_ir)
     b_label = cg_get_label_end(cg, b_label_ir)
@@ -3118,7 +3118,7 @@ compile_inst(cg:I inst:I) I {
 
   // ------ IR_GLOBAL_LOAD (31): [op, dest, name] ------
   if op == IR_GLOBAL_LOAD {
-    gname = cg_str(ir_field(inst, 16))
+    gname = ir_field_s(inst, 16)
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = load i64, ptr @" + gname)
     cg_set_val(cg, dest, r)
@@ -4433,7 +4433,7 @@ compile_inst(cg:I inst:I) I {
   // ------ Concurrency (96-104) ------
   if op == IR_THREAD_SPAWN {
     // Layout: [op@0, dest@8, func_name@16, args_array@24]
-    func_name = cg_str(ir_field(inst, 16))
+    func_name = ir_field_s(inst, 16)
     arg_regs = ir_field(inst, 24)
     num_args = arg_regs.len()
     llvm_fname = if func_name == "main" { "__sans_main" } else { func_name }
@@ -4893,7 +4893,7 @@ compile_inst(cg:I inst:I) I {
   if op == IR_FN_REF {
     // [op, dest, name_ptr]: ptrtoint of function pointer
     // In text IR, we emit the function name directly
-    fname = cg_str(ir_field(inst, 16))
+    fname = ir_field_s(inst, 16)
     llvm_fname = if fname == "main" { "__sans_main" } else { fname }
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
@@ -4903,7 +4903,7 @@ compile_inst(cg:I inst:I) I {
   }
   if op == IR_FPTR_NAMED {
     // [op, dest, func_name_ptr]: same as FN_REF
-    fname = cg_str(ir_field(inst, 16))
+    fname = ir_field_s(inst, 16)
     llvm_fname = if fname == "main" { "__sans_main" } else { fname }
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = ptrtoint ptr @" + llvm_fname + " to i64")
@@ -6991,17 +6991,17 @@ dce_build_live_set(module:I) I {
       inst = instrs.get(ii)
       op = ir_op(inst)
       if op == IR_CALL {
-        callee_name = ir_field(inst, 16)
+        callee_name = ir_field_s(inst, 16)
         callees.push(callee_name)
       }
       if op == IR_FPTR_NAMED {
         // Function pointer reference: add as callee so it's marked live
-        fptr_name = ir_field(inst, 16)
+        fptr_name = ir_field_s(inst, 16)
         callees.push(fptr_name)
       }
       if op == IR_FN_REF {
         // Lambda/function reference: add as callee
-        fnref_name = ir_field(inst, 16)
+        fnref_name = ir_field_s(inst, 16)
         callees.push(fnref_name)
       }
       ii = ii + 1
