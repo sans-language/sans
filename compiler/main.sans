@@ -32,7 +32,7 @@ check_win() I {
 
 del(p:S) I {
   w = check_win()
-  if w == 1 { sys("del /q " + p + " 2>nul") } else { sys("rm -f '" + p + "'") }
+  if w == 1 { sys("del /q \"" + p + "\" 2>nul") } else { sys("rm -f '" + p + "'") }
 }
 
 
@@ -570,12 +570,13 @@ do_link(ll_path:S output_path:S source_path:S) I {
   if g_llc == 0 { g_llc = find_llc() }
   llc = tos(g_llc)
   // Platform-specific quoting and temp dir
+  // Use single quotes on Unix, double quotes on Windows to prevent injection
   c := "'"
   td := "/tmp"
   os_env = genv("OS")
   win := 0
   if os_env.contains("Windows") == 1 {
-    c = ""
+    c = "\""
     td = sh("cmd /c echo %TEMP%").trim()
     if slen(td) < 2 { td = genv("TEMP") }
     win = 1
@@ -689,6 +690,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
 
 test_main(dir:S) I {
   // Platform-specific config
+  // Use single quotes on Unix, double quotes on Windows to prevent injection
   c := "'"
   td := "/tmp"
   sep := "/"
@@ -696,7 +698,7 @@ test_main(dir:S) I {
   os_env = genv("OS")
   win := 0
   if os_env.contains("Windows") == 1 {
-    c = ""
+    c = "\""
     td = sh("cmd /c echo %TEMP%").trim()
     if slen(td) < 2 { td = genv("TEMP") } else { td = td }
     sep = "\\"
@@ -939,7 +941,7 @@ main() I {
       run_ext = ".exe"
       run_td = sh("cmd /c echo %TEMP%").trim()
       if slen(run_td) < 2 { run_td = genv("TEMP") } else { run_td = run_td }
-      run_c = ""
+      run_c = "\""
     }
     g_out = run_td + "/sans_run_" + str(time() * 1000 + random(9999))
     g_src = file
