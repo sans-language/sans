@@ -70,6 +70,7 @@ g IRCMP_GTEQ = 5
 ir_op(inst:I) I = load64(inst)
 ir_dest(inst:I) I = load64(inst + 8)
 ir_field(inst:I offset:I) I = load64(inst + offset)
+ir_field_s(inst:I offset:I) S = load64(inst + offset)
 
 // ------ Generic instruction constructors ---------------------------------------------------------------------------------
 // These allocate heap memory: [opcode, dest, ...operands]
