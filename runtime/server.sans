@@ -241,11 +241,33 @@ sans_respond_414(fd:I) I {
   0
 }
 
-sans_respond_431(fd:I) I {
-  resp = "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-  sans_send_all(fd, resp, 87)
+sans_respond_400(fd:I) I {
+  resp = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+  ssend(fd, resp, 66)
   sclose(fd)
   0
+}
+
+sans_respond_431(fd:I) I {
+  resp = "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+  ssend(fd, resp, 87)
+  sclose(fd)
+  0
+}
+
+// Check if HTTP/1.1 request has Host header (RFC 7230). Returns 1 if valid, 0 if missing.
+sans_check_host_header(req:I buf:I pend:I n:I) I {
+  // Version starts after path space: "HTTP/1.1" at buf+pend+1
+  vstart = pend + 1
+  // Check if version contains "1.1" (at offset 5 from vstart: "HTTP/1.1")
+  is_11 = if vstart + 7 < n {
+    if load8(buf + vstart + 5) == 49 && load8(buf + vstart + 7) == 49 { 1 } else { 0 }
+  } else { 0 }
+  if is_11 == 0 { 1 } else {
+    host = sans_http_request_header(req, "host")
+    hlen = slen(host)
+    if hlen > 0 { 1 } else { 0 }
+  }
 }
 
 // ------ HTTP Server Runtime ---------------------------------------------------------------------------------------------------------------------------
@@ -337,6 +359,11 @@ sans_http_accept_read(cfd:I) I {
   store64(req + 48, 0)
   store64(req + 56, 0)
   sans_parse_headers(req, buf, hdr_end)
+  // RFC 7230: HTTP/1.1 requests must include Host header
+  if sans_check_host_header(req, buf, pend, hdr_end) == 0 {
+    sans_respond_400(cfd)
+    return sans_make_empty_request()
+  }
   req
 }
 
@@ -370,6 +397,11 @@ sans_http_accept_parse(cfd:I buf:I n:I) I {
   store64(req + 48, 0)
   store64(req + 56, 0)
   sans_parse_headers(req, buf, n)
+  // RFC 7230: HTTP/1.1 requests must include Host header
+  if sans_check_host_header(req, buf, pend, n) == 0 {
+    sans_respond_400(cfd)
+    return sans_make_empty_request()
+  }
   req
 }
 
