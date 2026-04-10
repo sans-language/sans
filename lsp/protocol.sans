@@ -224,15 +224,18 @@ make_symbol_info(name:S kind:I uri:S line:I) J {
   s
 }
 
-// Strip "file://" prefix from URI
+// Normalize a path to lowercase for case-insensitive comparison (macOS/Windows)
+normalize_path(p:S) S = p.lower()
+
+// Strip "file://" prefix from URI and normalize for case-insensitive FS
 uri_to_path(uri:S) S {
   prefix = "file://"
-  if uri.starts_with(prefix) {
-    uri.substring(7, slen(uri))
-  } else {
-    uri
-  }
+  raw = if uri.starts_with(prefix) { uri.substring(7, slen(uri)) } else { uri }
+  normalize_path(raw)
 }
 
 // Prepend "file://" to path
 path_to_uri(path:S) S = "file://" + path
+
+// Normalize URI for use as a map key (case-insensitive comparison)
+normalize_uri(uri:S) S = uri.lower()
