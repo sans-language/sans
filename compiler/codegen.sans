@@ -98,9 +98,9 @@ cg_record_label_end(cg:I ir_label:I end_label:I) I {
 }
 
 // Get the actual LLVM label that IR label ends at (for PHI predecessors)
-cg_get_label_end(cg:I ir_label:I) I {
+cg_get_label_end(cg:I ir_label:I) S {
   lem = cg_label_end_map(cg)
-  if mhas(lem, ir_label) { mget(lem, ir_label) } else { ir_label }
+  if mhas(lem, ir_label) { cg_str(mget(lem, ir_label)) } else { cg_str(ir_label) }
 }
 
 // ------ Core helpers ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -7003,6 +7003,11 @@ dce_build_live_set(module:I) I {
         // Lambda/function reference: add as callee
         fnref_name = ir_field(inst, 16)
         callees.push(fnref_name)
+      }
+      if op == IR_THREAD_SPAWN {
+        // Spawned function: must not be DCE'd
+        spawn_name = ir_field(inst, 16)
+        callees.push(spawn_name)
       }
       ii = ii + 1
       0

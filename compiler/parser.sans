@@ -636,7 +636,7 @@ is_upper_start(s:I) I {
 
 // ------ mangle_type_arg: convert angle-bracket type notation to $$ mangled form --------
 // e.g. "Pair<I I>" -> "Pair$$I$$I", "I" -> "I"
-mangle_type_arg(s:S) I {
+mangle_type_arg(s:S) S {
   result := ""
   i := 0
   len = slen(s)
@@ -1441,7 +1441,7 @@ parse_atom(p:I) I {
         }
         p_expect(p, TK_GT)
         // Build mangled name: Pair$$I$$S or M$$I$$I
-        mangled := name
+        mangled := p_s(name)
         gtai := 0
         while gtai < gen_type_args.len() {
           mangled = mangled + "$$" + mangle_type_arg(gen_type_args[gtai])

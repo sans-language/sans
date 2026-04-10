@@ -3373,7 +3373,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
 
   // ------ Struct literal ------------------------------------------------------------------------------------------------------------------------------------
   if tag == EX_STRUCT_LIT {
-    sname = load64(expr + 16)
+    sname = as_str(load64(expr + 16))
     field_names_arr = load64(expr + 24)
     field_names_p = load64(field_names_arr)
     field_values_arr = load64(expr + 32)
