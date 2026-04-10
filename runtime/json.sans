@@ -96,6 +96,23 @@ sans_json_object() I {
   v
 }
 
+// Free an object json node and its internal hash table allocations
+sans_json_free_obj(v:I) I {
+  obj = load64(v + 8)
+  if obj != 0 {
+    hashes = load64(obj)
+    keys = load64(obj + 8)
+    vals = load64(obj + 16)
+    if hashes != 0 { dealloc(hashes) } else { 0 }
+    if keys != 0 { dealloc(keys) } else { 0 }
+    if vals != 0 { dealloc(vals) } else { 0 }
+    dealloc(obj)
+    0
+  } else { 0 }
+  dealloc(v)
+  0
+}
+
 sans_json_str_eq(a:I b:I) I {
   la = slen(a)
   lb = slen(b)
@@ -1346,6 +1363,7 @@ sans_json_p_obj_loop(px:I obj:I) I {
     sans_json_p_skip_ws(px)
     key = sans_json_p_string_raw(px)
     if key == 0 {
+      sans_json_free_obj(obj)
       result = sans_json_null()
       done = 1
       0
@@ -1353,6 +1371,7 @@ sans_json_p_obj_loop(px:I obj:I) I {
       sans_json_p_skip_ws(px)
       if sans_json_p_ch(px) != 58 {
         dealloc(key)
+        sans_json_free_obj(obj)
         result = sans_json_null()
         done = 1
         0
@@ -1362,6 +1381,7 @@ sans_json_p_obj_loop(px:I obj:I) I {
         val = sans_json_p_value(px)
         if val == 0 {
           dealloc(key)
+          sans_json_free_obj(obj)
           result = sans_json_null()
           done = 1
           0
@@ -1379,6 +1399,7 @@ sans_json_p_obj_loop(px:I obj:I) I {
               done = 1
               0
             } else {
+              sans_json_free_obj(obj)
               result = sans_json_null()
               done = 1
               0

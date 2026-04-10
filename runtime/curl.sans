@@ -172,8 +172,8 @@ sans_http_get_inner(curl:I url:I) I {
   store64(wbuf + 16, 0)
 
   cseti(curl, CURLOPT_URL, url)
-  cseti(curl, CURLOPT_FOLLOWLOCATION, 1)
-  cseti(curl, CURLOPT_MAXREDIRS, 10)
+  cseti(curl, CURLOPT_FOLLOWLOCATION, 0)
+  cseti(curl, CURLOPT_MAXREDIRS, 5)
   cseti(curl, CURLOPT_WRITEFUNCTION, fptr("sans_write_cb"))
   cseti(curl, CURLOPT_WRITEDATA, wbuf)
   cseti(curl, CURLOPT_HEADERFUNCTION, fptr("sans_header_cb"))
@@ -231,8 +231,8 @@ sans_http_post_inner(curl:I url:I body:I ct:I) I {
   store64(wbuf + 16, 0)
 
   cseti(curl, CURLOPT_URL, url)
-  cseti(curl, CURLOPT_FOLLOWLOCATION, 1)
-  cseti(curl, CURLOPT_MAXREDIRS, 10)
+  cseti(curl, CURLOPT_FOLLOWLOCATION, 0)
+  cseti(curl, CURLOPT_MAXREDIRS, 5)
   cseti(curl, CURLOPT_POST, 1)
   cseti(curl, CURLOPT_POSTFIELDS, body)
   cseti(curl, CURLOPT_POSTFIELDSIZE, slen(body))
