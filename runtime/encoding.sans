@@ -95,14 +95,15 @@ sans_base64_encode(s:I) I {
 
 // ------ Base64 Decode ------
 
-// Map a base64 char to its 6-bit value
+// Map a base64 char to its 6-bit value, or -1 on invalid (#55)
 sans_enc_b64_val(c:I) I {
   if c >= 65 && c <= 90 { return c - 65 }
   if c >= 97 && c <= 122 { return c - 71 }
   if c >= 48 && c <= 57 { return c + 4 }
   if c == 43 { return 62 }
   if c == 47 { return 63 }
-  0
+  if c == 61 { return 0 }
+  0 - 1
 }
 
 sans_base64_decode(s:I) I {
@@ -112,6 +113,29 @@ sans_base64_decode(s:I) I {
     store8(out, 0)
     return out
   } else { 0 }
+  // Validate: reject padding in non-trailing positions (#76)
+  // and reject invalid characters (#55)
+  vi := 0
+  while vi < len {
+    c = load8(s + vi)
+    if c == 61 {
+      // Padding only allowed in last 2 positions
+      if vi < len - 2 {
+        out = alloc(1)
+        store8(out, 0)
+        return out
+      } else { 0 }
+    } else {
+      // Check for invalid base64 characters
+      if sans_enc_b64_val(c) < 0 {
+        out = alloc(1)
+        store8(out, 0)
+        return out
+      } else { 0 }
+    }
+    vi += 1
+    0
+  }
   // Count padding
   pad := 0
   if load8(s + len - 1) == 61 { pad = pad + 1 } else { 0 }

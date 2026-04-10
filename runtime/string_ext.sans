@@ -251,7 +251,7 @@ sans_string_char_at(s:I idx:I) I {
 
 sans_string_pad_left(s:I width:I fill:I) I {
   len = slen(s)
-  if len >= width { return s; 0 }
+  if len >= width { return sans_string_dup(s, len); 0 }
   pad = width - len
   fill_len = slen(fill)
   r = alloc(width + 1)
@@ -268,7 +268,7 @@ sans_string_pad_left(s:I width:I fill:I) I {
 
 sans_string_pad_right(s:I width:I fill:I) I {
   len = slen(s)
-  if len >= width { return s; 0 }
+  if len >= width { return sans_string_dup(s, len); 0 }
   pad = width - len
   fill_len = slen(fill)
   r = alloc(width + 1)

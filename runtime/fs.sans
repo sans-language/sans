@@ -115,6 +115,13 @@ sans_listdir(path_i: I) I {
   dealloc(esc)
 
   if r != 0 {
+    // Clean up temp file on error path (#80)
+    rm_cmd = alloc(6 + tmp_len + 1)
+    mcpy(rm_cmd, ptr("rm -f "), 6)
+    mcpy(rm_cmd + 6, tmp, tmp_len)
+    store8(rm_cmd + 6 + tmp_len, 0)
+    system(rm_cmd)
+    dealloc(rm_cmd)
     dealloc(tmp)
     return sans_listdir_empty()
   }
