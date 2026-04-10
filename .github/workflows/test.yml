@@ -66,17 +66,7 @@ jobs:
 
       - name: Run tests
         run: |
-          # Use the freshly-built compiler for tests — it knows all new
-          # builtins (some/none, M<K V>, Result combinators).
-          # The curl runtime is temporarily disabled (bootstrap codegen bug),
-          # causing 4 known test segfaults (global_var, arena_basic, arena_nested,
-          # scope_global_escape). Allow up to 4 failures.
-          RESULT=$(bash tests/run_tests.sh ./compiler/main 2>&1 | tee /dev/stderr | tail -1)
-          if echo "$RESULT" | grep -qE "[5-9] failed|[0-9][0-9]+ failed"; then
-            echo "More than 4 test failures — unexpected regressions"
-            exit 1
-          fi
-          echo "::warning::Known test failures from disabled curl runtime"
+          bash tests/run_tests.sh ./compiler/main
 
       - name: Upload .ll artifacts
         uses: actions/upload-artifact@v4
@@ -127,6 +117,4 @@ jobs:
 
       - name: Run tests
         run: |
-          # The cross-compiled binary may have bootstrap chain issues.
-          # Run tests but don't fail the job if they crash.
-          bash tests/run_tests.sh ./compiler/main || echo "::warning::Linux tests failed — bootstrap chain issue with v0.7.0 AST changes"
+          bash tests/run_tests.sh ./compiler/main
