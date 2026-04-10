@@ -15,9 +15,16 @@ sans_rc_retain(ptr:I) I {
 
 sans_rc_release(ptr:I) I {
   if ptr != 0 {
-    count = load64(ptr - 8) - 1
+    rc = load64(ptr - 8)
+    // Guard against double-free: if refcount is already 0 or negative, skip
+    if rc <= 0 { return 0 }
+    count = rc - 1
     store64(ptr - 8, count)
-    if count == 0 { dealloc(ptr - 8) }
+    if count == 0 {
+      // Mark as freed to prevent double-free
+      store64(ptr - 8, 0 - 1)
+      dealloc(ptr - 8)
+    }
   }
   0
 }
