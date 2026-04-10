@@ -99,6 +99,10 @@ lx_skip_block_comment(lx:I src:S) I {
       lx_advance(lx, src)
     } }
   }
+  if depth > 0 {
+    p("lexer error: unterminated block comment")
+    exit(1)
+  }
   0
 }
 
@@ -258,8 +262,10 @@ lx_multiline_string(lx:I src:S) I {
       lx_advance(lx, src)
     }
   }
-  // unterminated --- return empty string token
-  make_token(TK_STRING_LIT, 0, line, col)
+  // unterminated
+  p("lexer error: unterminated string literal at line " + str(line) + " col " + str(col))
+  exit(1)
+  0
 }
 
 lx_interp_string(lx:I src:S content_start:I content_end:I line:I col:I) I {
@@ -396,8 +402,14 @@ lx_string(lx:I src:S) I {
 
   content_end = lx_pos(lx)
 
+  // Check for unterminated string
+  if lx_at_end(lx) == 1 {
+    p("lexer error: unterminated string literal at line " + str(line) + " col " + str(col))
+    exit(1)
+  }
+
   // skip closing quote
-  if lx_at_end(lx) == 0 { lx_advance(lx, src) }
+  lx_advance(lx, src)
 
   if has_interp == 1 {
     lx_interp_string(lx, src, content_start, content_end, line, col)
@@ -464,7 +476,9 @@ lx_op(lx:I src:S ch:I line:I col:I) I {
     // '&' --- must be &&
     if nx == 38 { lx_advance(lx, src)
       make_token(TK_AND, 0, line, col) }
-    else { 0 }
+    else { p("lexer error: unexpected '&' (single '&' is not valid, did you mean '&&'?) at line " + str(line) + " col " + str(col))
+      exit(1)
+      0 }
   } else { if ch == 124 {
     // '|'
     if nx == 124 { lx_advance(lx, src)

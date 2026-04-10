@@ -411,7 +411,10 @@ types_compatible(actual:I expected:I) I {
   et = type_tag(expected)
   // ResultErr matches any Result<T>
   if at == TY_RESULT_ERR && et == TY_RESULT { return 1 }
-  // All i64-compatible types are interchangeable (matches Rust typeck)
+  // All i64-compatible types are interchangeable
+  // Sans is a low-level language where all values are i64 internally.
+  // Int is used as a universal "any" type, and values freely cross type
+  // boundaries (e.g. storing String in Int, passing Array as Int param).
   if is_i64_compat(actual) == 1 && is_i64_compat(expected) == 1 { return 1 }
   0
 }
@@ -1901,7 +1904,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if name == "slen" {
       if nargs != 1 { tc_error("slen() takes exactly 1 argument (ptr)") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-      if types_compatible(at, make_type(TY_INT)) != 1 { tc_error("slen() ptr must be Int or String, got " + type_to_string(at)) }
+      if types_compatible(at, make_type(TY_INT)) != 1 && types_compatible(at, make_type(TY_STRING)) != 1 { tc_error("slen() ptr must be Int or String, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
     if name == "gzip_compress" || name == "gz" {

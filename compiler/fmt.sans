@@ -157,9 +157,15 @@ fmt_brace_delta(line:S) I {
   while i < len {
     c = char_at(line, i)
     if in_string == 1 {
-      if c == 92 { i = i + 1 } // skip escape
-      else if c == 34 { in_string = 0 }
-      i = i + 1
+      if c == 92 {
+        // backslash — skip next char unconditionally (escaped character)
+        i = i + 2
+      } else if c == 34 {
+        in_string = 0
+        i = i + 1
+      } else {
+        i = i + 1
+      }
     } else {
       if c == 34 { in_string = 1 }
       else if c == 47 && i + 1 < len && char_at(line, i + 1) == 47 {
