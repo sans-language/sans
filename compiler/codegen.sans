@@ -6701,7 +6701,7 @@ emit_globals(cg:I module:I) I {
 
 // First pass: declare a function (forward declaration)
 emit_function_decl(cg:I func:I) I {
-  fname = irf_name(func)
+  fname = cg_str(irf_name(func))
   llvm_name = if fname == "main" { "__sans_main" } else { fname }
   params = irf_params(func)
   np = params.len()
@@ -6719,7 +6719,7 @@ emit_function_decl(cg:I func:I) I {
 
 // Second pass: compile a function body
 emit_function_body(cg:I func:I) I {
-  fname = irf_name(func)
+  fname = cg_str(irf_name(func))
   llvm_name = if fname == "main" { "__sans_main" } else { fname }
   params = irf_params(func)
   np = params.len()
@@ -6981,7 +6981,7 @@ dce_build_live_set(module:I) I {
   fi := 0
   while fi < nf {
     cur_fn = funcs.get(fi)
-    fname = irf_name(cur_fn)
+    fname = cg_str(irf_name(cur_fn))
     callees = array<I>()
     mset(calls_map, fname, callees)
     instrs = irf_instrs(cur_fn)
@@ -7143,7 +7143,7 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   i := 0
   while i < nf {
     f = funcs.get(i)
-    fname = irf_name(f)
+    fname = cg_str(irf_name(f))
     if fname == "main" {
       cg_set_has_main(cg, 1)
     }
@@ -7200,7 +7200,7 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
     // DCE: skip functions not reachable from main (user code only)
     should_skip := 0
     if live_fns != 0 {
-      cur_fname = irf_name(f_cur)
+      cur_fname = cg_str(irf_name(f_cur))
       if mhas(live_fns, cur_fname) == 0 { should_skip = 1 }
     }
     if should_skip == 0 { emit_function_body(cg, f_cur) }
