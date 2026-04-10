@@ -107,6 +107,10 @@ sans_json_ht_slot(h:I cap:I) I {
   if s < 0 { s + cap } else { s }
 }
 
+// Tombstone sentinel for deleted slots (-1, never returned by hash fn)
+sans_json_ht_tombstone() I = -1
+
+// Probe for lookup: returns slot with matching key, or empty/tombstone slot if not found
 sans_json_ht_probe(obj:I key:I h:I) I {
   hashes = load64(obj)
   keys = load64(obj + 8)
@@ -121,27 +125,27 @@ sans_json_ht_probe(obj:I key:I h:I) I {
       done = 1
       0
     } else {
-      if sh == h {
-        k = load64(keys + slot * 8)
-        if sans_json_str_eq(k, key) != 0 {
-          result = slot
-          done = 1
-          0
+      if sh == sans_json_ht_tombstone() {
+        slot = slot + 1
+        if slot >= cap { slot = 0 } else { 0 }
+        0
+      } else {
+        if sh == h {
+          k = load64(keys + slot * 8)
+          if sans_json_str_eq(k, key) != 0 {
+            result = slot
+            done = 1
+            0
+          } else {
+            slot = slot + 1
+            if slot >= cap { slot = 0 } else { 0 }
+            0
+          }
         } else {
           slot = slot + 1
-          if slot >= cap {
-            slot = 0
-            0
-          } else { 0 }
+          if slot >= cap { slot = 0 } else { 0 }
           0
         }
-      } else {
-        slot = slot + 1
-        if slot >= cap {
-          slot = 0
-          0
-        } else { 0 }
-        0
       }
     }
   }
@@ -158,7 +162,7 @@ sans_json_ht_insert_known(obj:I key:I val:I h:I) I {
   done := 0
   while done == 0 {
     sh = load64(hashes + slot * 8)
-    if sh == 0 {
+    if sh == 0 || sh == sans_json_ht_tombstone() {
       store64(hashes + slot * 8, h)
       store64(keys + slot * 8, key)
       store64(vals + slot * 8, val)
@@ -167,10 +171,7 @@ sans_json_ht_insert_known(obj:I key:I val:I h:I) I {
       0
     } else {
       slot = slot + 1
-      if slot >= cap {
-        slot = 0
-        0
-      } else { 0 }
+      if slot >= cap { slot = 0 } else { 0 }
       0
     }
   }
@@ -199,7 +200,7 @@ sans_json_ht_grow(o:I) I {
   i := 0
   while i < old_cap {
     h = load64(old_hashes + i * 8)
-    if h != 0 {
+    if h != 0 && h != sans_json_ht_tombstone() {
       k = load64(old_keys + i * 8)
       vv = load64(old_vals + i * 8)
       sans_json_ht_insert_known(obj, k, vv, h)
@@ -438,7 +439,7 @@ sans_json_keys(o:I) I {
     idx := 0
     while i < cap {
       h = load64(hashes + i * 8)
-      if h != 0 {
+      if h != 0 && h != sans_json_ht_tombstone() {
         store64(data + idx * 8, load64(keys + i * 8))
         idx = idx + 1
         0
@@ -471,8 +472,8 @@ sans_json_delete(o:I key:I) I {
     slot = sans_json_ht_probe(obj, key, h)
     hashes = load64(obj)
     sh = load64(hashes + slot * 8)
-    if sh == 0 { 0 } else {
-      store64(hashes + slot * 8, 0)
+    if sh == 0 || sh == sans_json_ht_tombstone() { 0 } else {
+      store64(hashes + slot * 8, sans_json_ht_tombstone())
       count = load64(obj + 24)
       store64(obj + 24, count - 1)
       1
@@ -853,7 +854,7 @@ sans_json_stringify_object(cx:I v:I) I {
   i := 0
   while i < cap {
     h = load64(hashes + i * 8)
-    if h != 0 {
+    if h != 0 && h != sans_json_ht_tombstone() {
       if need_comma != 0 {
         sans_json_sb_ensure(cx, 1)
         sb_buf = load64(cx)
@@ -1048,6 +1049,36 @@ sans_json_p_string_body_slow(px:I) I {
           if nc == 0 {
             done = 1
             0
+          } else { if nc == 117 {
+            // \uXXXX unicode escape
+            sans_json_p_ch(px)
+            store64(px + 8, load64(px + 8) + 1)
+            cp := sans_json_p_read_hex4(px)
+            if cp >= 0 {
+              // Handle surrogate pairs
+              if cp >= 55296 && cp <= 56319 {
+                // High surrogate, expect \uDC00-\uDFFF
+                ns = load64(px + 8)
+                src2 = load64(px)
+                if load8(src2 + ns) == 92 && load8(src2 + ns + 1) == 117 {
+                  store64(px + 8, ns + 2)
+                  lo = sans_json_p_read_hex4(px)
+                  if lo >= 56320 && lo <= 57343 {
+                    cp = 65536 + (cp - 55296) * 1024 + (lo - 56320)
+                    0
+                  } else { cp = 65533 }
+                } else { cp = 65533 }
+                0
+              } else { 0 }
+              if len + 4 >= cap {
+                cap = cap * 2
+                buf = ralloc(buf, cap)
+                0
+              } else { 0 }
+              nb = sans_json_utf8_encode(buf + len, cp)
+              len = len + nb
+              0
+            } else { 0 }
           } else {
             ec = sans_json_p_escape_char(px)
             store64(px + 8, load64(px + 8) + 1)
@@ -1059,7 +1090,7 @@ sans_json_p_string_body_slow(px:I) I {
             store8(buf + len, ec)
             len = len + 1
             0
-          }
+          } }
         } else {
           if len + 1 >= cap {
             cap = cap * 2
@@ -1081,6 +1112,50 @@ sans_json_p_string_body_slow(px:I) I {
 sans_json_p_escape_char(px:I) I {
   c = sans_json_p_ch(px)
   if c == 34 { 34 } else { if c == 92 { 92 } else { if c == 47 { 47 } else { if c == 110 { 10 } else { if c == 116 { 9 } else { if c == 114 { 13 } else { if c == 98 { 8 } else { if c == 102 { 12 } else { c } } } } } } } }
+}
+
+sans_json_hex_digit(c:I) I {
+  if c >= 48 && c <= 57 { c - 48 } else { if c >= 65 && c <= 70 { c - 55 } else { if c >= 97 && c <= 102 { c - 87 } else { -1 } } }
+}
+
+sans_json_p_read_hex4(px:I) I {
+  src = load64(px)
+  pos = load64(px + 8)
+  d0 = sans_json_hex_digit(load8(src + pos))
+  d1 = sans_json_hex_digit(load8(src + pos + 1))
+  d2 = sans_json_hex_digit(load8(src + pos + 2))
+  d3 = sans_json_hex_digit(load8(src + pos + 3))
+  if d0 < 0 || d1 < 0 || d2 < 0 || d3 < 0 { -1 } else {
+    store64(px + 8, pos + 4)
+    d0 * 4096 + d1 * 256 + d2 * 16 + d3
+  }
+}
+
+// Encode codepoint as UTF-8 into buf, return bytes written
+sans_json_utf8_encode(buf:I cp:I) I {
+  if cp < 128 {
+    store8(buf, cp)
+    1
+  } else {
+    if cp < 2048 {
+      store8(buf, 192 + cp / 64)
+      store8(buf + 1, 128 + cp % 64)
+      2
+    } else {
+      if cp < 65536 {
+        store8(buf, 224 + cp / 4096)
+        store8(buf + 1, 128 + (cp / 64) % 64)
+        store8(buf + 2, 128 + cp % 64)
+        3
+      } else {
+        store8(buf, 240 + cp / 262144)
+        store8(buf + 1, 128 + (cp / 4096) % 64)
+        store8(buf + 2, 128 + (cp / 64) % 64)
+        store8(buf + 3, 128 + cp % 64)
+        4
+      }
+    }
+  }
 }
 
 sans_json_p_node(px:I tag:I) I {

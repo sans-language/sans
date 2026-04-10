@@ -125,6 +125,10 @@ sans_stdin_read_bytes(count:I) I {
       }
     }
   }
+  // Null-terminate at actual bytes read so slen(result) reflects true count
   store8(out + copied, 0)
   out
 }
+
+// Expose EOF flag so callers can distinguish short read from EOF
+sans_stdin_is_eof() I = sans_stdin_eof
