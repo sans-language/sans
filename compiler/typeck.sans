@@ -3201,7 +3201,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     }
     // ------ User-defined methods (struct/enum) ---------------------------------------------------------------------
     if ot == TY_STRUCT || ot == TY_ENUM {
-      tname = type_data(obj_ty)
+      tname = type_data_s(obj_ty)
       method_key = tname + "." + mc_method
       if methods != 0 && mhas(methods, method_key) {
         sig = mget(methods, method_key)
@@ -3337,7 +3337,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     }
     // Struct: look up field in fields map
     if obj_tag == TY_STRUCT {
-      sname = type_data(obj_ty)
+      sname = type_data_s(obj_ty)
       fields_map = type_data2(obj_ty)
       if fields_map != 0 && mhas(fields_map, field) { return mget(fields_map, field) }
       return tc_error("no field '" + field + "' on struct '" + sname + "'")
@@ -3491,7 +3491,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     }
     // Struct destructuring match
     if st == TY_STRUCT {
-      sname = type_data(scrutinee_ty)
+      sname = type_data_s(scrutinee_ty)
       fields_map = type_data2(scrutinee_ty)
       num_arms = load64(arms_arr + 8)
       result_ty := 0
@@ -3758,7 +3758,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     asd_src_ty = check_expr(src_expr2, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     asd_src_tag = type_tag(asd_src_ty)
     if asd_src_tag == TY_STRUCT || asd_src_tag == TY_ENUM {
-      asd_src_name = type_data(asd_src_ty)
+      asd_src_name = type_data_s(asd_src_ty)
       asd_impl_key = as_str(asd_src_name) + "::" + as_str(asd_trait_name)
       if mhas(traits, "$$trait_impls$$") == 1 {
         asd_ti_map = mget(traits, "$$trait_impls$$")

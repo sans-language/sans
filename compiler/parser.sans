@@ -1,6 +1,9 @@
 import "constants"
 import "lexer"
 
+// Cast i64 to string (bootstrap compat: load64/array.get return IRTY_INT)
+p_s(v:I) S = v
+
 // ------ Token accessors ------------------------------------------------------------------------------------------------------------------------------------------
 tok_kind(t:I) I = load64(t)
 tok_val(t:I) I = load64(t + 8)
@@ -654,7 +657,7 @@ parse_type_name(p:I) I {
   // Array type: [T]
   if p_at(p, TK_LBRACKET) == 1 {
     p_advance(p)
-    inner = parse_type_name(p)
+    inner = p_s(parse_type_name(p))
     p_expect(p, TK_RBRACKET)
     // Build "Array<inner>" string
     result = "Array<" + inner + ">"
@@ -667,7 +670,7 @@ parse_type_name(p:I) I {
     parts := ""
     first := 1
     while p_at(p, TK_RPAREN) == 0 && p_at(p, TK_EOF) == 0 {
-      inner = parse_type_name(p)
+      inner = p_s(parse_type_name(p))
       if first == 1 {
         parts = inner
         first = 0
@@ -681,11 +684,11 @@ parse_type_name(p:I) I {
   }
 
   // Simple identifier type
-  name = p_expect_ident(p)
+  name = p_s(p_expect_ident(p))
 
   // dyn Trait type: "dyn" followed by trait name
   if name == "dyn" {
-    trait_name = p_expect_ident(p)
+    trait_name = p_s(p_expect_ident(p))
     result = "dyn " + trait_name
     return ptr(result)
   }
@@ -696,7 +699,7 @@ parse_type_name(p:I) I {
     inner := ""
     first_ta := 1
     while p_at(p, TK_GT) == 0 && p_at(p, TK_EOF) == 0 {
-      ta = parse_type_name(p)
+      ta = p_s(parse_type_name(p))
       if first_ta == 1 {
         inner = ta
         first_ta = 0
@@ -706,7 +709,7 @@ parse_type_name(p:I) I {
       0
     }
     p_expect(p, TK_GT)
-    result = name + "<" + inner + ">"
+    result = p_s(name) + "<" + inner + ">"
     ptr(result)
   } else { name }
 }
