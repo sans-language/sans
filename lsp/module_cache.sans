@@ -6,9 +6,11 @@
 //   offset 16: timestamp (from time()) when cached
 
 g mcache_map = 0
+g mcache_rdeps = 0
 
 mcache_init() I {
   if mcache_map == 0 { mcache_map = M() }
+  if mcache_rdeps == 0 { mcache_rdeps = M() }
   0
 }
 
@@ -41,3 +43,31 @@ mcache_program(entry:I) I = load64(entry)
 
 // Get cached module exports from entry.
 mcache_exports(entry:I) I = load64(entry + 8)
+
+// Record that importer_path imports imported_path (reverse dependency).
+mcache_add_rdep(imported_path:S importer_path:S) I {
+  mcache_init()
+  if mhas(mcache_rdeps, imported_path) == 0 {
+    mset(mcache_rdeps, imported_path, M())
+  }
+  deps = mget(mcache_rdeps, imported_path)
+  mset(deps, importer_path, 1)
+  0
+}
+
+// Invalidate cache for path and all files that import it (reverse deps).
+mcache_invalidate_with_rdeps(path:S) I {
+  mcache_invalidate(path)
+  mcache_init()
+  if mhas(mcache_rdeps, path) {
+    deps = mget(mcache_rdeps, path)
+    ks = deps.keys()
+    i := 0
+    while i < ks.len() {
+      dep = ks.get(i)
+      mcache_invalidate(dep)
+      i += 1
+    }
+  }
+  0
+}

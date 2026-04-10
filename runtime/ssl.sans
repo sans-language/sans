@@ -234,6 +234,9 @@ sans_ssl_cl_parse_value(buf:I n:I pos:I) I {
     p += 1
     0
   }
+  // Guard against negative overflow and unreasonable sizes (max 100MB)
+  if val < 0 { return -1 }
+  if val > 104857600 { return -1 }
   val
 }
 

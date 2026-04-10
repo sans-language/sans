@@ -185,6 +185,9 @@ sans_json_ht_grow(o:I) I {
   old_vals = load64(obj + 16)
   old_cap = load64(obj + 32)
   new_cap = old_cap * 2
+  // Overflow guard: cap must be positive and alloc size must not overflow
+  if new_cap <= 0 { return 0 }
+  if new_cap > 134217728 { return 0 }
   new_hashes = alloc(new_cap * 8)
   mzero(new_hashes, new_cap * 8)
   new_keys = alloc(new_cap * 8)
@@ -1041,9 +1044,14 @@ sans_json_p_string_body_slow(px:I) I {
       } else {
         if c == 92 {
           store64(px + 8, pos + 1)
-          nc = sans_json_p_ch(px)
-          if nc == 117 {
+          // Bounds check: ensure there is a character after the backslash
+          nc = load8(src + pos + 1)
+          if nc == 0 {
+            done = 1
+            0
+          } else { if nc == 117 {
             // \uXXXX unicode escape
+            sans_json_p_ch(px)
             store64(px + 8, load64(px + 8) + 1)
             cp := sans_json_p_read_hex4(px)
             if cp >= 0 {
@@ -1082,7 +1090,7 @@ sans_json_p_string_body_slow(px:I) I {
             store8(buf + len, ec)
             len = len + 1
             0
-          }
+          } }
         } else {
           if len + 1 >= cap {
             cap = cap * 2
@@ -1154,6 +1162,9 @@ sans_json_p_node(px:I tag:I) I {
   off = load64(px + 24)
   cap = load64(px + 32)
   if off >= cap {
+    // Overflow guard: cap must be positive and alloc size must not overflow
+    if cap <= 0 { return 0 }
+    if cap > 67108864 { return 0 }
     new_chunk = alloc(8 + cap * 16)
     store64(new_chunk, load64(px + 16))
     store64(px + 16, new_chunk)

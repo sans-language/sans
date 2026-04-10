@@ -1,4 +1,10 @@
 // Process execution runtime
+//
+// SECURITY WARNING: sans_sh() executes raw shell commands via system().
+// The command string is passed directly to the shell with NO sanitization.
+// Never pass untrusted or user-controlled input to sh() without validation.
+// Callers are responsible for escaping or validating any dynamic arguments.
+//
 g sans_sh_counter = 0
 
 sans_sh(cmd_i: I) I {

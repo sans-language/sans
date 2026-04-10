@@ -132,6 +132,9 @@ sans_map_grow(m:I) I {
   old_vals = load64(m + 16)
   old_cap = load64(m + 32)
   new_cap = old_cap * 2
+  // Overflow guard: cap must be positive and alloc size must not overflow
+  if new_cap <= 0 { return 0 }
+  if new_cap > 134217728 { return 0 }
   new_hashes = alloc(new_cap * 8)
   mzero(new_hashes, new_cap * 8)
   new_keys = alloc(new_cap * 8)
@@ -210,7 +213,7 @@ sans_map_keys(m:I) I {
   cap = load64(m + 32)
   count = load64(m + 24)
   arr = alloc(24)
-  data = alloc(count * 8)
+  data = alloc(if count > 0 { count * 8 } else { 8 })
   store64(arr, data)
   store64(arr + 8, 0)
   store64(arr + 16, count)
@@ -236,7 +239,7 @@ sans_map_vals(m:I) I {
   cap = load64(m + 32)
   count = load64(m + 24)
   arr = alloc(24)
-  data = alloc(count * 8)
+  data = alloc(if count > 0 { count * 8 } else { 8 })
   store64(arr, data)
   store64(arr + 8, 0)
   store64(arr + 16, count)
@@ -521,6 +524,9 @@ sans_map_grow_int(m:I) I {
   old_vals = load64(m + 16)
   old_cap = load64(m + 32)
   new_cap = old_cap * 2
+  // Overflow guard: cap must be positive and alloc size must not overflow
+  if new_cap <= 0 { return 0 }
+  if new_cap > 134217728 { return 0 }
   new_hashes = alloc(new_cap * 8)
   mzero(new_hashes, new_cap * 8)
   new_keys = alloc(new_cap * 8)

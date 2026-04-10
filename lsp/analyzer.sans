@@ -51,7 +51,11 @@ lsp_resolve_path(import_path:S base_dir:S) S {
 // Recursively resolve imports for a file, populating mod_exports.
 lsp_resolve_imports(file_path:S mod_exports:I visited:I in_progress:I) I {
   if mhas(visited, file_path) { return 0 }
-  if mhas(in_progress, file_path) { return 0 }
+  if mhas(in_progress, file_path) {
+    // Circular import detected — clear stale in_progress state
+    in_progress.delete(file_path)
+    return 0
+  }
   mset(in_progress, file_path, 1)
 
   // Check cache first
@@ -76,6 +80,7 @@ lsp_resolve_imports(file_path:S mod_exports:I visited:I in_progress:I) I {
     imp_path = imp_get_path(imp_node)
     resolved_path = lsp_resolve_path(imp_path, base_dir)
     if slen(resolved_path) > 0 {
+      mcache_add_rdep(resolved_path, file_path)
       lsp_resolve_imports(resolved_path, mod_exports, visited, in_progress)
     }
     ii += 1
@@ -103,6 +108,8 @@ lsp_resolve_imports(file_path:S mod_exports:I visited:I in_progress:I) I {
   mod_name = lsp_mod_name_of(file_path)
   mset(mod_exports, mod_name, exports)
   mset(visited, file_path, 1)
+  // Clear in_progress now that this file is fully processed
+  if mhas(in_progress, file_path) { in_progress.delete(file_path) }
   0
 }
 
@@ -139,6 +146,7 @@ analyze_file(uri:S content:S) I {
       imp_path = imp_get_path(imp_node)
       resolved_path = lsp_resolve_path(imp_path, base_dir)
       if slen(resolved_path) > 0 {
+        mcache_add_rdep(resolved_path, path)
         lsp_resolve_imports(resolved_path, mod_exports, visited, in_progress)
       }
       ii += 1
@@ -303,39 +311,61 @@ lookup_definition_at(content:S line:I col:I) S {
   if enums != 0 && mhas(enums, word) == 1 { is_known = 1 } else { is_known = is_known }
   if is_known == 0 { return "" }
 
-  // Use the lexer to find the definition token
+  // Use the lexer to find the definition token.
+  // Search from innermost scope outward: collect all definition sites,
+  // then return the one closest to (but before) the cursor position.
   // A function def is: IDENT "(" — where IDENT matches word
   // A struct def is: "struct" IDENT — where IDENT matches word
   // An enum def is: "enum" IDENT — where IDENT matches word
   tokens = lex(content)
   num = load64(tokens + 8)
   tok_data = load64(tokens)
+  // Convert 0-based LSP line/col to 1-based compiler line/col for comparison
+  cursor_line = line + 1
+  cursor_col = col + 1
+  best_line := 0
+  best_col := 0
   i := 0
   while i < num {
     tok = load64(tok_data + i * 8)
     kind = tok_kind(tok)
-    // TK_IDENT = 4
-    if kind == 4 && tok_val(tok) == word {
-      // Check if next token is '(' (TK_LPAREN = 55) — function definition
-      if i + 1 < num {
-        next = load64(tok_data + (i + 1) * 8)
-        if tok_kind(next) == 55 {
-          return str(tok_line(tok)) + ":" + str(tok_col(tok))
+    tl = tok_line(tok)
+    tc = tok_col(tok)
+    // Only consider definitions at or before the cursor position
+    is_before = tl < cursor_line || (tl == cursor_line && tc <= cursor_col)
+    if is_before {
+      // TK_IDENT = 4
+      if kind == 4 && tok_val(tok) == word {
+        // Check if next token is '(' (TK_LPAREN = 55) — function definition
+        if i + 1 < num {
+          next = load64(tok_data + (i + 1) * 8)
+          if tok_kind(next) == 55 {
+            // Closer (later) definition shadows earlier one
+            if tl > best_line || (tl == best_line && tc > best_col) {
+              best_line = tl
+              best_col = tc
+            }
+          }
         }
       }
-    }
-    // Check for "struct WORD" or "enum WORD" — keyword followed by matching ident
-    // TK_STRUCT = 14, TK_ENUM = 15
-    if (kind == 14 || kind == 15) && i + 1 < num {
-      next = load64(tok_data + (i + 1) * 8)
-      if tok_kind(next) == 4 && tok_val(next) == word {
-        return str(tok_line(next)) + ":" + str(tok_col(next))
+      // Check for "struct WORD" or "enum WORD"
+      // TK_STRUCT = 14, TK_ENUM = 15
+      if (kind == 14 || kind == 15) && i + 1 < num {
+        next = load64(tok_data + (i + 1) * 8)
+        if tok_kind(next) == 4 && tok_val(next) == word {
+          nl = tok_line(next)
+          nc = tok_col(next)
+          if nl > best_line || (nl == best_line && nc > best_col) {
+            best_line = nl
+            best_col = nc
+          }
+        }
       }
     }
     i += 1
   }
 
-  ""
+  if best_line > 0 { str(best_line) + ":" + str(best_col) } else { "" }
 }
 
 // Format a function signature for hover display
