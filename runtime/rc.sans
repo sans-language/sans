@@ -39,18 +39,34 @@ g rc_alloc_head = 0
 g rc_scope_head = 0
 g rc_scope_disabled = 0
 g rc_kept_head = 0
+g rc_mutex = 0
+g rc_mutex_init_done = 0
+
+sans_rc_mutex_ensure() I {
+  if rc_mutex_init_done == 0 {
+    rc_mutex = alloc(64)
+    pmutex_init(rc_mutex)
+    rc_mutex_init_done = 1
+  }
+  0
+}
 
 sans_scope_track(ptr:I tag:I) I {
   if rc_scope_disabled != 0 { return ptr }
+  sans_rc_mutex_ensure()
+  pmutex_lock(rc_mutex)
   node = alloc(24)
   store64(node, ptr)
   store64(node + 8, tag)
   store64(node + 16, rc_alloc_head)
   rc_alloc_head = node
+  pmutex_unlock(rc_mutex)
   ptr
 }
 
 sans_scope_untrack(ptr:I) I {
+  sans_rc_mutex_ensure()
+  pmutex_lock(rc_mutex)
   prev := 0
   node := rc_alloc_head
   while node != 0 {
@@ -63,20 +79,25 @@ sans_scope_untrack(ptr:I) I {
         store64(prev + 16, next)
       }
       dealloc(node)
+      pmutex_unlock(rc_mutex)
       return 0
     }
     prev = node
     node = next
   }
+  pmutex_unlock(rc_mutex)
   0
 }
 
 sans_scope_enter() I {
   if rc_scope_disabled != 0 { return 0 }
+  sans_rc_mutex_ensure()
+  pmutex_lock(rc_mutex)
   frame = alloc(16)
   store64(frame, rc_alloc_head)
   store64(frame + 8, rc_scope_head)
   rc_scope_head = frame
+  pmutex_unlock(rc_mutex)
   0
 }
 
@@ -87,6 +108,8 @@ sans_scope_promote(ptr:I) I {
   if rc_scope_disabled != 0 { return 0 }
   if ptr == 0 { return 0 }
   if rc_scope_head == 0 { return 0 }
+  sans_rc_mutex_ensure()
+  pmutex_lock(rc_mutex)
   watermark = load64(rc_scope_head)
   // Find and unlink the node for ptr (only in current scope: rc_alloc_head to watermark)
   prev := 0
@@ -127,11 +150,13 @@ sans_scope_promote(ptr:I) I {
           store64(rc_scope_head, node)
         }
       }
+      pmutex_unlock(rc_mutex)
       return 0
     }
     prev = node
     node = next
   }
+  pmutex_unlock(rc_mutex)
   0
 }
 
@@ -314,6 +339,8 @@ scope_should_keep(ptr:I keep:I) I {
 
 sans_scope_exit(keep:I) I {
   if rc_scope_disabled != 0 { return 0 }
+  sans_rc_mutex_ensure()
+  pmutex_lock(rc_mutex)
   if rc_scope_head != 0 {
     watermark = load64(rc_scope_head)
     old_frame = rc_scope_head
@@ -349,5 +376,6 @@ sans_scope_exit(keep:I) I {
     }
     rc_kept_head = 0
   }
+  pmutex_unlock(rc_mutex)
   0
 }
