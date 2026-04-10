@@ -2595,12 +2595,12 @@ emit_closure_aware_call3(cg:I dest:I fp_val:S a1:S a2:S a3:S) I {
 compile_dyn_trait_create(cg:I inst:I) I {
   dtc_dest = ir_dest(inst)
   dtc_src_val = cg_get_val(cg, ir_field(inst, 16))
-  dtc_type_name = cg_str(ir_field(inst, 24))
-  dtc_trait_name = cg_str(ir_field(inst, 32))
+  dtc_type_name = ir_field(inst, 24)
+  dtc_trait_name = ir_field(inst, 32)
   dtc_fp = cg_fresh_reg(cg)
   emit(cg, "  " + dtc_fp + " = call ptr @malloc(i64 16)")
   emit(cg, "  store i64 " + dtc_src_val + ", ptr " + dtc_fp)
-  dtc_vt_name = dtc_type_name + "." + dtc_trait_name
+  dtc_vt_name = cg_str(dtc_type_name) + "." + cg_str(dtc_trait_name)
   dtc_vt_ref = cg_fresh_reg(cg)
   emit(cg, "  " + dtc_vt_ref + " = ptrtoint ptr @vtable." + dtc_vt_name + " to i64")
   dtc_vt_gep = cg_fresh_reg(cg)
@@ -2633,9 +2633,9 @@ dyn_lookup_method_idx(trait_name:I method_name:I) I {
 compile_dyn_trait_call(cg:I inst:I) I {
   dtcl_dest = ir_dest(inst)
   dtcl_obj_val = cg_get_val(cg, ir_field(inst, 16))
-  dtcl_method_name = cg_str(ir_field(inst, 24))
+  dtcl_method_name = ir_field(inst, 24)
   dtcl_args = ir_field(inst, 32)
-  dtcl_trait_name = cg_str(ir_field(inst, 40))
+  dtcl_trait_name = ir_field(inst, 40)
   dtcl_method_idx = dyn_lookup_method_idx(dtcl_trait_name, dtcl_method_name)
   dtcl_fp = cg_fresh_reg(cg)
   emit(cg, "  " + dtcl_fp + " = inttoptr i64 " + dtcl_obj_val + " to ptr")
@@ -2693,7 +2693,7 @@ compile_inst(cg:I inst:I) I {
 
   // ------ IR_STRING_CONST (3): [op, dest, string_ptr] ------
   if op == IR_STRING_CONST {
-    str_raw = cg_str(ir_field(inst, 16))
+    str_raw = ir_field(inst, 16)
     str_val = if str_raw == 0 { ptr("") } else { str_raw }
     global_name = emit_string_const(cg, str_val)
     len = slen(str_val) + 1
@@ -2814,7 +2814,7 @@ compile_inst(cg:I inst:I) I {
 
   // ------ IR_CALL (12): [op, dest, fname, args_array] ------
   if op == IR_CALL {
-    fname_ptr = cg_str(ir_field(inst, 16))
+    fname_ptr = ir_field(inst, 16)
     fname = resolve_fn_alias(fname_ptr)
     args = ir_field(inst, 24)
     nargs = args.len()
@@ -6991,17 +6991,17 @@ dce_build_live_set(module:I) I {
       inst = instrs.get(ii)
       op = ir_op(inst)
       if op == IR_CALL {
-        callee_name = cg_str(ir_field(inst, 16))
+        callee_name = ir_field(inst, 16)
         callees.push(callee_name)
       }
       if op == IR_FPTR_NAMED {
         // Function pointer reference: add as callee so it's marked live
-        fptr_name = cg_str(ir_field(inst, 16))
+        fptr_name = ir_field(inst, 16)
         callees.push(fptr_name)
       }
       if op == IR_FN_REF {
         // Lambda/function reference: add as callee
-        fnref_name = cg_str(ir_field(inst, 16))
+        fnref_name = ir_field(inst, 16)
         callees.push(fnref_name)
       }
       ii = ii + 1
