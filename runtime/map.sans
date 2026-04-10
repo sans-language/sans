@@ -5,7 +5,7 @@ g sans_map_hash_seeded = 0
 
 sans_map_hash_seed_init() I {
   if sans_map_hash_seeded == 0 {
-    t = time() * 31 + random(2147483647)
+    t = time() * 6364136223846793005 + 1442695040888963407
     s := t * 6364136223846793005 + 1442695040888963407
     sans_map_hash_seed0 = s
     s = s * 6364136223846793005 + 1442695040888963407
