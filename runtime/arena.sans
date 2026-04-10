@@ -33,6 +33,9 @@ sans_arena_begin() I {
 }
 
 sans_arena_alloc(size:I) I {
+  // Overflow guard: reject non-positive or unreasonably large sizes
+  if size <= 0 { return 0 }
+  if size > 1073741824 { return 0 }
   if arena_depth == 0 {
     alloc(size)
   } else {
