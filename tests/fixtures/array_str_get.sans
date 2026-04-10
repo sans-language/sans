@@ -1,0 +1,50 @@
+// Test: array<S>.get() returns string, not int pointer
+
+main() I {
+  // Typed array concat
+  names = array<S>()
+  names.push("hello")
+  names.push("world")
+  result = names.get(0) + " " + names.get(1)
+  assert(result == "hello world")
+
+  // Split returns string array
+  parts = "a:b:c".split(":")
+  p0 = parts.get(0)
+  p1 = parts.get(1)
+  joined = p0 + "-" + p1
+  assert(joined == "a-b")
+
+  // Array literal get
+  arr = ["foo" "bar" "baz"]
+  x = arr.get(2)
+  assert(x == "baz")
+
+  // String comparison with array element
+  cmds = ["build" "run" "test"]
+  assert(cmds.get(0) == "build")
+  assert(cmds.get(1) != "build")
+
+  // Pop returns correct type
+  stk = array<S>()
+  stk.push("top")
+  popped = stk.pop()
+  assert(popped == "top")
+
+  // Reverse propagates element type
+  words = ["one" "two" "three"]
+  rev = words.reverse()
+  assert(rev.get(0) == "three")
+  assert(rev.get(2) == "one")
+
+  // Map keys return strings
+  m = map()
+  mset(m, "key1", 42)
+  mset(m, "key2", 99)
+  ks = m.keys()
+  k0 = ks.get(0)
+  assert(slen(k0) == 4)
+
+  p("ok")
+  0
+}
