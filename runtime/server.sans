@@ -460,6 +460,26 @@ sans_parse_headers(req:I buf:I n:I) I {
   // Skip first line (request line) --- find \r\n
   i := sans_find_crlf(buf, n, 0)
   if i < 0 { 0 } else { sans_parse_headers_loop(hdrs, buf, n, i + 2) }
+  // Set keep-alive flag from Connection header
+  sans_set_keepalive_from_headers(req)
+}
+
+sans_set_keepalive_from_headers(req:I) I {
+  hdr = sans_http_request_header(req, "connection")
+  len = slen(hdr)
+  if len == 0 { 0 } else {
+    lh = sans_lowercase_string(hdr)
+    ll = slen(lh)
+    if ll == 10 && mcmp(lh, "keep-alive", 10) == 0 {
+      store64(req + 56, 1)
+      0
+    } else {
+      if ll == 5 && mcmp(lh, "close", 5) == 0 {
+        store64(req + 56, 0)
+        0
+      } else { 0 }
+    }
+  }
 }
 
 sans_find_crlf(buf:I n:I start:I) I {
