@@ -254,6 +254,8 @@ lx_multiline_string(lx:I src:S) I {
   start = lx_pos(lx)
 
   // scan until closing """
+  // Track newlines within the string to keep line/col accurate for
+  // error positions after the multiline string ends.
   while lx_at_end(lx) == 0 {
     if lx_peek(lx, src) == 34 && lx_peek_at(lx, src, 1) == 34 && lx_peek_at(lx, src, 2) == 34 {
       end = lx_pos(lx)
@@ -263,7 +265,15 @@ lx_multiline_string(lx:I src:S) I {
       lx_advance(lx, src)
       return make_token(TK_STRING_LIT, ptr(text), line, col)
     } else {
-      lx_advance(lx, src)
+      ch = lx_peek(lx, src)
+      lx_set_pos(lx, lx_pos(lx) + 1)
+      if ch == 10 {
+        // Newline inside multiline string: update line/col tracking
+        lx_set_line(lx, lx_line(lx) + 1)
+        lx_set_col(lx, 1)
+      } else {
+        lx_set_col(lx, lx_col(lx) + 1)
+      }
     }
   }
   // unterminated
