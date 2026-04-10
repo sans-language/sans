@@ -72,6 +72,14 @@ jobs:
           ./compiler/main build /tmp/smoke.sans -o /tmp/smoke 2>&1 || true
           ls -la /tmp/smoke 2>&1 || echo "Binary not found"
           /tmp/smoke 2>&1 || echo "Run failed with $?"
+          echo "=== Failing test: method_basic ==="
+          ./compiler/main build tests/fixtures/method_basic.sans -o /tmp/diag1 2>&1 || true
+          echo "=== Failing test: import_basic ==="
+          ./compiler/main build tests/fixtures/import_basic.sans -o /tmp/diag2 2>&1 || true
+          echo "=== Failing test: result_ok_unwrap ==="
+          ./compiler/main build tests/fixtures/result_ok_unwrap.sans -o /tmp/diag3 2>&1 || true
+          echo "=== Failing test: option_try ==="
+          ./compiler/main build tests/fixtures/option_try.sans -o /tmp/diag4 2>&1 || true
 
       - name: Run tests
         run: |
