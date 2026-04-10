@@ -1,0 +1,5 @@
+main() {
+  x = none
+  v = x!
+  p(itos(v))
+}

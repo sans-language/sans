@@ -130,10 +130,6 @@ run_test() {
     if [ "$actual_exit" -eq "$expected_exit" ]; then
         echo -e "  ${GREEN}✓${NC}  $label"
         ((PASS++)) || true
-    elif [ "$actual_exit" -eq 101 ] || [ "$actual_exit" -eq 127 ]; then
-        # 101 = typical "compilation failed" sentinel; 127 = command not found
-        echo -e "  ${YELLOW}SKIP${NC}  $label (compile error, exit $actual_exit)"
-        ((SKIP++)) || true
     else
         echo -e "  ${RED}✗${NC}  $label (expected exit $expected_exit, got $actual_exit)"
         ((FAIL++)) || true
@@ -592,6 +588,13 @@ run_negative_test "neg_generic_too_deep"     "$REPO_ROOT/tests/negative/generic_
 run_negative_test "neg_match_struct_bad_field" "$REPO_ROOT/tests/negative/match_struct_bad_field.sans" "no field"
 run_negative_test "neg_match_tuple_arity"    "$REPO_ROOT/tests/negative/match_tuple_arity.sans"    "tuple pattern"
 run_negative_test "neg_reexport_private"    "$REPO_ROOT/tests/negative/reexport_private/main.sans"  "undefined"
+run_negative_test "neg_type_mismatch_binop" "$REPO_ROOT/tests/negative/type_mismatch_binop.sans"    "undefined"
+run_negative_test "neg_undefined_struct"    "$REPO_ROOT/tests/negative/undefined_struct.sans"       "undefined"
+run_negative_test "neg_wrong_field_init"    "$REPO_ROOT/tests/negative/wrong_field_init.sans"       "undefined"
+run_negative_test "neg_break_outside_loop"  "$REPO_ROOT/tests/negative/break_outside_loop.sans"     "break"
+run_negative_test "neg_continue_outside_loop" "$REPO_ROOT/tests/negative/continue_outside_loop.sans" "continue"
+run_negative_test "neg_duplicate_struct"    "$REPO_ROOT/tests/negative/duplicate_struct.sans"       "PARSE ERR"
+run_negative_test "neg_empty_file"          "$REPO_ROOT/tests/negative/empty_file.sans"             ""
 
 # ---------------------------------------------------------------------------
 # Runtime error tests (expected to compile but fail at runtime)
@@ -603,6 +606,10 @@ echo "----------------------------------------"
 
 run_runtime_error_test "rt_array_oob_get"  "$REPO_ROOT/tests/negative/array_oob_get.sans"  "index out of bounds"
 run_runtime_error_test "rt_array_oob_set"  "$REPO_ROOT/tests/negative/array_oob_set.sans"  "index out of bounds"
+run_runtime_error_test "rt_unwrap_none"    "$REPO_ROOT/tests/negative/unwrap_none.sans"    "unwrap"
+run_runtime_error_test "rt_unwrap_err"     "$REPO_ROOT/tests/negative/unwrap_err.sans"     "unwrap"
+run_runtime_error_test "rt_div_by_zero"    "$REPO_ROOT/tests/negative/div_by_zero.sans"    ""
+run_runtime_error_test "rt_map_oob_get"    "$REPO_ROOT/tests/negative/map_oob_get.sans"    ""
 
 # ---------------------------------------------------------------------------
 # Summary

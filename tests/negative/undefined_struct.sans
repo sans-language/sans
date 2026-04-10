@@ -1,0 +1,5 @@
+// expect-error: undefined
+main() I {
+  x = Foo{a: 1}
+  0
+}

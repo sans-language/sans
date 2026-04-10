@@ -1,0 +1,5 @@
+// expect-error: continue
+main() I {
+  continue
+  0
+}

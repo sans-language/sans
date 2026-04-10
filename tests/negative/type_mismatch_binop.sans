@@ -1,0 +1,5 @@
+// expect-error: undefined
+main() I {
+  x = "hello" + 42
+  0
+}
