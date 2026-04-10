@@ -72,14 +72,18 @@ jobs:
           ./compiler/main build /tmp/smoke.sans -o /tmp/smoke 2>&1 || true
           ls -la /tmp/smoke 2>&1 || echo "Binary not found"
           /tmp/smoke 2>&1 || echo "Run failed with $?"
-          echo "=== Failing test: method_basic ==="
-          ./compiler/main build tests/fixtures/method_basic.sans -o /tmp/diag1 2>&1 || true
-          echo "=== Failing test: import_basic ==="
-          ./compiler/main build tests/fixtures/import_basic.sans -o /tmp/diag2 2>&1 || true
-          echo "=== Failing test: result_ok_unwrap ==="
-          ./compiler/main build tests/fixtures/result_ok_unwrap.sans -o /tmp/diag3 2>&1 || true
-          echo "=== Failing test: option_try ==="
-          ./compiler/main build tests/fixtures/option_try.sans -o /tmp/diag4 2>&1 || true
+          echo "=== diag: import_basic ==="
+          ./compiler/main build tests/fixtures/import_basic/main.sans -o /tmp/diag1 2>&1 || true
+          echo "=== diag: generic_struct ==="
+          ./compiler/main build tests/fixtures/generic_struct.sans -o /tmp/diag2 2>&1 || true
+          echo "=== diag: map_int_keys ==="
+          ./compiler/main build tests/fixtures/map_int_keys.sans -o /tmp/diag3 2>&1 || true
+          echo "=== diag: bool_logic ==="
+          ./compiler/main build tests/fixtures/bool_logic.sans -o /tmp/diag4 2>&1 || true
+          echo "=== diag: spawn_join ==="
+          ./compiler/main build tests/fixtures/spawn_join.sans -o /tmp/diag5 2>&1 || true
+          echo "=== diag: result_map ==="
+          ./compiler/main build tests/fixtures/result_map.sans -o /tmp/diag6 2>&1 || true
 
       - name: Run tests
         run: |
