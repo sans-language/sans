@@ -4050,8 +4050,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
   ii := 0
   while ii < num_impls {
     impl_block = load64(impls_p + ii * 8)
-    impl_trait_name = as_str(load64(impl_block))
-    impl_target_type = as_str(load64(impl_block + 8))
+    impl_trait_name = load64(impl_block)
+    impl_target_type = load64(impl_block + 8)
     impl_methods_arr = load64(impl_block + 16)
     impl_methods_p = load64(impl_methods_arr)
     num_impl_methods = load64(impl_methods_arr + 8)
@@ -4100,7 +4100,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       }
       imi += 1
       }
-      if found == 0 { tc_error("impl " + impl_trait_name + " for " + impl_target_type + " is missing method '" + tm_name + "'") }
+      if found == 0 { tc_error("impl " + as_str(impl_trait_name) + " for " + as_str(impl_target_type) + " is missing method '" + as_str(tm_name) + "'") }
       tmi += 1
       }
       ti_key = as_str(impl_target_type) + "::" + as_str(impl_trait_name)
@@ -4131,7 +4131,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       while mi < num_impl_methods {
         mdef = load64(impl_methods_p + mi * 8)
         mname = as_str(load64(mdef))
-        gim_key = impl_target_type + "." + mname
+        gim_key = as_str(impl_target_type) + "." + as_str(mname)
         // Store: [method_ast, impl_type_params_ptr, target_type]
         gim_entry = alloc(24)
         store64(gim_entry, mdef)
@@ -4160,11 +4160,11 @@ check_inner(program:I mod_exports:I require_main:I) I {
         mpi += 1
       }
       mret = resolve_type(mret_name, structs_map, enums_map, mod_exports)
-      method_key = impl_target_type + "." + mname
+      method_key = as_str(impl_target_type) + "." + as_str(mname)
       mset(methods_map, method_key, make_fn_sig(ptr(method_param_types), mret, method_param_types.len()))
 
       // Also add mangled name to fn_env (with self param included)
-      mangled = impl_target_type + "_" + mname
+      mangled = as_str(impl_target_type) + "_" + as_str(mname)
       all_param_types = array<I>()
       api := 0
       while api < num_mparams {
@@ -4352,7 +4352,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
   ii = 0
   while ii < num_impls {
     impl_block = load64(impls_p + ii * 8)
-    impl_target_type = as_str(load64(impl_block + 8))
+    impl_target_type = load64(impl_block + 8)
     impl_methods_arr3 = load64(impl_block + 16)
     impl_methods_p = load64(impl_methods_arr3)
     num_impl_methods = load64(impl_methods_arr3 + 8)
