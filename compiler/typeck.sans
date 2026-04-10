@@ -4050,8 +4050,8 @@ check_inner(program:I mod_exports:I require_main:I) I {
   ii := 0
   while ii < num_impls {
     impl_block = load64(impls_p + ii * 8)
-    impl_trait_name = load64(impl_block)
-    impl_target_type = load64(impl_block + 8)
+    impl_trait_name = as_str(load64(impl_block))
+    impl_target_type = as_str(load64(impl_block + 8))
     impl_methods_arr = load64(impl_block + 16)
     impl_methods_p = load64(impl_methods_arr)
     num_impl_methods = load64(impl_methods_arr + 8)
@@ -4108,7 +4108,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       ti_mi := 0
       while ti_mi < num_impl_methods {
         ti_mdef = load64(impl_methods_p + ti_mi * 8)
-        ti_mname = load64(ti_mdef)
+        ti_mname = as_str(load64(ti_mdef))
         ti_mangled = as_str(impl_target_type) + "_" + as_str(ti_mname)
         ti_entry = alloc(16)
         store64(ti_entry, ti_mname)
@@ -4130,7 +4130,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
       mi := 0
       while mi < num_impl_methods {
         mdef = load64(impl_methods_p + mi * 8)
-        mname = load64(mdef)
+        mname = as_str(load64(mdef))
         gim_key = impl_target_type + "." + mname
         // Store: [method_ast, impl_type_params_ptr, target_type]
         gim_entry = alloc(24)
@@ -4145,7 +4145,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
     mi := 0
     while mi < num_impl_methods {
       mdef = load64(impl_methods_p + mi * 8)
-      mname = load64(mdef)
+      mname = as_str(load64(mdef))
       mparams_arr3 = load64(mdef + 8)
       mparams_p = load64(mparams_arr3)
       mret_name = load64(mdef + 16)
@@ -4352,7 +4352,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
   ii = 0
   while ii < num_impls {
     impl_block = load64(impls_p + ii * 8)
-    impl_target_type = load64(impl_block + 8)
+    impl_target_type = as_str(load64(impl_block + 8))
     impl_methods_arr3 = load64(impl_block + 16)
     impl_methods_p = load64(impl_methods_arr3)
     num_impl_methods = load64(impl_methods_arr3 + 8)
@@ -4367,7 +4367,7 @@ check_inner(program:I mod_exports:I require_main:I) I {
     mi := 0
     while mi < num_impl_methods {
       mdef = load64(impl_methods_p + mi * 8)
-      mname = load64(mdef)
+      mname = as_str(load64(mdef))
       mparams_arr4 = load64(mdef + 8)
       mparams_p = load64(mparams_arr4)
       mret_name = load64(mdef + 16)
