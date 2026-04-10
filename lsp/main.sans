@@ -19,24 +19,34 @@ g lsp_shutdown = 0
 g lsp_root_uri = ""
 
 // --- Document store helpers ---
+// All URIs are normalized to lowercase for case-insensitive path matching
+// (macOS HFS+ and Windows NTFS are case-insensitive)
 doc_store(uri:S content:S) I {
-  mset(doc_store_map, uri, content)
+  key = normalize_uri(uri)
+  mset(doc_store_map, key, content)
   0
 }
 
 doc_get(uri:S) S {
-  if mhas(doc_store_map, uri) { mget(doc_store_map, uri) } else { "" }
+  key = normalize_uri(uri)
+  if mhas(doc_store_map, key) { mget(doc_store_map, key) } else { "" }
 }
 
 doc_remove(uri:S) I {
-  if mhas(doc_store_map, uri) { doc_store_map.delete(uri) }
+  key = normalize_uri(uri)
+  if mhas(doc_store_map, key) { doc_store_map.delete(key) }
   0
 }
 
 // --- Diagnostics ---
+g lsp_last_diag_json = 0
+
 run_diagnostics(uri:S content:S) I {
   analyze_file(uri, content)
+  // Free previous diagnostic JSON array to avoid leak on every keystroke
+  if lsp_last_diag_json != 0 { sans_rc_release(lsp_last_diag_json) }
   diags = get_diagnostics_json(uri)
+  lsp_last_diag_json = diags
   params = make_publish_diagnostics(uri, diags)
   rpc_notify("textDocument/publishDiagnostics", params)
 }
@@ -237,6 +247,10 @@ handle_rename(id:J params:J) I {
   new_name = nn.get_string()
   if slen(new_name) == 0 {
     rpc_respond_error(id, 0 - 32602, "newName must not be empty")
+    return 0
+  }
+  if is_valid_identifier(new_name) == 0 {
+    rpc_respond_error(id, 0 - 32602, "newName is not a valid identifier")
     return 0
   }
   content = doc_get(uri)

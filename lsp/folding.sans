@@ -13,12 +13,21 @@ compute_folding_ranges(content:S) J {
   while i < len {
     ch = char_at(content, i)
 
-    // Track string state, handling escaped quotes
-    if ch == 34 && in_comment == 0 {
-      prev = if i > 0 { char_at(content, i - 1) } else { 0 }
-      if prev != 92 {
-        in_string = if in_string == 0 { 1 } else { 0 }
+    // Inside a string, skip escaped characters (e.g. \", \\)
+    if in_string == 1 && ch == 92 {
+      // Backslash: skip the next character entirely
+      i += 1
+      if i < len {
+        ch2 = char_at(content, i)
+        if ch2 == 10 { line += 1 }
       }
+      i += 1
+      continue
+    }
+
+    // Track string state
+    if ch == 34 && in_comment == 0 {
+      in_string = if in_string == 0 { 1 } else { 0 }
     }
     if ch == 47 && i + 1 < len && char_at(content, i + 1) == 47 && in_string == 0 {
       in_comment = 1
