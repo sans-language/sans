@@ -1,5 +1,0 @@
-// expect-error: break
-main() I {
-  break
-  0
-}

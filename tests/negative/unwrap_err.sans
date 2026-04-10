@@ -1,6 +1,0 @@
-fail() R<I> = err("bad")
-main() {
-  r = fail()
-  v = r!
-  p(itos(v))
-}

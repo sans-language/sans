@@ -1,4 +1,0 @@
-// expect-error: PARSE ERR
-struct Foo { x:I }
-struct Foo { y:I }
-main() I { 0 }

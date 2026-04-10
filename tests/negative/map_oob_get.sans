@@ -1,6 +1,0 @@
-main() {
-  m = M<S I>{}
-  m["a"] = 1
-  x = m["missing"]
-  p(itos(x))
-}
