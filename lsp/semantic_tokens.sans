@@ -87,10 +87,33 @@ compute_semantic_tokens(content:S) J {
       tok_len = slen(val)
     }
 
-    // String literal: val is the processed string (without quotes)
+    // String literal: compute source length from the raw source text
+    // val is the parsed string (escapes resolved), so we scan the source
+    // from the token position to find the closing quote for accurate length
     if kind == TK_STRING_LIT {
       sem_type = SEM_STRING
-      tok_len = slen(val) + 2
+      // Calculate source offset of this token and measure raw source length
+      src_pos := 0
+      src_line := 1
+      src_len = slen(content)
+      while src_line < tok_line(tok) && src_pos < src_len {
+        if char_at(content, src_pos) == 10 { src_line += 1 }
+        src_pos += 1
+      }
+      src_pos = src_pos + tok_col(tok) - 1
+      // Now src_pos should be at the opening quote; scan to closing quote
+      str_start = src_pos
+      if src_pos < src_len && char_at(content, src_pos) == 34 {
+        src_pos += 1
+        while src_pos < src_len && char_at(content, src_pos) != 34 {
+          if char_at(content, src_pos) == 92 { src_pos += 1 }
+          src_pos += 1
+        }
+        if src_pos < src_len { src_pos += 1 }
+        tok_len = src_pos - str_start
+      } else {
+        tok_len = slen(val) + 2
+      }
     }
 
     // Interpolated string — treat like a string

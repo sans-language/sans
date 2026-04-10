@@ -63,8 +63,8 @@ handle_hover(id:J params:J) I {
   content = doc_get(uri)
   if slen(content) == 0 { return rpc_respond(id, jn()) }
   pos = params_position(params)
-  line = pos / 1000000
-  col = pos % 1000000
+  line = pos / 10000000000
+  col = pos % 10000000000
   // Both LSP and lookup_hover_at use 0-based coordinates
   text = lookup_hover_at(content, line, col)
   if slen(text) == 0 { return rpc_respond(id, jn()) }
@@ -77,8 +77,8 @@ handle_definition(id:J params:J) I {
   content = doc_get(uri)
   if slen(content) == 0 { return rpc_respond(id, jn()) }
   pos = params_position(params)
-  line = pos / 1000000
-  col = pos % 1000000
+  line = pos / 10000000000
+  col = pos % 10000000000
   // Both LSP and lookup_definition_at use 0-based coordinates
   loc_str = lookup_definition_at(content, line, col)
   if slen(loc_str) == 0 { return rpc_respond(id, jn()) }
@@ -100,8 +100,8 @@ handle_signature_help(id:J params:J) I {
   content = doc_get(uri)
   if slen(content) == 0 { return rpc_respond(id, jn()) }
   pos = params_position(params)
-  line = pos / 1000000
-  col = pos % 1000000
+  line = pos / 10000000000
+  col = pos % 10000000000
   // signature_at handles its own conversion (0-based)
   result = lookup_signature_at(content, line, col)
   if result.type_of() == "null" { return rpc_respond(id, jn()) }
@@ -119,14 +119,14 @@ handle_did_change(params:J) I {
   uri = params_uri(params)
   content = params_text(params)
   doc_store(uri, content)
-  mcache_invalidate(uri_to_path(uri))
+  mcache_invalidate_with_rdeps(uri_to_path(uri))
   run_diagnostics(uri, content)
   0
 }
 
 handle_did_save(params:J) I {
   uri = params_uri(params)
-  mcache_invalidate(uri_to_path(uri))
+  mcache_invalidate_with_rdeps(uri_to_path(uri))
   content = doc_get(uri)
   if slen(content) > 0 { run_diagnostics(uri, content) }
   0
@@ -135,7 +135,7 @@ handle_did_save(params:J) I {
 handle_did_close(params:J) I {
   uri = params_uri(params)
   doc_remove(uri)
-  mcache_invalidate(uri_to_path(uri))
+  mcache_invalidate_with_rdeps(uri_to_path(uri))
   // Clear diagnostics by publishing empty array
   params_out = make_publish_diagnostics(uri, ja())
   rpc_notify("textDocument/publishDiagnostics", params_out)
@@ -212,8 +212,8 @@ handle_completion(id:J params:J) I {
 handle_references(id:J params:J) I {
   uri = params_uri(params)
   pos_encoded = params_position(params)
-  line = pos_encoded / 1000000
-  col = pos_encoded % 1000000
+  line = pos_encoded / 10000000000
+  col = pos_encoded % 10000000000
   content = doc_get(uri)
   if slen(content) == 0 {
     rpc_respond(id, ja())
@@ -227,8 +227,8 @@ handle_references(id:J params:J) I {
 handle_rename(id:J params:J) I {
   uri = params_uri(params)
   pos_encoded = params_position(params)
-  line = pos_encoded / 1000000
-  col = pos_encoded % 1000000
+  line = pos_encoded / 10000000000
+  col = pos_encoded % 10000000000
   nn = params.get("newName")
   if nn.type_of() != "string" {
     rpc_respond_error(id, 0 - 32602, "newName must be a string")
