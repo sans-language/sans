@@ -5,7 +5,7 @@ g sans_json_hash_seeded = 0
 
 sans_json_hash_seed_init() I {
   if sans_json_hash_seeded == 0 {
-    t = time()
+    t = time() * 6364136223846793005 + 1442695040888963407
     s := t * 6364136223846793005 + 1442695040888963407
     sans_json_hash_seed0 = s
     s = s * 6364136223846793005 + 1442695040888963407
@@ -1320,7 +1320,10 @@ sans_json_p_atoi(px:I start:I end:I) I {
 
 sans_json_p_object(px:I) I {
   depth = load64(px + 40)
-  if depth >= 512 { return 0 }
+  if depth >= 512 {
+    wfd(2, "json parse error: max depth exceeded (512)\n")
+    return 0
+  }
   store64(px + 40, depth + 1)
   sans_json_p_adv(px)
   obj = sans_json_object()
@@ -1390,7 +1393,10 @@ sans_json_p_obj_loop(px:I obj:I) I {
 
 sans_json_p_array(px:I) I {
   depth = load64(px + 40)
-  if depth >= 512 { return 0 }
+  if depth >= 512 {
+    wfd(2, "json parse error: max depth exceeded (512)\n")
+    return 0
+  }
   store64(px + 40, depth + 1)
   sans_json_p_adv(px)
   arr = sans_json_array()

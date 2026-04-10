@@ -91,6 +91,10 @@ lx_skip_block_comment(lx:I src:S) I {
       lx_advance(lx, src)
       lx_advance(lx, src)
       depth = depth + 1
+      if depth > 64 {
+        print("error: block comment nesting too deep (max 64)\n")
+        exit(1)
+      }
     } else { if ch == 42 && lx_peek_at(lx, src, 1) == 47 {
       lx_advance(lx, src)
       lx_advance(lx, src)

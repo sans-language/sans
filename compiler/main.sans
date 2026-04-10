@@ -127,6 +127,11 @@ rm_set_alias(m:I a:I) I { store64(m + 24, a)
 // ------ Import Resolution ---------------------------------------------------------------------------------------------------------------------------------
 
 resolve_import(import_path:S base_dir:S resolved:I visited:I in_progress:I alias:I) I {
+  // Reject path traversal sequences
+  if import_path.contains("..") == 1 {
+    p("error: import path must not contain '..': " + import_path + "\n")
+    exit(1)
+  }
   // Resolve path relative to base_dir
   file_path = base_dir + "/" + import_path + ".sans"
 
@@ -623,7 +628,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
     wfd(2, rname)
     wfd(2, "\n")
     sans_path = runtime_dir + "/" + rname + ".sans"
-    o_path = td + "/sans_" + rname + "_runtime.o"
+    o_path = td + "/sans_" + rname + "_" + str(time()) + "_" + str(random(999999)) + "_runtime.o"
     if fexists(o_path) == 0 {
       rsrc = fr(sans_path)
       rprog = parse(rsrc)
@@ -631,7 +636,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
       check_module(rprog, empty_exports)
       empty_fn_ret = M()
       rir = lower(rprog, 0, empty_fn_ret)
-      r_ll = td + "/sans_" + rname + "_runtime.ll"
+      r_ll = td + "/sans_" + rname + "_" + str(time()) + "_" + str(random(999999)) + "_runtime.ll"
       r_cg = compile_to_ll_runtime(rir, r_ll)
       sys(c + llc + c + " -filetype=obj -O2 -o " + c + o_path + c + " " + c + r_ll + c)
       del(r_ll)
@@ -729,7 +734,7 @@ test_main(dir:S) I {
     // dir /b returns bare filenames, prepend directory
     if win == 1 { fname = dir + sep + fname } else { fname = fname }
     if slen(fname) > 0 {
-      tmp = td + "/sans_test_" + str(time()) + "_" + str(i)
+      tmp = td + "/sans_test_" + str(time()) + "_" + str(random(999999)) + "_" + str(i)
       exe = tmp + ext
       // Compile
       build_out = sh("sans build " + c + fname + c + " -o " + c + tmp + c + " 2>&1 || echo SANS_BUILD_FAIL")
@@ -943,7 +948,7 @@ main() I {
       if slen(run_td) < 2 { run_td = genv("TEMP") } else { run_td = run_td }
       run_c = "\""
     }
-    g_out = run_td + "/sans_run_" + str(time() * 1000 + random(9999))
+    g_out = run_td + "/sans_run_" + str(time()) + "_" + str(random(999999))
     g_src = file
     wfd(2, "STEP=0 FILE=")
     wfd(2, g_file)

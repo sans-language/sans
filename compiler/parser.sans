@@ -14,6 +14,8 @@ tok_col(t:I) I = load64(t + 24)
 node_line(n:I) I = load64(n + load64(n + 8) - 16)
 node_col(n:I) I = load64(n + load64(n + 8) - 8)
 g p_collect_mode = 0
+g p_parse_depth = 0
+g P_MAX_DEPTH = 256
 
 // ------ Parser state ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Parser: [tokens:I, pos:I, last_try_expr:I] = 24 bytes
@@ -33,22 +35,35 @@ p_last_try(p:I) I = load64(p + 16)
 p_set_last_try(p:I v:I) I { store64(p + 16, v)
   0 }
 
-// Get token at current position
+// Get token at current position (with bounds check)
 p_peek(p:I) I {
   tokens = p_tokens(p)
   pos = p_pos(p)
-  data = load64(tokens)  // array data pointer is at offset 0
-  load64(data + pos * 8)
+  len = load64(tokens + 8)  // array length at offset 8
+  if pos >= len {
+    data = load64(tokens)
+    load64(data + (len - 1) * 8)
+  } else {
+    data = load64(tokens)
+    load64(data + pos * 8)
+  }
 }
 
 p_peek_kind(p:I) I = tok_kind(p_peek(p))
 
-// Get token at pos + offset
+// Get token at pos + offset (with bounds check)
 p_peek_at(p:I offset:I) I {
   tokens = p_tokens(p)
   pos = p_pos(p) + offset
-  data = load64(tokens)  // array data pointer is at offset 0
-  load64(data + pos * 8)
+  len = load64(tokens + 8)  // array length at offset 8
+  if pos < 0 || pos >= len {
+    // Return the last token (EOF) if out of bounds
+    data = load64(tokens)
+    load64(data + (len - 1) * 8)
+  } else {
+    data = load64(tokens)
+    load64(data + pos * 8)
+  }
 }
 
 p_peek_kind_at(p:I offset:I) I = tok_kind(p_peek_at(p, offset))
@@ -1217,6 +1232,13 @@ parse_if_or_if_else(p:I) I {
 
 // ------ Expression parsing (Pratt) ---------------------------------------------------------------------------------------------------------
 parse_expr(p:I min_bp:I) I {
+  p_parse_depth = p_parse_depth + 1
+  if p_parse_depth > P_MAX_DEPTH {
+    p("parse error: maximum nesting depth exceeded (")
+    p(P_MAX_DEPTH)
+    p(")\n")
+    exit(1)
+  }
   lhs := parse_atom(p)
 
   while 1 {
@@ -1354,6 +1376,7 @@ parse_expr(p:I min_bp:I) I {
     }
   }
 
+  p_parse_depth = p_parse_depth - 1
   lhs
 }
 
