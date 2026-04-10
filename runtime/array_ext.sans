@@ -185,7 +185,11 @@ sans_array_sum(arr:I) I {
 sans_array_min(arr:I) I {
   data = load64(arr)
   len = load64(arr + 8)
-  if len == 0 { return 0; 0 }
+  if len == 0 {
+    p("warning: min() called on empty array")
+    return 0 - 9223372036854775807
+    0
+  }
   result := load64(data)
   i := 1
   while i < len {
@@ -200,7 +204,11 @@ sans_array_min(arr:I) I {
 sans_array_max(arr:I) I {
   data = load64(arr)
   len = load64(arr + 8)
-  if len == 0 { return 0; 0 }
+  if len == 0 {
+    p("warning: max() called on empty array")
+    return 0 - 9223372036854775807
+    0
+  }
   result := load64(data)
   i := 1
   while i < len {

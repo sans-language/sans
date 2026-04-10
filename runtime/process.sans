@@ -54,3 +54,87 @@ sans_sh(cmd_i: I) I {
 
   ptr(content)
 }
+
+// sh_status: run command, return [stdout, exit_code, stderr] as array (#79)
+sans_sh_status(cmd_i: I) I {
+  cmd_len = slen(cmd_i)
+
+  sans_sh_counter = sans_sh_counter + 1
+  ts = time() * 10000 + sans_sh_counter
+  rnd_s = str(ts)
+  rnd_len = slen(ptr(rnd_s))
+
+  // Build stdout temp "/tmp/sans_shs_<ts>.txt"
+  tmp_len = 14 + rnd_len + 4
+  tmp = alloc(tmp_len + 1)
+  mcpy(tmp, ptr("/tmp/sans_shs_"), 14)
+  mcpy(tmp + 14, ptr(rnd_s), rnd_len)
+  mcpy(tmp + 14 + rnd_len, ptr(".txt"), 4)
+  store8(tmp + tmp_len, 0)
+
+  // Build stderr temp "/tmp/sans_she_<ts>.txt"
+  err_len = 14 + rnd_len + 4
+  err_tmp = alloc(err_len + 1)
+  mcpy(err_tmp, ptr("/tmp/sans_she_"), 14)
+  mcpy(err_tmp + 14, ptr(rnd_s), rnd_len)
+  mcpy(err_tmp + 14 + rnd_len, ptr(".txt"), 4)
+  store8(err_tmp + err_len, 0)
+
+  // Build "( <cmd> ) > <tmp> 2><err_tmp>"
+  pfx = "( "
+  sfx1 = " ) > "
+  sfx2 = " 2>"
+  full_len = 2 + cmd_len + 5 + tmp_len + 3 + err_len
+  full = alloc(full_len + 1)
+  pos := 0
+  mcpy(full + pos, ptr(pfx), 2)
+  pos = pos + 2
+  mcpy(full + pos, cmd_i, cmd_len)
+  pos = pos + cmd_len
+  mcpy(full + pos, ptr(sfx1), 5)
+  pos = pos + 5
+  mcpy(full + pos, tmp, tmp_len)
+  pos = pos + tmp_len
+  mcpy(full + pos, ptr(sfx2), 3)
+  pos = pos + 3
+  mcpy(full + pos, err_tmp, err_len)
+  pos = pos + err_len
+  store8(full + pos, 0)
+
+  exit_code = system(full)
+  dealloc(full)
+
+  // Read stdout
+  stdout_content = fr(tmp)
+  // Read stderr
+  stderr_content = fr(err_tmp)
+
+  // Clean up both temp files
+  rm_cmd = alloc(6 + tmp_len + 1)
+  mcpy(rm_cmd, ptr("rm -f "), 6)
+  mcpy(rm_cmd + 6, tmp, tmp_len)
+  store8(rm_cmd + 6 + tmp_len, 0)
+  system(rm_cmd)
+  dealloc(rm_cmd)
+
+  rm_cmd2 = alloc(6 + err_len + 1)
+  mcpy(rm_cmd2, ptr("rm -f "), 6)
+  mcpy(rm_cmd2 + 6, err_tmp, err_len)
+  store8(rm_cmd2 + 6 + err_len, 0)
+  system(rm_cmd2)
+  dealloc(rm_cmd2)
+
+  dealloc(tmp)
+  dealloc(err_tmp)
+
+  // Return array: [stdout, exit_code, stderr]
+  arr = alloc(24)
+  data = alloc(3 * 8)
+  store64(data, ptr(stdout_content))
+  store64(data + 8, exit_code)
+  store64(data + 16, ptr(stderr_content))
+  store64(arr, data)
+  store64(arr + 8, 3)
+  store64(arr + 16, 3)
+  arr
+}

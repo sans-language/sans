@@ -173,6 +173,15 @@ sans_array_each(arr:I fn_p:I) I {
   0
 }
 
+// Validate flat_map return is an array (has valid 24-byte header) (#81)
+sans_flat_map_check(sub:I i:I) I {
+  if sub == 0 {
+    p("error: flat_map callback returned null at index " + itos(i))
+    exit(1)
+  }
+  0
+}
+
 sans_array_flat_map(arr:I fn_p:I) I {
   data = load64(arr)
   len = load64(arr + 8)
@@ -181,6 +190,7 @@ sans_array_flat_map(arr:I fn_p:I) I {
   i := 0
   while i < len {
     sub = fcall(fn_p, load64(data + i * 8))
+    sans_flat_map_check(sub, i)
     total = total + load64(sub + 8)
     i += 1
     0
@@ -193,6 +203,7 @@ sans_array_flat_map(arr:I fn_p:I) I {
   i = 0
   while i < len {
     sub = fcall(fn_p, load64(data + i * 8))
+    sans_flat_map_check(sub, i)
     sub_data = load64(sub)
     sub_len = load64(sub + 8)
     j := 0
