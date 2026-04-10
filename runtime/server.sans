@@ -462,7 +462,9 @@ sans_parse_headers(req:I buf:I n:I) I {
   store64(req + 32, hdrs)
   // Skip first line (request line) --- find \r\n
   i := sans_find_crlf(buf, n, 0)
-  if i < 0 { 0 } else { sans_parse_headers_loop(hdrs, buf, n, i + 2) }
+  overflow = if i < 0 { 0 } else { sans_parse_headers_loop(hdrs, buf, n, i + 2) }
+  // Store error 431 on request if header count exceeded
+  if overflow != 0 { store64(req + 40, 431) } else { 0 }
   // Set keep-alive flag from Connection header
   sans_set_keepalive_from_headers(req)
 }
@@ -509,6 +511,7 @@ sans_find_crlf(buf:I n:I start:I) I {
 sans_parse_headers_loop(hdrs:I buf:I n:I pos:I) I {
   done := 0
   cur := pos
+  overflow := 0
   while done == 0 {
     if cur + 1 >= n {
       done = 1
@@ -521,15 +524,22 @@ sans_parse_headers_loop(hdrs:I buf:I n:I pos:I) I {
           0
         } else {
           cur = sans_parse_one_header(hdrs, buf, n, cur)
+          // Check if header was dropped due to capacity
+          count = load64(hdrs)
+          cap = load64(hdrs + 8)
+          if count >= cap { overflow = 1 } else { 0 }
           0
         }
       } else {
         cur = sans_parse_one_header(hdrs, buf, n, cur)
+        count = load64(hdrs)
+        cap = load64(hdrs + 8)
+        if count >= cap { overflow = 1 } else { 0 }
         0
       }
     }
   }
-  0
+  overflow
 }
 
 sans_parse_one_header(hdrs:I buf:I n:I pos:I) I {
@@ -555,7 +565,10 @@ sans_parse_header_kv(hdrs:I buf:I n:I pos:I colon:I) I {
 sans_hdrs_add(hdrs:I name:I value:I) I {
   count = load64(hdrs)
   cap = load64(hdrs + 8)
-  if count < cap { sans_hdrs_add_inner(hdrs, count, name, value) } else { -1 }
+  if count < cap { sans_hdrs_add_inner(hdrs, count, name, value) } else {
+    wfd(2, "warning: max header count exceeded, dropping header (431)\n")
+    -1
+  }
 }
 
 sans_hdrs_add_inner(hdrs:I count:I name:I value:I) I {
