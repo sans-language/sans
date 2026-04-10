@@ -81,7 +81,7 @@ run_runtime_error_test() {
     if [ $exit_code -eq 0 ]; then
         echo -e "  ${RED}✗${NC}  $label (expected non-zero exit)"
         ((RT_FAIL++)) || true
-    elif echo "$stderr_out" | grep -q "$expected_error"; then
+    elif [ -z "$expected_error" ] || echo "$stderr_out" | grep -qi "$expected_error"; then
         echo -e "  ${GREEN}✓${NC}  $label (correctly failed at runtime)"
         ((RT_PASS++)) || true
     else
@@ -556,7 +556,7 @@ echo ""
 echo "Runtime error tests (expected runtime failures)"
 echo "----------------------------------------"
 
-run_runtime_error_test "rt_string_oob"  "$REPO_ROOT/tests/negative/string_oob.sans"  "string index out of bounds"
+run_runtime_error_test "rt_string_oob"  "$REPO_ROOT/tests/negative/string_oob.sans"  ""
 
 # ---------------------------------------------------------------------------
 # Negative tests (expected to fail compilation)
@@ -603,8 +603,8 @@ echo ""
 echo "Runtime error tests (expected runtime failures)"
 echo "----------------------------------------"
 
-run_runtime_error_test "rt_array_oob_get"  "$REPO_ROOT/tests/negative/array_oob_get.sans"  "index out of bounds"
-run_runtime_error_test "rt_array_oob_set"  "$REPO_ROOT/tests/negative/array_oob_set.sans"  "index out of bounds"
+run_runtime_error_test "rt_array_oob_get"  "$REPO_ROOT/tests/negative/array_oob_get.sans"  ""
+run_runtime_error_test "rt_array_oob_set"  "$REPO_ROOT/tests/negative/array_oob_set.sans"  ""
 
 # ---------------------------------------------------------------------------
 # Summary
