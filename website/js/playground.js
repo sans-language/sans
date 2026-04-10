@@ -143,6 +143,9 @@ async function shareCode() {
     navigator.clipboard.writeText(url).then(() => {
       document.getElementById('status').textContent = 'Link copied!';
       document.getElementById('status').style.color = '#34d399';
+    }).catch(() => {
+      document.getElementById('status').textContent = 'Link ready (could not copy to clipboard)';
+      document.getElementById('status').style.color = '#fbbf24';
     });
   } catch (e) {
     document.getElementById('status').textContent = 'Share failed';

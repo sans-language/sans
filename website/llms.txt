@@ -60,6 +60,8 @@ for (k v) in m.entries() { }              // for-loop destructuring
 while cond { }             // loop
 break                      // exit loop
 continue                   // skip to next iteration
+defer stmt                 // LIFO execution on function return (args eval'd at defer site)
+select { v = rx.recv() => body, timeout(ms) => body }  // channel multiplex
 ```
 
 ## Tuples
@@ -80,16 +82,65 @@ ftos(f)           float_to_string(f)    F -> S
 abs(n)                                  I -> I
 min(a b)                                I I -> I
 max(a b)                                I I -> I
+floor(x)                                F -> F
+ceil(x)                                 F -> F
+round(x)                                F -> F
+sqrt(x)                                 F -> F
+sin(x) cos(x) tan(x)                   F -> F
+asin(x) acos(x) atan(x)                F -> F
+atan2(y x)                              F F -> F
+log(x) log10(x) exp(x)                 F -> F
+pow(base exp)                           F F -> F
+fabs(x)                                 F -> F
+fmin(a b) fmax(a b)                     F F -> F
+PI()                                    -> F (3.141592653589793)
+E_CONST()                               -> F (2.718281828459045)
 range(n)                                I -> Array<I> [0..n)
 range(a b)                              I I -> Array<I> [a..b)
 stof(s)           string_to_float(s)    S -> F
 sleep(ms)                               I -> I (pause ms)
 time()/now()                            -> I (unix timestamp)
 random(max)/rand(max)                   I -> I [0..max) — cryptographically seeded
+tnow()            time_now()            -> I (unix timestamp, alias for time())
+tfmt(t fmt)       time_format(t fmt)    I S -> S (strftime pattern)
+tyear(t)          time_year(t)          I -> I (year e.g. 2026)
+tmon(t)           time_month(t)         I -> I (month 1-12)
+tday(t)           time_day(t)           I -> I (day 1-31)
+thour(t)          time_hour(t)          I -> I (hour 0-23)
+tmin(t)           time_minute(t)        I -> I (minute 0-59)
+tsec(t)           time_second(t)        I -> I (second 0-59)
+twday(t)          time_weekday(t)       I -> I (weekday 0=Sun..6=Sat)
+tadd(t n)         time_add(t n)        I I -> I (add seconds)
+tdiff(a b)        time_diff(a b)       I I -> I (a - b in seconds)
+pjoin(a b)        path_join(a b)        S S -> S (join with /)
+pdir(p)           path_dir(p)           S -> S (dir component)
+pbase(p)          path_base(p)          S -> S (filename component)
+pext(p)           path_ext(p)           S -> S (extension incl .)
+pstem(p)          path_stem(p)          S -> S (filename without ext)
+pabs(p)           path_is_abs(p)        S -> I (1 if absolute)
+b64e(s)           base64_encode(s)      S -> S (base64 encode)
+b64d(s)           base64_decode(s)      S -> S (base64 decode)
+urle(s)           url_encode(s)         S -> S (percent-encode for URLs)
+hexe(s)           hex_encode(s)         S -> S (hex encode, lowercase)
+hexd(s)           hex_decode(s)         S -> S (hex decode)
+sha256(s)                               S -> S (SHA-256 hex digest)
+sha512(s)                               S -> S (SHA-512 hex digest)
+md5(s)                                  S -> S (MD5 hex digest)
+hmac256(k msg)    hmac_sha256(k msg)    S S -> S (HMAC-SHA256 hex digest)
+randb(n)          random_bytes(n)       I -> S (n crypto random bytes as hex)
+rmatch(pat txt)   regex_match(pat txt)  S S -> I (1 if matches, 0 otherwise; POSIX ERE)
+rfind(pat txt)    regex_find(pat txt)   S S -> S (first match substring, or "")
+rrepl(pat txt r)  regex_replace(p t r)  S S S -> S (replace first match)
 fr(path)          file_read(path)       S -> S
 fw(path body)     file_write(p b)       S S -> I
 fa(path body)     file_append(p b)      S S -> I
 fe(path)          file_exists(path)     S -> B
+rl(path)          read_lines(path)      S -> [S] (read file, split lines)
+wl(path lines)    write_lines(p l)      S [S] -> I (join + trailing \n)
+al(path line)     append_line(p l)      S S -> I (append line + \n)
+read_line(prompt)                       S -> S (print prompt, read stdin, trim)
+srl()             stdin_read_line()     -> S (read line from stdin)
+srb(n)            stdin_read_bytes(n)   I -> S (read n bytes from stdin)
 getenv(name)/genv(name)                 S -> S (read env var, "" if unset)
 mkdir(path)                             S -> I (mkdir -p, 1=ok 0=err)
 rmdir(path)                             S -> I (remove empty dir, 1=ok 0=err)
@@ -122,13 +173,15 @@ ws_send(ws msg)                         I S -> I (send WS text frame)
 ws_recv(ws)                             I -> S (recv WS frame, "" on close)
 ws_close(ws)                            I -> I (send close frame, close socket)
 serve_file(req dir)                     HttpRequest S -> I (serve static file from dir)
-url_decode(s)/ud(s)                     S -> S (URL-decode string)
+url_decode(s)/ud(s)/urld(s)             S -> S (URL-decode string; + -> space)
 path_segment(path idx)/ps(p i)          S I -> S (extract URL path segment by index)
 ld(msg)           log_debug(msg)        S -> I
 li(msg)           log_info(msg)         S -> I
 lw(msg)           log_warn(msg)         S -> I
 le(msg)           log_error(msg)        S -> I
 ll(level)         log_set_level(n)      I -> I
+get_log_level()                         -> I (current log level)
+set_log_level(n)                        I -> I (alias for log_set_level)
 ok(v)                                   T -> R<T>
 err(msg)                                S -> R<_>
 err(code msg)                           I S -> R<_> (error with code)
@@ -163,7 +216,7 @@ dealloc(p)                              I -> I (free)
 ralloc(p n)                             I I -> I (realloc)
 mcpy(d s n)                             I I I -> I (memcpy)
 mcmp(a b n)                             I I I -> I (memcmp)
-slen(p)                                 I -> I (strlen)
+slen(p)                                 I -> I (strlen, byte length — use char_count() for UTF-8)
 load8(p)                                I -> I (load byte)
 store8(p v)                             I I -> I (store byte)
 load16(p)                               I -> I (load 16-bit)
@@ -183,6 +236,13 @@ exit(code)                              I -> I (exit process)
 system(cmd)/sys(cmd)                    S -> I (run shell cmd, return exit code)
 wfd(fd msg)                             I S -> I (write to fd)
 gzip_compress(data len)/gz(d l)         I I -> I (gzip compress, returns ptr to [ptr, len])
+
+// Unicode / UTF-8 (strings are byte arrays; these interpret as UTF-8)
+char_count(s) / ccount(s)               S -> I (count UTF-8 codepoints)
+chars(s)                                 S -> Array<S> (split into UTF-8 chars)
+is_ascii(s)                              S -> I (1 if all bytes < 128)
+utf8_valid(s)                            S -> I (1 if valid UTF-8)
+string_reverse(s) / srev(s)             S -> S (UTF-8 aware reverse)
 
 // Arena allocator (phase-based, stackable up to 8 deep)
 arena_begin()/ab()                      -> I (push new arena)
@@ -244,9 +304,9 @@ Array<T>:  push(v) pop len get(i) set(i v) remove(i) contains(v) map(f) filter(f
 Map<K V>:  set(k v) get(k)->O<V> has(k) len keys vals delete(k) entries  // bare M() = M<S I>
            M<S I>() M<I I>() M<I S>() M<S S>()  // int keys use multiplicative hash; float keys disallowed
            BREAKING(v0.7.1): get() returns O<V> — use ! or .unwrap_or(d) to extract
-String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s)/idx(s) char_at(i)/get(i) repeat(n) to_int/ti pad_left(w ch)/pl(w ch) pad_right(w ch)/pr(w ch) bytes
+String:    len substring(s e)/[s:e] trim starts_with(s)/sw(s) ends_with(s)/ew(s) contains(s) split(d) replace(o n) upper lower index_of(s)/idx(s) char_at(i)/get(i) repeat(n) to_int/ti pad_left(w ch)/pl(w ch) pad_right(w ch)/pr(w ch) bytes add(s)
 Int:       to_str/to_string
-JsonValue: get(k) get_index(i)/gidx(i) get_string/gs get_int/geti get_bool/gb len type_of/typeof set(k v) push(v)
+JsonValue: get(k) get_index(i)/gidx(i) get_string/gs get_int/geti get_bool/gb len type_of/typeof set(k v) push(v) stringify
 HttpResponse: status body header(n) ok
 HttpServer:   accept
 HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length/cl cookie(name) form(name) respond(status body) respond(status body ct) respond_json(status body)/rj(s b) respond_stream(status) is_ws_upgrade upgrade_ws
@@ -319,15 +379,16 @@ a.zip(b)                         // [(I I)] — paired tuples
 `?` try (on R<T>: unwrap or early-return err; on O<T>: unwrap or early-return none())
 
 ## Builtin Names (user-defined functions take precedence)
-User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check set_max_workers set_read_timeout set_keepalive_timeout set_drain_timeout set_max_body set_max_headers set_max_header_count set_max_url pmutex_init pmutex_lock pmutex_unlock` and all others listed above.
+User functions override builtins of the same name. Builtin names: `p serve serve_file serve_tls listen alloc load8/16/32/64 store8/16/32/64 mcpy slen wfd ok err exit sys str stoi itof ftoi ftos fr fw fa fe rl wl al read_line jp jfy jo ja map M sock saccept srecv ssend sclose args signal_handler signal_check set_max_workers set_read_timeout set_keepalive_timeout set_drain_timeout set_max_body set_max_headers set_max_header_count set_max_url pmutex_init pmutex_lock pmutex_unlock` and all others listed above.
 
 ## All Aliases (short | medium | long)
 fread/fr/file_read  fwrite/fw/file_write  fappend/fa/file_append  fexists/fe/file_exists
+rl/read_lines  wl/write_lines  al/append_line
 itos/str/int_to_string  jparse/jp/json_parse  jobj/jo/json_object  jarr/ja/json_array
 jstr/js/json_string  jstringify/jfy/json_stringify  hget/hg/http_get  hpost/hp/http_post
 hl/listen/http_listen  HS=HttpServer  HR=HttpRequest
 ab/arena_begin  aa/arena_alloc  ae/arena_end  gz/gzip_compress
-ca/cors_all  ud/url_decode  ps/path_segment  sigh/signal_handler  sigc/signal_check
+ca/cors_all  ud/urld/url_decode  ps/path_segment  sigh/signal_handler  sigc/signal_check
 idx/index_of  pl/pad_left  pr/pad_right  ti/to_int  fm/flat_map
 gidx/get_index  gs/get_string  geti/get_int  gb/get_bool  typeof/type_of
 cl/content_length  rj/respond_json
@@ -383,3 +444,6 @@ sans pkg search <query>                // search index
 sans.json: `{"name":"mylib","version":"0.1.0","deps":{"github.com/user/repo":"v1.0.0"}}`
 Cache: `~/.sans/packages/<url>/<version>/` — git clone per version tag
 Transitive deps resolved via BFS from each dep's sans.json
+
+## Lint
+`sans lint <file|dir>` — static analysis, no build. Rules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut. `--error=<rule>` promotes to error. `--quiet` suppresses warnings. Config: sans.json `{"lint":{"rule":"error|warn|off"}}`. Exit 0 if no errors, 1 if errors.

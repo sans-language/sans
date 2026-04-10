@@ -26,7 +26,20 @@ export function activate(context: vscode.ExtensionContext) {
         clientOptions
     );
 
-    client.start();
+    client.start().catch((err: Error) => {
+        const msg = err?.message || String(err);
+        if (msg.includes('ENOENT') || msg.includes('not found')) {
+            vscode.window.showErrorMessage(
+                `Sans Language Server not found at "${lspPath}". ` +
+                'Install it or set "sans.lspPath" in settings.'
+            );
+        } else {
+            vscode.window.showErrorMessage(
+                `Sans Language Server failed to start: ${msg}`
+            );
+        }
+        client = undefined;
+    });
     context.subscriptions.push({
         dispose: () => { if (client) { client.stop(); } }
     });
