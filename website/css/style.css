@@ -768,3 +768,21 @@ pre.tryable {
   background: var(--surface0);
   color: var(--mauve);
 }
+
+/* 16. FOCUS STYLES (Accessibility)
+   ------------------------------------------------------------ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.tab-label:focus-visible,
+.copy-btn:focus-visible,
+.toc-toggle:focus-visible,
+.try-it-btn:focus-visible {
+  outline: 2px solid #4A9EFF;
+  outline-offset: 2px;
+}

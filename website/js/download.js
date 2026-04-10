@@ -3,6 +3,9 @@ function copyCmd(id, btn) {
   navigator.clipboard.writeText(cmd).then(function() {
     btn.textContent = 'Copied!';
     setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+  }).catch(function() {
+    btn.textContent = 'Copy failed';
+    setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
   });
 }
 function copyInstall() { copyCmd('install-cmd', document.querySelectorAll('.copy-btn')[0]); }
