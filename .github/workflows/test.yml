@@ -63,6 +63,13 @@ jobs:
           ls -la ll-output/
           echo "Total: $(ls ll-output/*.ll 2>/dev/null | wc -l) files"
 
+      - name: Smoke test (diagnose compiler output)
+        run: |
+          echo 'main() I { p("smoke ok") 0 }' > /tmp/smoke.sans
+          ./compiler/main build /tmp/smoke.sans -o /tmp/smoke 2>&1 || true
+          ls -la /tmp/smoke 2>&1 || echo "Binary not found"
+          /tmp/smoke 2>&1 || echo "Run failed with $?"
+
       - name: Run tests
         run: |
           bash tests/run_tests.sh ./compiler/main
