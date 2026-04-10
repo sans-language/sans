@@ -1901,7 +1901,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if name == "slen" {
       if nargs != 1 { tc_error("slen() takes exactly 1 argument (ptr)") }
       at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-      if types_compatible(at, make_type(TY_INT)) != 1 { tc_error("slen() ptr must be Int or String, got " + type_to_string(at)) }
+      if types_compatible(at, make_type(TY_INT)) != 1 && types_compatible(at, make_type(TY_STRING)) != 1 { tc_error("slen() ptr must be Int or String, got " + type_to_string(at)) }
       return make_type(TY_INT)
     }
     if name == "gzip_compress" || name == "gz" {
