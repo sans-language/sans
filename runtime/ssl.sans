@@ -654,7 +654,7 @@ sans_ssl_respond_400(ssl:I fd:I) I {
     ssl_shutdown(ssl)
     ssl_free(ssl)
   } else {
-    sans_send_all(fd, resp, 66)
+    ssend(fd, resp, 66)
   }
   sclose(fd)
   0

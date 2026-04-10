@@ -243,14 +243,14 @@ sans_respond_414(fd:I) I {
 
 sans_respond_400(fd:I) I {
   resp = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-  sans_send_all(fd, resp, 66)
+  ssend(fd, resp, 66)
   sclose(fd)
   0
 }
 
 sans_respond_431(fd:I) I {
   resp = "HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-  sans_send_all(fd, resp, 87)
+  ssend(fd, resp, 87)
   sclose(fd)
   0
 }
