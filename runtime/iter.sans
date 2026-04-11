@@ -10,7 +10,8 @@ g ITER_ZIP = 7
 g ITER_FLAT_MAP = 8
 
 // Sentinel: iter_next returns this when exhausted
-g ITER_DONE = -9223372036854775807
+// NOTE: negative globals don't work in Sans codegen, so we use a large positive i64
+g ITER_DONE = 9223372036854775806
 
 // --- Source constructors ---
 
@@ -253,7 +254,7 @@ sans_iter_next(node:I) I {
 sans_iter_collect(node:I) I {
   result = alloc(24)
   cap := 8
-  data = alloc(cap * 8)
+  data := alloc(cap * 8)
   len := 0
   val := sans_iter_next(node)
   while val != ITER_DONE {

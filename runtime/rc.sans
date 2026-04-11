@@ -217,6 +217,8 @@ scope_free(ptr:I tag:I) I {
     dealloc(ptr)
   } else if tag == 7 {
     dealloc(ptr)
+  } else if tag == 8 {
+    dealloc(ptr)
   }
   0
 }

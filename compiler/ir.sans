@@ -1988,9 +1988,9 @@ lower_for_in(ctx:I stmt:I) I {
     ctx_emit(ctx, ir_inst1(IR_ITER_NEXT, val_reg, arr_reg))
     ctx_set_reg_type(ctx, val_reg, IRTY_INT)
 
-    // Check if done: val == ITER_DONE (-9223372036854775807)
+    // Check if done: val == ITER_DONE (9223372036854775806)
     done_reg = ctx_fresh_reg(ctx)
-    ctx_emit(ctx, ir_const(done_reg, -9223372036854775807))
+    ctx_emit(ctx, ir_const(done_reg, 9223372036854775806))
     ctx_set_reg_type(ctx, done_reg, IRTY_INT)
     cmp_reg = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_NEQ, val_reg, done_reg))
