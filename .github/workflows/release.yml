@@ -303,12 +303,13 @@ jobs:
           file sans.exe
 
       - name: Smoke test
-        shell: cmd
         run: |
-          set TEMP=%RUNNER_TEMP%
-          echo main() I { p("smoke test ok") 0 } > %TEMP%\smoke.sans
-          sans.exe build %TEMP%\smoke.sans -o %TEMP%\smoke
-          %TEMP%\smoke.exe
+          export TEMP="$(cygpath -w /tmp)"
+          export OS=Windows_NT
+          printf 'main() I { p("smoke test ok") 0 }\n' > /tmp/smoke.sans
+          cat /tmp/smoke.sans
+          cmd.exe //c "set OS=Windows_NT && $(cygpath -w ./sans.exe) build $(cygpath -w /tmp/smoke.sans) -o $(cygpath -w /tmp/smoke)"
+          /tmp/smoke.exe
           echo "Smoke test passed"
 
       - name: Package
