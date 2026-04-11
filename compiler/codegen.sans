@@ -7192,11 +7192,9 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   cg_trait_impls = irm_trait_impls(module)
   cg_trait_registry = irm_trait_registry(module)
 
-  // DCE: build live function set (skip for runtime modules — all fns are live there)
+  // DCE: disabled — bootstrap compat issues with imported function name matching.
+  // Re-enable after a working bootstrap with correct name resolution is released.
   live_fns := 0
-  if is_runtime == 0 {
-    live_fns = dce_build_live_set(module)
-  }
 
   // 6. Second pass: compile each function body (streaming to file)
   i = 0
