@@ -63,6 +63,15 @@ make_dyn_trait_type(trait_name:I) I {
   t
 }
 
+make_iter_type(inner:I) I {
+  t = alloc(32)
+  store64(t, TY_ITER)
+  store64(t + 8, inner)
+  store64(t + 16, 0)
+  store64(t + 24, 0)
+  t
+}
+
 make_map_type(key_type:I val_type:I) I {
   t = alloc(32)
   store64(t, TY_MAP)
@@ -642,6 +651,7 @@ type_to_string(t:I) S {
   if tag == TY_RECEIVER { return "Receiver<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_MUTEX { return "Mutex<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_OPTION { return "Option<" + type_to_string(type_inner(t)) + ">" }
+  if tag == TY_ITER { return "Iter<" + type_to_string(type_inner(t)) + ">" }
   if tag == TY_DYN_TRAIT { return "dyn " + type_inner(t) }
   if tag == TY_STRUCT { return type_data(t) }
   if tag == TY_ENUM { return type_data(t) }
@@ -828,7 +838,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     iterable = load64(stmt + 24)
     body_arr = load64(stmt + 32)
     iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-    if type_tag(iter_ty) != TY_ARRAY { tc_error_at(stmt, "for-in requires Array, got " + type_to_string(iter_ty)) }
+    if type_tag(iter_ty) != TY_ARRAY && type_tag(iter_ty) != TY_ITER { tc_error_at(stmt, "for-in requires Array or Iter, got " + type_to_string(iter_ty)) }
     // Add loop var to scope
     push_scope(locals)
     inner_scope = locals[locals.len() - 1]
@@ -1662,6 +1672,23 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if name == "range" {
       if nargs != 1 && nargs != 2 { tc_error("range() takes 1 or 2 arguments") }
       return make_array_type(make_type(TY_INT))
+    }
+
+    // ------ Iter ---------------------------------------------------------------------------------------------------------------------------------------------------------
+    if name == "iter" {
+      if nargs == 1 {
+        at = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) != TY_INT { return tc_error_at(expr, "iter() argument must be Int") }
+        return make_iter_type(make_type(TY_INT))
+      }
+      if nargs == 2 {
+        at0 = check_expr(args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        at1 = check_expr(args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at0) != TY_INT { return tc_error_at(expr, "iter() first argument must be Int") }
+        if type_tag(at1) != TY_INT { return tc_error_at(expr, "iter() second argument must be Int") }
+        return make_iter_type(make_type(TY_INT))
+      }
+      return tc_error_at(expr, "iter() takes 1 or 2 arguments")
     }
 
     // ------ Path ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -2815,7 +2842,162 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         if mc_nargs != 1 { tc_error("join() takes exactly 1 argument (separator)") }
         return make_type(TY_STRING)
       }
+      if mc_method == "iter" {
+        if mc_nargs != 0 { tc_error("iter() takes no arguments") }
+        return make_iter_type(arr_inner)
+      }
       return tc_error("Array has no method '" + mc_method + "'")
+    }
+    // ------ Iterator methods ----------------------------------------------------------------------------------------------------------------------------------
+    if ot == TY_ITER {
+      iter_inner = type_inner(obj_ty)
+
+      if mc_method == "map" {
+        if mc_nargs != 1 { tc_error("map() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_params = type_data(at)
+          fn_ret = type_data2(at)
+          fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
+          fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
+          if fn_plen == 1 && type_eq(load64(fn_params_d), iter_inner) == 1 {
+            return make_iter_type(fn_ret)
+          }
+        }
+        return tc_error("map() requires a function (" + type_to_string(iter_inner) + ") -> T, got " + type_to_string(at))
+      }
+
+      if mc_method == "filter" {
+        if mc_nargs != 1 { tc_error("filter() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_params = type_data(at)
+          fn_ret = type_data2(at)
+          fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
+          fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
+          if fn_plen == 1 && type_eq(load64(fn_params_d), iter_inner) == 1 && type_tag(fn_ret) == TY_BOOL {
+            return make_iter_type(iter_inner)
+          }
+        }
+        return tc_error("filter() requires a function (" + type_to_string(iter_inner) + ") -> Bool, got " + type_to_string(at))
+      }
+
+      if mc_method == "enumerate" {
+        if mc_nargs != 0 { tc_error("enumerate() takes no arguments") }
+        tup_elems = [make_type(TY_INT) iter_inner]
+        return make_iter_type(make_tuple_type(tup_elems))
+      }
+
+      if mc_method == "take" {
+        if mc_nargs != 1 { tc_error("take() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) != TY_INT { return tc_error("take() argument must be Int") }
+        return make_iter_type(iter_inner)
+      }
+
+      if mc_method == "skip" {
+        if mc_nargs != 1 { tc_error("skip() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) != TY_INT { return tc_error("skip() argument must be Int") }
+        return make_iter_type(iter_inner)
+      }
+
+      if mc_method == "zip" {
+        if mc_nargs != 1 { tc_error("zip() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) != TY_ITER { return tc_error("zip() argument must be an iterator") }
+        other_inner = type_inner(at)
+        tup_elems = [iter_inner other_inner]
+        return make_iter_type(make_tuple_type(tup_elems))
+      }
+
+      if mc_method == "flat_map" {
+        if mc_nargs != 1 { tc_error("flat_map() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_params = type_data(at)
+          fn_ret = type_data2(at)
+          fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
+          fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
+          if fn_plen == 1 && type_eq(load64(fn_params_d), iter_inner) == 1 && type_tag(fn_ret) == TY_ARRAY {
+            return make_iter_type(type_inner(fn_ret))
+          }
+        }
+        return tc_error("flat_map() requires a function (" + type_to_string(iter_inner) + ") -> Array<U>, got " + type_to_string(at))
+      }
+
+      if mc_method == "collect" {
+        if mc_nargs != 0 { tc_error("collect() takes no arguments") }
+        return make_array_type(iter_inner)
+      }
+
+      if mc_method == "find" {
+        if mc_nargs != 1 { tc_error("find() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_params = type_data(at)
+          fn_ret = type_data2(at)
+          fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
+          fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
+          if fn_plen == 1 && type_eq(load64(fn_params_d), iter_inner) == 1 && type_tag(fn_ret) == TY_BOOL {
+            return make_option_type(iter_inner)
+          }
+        }
+        return tc_error("find() requires a function (" + type_to_string(iter_inner) + ") -> Bool, got " + type_to_string(at))
+      }
+
+      if mc_method == "any" {
+        if mc_nargs != 1 { tc_error("any() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_params = type_data(at)
+          fn_ret = type_data2(at)
+          fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
+          fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
+          if fn_plen == 1 && type_eq(load64(fn_params_d), iter_inner) == 1 && type_tag(fn_ret) == TY_BOOL {
+            return make_type(TY_BOOL)
+          }
+        }
+        return tc_error("any() requires a function (" + type_to_string(iter_inner) + ") -> Bool, got " + type_to_string(at))
+      }
+
+      if mc_method == "all" {
+        if mc_nargs != 1 { tc_error("all() takes exactly 1 argument") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          fn_params = type_data(at)
+          fn_ret = type_data2(at)
+          fn_plen = if fn_params != 0 { load64(fn_params + 8) } else { 0 }
+          fn_params_d = if fn_params != 0 { load64(fn_params) } else { 0 }
+          if fn_plen == 1 && type_eq(load64(fn_params_d), iter_inner) == 1 && type_tag(fn_ret) == TY_BOOL {
+            return make_type(TY_BOOL)
+          }
+        }
+        return tc_error("all() requires a function (" + type_to_string(iter_inner) + ") -> Bool, got " + type_to_string(at))
+      }
+
+      if mc_method == "reduce" {
+        if mc_nargs != 2 { tc_error("reduce() takes exactly 2 arguments (function, initial)") }
+        at = check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        init_ty = check_expr(mc_args[1], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        if type_tag(at) == TY_FN {
+          return init_ty
+        }
+        return tc_error("reduce() first argument must be a function")
+      }
+
+      if mc_method == "count" {
+        if mc_nargs != 0 { tc_error("count() takes no arguments") }
+        return make_type(TY_INT)
+      }
+
+      if mc_method == "for_each" {
+        if mc_nargs != 1 { tc_error("for_each() takes exactly 1 argument") }
+        check_expr(mc_args[0], locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+        return make_type(TY_VOID)
+      }
+
+      return tc_error("Iter has no method '" + mc_method + "'")
     }
     // ------ String methods ---------------------------------------------------------------------------------------------------------------------------------
     if ot == TY_STRING {
