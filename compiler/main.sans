@@ -25,7 +25,10 @@ g g_is_win = -1
 check_win() I {
   if g_is_win < 0 {
     os = genv("OS")
-    if os.contains("Windows") == 1 { g_is_win = 1 } else { g_is_win = 0 }
+    msys = genv("MSYSTEM")
+    if os.contains("Windows") == 1 { g_is_win = 1 }
+    else if slen(msys) > 0 { g_is_win = 1 }
+    else { g_is_win = 0 }
   }
   g_is_win
 }
@@ -575,12 +578,10 @@ do_link(ll_path:S output_path:S source_path:S) I {
   if g_llc == 0 { g_llc = find_llc() }
   llc = tos(g_llc)
   // Platform-specific quoting and temp dir
-  // Use single quotes on Unix, double quotes on Windows to prevent injection
   c := "'"
   td := "/tmp"
-  os_env = genv("OS")
-  win := 0
-  if os_env.contains("Windows") == 1 {
+  win = check_win()
+  if win == 1 {
     c = "\""
     td = sh("cmd /c echo %TEMP%").trim()
     if slen(td) < 2 { td = genv("TEMP") }

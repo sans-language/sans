@@ -303,6 +303,8 @@ jobs:
         run: |
           # MSYS2 sets TEMP=/tmp (MSYS2 path) but MinGW binaries need Windows paths
           export TEMP="$(cygpath -w /tmp)"
+          # Ensure OS is set so the compiler detects Windows (MSYS2 may not set it)
+          export OS=Windows_NT
           echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
           ./sans.exe build /tmp/smoke.sans -o /tmp/smoke
           /tmp/smoke.exe
