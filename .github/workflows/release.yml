@@ -85,12 +85,15 @@ jobs:
           echo "=== Stage 1: Build with stubbed runtime (bootstrap may lack new builtins) ==="
           cp runtime/server.sans runtime/server.sans.bak
           cp runtime/ssl.sans runtime/ssl.sans.bak
+          cp runtime/rc.sans runtime/rc.sans.bak
           sed -i.tmp 's/pmutex_init(sans_worker_mutex)/0/g; s/pmutex_lock(sans_worker_mutex)/0/g; s/pmutex_unlock(sans_worker_mutex)/0/g' runtime/server.sans
           sed -i.tmp 's/pmutex_init(sans_ssl_worker_mutex)/0/g; s/pmutex_lock(sans_ssl_worker_mutex)/0/g; s/pmutex_unlock(sans_ssl_worker_mutex)/0/g' runtime/ssl.sans
+          sed -i.tmp 's/pmutex_init(rc_mutex)/0/g; s/pmutex_lock(rc_mutex)/0/g; s/pmutex_unlock(rc_mutex)/0/g' runtime/rc.sans
           ./sans build compiler/main.sans
           cp runtime/server.sans.bak runtime/server.sans
           cp runtime/ssl.sans.bak runtime/ssl.sans
-          rm -f runtime/server.sans.bak runtime/ssl.sans.bak runtime/server.sans.tmp runtime/ssl.sans.tmp
+          cp runtime/rc.sans.bak runtime/rc.sans
+          rm -f runtime/server.sans.bak runtime/ssl.sans.bak runtime/rc.sans.bak runtime/server.sans.tmp runtime/ssl.sans.tmp runtime/rc.sans.tmp
           echo "=== Stage 2: Rebuild with stage-1 compiler (captures .ll for Linux) ==="
           # Clear cached runtime .o files so Stage 2 recompiles them and
           # generates .ll files we can capture for the Linux cross-compile.
