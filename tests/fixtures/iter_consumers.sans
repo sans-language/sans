@@ -1,0 +1,7 @@
+main() I {
+  has_big = [1 2 3 4 5].iter().any(|x:I| B { x > 3 })
+  all_pos = [1 2 3].iter().all(|x:I| B { x > 0 })
+  cnt = iter(10).count()
+  total = [1 2 3 4 5].iter().reduce(|acc:I x:I| I { acc + x }, 0)
+  has_big + all_pos + cnt + total
+}
