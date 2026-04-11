@@ -1,0 +1,338 @@
+// Iterator node kind constants
+g ITER_SOURCE_ARRAY = 0
+g ITER_SOURCE_RANGE = 1
+g ITER_MAP = 2
+g ITER_FILTER = 3
+g ITER_ENUMERATE = 4
+g ITER_TAKE = 5
+g ITER_SKIP = 6
+g ITER_ZIP = 7
+g ITER_FLAT_MAP = 8
+
+// Sentinel: iter_next returns this when exhausted
+g ITER_DONE = -9223372036854775807
+
+// --- Source constructors ---
+
+// Create iterator from array. param -> [data_ptr, len, index]
+sans_iter_from_array(arr:I) I {
+  node = alloc(32)
+  state = alloc(24)
+  store64(state, load64(arr))
+  store64(state + 8, load64(arr + 8))
+  store64(state + 16, 0)
+  store64(node, ITER_SOURCE_ARRAY)
+  store64(node + 8, 0)
+  store64(node + 16, 0)
+  store64(node + 24, state)
+  node
+}
+
+// Create iterator from range [start, end). param -> [current, end]
+sans_iter_from_range(start:I end_val:I) I {
+  node = alloc(32)
+  state = alloc(16)
+  store64(state, start)
+  store64(state + 8, end_val)
+  store64(node, ITER_SOURCE_RANGE)
+  store64(node + 8, 0)
+  store64(node + 16, 0)
+  store64(node + 24, state)
+  node
+}
+
+// --- Combinator constructors ---
+
+sans_iter_map(source:I fn_p:I) I {
+  node = alloc(32)
+  store64(node, ITER_MAP)
+  store64(node + 8, source)
+  store64(node + 16, fn_p)
+  store64(node + 24, 0)
+  node
+}
+
+sans_iter_filter(source:I fn_p:I) I {
+  node = alloc(32)
+  store64(node, ITER_FILTER)
+  store64(node + 8, source)
+  store64(node + 16, fn_p)
+  store64(node + 24, 0)
+  node
+}
+
+sans_iter_enumerate(source:I) I {
+  node = alloc(32)
+  state = alloc(8)
+  store64(state, 0)
+  store64(node, ITER_ENUMERATE)
+  store64(node + 8, source)
+  store64(node + 16, 0)
+  store64(node + 24, state)
+  node
+}
+
+sans_iter_take(source:I n:I) I {
+  node = alloc(32)
+  state = alloc(16)
+  store64(state, n)
+  store64(state + 8, 0)
+  store64(node, ITER_TAKE)
+  store64(node + 8, source)
+  store64(node + 16, 0)
+  store64(node + 24, state)
+  node
+}
+
+sans_iter_skip(source:I n:I) I {
+  node = alloc(32)
+  state = alloc(16)
+  store64(state, n)
+  store64(state + 8, 0)
+  store64(node, ITER_SKIP)
+  store64(node + 8, source)
+  store64(node + 16, 0)
+  store64(node + 24, state)
+  node
+}
+
+sans_iter_zip(source:I other:I) I {
+  node = alloc(32)
+  store64(node, ITER_ZIP)
+  store64(node + 8, source)
+  store64(node + 16, 0)
+  store64(node + 24, other)
+  node
+}
+
+sans_iter_flat_map(source:I fn_p:I) I {
+  node = alloc(32)
+  state = alloc(24)
+  store64(state, 0)
+  store64(state + 8, 0)
+  store64(state + 16, 0)
+  store64(node, ITER_FLAT_MAP)
+  store64(node + 8, source)
+  store64(node + 16, fn_p)
+  store64(node + 24, state)
+  node
+}
+
+// --- Core pull function ---
+
+sans_iter_next(node:I) I {
+  kind = load64(node)
+
+  if kind == ITER_SOURCE_ARRAY {
+    state = load64(node + 24)
+    data = load64(state)
+    len = load64(state + 8)
+    idx = load64(state + 16)
+    if idx >= len { return ITER_DONE }
+    val = load64(data + idx * 8)
+    store64(state + 16, idx + 1)
+    return val
+  }
+
+  if kind == ITER_SOURCE_RANGE {
+    state = load64(node + 24)
+    cur = load64(state)
+    end_val = load64(state + 8)
+    if cur >= end_val { return ITER_DONE }
+    store64(state, cur + 1)
+    return cur
+  }
+
+  if kind == ITER_MAP {
+    source = load64(node + 8)
+    fn_p = load64(node + 16)
+    val = sans_iter_next(source)
+    if val == ITER_DONE { return ITER_DONE }
+    return fcall(fn_p, val)
+  }
+
+  if kind == ITER_FILTER {
+    source = load64(node + 8)
+    fn_p = load64(node + 16)
+    val := sans_iter_next(source)
+    while val != ITER_DONE {
+      if fcall(fn_p, val) != 0 { return val }
+      val = sans_iter_next(source)
+    }
+    return ITER_DONE
+  }
+
+  if kind == ITER_ENUMERATE {
+    source = load64(node + 8)
+    state = load64(node + 24)
+    val = sans_iter_next(source)
+    if val == ITER_DONE { return ITER_DONE }
+    idx = load64(state)
+    store64(state, idx + 1)
+    tup = alloc(16)
+    store64(tup, idx)
+    store64(tup + 8, val)
+    return tup
+  }
+
+  if kind == ITER_TAKE {
+    state = load64(node + 24)
+    limit = load64(state)
+    yielded = load64(state + 8)
+    if yielded >= limit { return ITER_DONE }
+    source = load64(node + 8)
+    val = sans_iter_next(source)
+    if val == ITER_DONE { return ITER_DONE }
+    store64(state + 8, yielded + 1)
+    return val
+  }
+
+  if kind == ITER_SKIP {
+    source = load64(node + 8)
+    state = load64(node + 24)
+    skip_n = load64(state)
+    skipped = load64(state + 8)
+    if skipped == 0 {
+      store64(state + 8, 1)
+      i := 0
+      while i < skip_n {
+        val = sans_iter_next(source)
+        if val == ITER_DONE { return ITER_DONE }
+        i += 1
+      }
+    }
+    return sans_iter_next(source)
+  }
+
+  if kind == ITER_ZIP {
+    source = load64(node + 8)
+    other = load64(node + 24)
+    val_a = sans_iter_next(source)
+    if val_a == ITER_DONE { return ITER_DONE }
+    val_b = sans_iter_next(other)
+    if val_b == ITER_DONE { return ITER_DONE }
+    tup = alloc(16)
+    store64(tup, val_a)
+    store64(tup + 8, val_b)
+    return tup
+  }
+
+  if kind == ITER_FLAT_MAP {
+    source = load64(node + 8)
+    fn_p = load64(node + 16)
+    state = load64(node + 24)
+    sub_data = load64(state)
+    sub_len = load64(state + 8)
+    sub_idx = load64(state + 16)
+    if sub_data != 0 && sub_idx < sub_len {
+      val = load64(sub_data + sub_idx * 8)
+      store64(state + 16, sub_idx + 1)
+      return val
+    }
+    src_val := sans_iter_next(source)
+    while src_val != ITER_DONE {
+      sub_arr = fcall(fn_p, src_val)
+      sd = load64(sub_arr)
+      sl = load64(sub_arr + 8)
+      if sl > 0 {
+        store64(state, sd)
+        store64(state + 8, sl)
+        store64(state + 16, 1)
+        return load64(sd)
+      }
+      src_val = sans_iter_next(source)
+    }
+    return ITER_DONE
+  }
+
+  ITER_DONE
+}
+
+// --- Consumers ---
+
+sans_iter_collect(node:I) I {
+  result = alloc(24)
+  cap := 8
+  data = alloc(cap * 8)
+  len := 0
+  val := sans_iter_next(node)
+  while val != ITER_DONE {
+    if len >= cap {
+      cap = cap * 2
+      new_data = alloc(cap * 8)
+      mcpy(new_data, data, len * 8)
+      data = new_data
+    }
+    store64(data + len * 8, val)
+    len += 1
+    val = sans_iter_next(node)
+  }
+  store64(result, data)
+  store64(result + 8, len)
+  store64(result + 16, cap)
+  result
+}
+
+sans_iter_find(node:I fn_p:I) I {
+  val := sans_iter_next(node)
+  while val != ITER_DONE {
+    if fcall(fn_p, val) != 0 {
+      opt = alloc(16)
+      store64(opt, 1)
+      store64(opt + 8, val)
+      return opt
+    }
+    val = sans_iter_next(node)
+  }
+  opt = alloc(16)
+  store64(opt, 0)
+  store64(opt + 8, 0)
+  opt
+}
+
+sans_iter_any(node:I fn_p:I) I {
+  val := sans_iter_next(node)
+  while val != ITER_DONE {
+    if fcall(fn_p, val) != 0 { return 1 }
+    val = sans_iter_next(node)
+  }
+  0
+}
+
+sans_iter_all(node:I fn_p:I) I {
+  val := sans_iter_next(node)
+  while val != ITER_DONE {
+    if fcall(fn_p, val) == 0 { return 0 }
+    val = sans_iter_next(node)
+  }
+  1
+}
+
+sans_iter_reduce(node:I fn_p:I init:I) I {
+  acc := init
+  val := sans_iter_next(node)
+  while val != ITER_DONE {
+    acc = fcall2(fn_p, acc, val)
+    val = sans_iter_next(node)
+  }
+  acc
+}
+
+sans_iter_count(node:I) I {
+  n := 0
+  val := sans_iter_next(node)
+  while val != ITER_DONE {
+    n += 1
+    val = sans_iter_next(node)
+  }
+  n
+}
+
+sans_iter_for_each(node:I fn_p:I) I {
+  val := sans_iter_next(node)
+  while val != ITER_DONE {
+    fcall(fn_p, val)
+    val = sans_iter_next(node)
+  }
+  0
+}
