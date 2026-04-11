@@ -9,7 +9,7 @@ Compact reference for LLM context injection. Use short aliases.
 ## Types
 `I`=Int `F`=Float `B`=Bool `S`=String `J`=JsonValue `R<T>`=Result<T> `O<T>`=Option<T>
 Array<T> Map<K V>(`M`) HttpResponse HttpServer HttpRequest
-Sender<T> Receiver<T> Mutex<T> JoinHandle
+Iter<T>(`It<T>`) Sender<T> Receiver<T> Mutex<T> JoinHandle
 `dyn T` — trait object (fat ptr: data+vtable); `x as dyn T` to coerce concrete struct
 Tuple: `(I S B)` — heterogeneous fixed-size collection
 Note: HttpResponse HttpServer Sender Receiver Mutex JoinHandle are distinct opaque handles (not interchangeable with I)
@@ -57,7 +57,7 @@ f(v dyn T) I { v.m() }    // dyn T as parameter type
 spawn func(args)           // thread
 let (tx rx) = channel<I>() // channel
 mutex(val)                 // mutex
-for x in arr { }           // iteration
+for x in arr { }           // iteration (arrays and Iter<T>)
 for (k v) in m.entries() { }              // for-loop destructuring
 while cond { }             // loop
 break                      // exit loop
@@ -99,6 +99,8 @@ PI()                                    -> F (3.141592653589793)
 E_CONST()                               -> F (2.718281828459045)
 range(n)                                I -> Array<I> [0..n)
 range(a b)                              I I -> Array<I> [a..b)
+iter(n)                                 I -> Iter<I> [0..n) (lazy, no alloc)
+iter(a b)                               I I -> Iter<I> [a..b) (lazy, no alloc)
 stof(s)           string_to_float(s)    S -> F
 sleep(ms)                               I -> I (pause ms)
 time()/now()                            -> I (unix timestamp)
@@ -365,13 +367,40 @@ lookup(m:M<S I> k:S) O<I> {
 }
 ```
 
-## Iterator Chains
+## Array Methods (eager — return arrays)
 ```
 a.map(|x:I| I { x * 2 }).filter(|x:I| B { x > 3 })  // chained, auto-materialized
 a.any(|x:I| B { x > 3 })       // B — true if any match
 a.find(|x:I| B { x > 3 })      // O<T> — first match or None (use ! or .unwrap_or(d))
 a.enumerate()                    // [(I I)] — index-value tuples
 a.zip(b)                         // [(I I)] — paired tuples
+```
+
+## Lazy Iterators (`Iter<T>` / `It<T>`)
+```
+// Entry points
+a.iter()                         // It<T> — lazy iterator over array
+iter(n)                          // It<I> — range 0..n (no alloc)
+iter(a, b)                       // It<I> — range a..b (no alloc)
+
+// Combinators (lazy, return It<U>)
+.map(fn) .filter(fn) .enumerate() .take(n) .skip(n) .zip(iter) .flat_map(fn)
+
+// Consumers (terminal)
+.collect()                       // Array<T> — materialize
+.find(fn)                        // O<T> — first match
+.any(fn)                         // B — true if any match
+.all(fn)                         // B — true if all match
+.reduce(fn, init)                // T — fold
+.count()                         // I — number of elements
+.for_each(fn)                    // I — side effects
+
+// For-loop integration
+for x in iter(10) { p(x) }
+for x in a.iter().filter(fn) { ... }
+
+// Example: lazy pipeline (no intermediate arrays)
+iter(10).filter(|x:I| B { x > 3 }).map(|x:I| I { x * 2 }).collect()
 ```
 
 ## Operators

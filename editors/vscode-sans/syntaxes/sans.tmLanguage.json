@@ -98,7 +98,7 @@
         },
         {
           "name": "support.type.builtin.sans",
-          "match": "\\b(Array|Option|Result|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|O|M|HS|HR|Fn|Map|J)\\b"
+          "match": "\\b(Array|Option|Result|Iter|JsonValue|HttpResponse|HttpServer|HttpRequest|Sender|Receiver|Mutex|JoinHandle|R|O|M|It|HS|HR|Fn|Map|J)\\b"
         }
       ]
     },
@@ -114,7 +114,7 @@
         },
         {
           "name": "support.function.math.sans",
-          "match": "\\b(abs|min|max|range|floor|ceil|round|sqrt|sin|cos|tan|asin|acos|atan|atan2|log|log10|exp|pow|fabs|fmin|fmax|PI|E_CONST)\\b"
+          "match": "\\b(abs|min|max|range|iter|floor|ceil|round|sqrt|sin|cos|tan|asin|acos|atan|atan2|log|log10|exp|pow|fabs|fmin|fmax|PI|E_CONST)\\b"
         },
         {
           "name": "support.function.system.sans",
