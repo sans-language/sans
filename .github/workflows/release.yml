@@ -303,14 +303,12 @@ jobs:
           file sans.exe
 
       - name: Smoke test
+        shell: cmd
         run: |
-          # MSYS2 sets TEMP=/tmp (MSYS2 path) but MinGW binaries need Windows paths
-          export TEMP="$(cygpath -w /tmp)"
-          # Ensure OS is set so the compiler detects Windows (MSYS2 may not set it)
-          export OS=Windows_NT
-          echo 'main() I { p("smoke test ok") 0 }' > /tmp/smoke.sans
-          ./sans.exe build /tmp/smoke.sans -o /tmp/smoke
-          /tmp/smoke.exe
+          set TEMP=%RUNNER_TEMP%
+          echo main() I { p("smoke test ok") 0 } > %TEMP%\smoke.sans
+          sans.exe build %TEMP%\smoke.sans -o %TEMP%\smoke
+          %TEMP%\smoke.exe
           echo "Smoke test passed"
 
       - name: Package
