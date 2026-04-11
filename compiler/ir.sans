@@ -41,6 +41,7 @@ g IRTY_MAP = 17
 g IRTY_OPTION = 18
 g IRTY_MAP_INT = 19
 g IRTY_DYN_TRAIT = 20
+g IRTY_ITER = 21
 
 // Global: dyn trait create info - maps dest reg name to "TypeName::TraitName"
 g ir_dyn_create_info = 0
