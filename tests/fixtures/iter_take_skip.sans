@@ -1,0 +1,4 @@
+main() I {
+  a = iter(10).skip(3).take(4).collect()
+  a[0] + a[1] + a[2] + a[3]
+}

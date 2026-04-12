@@ -597,6 +597,25 @@ emit_externals(cg:I) I {
   emit(cg, "declare i64 @sans_array_pop(i64)")
   emit(cg, "declare i64 @sans_array_remove(i64, i64)")
 
+  // ------ Sans runtime: Iterators ------
+  emit(cg, "declare i64 @sans_iter_from_array(i64)")
+  emit(cg, "declare i64 @sans_iter_from_range(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_map(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_filter(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_enumerate(i64)")
+  emit(cg, "declare i64 @sans_iter_take(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_skip(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_zip(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_flat_map(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_next(i64)")
+  emit(cg, "declare i64 @sans_iter_collect(i64)")
+  emit(cg, "declare i64 @sans_iter_find(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_any(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_all(i64, i64)")
+  emit(cg, "declare i64 @sans_iter_reduce(i64, i64, i64)")
+  emit(cg, "declare i64 @sans_iter_count(i64)")
+  emit(cg, "declare i64 @sans_iter_for_each(i64, i64)")
+
   // ------ Sans runtime: Strings ------
   emit(cg, "declare i64 @sans_string_trim(i64)")
   emit(cg, "declare i64 @sans_string_starts_with(i64, i64)")
@@ -2845,6 +2864,7 @@ compile_inst(cg:I inst:I) I {
           else if frt == IRTY_RESULT { stag = 4 }
           else if frt == IRTY_STR { stag = 5 }
           else if frt == IRTY_OPTION { stag = 6 }
+          else if frt == IRTY_ITER { stag = 8 }
           emit_scope_track(cg, r, stag)
         }
       }
@@ -6656,6 +6676,98 @@ compile_inst(cg:I inst:I) I {
     emit(cg, "  " + r + " = phi i64 [0, %" + chk_lbl + "], [1, %" + ok_lbl + "]")
     cg_set_val(cg, dest, r)
     cg_set_current_block(cg, merge_lbl)
+    return 0
+  }
+
+  // ------ Iterator operations ------
+  if op == IR_ITER_FROM_ARRAY {
+    compile_rt1(cg, inst, "sans_iter_from_array")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_FROM_RANGE {
+    compile_rt2(cg, inst, "sans_iter_from_range")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_MAP {
+    compile_rt2(cg, inst, "sans_iter_map")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_FILTER {
+    compile_rt2(cg, inst, "sans_iter_filter")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_ENUMERATE {
+    compile_rt1(cg, inst, "sans_iter_enumerate")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_TAKE {
+    compile_rt2(cg, inst, "sans_iter_take")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_SKIP {
+    compile_rt2(cg, inst, "sans_iter_skip")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_ZIP {
+    compile_rt2(cg, inst, "sans_iter_zip")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_FLAT_MAP {
+    compile_rt2(cg, inst, "sans_iter_flat_map")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ITER)
+    return 0
+  }
+  if op == IR_ITER_NEXT {
+    compile_rt1(cg, inst, "sans_iter_next")
+    return 0
+  }
+  if op == IR_ITER_COLLECT {
+    compile_rt1(cg, inst, "sans_iter_collect")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_ARRAY)
+    return 0
+  }
+  if op == IR_ITER_FIND {
+    compile_rt2(cg, inst, "sans_iter_find")
+    cg_set_ptr(cg, dest)
+    emit_scope_track(cg, cg_get_val(cg, dest), SCOPE_TAG_OPTION)
+    return 0
+  }
+  if op == IR_ITER_ANY {
+    compile_rt2(cg, inst, "sans_iter_any")
+    return 0
+  }
+  if op == IR_ITER_ALL {
+    compile_rt2(cg, inst, "sans_iter_all")
+    return 0
+  }
+  if op == IR_ITER_REDUCE {
+    compile_rt3(cg, inst, "sans_iter_reduce")
+    return 0
+  }
+  if op == IR_ITER_COUNT {
+    compile_rt1(cg, inst, "sans_iter_count")
+    return 0
+  }
+  if op == IR_ITER_FOR_EACH {
+    compile_rt2(cg, inst, "sans_iter_for_each")
     return 0
   }
 

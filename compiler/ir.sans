@@ -41,6 +41,7 @@ g IRTY_MAP = 17
 g IRTY_OPTION = 18
 g IRTY_MAP_INT = 19
 g IRTY_DYN_TRAIT = 20
+g IRTY_ITER = 21
 
 // Global: dyn trait create info - maps dest reg name to "TypeName::TraitName"
 g ir_dyn_create_info = 0
@@ -810,6 +811,22 @@ lower_call(ctx:I name:I args:I) I {
       lower_call_1(ctx, args, IR_RANGE, IRTY_ARRAY)
     } else {
       lower_call_2(ctx, args, IR_RANGE, IRTY_ARRAY)
+    }
+  }
+
+  // ------ Iterator ------
+  else if name == "iter" {
+    if args.len() == 1 {
+      a0 = lower_expr(ctx, args.get(0))
+      zero_reg = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_const(zero_reg, 0))
+      ctx_set_reg_type(ctx, zero_reg, IRTY_INT)
+      dest = ctx_fresh_reg(ctx)
+      ctx_emit(ctx, ir_inst2(IR_ITER_FROM_RANGE, dest, zero_reg, a0))
+      ctx_set_reg_type(ctx, dest, IRTY_ITER)
+      dest
+    } else {
+      lower_call_2(ctx, args, IR_ITER_FROM_RANGE, IRTY_ITER)
     }
   }
 
@@ -1949,6 +1966,55 @@ lower_for_in(ctx:I stmt:I) I {
   // Lower iterable
   arr_reg = lower_expr(ctx, iterable)
 
+  // Check if iterable is an iterator (pull-based loop)
+  iter_type = ctx_get_reg_type(ctx, arr_reg)
+  if iter_type == IRTY_ITER {
+    cond_label = ctx_fresh_label(ctx)
+    body_label = ctx_fresh_label(ctx)
+    end_label = ctx_fresh_label(ctx)
+
+    old_break = ctx_break_label(ctx)
+    old_continue = ctx_continue_label(ctx)
+    ctx_set_break_label(ctx, end_label)
+    ctx_set_continue_label(ctx, cond_label)
+    fi_old_ld = ctx_loop_depth(ctx)
+    ctx_set_loop_depth(ctx, fi_old_ld + 1)
+
+    ctx_emit(ctx, ir_jump(cond_label))
+    ctx_emit(ctx, ir_label(cond_label))
+
+    // Pull next value
+    val_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ITER_NEXT, val_reg, arr_reg))
+    ctx_set_reg_type(ctx, val_reg, IRTY_INT)
+
+    // Check if done: val == ITER_DONE (9223372036854775806)
+    done_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_const(done_reg, 9223372036854775806))
+    ctx_set_reg_type(ctx, done_reg, IRTY_INT)
+    cmp_reg = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_cmpop(cmp_reg, IRCMP_NEQ, val_reg, done_reg))
+    ctx_set_reg_type(ctx, cmp_reg, IRTY_BOOL)
+    ctx_emit(ctx, ir_branch(cmp_reg, body_label, end_label))
+
+    ctx_emit(ctx, ir_label(body_label))
+    fi_lse_d = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_ENTER, fi_lse_d))
+
+    ctx_set_local(ctx, var_name, val_reg)
+    lower_stmts(ctx, body_stmts)
+
+    fi_lsx_d = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst0(IR_LOOP_SCOPE_EXIT, fi_lsx_d))
+    ctx_emit(ctx, ir_jump(cond_label))
+
+    ctx_emit(ctx, ir_label(end_label))
+    ctx_set_break_label(ctx, old_break)
+    ctx_set_continue_label(ctx, old_continue)
+    ctx_set_loop_depth(ctx, fi_old_ld)
+    return 0
+  }
+
   // Get length
   len_reg = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst1(IR_ARRAY_LEN, len_reg, arr_reg))
@@ -2404,6 +2470,11 @@ lower_method_call(ctx:I expr:I) I {
     lower_option_method(ctx, obj_reg, method, args)
   }
 
+  // ------ Iterator methods ------
+  else if obj_type == IRTY_ITER {
+    lower_iter_method(ctx, obj_reg, method, args)
+  }
+
   // ------ Int methods (opaque pointers --- arrays, maps, strings stored as i64) ------
   else if obj_type == IRTY_INT {
     // Dispatch common methods for Int-typed values
@@ -2854,7 +2925,116 @@ lower_array_method(ctx:I obj_reg:I method:I args:I) I {
     ctx_emit(ctx, ir_inst2(IR_ARRAY_JOIN, dest, obj_reg, sep_reg))
     ctx_set_reg_type(ctx, dest, IRTY_STR)
     dest
+  }
+  else if method == "iter" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ITER_FROM_ARRAY, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
   } else {
+    lower_method_fallback(ctx, obj_reg, method, args)
+  }
+}
+
+// ------ lower_iter_method -------------------------------------------------------------------------------------------------------------------------------
+lower_iter_method(ctx:I obj_reg:I method:I args:I) I {
+  if method == "map" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_MAP, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
+  }
+  else if method == "filter" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_FILTER, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
+  }
+  else if method == "enumerate" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ITER_ENUMERATE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
+  }
+  else if method == "take" {
+    n_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_TAKE, dest, obj_reg, n_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
+  }
+  else if method == "skip" {
+    n_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_SKIP, dest, obj_reg, n_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
+  }
+  else if method == "zip" {
+    other_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_ZIP, dest, obj_reg, other_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
+  }
+  else if method == "flat_map" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_FLAT_MAP, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ITER)
+    dest
+  }
+  else if method == "collect" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ITER_COLLECT, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_ARRAY)
+    dest
+  }
+  else if method == "find" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_FIND, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_OPTION)
+    dest
+  }
+  else if method == "any" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_ANY, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "all" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_ALL, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_BOOL)
+    dest
+  }
+  else if method == "reduce" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    init_reg = lower_expr(ctx, args.get(1))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst3(IR_ITER_REDUCE, dest, obj_reg, fn_reg, init_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "count" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_ITER_COUNT, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "for_each" {
+    fn_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_ITER_FOR_EACH, dest, obj_reg, fn_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else {
     lower_method_fallback(ctx, obj_reg, method, args)
   }
 }
@@ -3598,6 +3778,7 @@ lower_method_call_direct(ctx:I obj_reg:I method:I args:I) I {
   else if obj_type == IRTY_RESULT { lower_result_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_OPTION { lower_option_method(ctx, obj_reg, method, args) }
   else if obj_type == IRTY_DYN_TRAIT { lower_dyn_trait_method_call(ctx, obj_reg, method, args) }
+  else if obj_type == IRTY_ITER { lower_iter_method(ctx, obj_reg, method, args) }
   else { lower_method_fallback(ctx, obj_reg, method, args) }
 }
 

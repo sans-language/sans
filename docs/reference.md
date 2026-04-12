@@ -43,6 +43,7 @@ main() {
 | `Receiver<T>` | — | Channel receiver (opaque handle) |
 | `Mutex<T>` | — | Mutual exclusion lock (opaque handle) |
 | `JoinHandle` | — | Thread handle (opaque handle) |
+| `Iter<T>` | `It<T>` | Lazy pull-based iterator |
 
 User-defined types: `struct`, `enum`, `trait`. Trait objects: `dyn TraitName`.
 
@@ -927,6 +928,75 @@ lookup(m:M<S I> k:S) O<I> {
 | `min` | `() -> Int` | Minimum element |
 | `max` | `() -> Int` | Maximum element |
 | `flat` | `() -> Array<T>` | Flatten nested arrays |
+| `iter` | `() -> Iter<T>` | Create lazy iterator |
+
+### Iter\<T\>
+
+`Iter<T>` (short: `It<T>`) is a lazy, pull-based iterator. No intermediate arrays are allocated until a terminal operation is called.
+
+#### Entry Points
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `a.iter()` | `(Array<T>) -> Iter<T>` | Lazy iterator over array |
+| `iter(n)` | `(Int) -> Iter<Int>` | Range `0..n` (no allocation) |
+| `iter(a, b)` | `(Int, Int) -> Iter<Int>` | Range `a..b` (no allocation) |
+
+#### Lazy Combinators (return `Iter<U>`)
+
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `map(fn)` | `((T) -> U) -> Iter<U>` | Transform elements |
+| `filter(fn)` | `((T) -> Bool) -> Iter<T>` | Keep matching elements |
+| `enumerate` | `() -> Iter<(Int, T)>` | Index-value tuples |
+| `take(n)` | `(Int) -> Iter<T>` | First n elements |
+| `skip(n)` | `(Int) -> Iter<T>` | Skip first n elements |
+| `zip(iter)` | `(Iter<U>) -> Iter<(T, U)>` | Paired tuples |
+| `flat_map(fn)` | `((T) -> Iter<U>) -> Iter<U>` | Map + flatten |
+
+#### Consumers (terminal)
+
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `collect` | `() -> Array<T>` | Materialize into array |
+| `find(fn)` | `((T) -> Bool) -> Option<T>` | First match, or None |
+| `any(fn)` | `((T) -> Bool) -> Bool` | True if any match |
+| `all(fn)` | `((T) -> Bool) -> Bool` | True if all match |
+| `reduce(fn, init)` | `((T, T) -> T, T) -> T` | Fold to single value |
+| `count` | `() -> Int` | Number of elements |
+| `for_each(fn)` | `((T) -> Int) -> Int` | Iterate with side effects |
+
+#### For-loop Integration
+
+```sans
+for x in [1 2 3].iter().filter(|x:I| B { x > 1 }) {
+    p(x)
+}
+
+for i in iter(10) { p(i) }
+```
+
+#### Examples
+
+```sans
+// Lazy pipeline — no intermediate arrays
+result = [1 2 3 4 5].iter()
+    .filter(|x:I| B { x > 2 })
+    .map(|x:I| I { x * 10 })
+    .collect()   // [30 40 50]
+
+// Range iterator (no allocation)
+squares = iter(5).map(|x:I| I { x * x }).collect()  // [0 1 4 9 16]
+
+// take/skip
+iter(10).skip(3).take(4).collect()  // [3 4 5 6]
+
+// reduce
+sum = iter(1, 6).reduce(|a:I b:I| I { a + b }, 0)  // 15
+
+// count
+n = [1 2 3].iter().filter(|x:I| B { x > 1 }).count()  // 2
+```
 
 ### String
 
@@ -1069,6 +1139,25 @@ parse("").or_else(|e:S| R<I> { ok(0) })  // ok(0) as fallback
 | `is_none` | `() -> Bool` | |
 | `unwrap` or `!` | `() -> T` | Exits on None |
 | `unwrap_or(default)` | `(T) -> T` | |
+
+### Iter\<T\>
+
+| Method | Signature | Notes |
+|--------|-----------|-------|
+| `map(fn)` | `((T) -> U) -> Iter<U>` | Lazy transform |
+| `filter(fn)` | `((T) -> Bool) -> Iter<T>` | Lazy filter |
+| `enumerate` | `() -> Iter<(Int, T)>` | Lazy index-value |
+| `take(n)` | `(Int) -> Iter<T>` | First n elements |
+| `skip(n)` | `(Int) -> Iter<T>` | Skip first n |
+| `zip(iter)` | `(Iter<U>) -> Iter<(T, U)>` | Lazy paired tuples |
+| `flat_map(fn)` | `((T) -> Iter<U>) -> Iter<U>` | Lazy map + flatten |
+| `collect` | `() -> Array<T>` | Materialize |
+| `find(fn)` | `((T) -> Bool) -> Option<T>` | First match |
+| `any(fn)` | `((T) -> Bool) -> Bool` | Any match |
+| `all(fn)` | `((T) -> Bool) -> Bool` | All match |
+| `reduce(fn, init)` | `((T, T) -> T, T) -> T` | Fold |
+| `count` | `() -> Int` | Element count |
+| `for_each(fn)` | `((T) -> Int) -> Int` | Side effects |
 
 ### Concurrency Types
 

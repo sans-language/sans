@@ -71,9 +71,9 @@ jobs:
 
       - name: Download bootstrap compiler
         run: |
-          # Use latest release as bootstrap — must know Result<T> unwrap (!)
-          # and all builtins up to the previous release.
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/sans-macos-arm64.tar.gz" | tar xz
+          # Pin to v0.8.7 as bootstrap — v0.9.0 has cross-module name resolution
+          # bug that causes undefined symbols in stage-2 builds.
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.8.7/sans-macos-arm64.tar.gz" | tar xz
           chmod +x sans
           ./sans --version
 

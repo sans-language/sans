@@ -427,6 +427,12 @@ run_test "enumerate_pairs"           "$REPO_ROOT/tests/fixtures/enumerate_pairs.
 run_test "zip_arrays"                "$REPO_ROOT/tests/fixtures/zip_arrays.sans"                66
 run_test "closure_return_val"        "$REPO_ROOT/tests/fixtures/closure_return_val.sans"        42
 run_test "flat_map_test"             "$REPO_ROOT/tests/fixtures/flat_map_test.sans"             6
+run_test "iter_basic"                "$REPO_ROOT/tests/fixtures/iter_basic.sans"                30
+run_test "iter_range"                "$REPO_ROOT/tests/fixtures/iter_range.sans"                10
+run_test "iter_chain"                "$REPO_ROOT/tests/fixtures/iter_chain.sans"                7
+run_test "iter_consumers"            "$REPO_ROOT/tests/fixtures/iter_consumers.sans"            27
+run_test "iter_take_skip"            "$REPO_ROOT/tests/fixtures/iter_take_skip.sans"            18
+run_test "iter_for_in"               "$REPO_ROOT/tests/fixtures/iter_for_in.sans"               20
 
 # ---------------------------------------------------------------------------
 # Scope GC

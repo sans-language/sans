@@ -194,6 +194,28 @@ a.<span class="fn">reduce</span>(<span class="num">0</span>, |a:<span class="typ
 a.<span class="fn">each</span>(|x:<span class="type">I</span>| <span class="type">I</span> { p(x); <span class="num">0</span> })    <span class="comment">// side-effect iteration</span>
 a.<span class="fn">flat_map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { <span class="fn">range</span>(x) }) <span class="comment">// map + flatten</span>
 
+<span class="comment">// Lazy iterators (Iter&lt;T&gt;) — no intermediate allocations</span>
+a.<span class="fn">iter</span>()                        <span class="comment">// It&lt;T&gt; — lazy iterator over array</span>
+<span class="fn">iter</span>(<span class="num">10</span>)                         <span class="comment">// It&lt;I&gt; — range 0..10 (no alloc)</span>
+<span class="fn">iter</span>(<span class="num">2</span>, <span class="num">5</span>)                       <span class="comment">// It&lt;I&gt; — range 2..5 (no alloc)</span>
+
+<span class="comment">// Lazy combinators (return Iter)</span>
+a.<span class="fn">iter</span>().<span class="fn">map</span>(|x:<span class="type">I</span>| <span class="type">I</span> { x * <span class="num">2</span> })  <span class="comment">// transform</span>
+.<span class="fn">filter</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })   <span class="comment">// keep matches</span>
+.<span class="fn">take</span>(<span class="num">5</span>).<span class="fn">skip</span>(<span class="num">2</span>)                 <span class="comment">// first 5, skip 2</span>
+.<span class="fn">collect</span>()                       <span class="comment">// materialize to array</span>
+
+<span class="comment">// Consumers (terminal)</span>
+a.<span class="fn">iter</span>().<span class="fn">find</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })    <span class="comment">// O&lt;T&gt; — first match</span>
+a.<span class="fn">iter</span>().<span class="fn">any</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">3</span> })     <span class="comment">// B — true if any match</span>
+a.<span class="fn">iter</span>().<span class="fn">all</span>(|x:<span class="type">I</span>| <span class="type">B</span> { x > <span class="num">0</span> })     <span class="comment">// B — true if all match</span>
+<span class="fn">iter</span>(<span class="num">5</span>).<span class="fn">reduce</span>(|a:<span class="type">I</span> b:<span class="type">I</span>| <span class="type">I</span> { a + b }, <span class="num">0</span>)  <span class="comment">// fold</span>
+<span class="fn">iter</span>(<span class="num">10</span>).<span class="fn">count</span>()                   <span class="comment">// 10</span>
+a.<span class="fn">iter</span>().<span class="fn">for_each</span>(|x:<span class="type">I</span>| <span class="type">I</span> { <span class="fn">p</span>(x); <span class="num">0</span> })  <span class="comment">// side effects</span>
+
+<span class="comment">// For-loop with lazy iterators</span>
+<span class="kw">for</span> x <span class="kw">in</span> <span class="fn">iter</span>(<span class="num">10</span>) { <span class="fn">p</span>(x) }
+
 <span class="comment">// String methods</span>
 s.<span class="fn">upper</span>()  s.<span class="fn">lower</span>()            <span class="comment">// case conversion</span>
 s.<span class="fn">index_of</span>(<span class="str">"sub"</span>)               <span class="comment">// position or -1</span>

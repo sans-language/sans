@@ -1,0 +1,5 @@
+main() I {
+  a = [1 2 3 4 5]
+  b = a.iter().map(|x:I| I { x * 2 }).collect()
+  b[0] + b[1] + b[2] + b[3] + b[4]
+}

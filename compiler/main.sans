@@ -408,7 +408,8 @@ build_step5_inner(fn_keys:I fn_env:I mod_n:I module_fn_ret_types:I module_fn_ret
            if rt_tag == TY_JOIN_HANDLE { IRTY_JOIN_HANDLE } else {
            if rt_tag == TY_MUTEX { IRTY_MUTEX } else {
            if rt_tag == TY_TUPLE { IRTY_TUPLE } else {
-           IRTY_INT } } } } } } } } } } } } } } } } } } }
+           if rt_tag == TY_ITER { IRTY_ITER } else {
+           IRTY_INT } } } } } } } } } } } } } } } } } } } }
     mangled = mod_n + "__" + fname
     mset(module_fn_ret_types, mangled, irty)
     if rt_tag == TY_STRUCT {
@@ -618,6 +619,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("encoding")
   runtime_modules.push("io")
   runtime_modules.push("unicode")
+  runtime_modules.push("iter")
 
   runtime_o_paths = array<I>()
   ri := 0

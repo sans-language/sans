@@ -1,0 +1,7 @@
+main() I {
+  total := 0
+  for x in iter(5).map(|x:I| I { x * 2 }) {
+    total += x
+  }
+  total
+}

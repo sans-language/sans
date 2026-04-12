@@ -99,6 +99,7 @@ main() {
 | **Generics** | `identity<T>(x T) T = x` — generic structs: `Pair<I S>{first: 1, second: "hi"}` |
 | **Tuples** | `(1 "hello" true)` with `.0`, `.1` access |
 | **Arrays** | `[1 2 3]` with `map`, `filter`, `any`, `find` (returns `Option<T>`), `enumerate`, `zip` |
+| **Iterators** | `Iter<T>` / `It<T>` — lazy: `a.iter()`, `iter(n)`, `iter(a,b)`, `.map`, `.filter`, `.take`, `.skip`, `.collect()` |
 | **Option** | `Option<T>` / `O<T>` — `some(v)`, `none()`, `.is_some`, `.unwrap_or(d)`, `opt!`, `opt?` |
 | **Maps** | `M<K,V>()` (default `M<S,I>`) with `set`, `get` (returns `Option<V>`), `has`, `keys`, `vals` |
 | **String methods** | `len`, `trim`, `split`, `starts_with`, `contains`, `replace`, `[0:5]` slicing |
