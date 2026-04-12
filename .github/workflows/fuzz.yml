@@ -36,7 +36,7 @@ jobs:
 
       - name: Download latest Sans release binary
         run: |
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/sans-linux-x86_64.tar.gz" | tar xz
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.8.7/sans-linux-x86_64.tar.gz" | tar xz
           chmod +x sans
           ./sans --version
 
@@ -77,7 +77,7 @@ jobs:
 
       - name: Download latest Sans release binary
         run: |
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/sans-linux-x86_64.tar.gz" | tar xz
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.8.7/sans-linux-x86_64.tar.gz" | tar xz
           chmod +x sans
           ./sans --version
 

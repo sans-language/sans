@@ -23,9 +23,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use v0.7.0 as bootstrap (latest release) — knows all current builtins.
-          # v0.4.0 is too old (missing getenv, stof, scope_disable, etc.)
-          curl -fsSL "https://github.com/${{ github.repository }}/releases/latest/download/sans-macos-arm64.tar.gz" | tar xz
+          # Pin to v0.8.7 as bootstrap — v0.9.0 has cross-module name resolution
+          # bug that causes undefined @as_str/@check etc. in stage-2 builds.
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v0.8.7/sans-macos-arm64.tar.gz" | tar xz
           chmod +x sans
           mv sans sans-bootstrap
           ./sans-bootstrap --version
