@@ -620,6 +620,8 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("io")
   runtime_modules.push("unicode")
   runtime_modules.push("iter")
+  runtime_modules.push("net")
+  runtime_modules.push("router")
 
   runtime_o_paths = array<I>()
   ri := 0

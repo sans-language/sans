@@ -69,6 +69,11 @@ fmt_init_aliases() I {
   mset(fmt_aliases, "hex_encode", "hexe")
   mset(fmt_aliases, "hex_decode", "hexd")
   mset(fmt_aliases, "path_segment", "ps")
+  mset(fmt_aliases, "tcp_listen", "tl")
+  mset(fmt_aliases, "tcp_accept", "ta")
+  mset(fmt_aliases, "tcp_read", "tr")
+  mset(fmt_aliases, "tcp_write", "tw")
+  mset(fmt_aliases, "udp_bind", "ub")
   // Logging
   mset(fmt_aliases, "log_debug", "ld")
   mset(fmt_aliases, "log_info", "li")

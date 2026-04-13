@@ -1,0 +1,251 @@
+// ------ HTTP Router -------------------------------------------------------------------------
+// Pattern-based request routing with path parameters.
+
+// Router struct layout (48 bytes):
+//   offset  0: routes array ptr (I) - array of Route ptrs
+//   offset  8: not_found handler (I) - function ptr for 404
+//   offset 16: static_dir (S) - base directory for static files, 0 if none
+//   offset 24: route_count (I)
+//   offset 32: route_capacity (I)
+//   offset 40: params (I) - current request params (flat array: [count, k0, v0, k1, v1, ...])
+
+sans_router_create() I {
+  cap = 64
+  r = alloc(48)
+  routes = alloc(cap * 8)
+  store64(r, routes)
+  store64(r + 8, 0)
+  store64(r + 16, 0)
+  store64(r + 24, 0)
+  store64(r + 32, cap)
+  store64(r + 40, 0)
+  r
+}
+
+// Internal helpers (duplicated to avoid cross-module deps)
+sans_rt_empty_str() I {
+  s = alloc(1)
+  store8(s, 0)
+  s
+}
+
+sans_rt_copy_str(src:I len:I) I {
+  s = alloc(len + 1)
+  if len > 0 { mcpy(s, src, len) } else { 0 }
+  store8(s + len, 0)
+  s
+}
+
+sans_rt_find_char(buf:I len:I start:I ch:I) I {
+  i := start
+  found := -1
+  while i < len {
+    if load8(buf + i) == ch {
+      found = i
+      i = len
+      0
+    } else {
+      i += 1
+      0
+    }
+  }
+  found
+}
+
+// Strip query string from path
+sans_rt_path_only(path:I) I {
+  plen = slen(path)
+  qpos = sans_rt_find_char(path, plen, 0, 63)
+  if qpos < 0 { path } else { sans_rt_copy_str(path, qpos) }
+}
+
+// Simple params storage (flat array instead of map to avoid cross-module deps)
+// Layout: [count, key0, val0, key1, val1, ...]
+sans_rt_params_create() I {
+  p = alloc(8 + 32 * 16)
+  store64(p, 0)
+  p
+}
+
+sans_rt_params_set(p:I key:I val:I) I {
+  count = load64(p)
+  if count >= 32 { return 0 }
+  off = 8 + count * 16
+  store64(p + off, key)
+  store64(p + off + 8, val)
+  store64(p, count + 1)
+  0
+}
+
+sans_rt_params_get(p:I key:I) I {
+  if p == 0 { return sans_rt_empty_str() }
+  count = load64(p)
+  klen = slen(key)
+  i := 0
+  while i < count {
+    off = 8 + i * 16
+    k = load64(p + off)
+    kl = slen(k)
+    if kl == klen && mcmp(k, key, klen) == 0 {
+      return load64(p + off + 8)
+    }
+    i += 1
+    0
+  }
+  sans_rt_empty_str()
+}
+
+// Add a route: router_route(router, method, pattern, handler)
+sans_router_route(router:I method:I pattern:I handler:I) I {
+  count = load64(router + 24)
+  cap = load64(router + 32)
+  if count >= cap { return -1 }
+  routes = load64(router)
+  route = alloc(32)
+  store64(route, method)
+  store64(route + 8, pattern)
+  store64(route + 16, handler)
+  segs = sans_router_split_path(pattern)
+  store64(route + 24, segs)
+  store64(routes + count * 8, route)
+  store64(router + 24, count + 1)
+  0
+}
+
+sans_router_get(router:I pattern:I handler:I) I {
+  sans_router_route(router, "GET", pattern, handler)
+}
+
+sans_router_post(router:I pattern:I handler:I) I {
+  sans_router_route(router, "POST", pattern, handler)
+}
+
+sans_router_put(router:I pattern:I handler:I) I {
+  sans_router_route(router, "PUT", pattern, handler)
+}
+
+sans_router_delete(router:I pattern:I handler:I) I {
+  sans_router_route(router, "DELETE", pattern, handler)
+}
+
+sans_router_set_not_found(router:I handler:I) I {
+  store64(router + 8, handler)
+  0
+}
+
+sans_router_serve_static(router:I dir:I) I {
+  store64(router + 16, dir)
+  0
+}
+
+// Handle a request
+sans_router_handle(router:I req:I) I {
+  count = load64(router + 24)
+  routes = load64(router)
+  method = load64(req + 8)
+  path = sans_rt_path_only(load64(req + 16))
+  req_segs = sans_router_split_path(path)
+  req_seg_count = load64(req_segs + 8)
+  i := 0
+  while i < count {
+    route = load64(routes + i * 8)
+    if sans_router_match_route(route, method, req_segs, req_seg_count, router) == 1 {
+      handler = load64(route + 16)
+      return fcall(handler, req)
+    }
+    i += 1
+    0
+  }
+  // 404 response (inline to avoid cross-module deps)
+  nf = load64(router + 8)
+  if nf != 0 { fcall(nf, req) } else { sans_router_default_404(req) }
+}
+
+sans_router_default_404(req:I) I {
+  fd = load64(req)
+  resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nNot Found"
+  ssend(fd, resp, 99)
+  sclose(fd)
+  0
+}
+
+sans_router_match_route(route:I method:I req_segs:I req_seg_count:I router:I) I {
+  route_method = load64(route)
+  rmlen = slen(route_method)
+  mlen = slen(method)
+  if rmlen != 1 || load8(route_method) != 42 {
+    if rmlen != mlen { return 0 }
+    if mcmp(route_method, method, mlen) != 0 { return 0 }
+    0
+  }
+  pattern_segs = load64(route + 24)
+  pat_seg_count = load64(pattern_segs + 8)
+  sans_router_pattern_match(pattern_segs, pat_seg_count, req_segs, req_seg_count, router)
+}
+
+sans_router_pattern_match(pat_segs:I pat_count:I req_segs:I req_count:I router:I) I {
+  pat_data = load64(pat_segs)
+  req_data = load64(req_segs)
+  params = sans_rt_params_create()
+  store64(router + 40, params)
+  pi := 0
+  ri := 0
+  while pi < pat_count {
+    pseg = load64(pat_data + pi * 8)
+    pslen = slen(pseg)
+    if pslen == 1 && load8(pseg) == 42 {
+      return 1
+    }
+    if ri >= req_count { return 0 }
+    rseg = load64(req_data + ri * 8)
+    rslen = slen(rseg)
+    if pslen > 1 && load8(pseg) == 58 {
+      pname = sans_rt_copy_str(pseg + 1, pslen - 1)
+      sans_rt_params_set(params, pname, rseg)
+      pi += 1
+      ri += 1
+      0
+    } else {
+      if pslen != rslen { return 0 }
+      if mcmp(pseg, rseg, pslen) != 0 { return 0 }
+      pi += 1
+      ri += 1
+      0
+    }
+    0
+  }
+  if ri == req_count { 1 } else { 0 }
+}
+
+sans_route_param(router:I name:I) I {
+  params = load64(router + 40)
+  sans_rt_params_get(params, name)
+}
+
+sans_router_split_path(path:I) I {
+  plen = slen(path)
+  qpos = sans_rt_find_char(path, plen, 0, 63)
+  plen = if qpos < 0 { plen } else { qpos }
+  result = alloc(16)
+  data = alloc(64 * 8)
+  store64(result, data)
+  store64(result + 8, 0)
+  pos := 0
+  if pos < plen && load8(path + pos) == 47 { pos += 1 }
+  count := 0
+  while pos < plen && count < 64 {
+    end = sans_rt_find_char(path, plen, pos, 47)
+    end = if end < 0 { plen } else { end }
+    seg_len = end - pos
+    if seg_len > 0 {
+      seg = sans_rt_copy_str(path + pos, seg_len)
+      store64(data + count * 8, seg)
+      count += 1
+      0
+    }
+    pos = end + 1
+    0
+  }
+  store64(result + 8, count)
+  result
+}
