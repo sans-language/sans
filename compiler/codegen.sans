@@ -18,6 +18,8 @@ g cg_fn_aliases = 0
 g cg_trait_impls = 0
 g cg_trait_registry = 0
 g cg_timeval_buf = 0
+g cg_rt_defined_fns = 0
+g cg_rt_called_fns = 0
 
 // resolve_fn_alias: return aliased name if it exists, otherwise original
 resolve_fn_alias(fname:S) S {
@@ -2902,6 +2904,10 @@ compile_inst(cg:I inst:I) I {
     }
     // Use __sans_main for "main"
     llvm_fname = if fname == "main" { "__sans_main" } else { fname }
+    // Track cross-module calls in runtime mode
+    if cg_is_runtime_flag == 1 && cg_rt_called_fns != 0 {
+      mset(cg_rt_called_fns, llvm_fname, nargs)
+    }
     r = cg_fresh_reg(cg)
     emit(cg, "  " + r + " = call i64 @" + llvm_fname + "(" + arg_str + ")")
     cg_set_val(cg, dest, r)
@@ -7442,6 +7448,23 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
   cg_trait_impls = irm_trait_impls(module)
   cg_trait_registry = irm_trait_registry(module)
 
+  // Track defined/called functions for runtime cross-module declares
+  if is_runtime == 1 {
+    cg_rt_defined_fns = M()
+    cg_rt_called_fns = M()
+    dfi := 0
+    while dfi < nf {
+      df = funcs.get(dfi)
+      dfname = cg_str(irf_name(df))
+      mset(cg_rt_defined_fns, dfname, 1)
+      dfi = dfi + 1
+      0
+    }
+  } else {
+    cg_rt_defined_fns = 0
+    cg_rt_called_fns = 0
+  }
+
   // DCE: disabled — bootstrap compat issues with imported function name matching.
   // Re-enable after a working bootstrap with correct name resolution is released.
   live_fns := 0
@@ -7459,6 +7482,30 @@ compile_to_ll_impl(module:I output_path:S is_runtime:I) I {
     if should_skip == 0 { emit_function_body(cg, f_cur) }
     i = i + 1
     0
+  }
+
+  // Emit cross-module declare statements for runtime modules
+  if is_runtime == 1 && cg_rt_called_fns != 0 {
+    ext_keys = cg_rt_called_fns.keys()
+    eki := 0
+    while eki < ext_keys.len() {
+      ek = cg_str(ext_keys.get(eki))
+      if mhas(cg_rt_defined_fns, ek) == 0 {
+        // Build declare with correct arg count
+        enargs = mget(cg_rt_called_fns, ek)
+        decl_args := ""
+        dai := 0
+        while dai < enargs {
+          if dai > 0 { decl_args = decl_args + ", " }
+          decl_args = decl_args + "i64"
+          dai = dai + 1
+          0
+        }
+        emit(cg, "declare i64 @" + ek + "(" + decl_args + ")")
+      }
+      eki = eki + 1
+      0
+    }
   }
 
   // Flush remaining buffer and write string constants

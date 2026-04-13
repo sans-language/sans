@@ -1,0 +1,122 @@
+// ------ Bitwise arithmetic helpers (Sans has no &|^<< operators) ------------
+// All values assumed non-negative for these helpers.
+
+// x % 256 = mask to 8 bits (equivalent to x & 0xFF)
+sans_mask8(x:I) I = x % 256
+
+// x % 4294967296 = mask to 32 bits (equivalent to x & 0xFFFFFFFF)
+sans_mask32(x:I) I = x % 4294967296
+
+// Left shift: x * 2^n
+sans_shl(x:I n:I) I {
+  r := x
+  i := 0
+  while i < n { r = r * 2 i += 1 }
+  r
+}
+
+// Right shift (logical for non-negative): x / 2^n
+sans_shr(x:I n:I) I {
+  r := x
+  i := 0
+  while i < n { r = r / 2 i += 1 }
+  r
+}
+
+// Bitwise AND for 8-bit values (bit by bit)
+sans_band8(a:I b:I) I {
+  r := 0
+  i := 0
+  av := sans_mask8(a)
+  bv := sans_mask8(b)
+  while i < 8 {
+    ab = av % 2
+    bb = bv % 2
+    if ab == 1 && bb == 1 { r += sans_shl(1, i) }
+    av = av / 2
+    bv = bv / 2
+    i += 1
+  }
+  r
+}
+
+// Bitwise OR for 8-bit values
+sans_bor8(a:I b:I) I {
+  r := 0
+  i := 0
+  av := sans_mask8(a)
+  bv := sans_mask8(b)
+  while i < 8 {
+    ab = av % 2
+    bb = bv % 2
+    if ab == 1 || bb == 1 { r += sans_shl(1, i) }
+    av = av / 2
+    bv = bv / 2
+    i += 1
+  }
+  r
+}
+
+// Bitwise XOR for 8-bit values
+sans_bxor8(a:I b:I) I {
+  r := 0
+  i := 0
+  av := sans_mask8(a)
+  bv := sans_mask8(b)
+  while i < 8 {
+    ab = av % 2
+    bb = bv % 2
+    if ab != bb { r += sans_shl(1, i) }
+    av = av / 2
+    bv = bv / 2
+    i += 1
+  }
+  r
+}
+
+// Bitwise NOT for 8-bit value
+sans_bnot8(a:I) I = 255 - sans_mask8(a)
+
+// 32-bit bitwise AND (byte by byte)
+sans_band32(a:I b:I) I {
+  a0 = sans_mask8(a)
+  a1 = sans_mask8(sans_shr(a, 8))
+  a2 = sans_mask8(sans_shr(a, 16))
+  a3 = sans_mask8(sans_shr(a, 24))
+  b0 = sans_mask8(b)
+  b1 = sans_mask8(sans_shr(b, 8))
+  b2 = sans_mask8(sans_shr(b, 16))
+  b3 = sans_mask8(sans_shr(b, 24))
+  sans_band8(a0, b0) + sans_shl(sans_band8(a1, b1), 8) + sans_shl(sans_band8(a2, b2), 16) + sans_shl(sans_band8(a3, b3), 24)
+}
+
+// 32-bit bitwise OR (byte by byte)
+sans_bor32(a:I b:I) I {
+  a0 = sans_mask8(a)
+  a1 = sans_mask8(sans_shr(a, 8))
+  a2 = sans_mask8(sans_shr(a, 16))
+  a3 = sans_mask8(sans_shr(a, 24))
+  b0 = sans_mask8(b)
+  b1 = sans_mask8(sans_shr(b, 8))
+  b2 = sans_mask8(sans_shr(b, 16))
+  b3 = sans_mask8(sans_shr(b, 24))
+  sans_bor8(a0, b0) + sans_shl(sans_bor8(a1, b1), 8) + sans_shl(sans_bor8(a2, b2), 16) + sans_shl(sans_bor8(a3, b3), 24)
+}
+
+// 32-bit bitwise XOR (byte by byte)
+sans_bxor32(a:I b:I) I {
+  a0 = sans_mask8(a)
+  a1 = sans_mask8(sans_shr(a, 8))
+  a2 = sans_mask8(sans_shr(a, 16))
+  a3 = sans_mask8(sans_shr(a, 24))
+  b0 = sans_mask8(b)
+  b1 = sans_mask8(sans_shr(b, 8))
+  b2 = sans_mask8(sans_shr(b, 16))
+  b3 = sans_mask8(sans_shr(b, 24))
+  sans_bxor8(a0, b0) + sans_shl(sans_bxor8(a1, b1), 8) + sans_shl(sans_bxor8(a2, b2), 16) + sans_shl(sans_bxor8(a3, b3), 24)
+}
+
+// 32-bit bitwise NOT
+sans_bnot32(a:I) I {
+  sans_mask32(4294967295 - sans_mask32(a))
+}

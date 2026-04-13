@@ -1,0 +1,109 @@
+// ------ Static File Serving ------------------------------------------------------------------------------------------------------------------------
+
+g sans_index_file = 0
+
+sans_set_index_file(s:I) I { sans_index_file = s; 0 }
+
+// Check if path contains ".." segment (path traversal)
+sans_path_has_dotdot(path:I plen:I) I {
+  i := 0
+  while i < plen - 1 {
+    if load8(path + i) == 46 && load8(path + i + 1) == 46 {
+      return 1
+    }
+    i += 1
+    0
+  }
+  0
+}
+
+sans_serve_file(req:I base_dir:I) I {
+  path = sans_http_request_path_only(req)
+  plen = slen(path)
+  // Reject path traversal attempts
+  if sans_path_has_dotdot(path, plen) == 1 { return 0 }
+  blen = slen(base_dir)
+  full = alloc(blen + plen + 1)
+  if blen > 0 { mcpy(full, base_dir, blen) } else { 0 }
+  if plen > 0 { mcpy(full + blen, path, plen) } else { 0 }
+  store8(full + blen + plen, 0)
+  content = fread(full)
+  if slen(content) == 0 { 0 } else { sans_serve_file_respond(req, content, path, plen) }
+}
+
+sans_serve_file_respond(req:I content:I path:I plen:I) I {
+  ct = sans_detect_content_type(path, plen)
+  sans_http_respond(req, 200, content, ct)
+}
+
+sans_detect_content_type(path:I plen:I) I {
+  // Find last dot
+  dot := -1
+  i := plen - 1
+  while i >= 0 {
+    if load8(path + i) == 46 {
+      dot = i
+      i = -1
+      0
+    } else {
+      i -= 1
+      0
+    }
+    0
+  }
+  if dot < 0 { "application/octet-stream" } else { sans_ext_to_ct(path + dot, plen - dot) }
+}
+
+sans_ext_to_ct(ext:I len:I) I {
+  // .html
+  if len == 5 && load8(ext+1)==104 && load8(ext+2)==116 && load8(ext+3)==109 && load8(ext+4)==108 { return "text/html" }
+  // .css
+  if len == 4 && load8(ext+1)==99 && load8(ext+2)==115 && load8(ext+3)==115 { return "text/css" }
+  // .js
+  if len == 3 && load8(ext+1)==106 && load8(ext+2)==115 { return "application/javascript" }
+  // .json
+  if len == 5 && load8(ext+1)==106 && load8(ext+2)==115 && load8(ext+3)==111 && load8(ext+4)==110 { return "application/json" }
+  // .png
+  if len == 4 && load8(ext+1)==112 && load8(ext+2)==110 && load8(ext+3)==103 { return "image/png" }
+  // .jpg
+  if len == 4 && load8(ext+1)==106 && load8(ext+2)==112 && load8(ext+3)==103 { return "image/jpeg" }
+  // .jpeg
+  if len == 5 && load8(ext+1)==106 && load8(ext+2)==112 && load8(ext+3)==101 && load8(ext+4)==103 { return "image/jpeg" }
+  // .svg
+  if len == 4 && load8(ext+1)==115 && load8(ext+2)==118 && load8(ext+3)==103 { return "image/svg+xml" }
+  // .txt
+  if len == 4 && load8(ext+1)==116 && load8(ext+2)==120 && load8(ext+3)==116 { return "text/plain" }
+  // .gif
+  if len == 4 && load8(ext+1)==103 && load8(ext+2)==105 && load8(ext+3)==102 { return "image/gif" }
+  // .ico
+  if len == 4 && load8(ext+1)==105 && load8(ext+2)==99 && load8(ext+3)==111 { return "image/x-icon" }
+  // .webp
+  if len == 5 && load8(ext+1)==119 && load8(ext+2)==101 && load8(ext+3)==98 && load8(ext+4)==112 { return "image/webp" }
+  // .avif
+  if len == 5 && load8(ext+1)==97 && load8(ext+2)==118 && load8(ext+3)==105 && load8(ext+4)==102 { return "image/avif" }
+  // .woff
+  if len == 5 && load8(ext+1)==119 && load8(ext+2)==111 && load8(ext+3)==102 && load8(ext+4)==102 { return "font/woff" }
+  // .woff2
+  if len == 6 && load8(ext+1)==119 && load8(ext+2)==111 && load8(ext+3)==102 && load8(ext+4)==102 && load8(ext+5)==50 { return "font/woff2" }
+  // .ttf
+  if len == 4 && load8(ext+1)==116 && load8(ext+2)==116 && load8(ext+3)==102 { return "font/ttf" }
+  // .otf
+  if len == 4 && load8(ext+1)==111 && load8(ext+2)==116 && load8(ext+3)==102 { return "font/otf" }
+  // .pdf
+  if len == 4 && load8(ext+1)==112 && load8(ext+2)==100 && load8(ext+3)==102 { return "application/pdf" }
+  // .zip
+  if len == 4 && load8(ext+1)==122 && load8(ext+2)==105 && load8(ext+3)==112 { return "application/zip" }
+  // .mp4
+  if len == 4 && load8(ext+1)==109 && load8(ext+2)==112 && load8(ext+3)==52 { return "video/mp4" }
+  // .webm
+  if len == 5 && load8(ext+1)==119 && load8(ext+2)==101 && load8(ext+3)==98 && load8(ext+4)==109 { return "video/webm" }
+  // .mp3
+  if len == 4 && load8(ext+1)==109 && load8(ext+2)==112 && load8(ext+3)==51 { return "audio/mpeg" }
+  // .wasm
+  if len == 5 && load8(ext+1)==119 && load8(ext+2)==97 && load8(ext+3)==115 && load8(ext+4)==109 { return "application/wasm" }
+  // .csv
+  if len == 4 && load8(ext+1)==99 && load8(ext+2)==115 && load8(ext+3)==118 { return "text/csv" }
+  // .xml
+  if len == 4 && load8(ext+1)==120 && load8(ext+2)==109 && load8(ext+3)==108 { return "application/xml" }
+  "application/octet-stream"
+}

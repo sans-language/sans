@@ -159,6 +159,7 @@ g mono_depth = 0
 g tc_collect_mode = 0
 g tc_collected_symbols = 0
 g tc_collected_locals = 0
+g tc_runtime_mode = 0
 
 tc_init_diags() I {
   if tc_diags == 0 { tc_diags = array<I>() }
@@ -2775,7 +2776,11 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         return resolve_type(gret_name_s, structs, enums, mod_exports)
       }
     }
-    tc_error_at(expr, "undefined function '" + name + "'")
+    if tc_runtime_mode == 1 {
+      0
+    } else {
+      tc_error_at(expr, "undefined function '" + name + "'")
+    }
     return make_type(TY_INT)
   }
 
