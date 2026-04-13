@@ -4734,6 +4734,14 @@ check_inner(program:I mod_exports:I require_main:I) I {
       fparams_arr2 = load64(func + 8)
       fparams_p = load64(fparams_arr2)
       num_fparams = load64(fparams_arr2 + 8)
+      // Get function body line for scope entry
+      body_arr2 = load64(func + 24)
+      body_p = load64(body_arr2)
+      body_len = load64(body_arr2 + 8)
+      func_line := 0
+      if body_len > 0 { func_line = node_line(load64(body_p)) }
+      // Push function body scope so params get a valid scope_id
+      tc_push_scope_entry(func_line)
       pi := 0
       while pi < num_fparams {
       p_node = load64(fparams_p + pi * 8)
@@ -4741,12 +4749,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
       p_type_name = load64(p_node + 8)
       pty = resolve_type(p_type_name, structs_map, enums_map, mod_exports)
       mset(scope, p_name, pty)
-      tc_record_binding(p_name, pty, 0, 0, 1)
+      tc_record_binding(p_name, pty, func_line, 0, 1)
       pi += 1
       }
-      body_arr2 = load64(func + 24)
-      body_p = load64(body_arr2)
-      body_len = load64(body_arr2 + 8)
       if body_len == 0 { tc_error("function '" + fname + "': missing return expression") }
       // Init unused-variable tracking for this function
       if tc_warn_enabled == 1 {
@@ -4785,6 +4790,10 @@ check_inner(program:I mod_exports:I require_main:I) I {
         tc_declared_vars = 0
         tc_used_vars = 0
       }
+      // Pop function body scope
+      func_end_line := 0
+      if body_len > 0 { func_end_line = node_line(load64(body_p + (body_len - 1) * 8)) }
+      tc_pop_scope_entry(func_end_line)
       if tc_collect_mode == 1 {
         tc_collected_locals = locals[locals.len() - 1]
       }
@@ -4909,6 +4918,16 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   if tc_collect_mode == 1 {
+    // tc_collected_symbols layout (72 bytes):
+    //   offset  0: structs_map
+    //   offset  8: enums_map
+    //   offset 16: fn_env
+    //   offset 24: methods_map
+    //   offset 32: trait_registry
+    //   offset 40: tc_collected_locals
+    //   offset 48: tc_scopes (array of ScopeEntry)
+    //   offset 56: tc_bindings (array of BindingEntry)
+    //   offset 64: tc_expr_types (array of ExprTypeEntry)
     tc_collected_symbols = alloc(72)
     store64(tc_collected_symbols, structs_map)
     store64(tc_collected_symbols + 8, enums_map)

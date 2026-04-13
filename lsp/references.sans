@@ -73,6 +73,11 @@ find_references_cross_file(uri:S content:S line:I col:I) J {
   ri := 0
   while ri < rkeys.len() {
     dep_path = rkeys.get(ri)
+    // Security: only read files under workspace root
+    if slen(lsp_project_root) > 0 && dep_path.starts_with(lsp_project_root) == 0 {
+      ri += 1
+      0
+    } else {
     dep_uri = "file://" + dep_path
     dep_content = doc_get(dep_uri)
     if slen(dep_content) == 0 { dep_content = fr(dep_path) }
@@ -88,6 +93,7 @@ find_references_cross_file(uri:S content:S line:I col:I) J {
       }
     }
     ri += 1
+    }
   }
   local_refs
 }
