@@ -232,3 +232,95 @@ get_method_completions(type_name:S) J {
 
   make_completion_list(items)
 }
+
+add_local_completions(items:J line:I) I {
+  bindings = visible_bindings_at(line)
+  i := 0
+  while i < bindings.len() {
+    entry = bindings.get(i)
+    bname = load64(entry)
+    btype = load64(entry + 8)
+    detail = type_to_string(btype)
+    item = make_completion_item(bname, 6, detail)
+    items.push(item)
+    i += 1
+  }
+  0
+}
+
+word_before_dot(content:S line:I col:I) S {
+  lines_arr = content.split("\n")
+  if line >= lines_arr.len() { return "" }
+  ln = lines_arr.get(line)
+  ln_len = slen(ln)
+  // col is after the dot, so dot is at col-1, identifier ends at col-2
+  end_pos := col - 2
+  if end_pos < 0 { return "" }
+  if end_pos >= ln_len { end_pos = ln_len - 1 }
+  // Walk backward to find start of identifier using done flag pattern
+  start_pos := end_pos
+  done := 0
+  while start_pos > 0 && done == 0 {
+    prev = char_at(ln, start_pos - 1)
+    if (prev >= 97 && prev <= 122) || (prev >= 65 && prev <= 90) || (prev >= 48 && prev <= 57) || prev == 95 {
+      start_pos -= 1
+    } else {
+      done = 1
+    }
+  }
+  if start_pos > end_pos { return "" }
+  ln.substring(start_pos, end_pos + 1)
+}
+
+get_dot_completions(content:S line:I col:I) J {
+  rcv_name = word_before_dot(content, line, col)
+  if slen(rcv_name) == 0 { return make_completion_list(ja()) }
+
+  // Look up receiver type from bindings
+  binding = find_binding_by_name(rcv_name, line)
+  rcv_type := 0
+  if binding != 0 {
+    rcv_type = load64(binding + 8)
+  }
+
+  items = ja()
+
+  if rcv_type != 0 {
+    type_name = type_to_string(rcv_type)
+    // Check if it's a struct — add fields
+    if lsp_last_symbols != 0 {
+      structs_map = load64(lsp_last_symbols)
+      if structs_map != 0 && mhas(structs_map, type_name) {
+        fields = mget(structs_map, type_name)
+        fkeys = fields.keys()
+        fi := 0
+        while fi < fkeys.len() {
+          fname = fkeys.get(fi)
+          ftype = mget(fields, fname)
+          item = make_completion_item(fname, COMP_FIELD, type_to_string(ftype))
+          items.push(item)
+          fi += 1
+        }
+      }
+    }
+    // Add methods for the type
+    method_result = get_method_completions(type_name)
+    method_items = method_result.get("items")
+    mi := 0
+    while mi < method_items.len() {
+      items.push(method_items.get(mi))
+      mi += 1
+    }
+  } else {
+    // Unknown type — try method completions with the name as type guess
+    method_result = get_method_completions(rcv_name)
+    method_items = method_result.get("items")
+    mi := 0
+    while mi < method_items.len() {
+      items.push(method_items.get(mi))
+      mi += 1
+    }
+  }
+
+  make_completion_list(items)
+}

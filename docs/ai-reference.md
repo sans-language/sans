@@ -509,3 +509,6 @@ Transitive deps resolved via BFS from each dep's sans.json
 
 ## Lint
 `sans lint <file|dir>` — static analysis, no build. Rules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut. `--error=<rule>` promotes to error. `--quiet` suppresses warnings. Config: sans.json `{"lint":{"rule":"error|warn|off"}}`. Exit 0 if no errors, 1 if errors.
+
+## LSP
+`LSP: hover (type info on locals/params/exprs), completion (locals + dot for fields/methods), find refs (cross-file), rename (scope-aware), diagnostics, go-to-def, signature help`

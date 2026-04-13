@@ -10,6 +10,9 @@ import "module_cache"
 g lsp_project_root = ""
 g lsp_last_diags = 0
 g lsp_last_symbols = 0
+g lsp_last_scopes = 0
+g lsp_last_bindings = 0
+g lsp_last_expr_types = 0
 
 // Store the project root path
 analyzer_set_root(root:S) I {
@@ -173,6 +176,16 @@ analyze_file(uri:S content:S) I {
   lsp_last_diags = tc_diags
   lsp_last_symbols = tc_collected_symbols
 
+  if tc_collected_symbols != 0 {
+    lsp_last_scopes = load64(tc_collected_symbols + 48)
+    lsp_last_bindings = load64(tc_collected_symbols + 56)
+    lsp_last_expr_types = load64(tc_collected_symbols + 64)
+  } else {
+    lsp_last_scopes = 0
+    lsp_last_bindings = 0
+    lsp_last_expr_types = 0
+  }
+
   if lsp_last_diags != 0 { lsp_last_diags.len() } else { 0 }
 }
 
@@ -267,6 +280,22 @@ is_ident_char(c:I) I {
 lookup_hover_at(content:S line:I col:I) S {
   word = word_at_position(content, line, col)
   if slen(word) == 0 { return "" }
+
+  // Try binding lookup — shows type of local/param
+  binding = find_binding_by_name(word, line)
+  if binding != 0 {
+    btype = load64(binding + 8)
+    bkind = load64(binding + 40)
+    kind_str = if bkind == 1 { "(param) " } else { if bkind == 2 { "(global) " } else { "(local) " } }
+    return kind_str + word + ": " + type_to_string(btype)
+  }
+
+  // Try expression type at position
+  etype = find_expr_type_at(line, col)
+  if etype != 0 {
+    return word + ": " + type_to_string(etype)
+  }
+
   if lsp_last_symbols == 0 { return "" }
 
   // Check fn_env (offset 16)
@@ -421,5 +450,122 @@ format_enum_signature(name:S variants:I) S {
     i += 1
   }
   result = result + " }"
+  result
+}
+
+// ------ Scope/Binding lookups for LSP features ---------------------------------------------------------------
+
+find_scope_at(line:I) I {
+  if lsp_last_scopes == 0 { return 0 }
+  cline = line + 1
+  best := 0
+  best_depth := -1
+  i := 0
+  while i < lsp_last_scopes.len() {
+    entry = lsp_last_scopes.get(i)
+    sline = load64(entry + 16)
+    eline = load64(entry + 24)
+    depth = load64(entry + 32)
+    if cline >= sline && (eline == 0 || cline <= eline) && depth > best_depth {
+      best = entry
+      best_depth = depth
+    }
+    i += 1
+  }
+  best
+}
+
+find_binding_at(line:I col:I) I {
+  if lsp_last_bindings == 0 { return 0 }
+  cline = line + 1
+  ccol = col + 1
+  i := 0
+  while i < lsp_last_bindings.len() {
+    entry = lsp_last_bindings.get(i)
+    bline = load64(entry + 16)
+    bcol = load64(entry + 24)
+    if bline == cline && bcol == ccol { return entry }
+    i += 1
+  }
+  0
+}
+
+find_binding_by_name(name:S line:I) I {
+  if lsp_last_bindings == 0 { return 0 }
+  cline = line + 1
+  best := 0
+  best_line := -1
+  i := 0
+  while i < lsp_last_bindings.len() {
+    entry = lsp_last_bindings.get(i)
+    bname = load64(entry)
+    bline = load64(entry + 16)
+    bscope = load64(entry + 32)
+    if bname == name && bline <= cline && bline > best_line {
+      scope = find_scope_by_id(bscope)
+      if scope != 0 {
+        sline = load64(scope + 16)
+        eline = load64(scope + 24)
+        if cline >= sline && (eline == 0 || cline <= eline) {
+          best = entry
+          best_line = bline
+        }
+      }
+    }
+    i += 1
+  }
+  best
+}
+
+find_scope_by_id(scope_id:I) I {
+  if lsp_last_scopes == 0 { return 0 }
+  i := 0
+  while i < lsp_last_scopes.len() {
+    entry = lsp_last_scopes.get(i)
+    if load64(entry) == scope_id { return entry }
+    i += 1
+  }
+  0
+}
+
+find_expr_type_at(line:I col:I) I {
+  if lsp_last_expr_types == 0 { return 0 }
+  cline = line + 1
+  ccol = col + 1
+  i := 0
+  while i < lsp_last_expr_types.len() {
+    entry = lsp_last_expr_types.get(i)
+    eline = load64(entry)
+    ecol = load64(entry + 8)
+    if eline == cline && ecol == ccol { return load64(entry + 16) }
+    i += 1
+  }
+  0
+}
+
+visible_bindings_at(line:I) I {
+  if lsp_last_bindings == 0 { return array<I>() }
+  cline = line + 1
+  result = array<I>()
+  seen = M()
+  i := lsp_last_bindings.len() - 1
+  while i >= 0 {
+    entry = lsp_last_bindings.get(i)
+    bname = load64(entry)
+    bline = load64(entry + 16)
+    bscope = load64(entry + 32)
+    if bline <= cline && mhas(seen, bname) == 0 {
+      scope = find_scope_by_id(bscope)
+      if scope != 0 {
+        sline = load64(scope + 16)
+        eline = load64(scope + 24)
+        if cline >= sline && (eline == 0 || cline <= eline) {
+          result.push(entry)
+          mset(seen, bname, 1)
+        }
+      }
+    }
+    i -= 1
+  }
   result
 }

@@ -160,6 +160,11 @@ g tc_collect_mode = 0
 g tc_collected_symbols = 0
 g tc_collected_locals = 0
 g tc_runtime_mode = 0
+g tc_scopes = 0
+g tc_bindings = 0
+g tc_expr_types = 0
+g tc_scope_counter = 0
+g tc_current_scope_id = -1
 
 tc_init_diags() I {
   if tc_diags == 0 { tc_diags = array<I>() }
@@ -701,6 +706,63 @@ pop_scope(locals:I) I {
   0
 }
 
+tc_push_scope_entry(line:I) I {
+  if tc_collect_mode != 1 { return 0 }
+  if tc_scopes == 0 { return 0 }
+  entry = alloc(40)
+  sid = tc_scope_counter
+  tc_scope_counter = tc_scope_counter + 1
+  store64(entry, sid)
+  store64(entry + 8, tc_current_scope_id)
+  store64(entry + 16, line)
+  store64(entry + 24, 0)
+  store64(entry + 32, tc_scopes.len())
+  tc_scopes.push(entry)
+  tc_current_scope_id = sid
+  sid
+}
+
+tc_pop_scope_entry(line:I) I {
+  if tc_collect_mode != 1 { return 0 }
+  if tc_scopes == 0 { return 0 }
+  i := tc_scopes.len() - 1
+  while i >= 0 {
+    entry = tc_scopes.get(i)
+    if load64(entry) == tc_current_scope_id {
+      store64(entry + 24, line)
+      tc_current_scope_id = load64(entry + 8)
+      return 0
+    }
+    i -= 1
+  }
+  0
+}
+
+tc_record_binding(name:S ty:I line:I col:I kind:I) I {
+  if tc_collect_mode != 1 { return 0 }
+  if tc_bindings == 0 { return 0 }
+  entry = alloc(48)
+  store64(entry, name)
+  store64(entry + 8, ty)
+  store64(entry + 16, line)
+  store64(entry + 24, col)
+  store64(entry + 32, tc_current_scope_id)
+  store64(entry + 40, kind)
+  tc_bindings.push(entry)
+  0
+}
+
+tc_record_expr_type(line:I col:I ty:I) I {
+  if tc_collect_mode != 1 { return 0 }
+  if tc_expr_types == 0 { return 0 }
+  entry = alloc(24)
+  store64(entry, line)
+  store64(entry + 8, col)
+  store64(entry + 16, ty)
+  tc_expr_types.push(entry)
+  0
+}
+
 // ------ Lookup variable in scope stack ------------------------------------------------------------------------------------------------
 // Walk locals from last (innermost) to first (outermost).
 // Returns Type ptr or 0 if not found.
@@ -733,6 +795,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     // Add to current scope (last Map in locals)
     scope = locals[locals.len() - 1]
     mset(scope, name, ty)
+    tc_record_binding(name, ty, node_line(stmt), node_col(stmt), 0)
     // Track declared variable for unused-variable warnings
     if tc_declared_vars != 0 { mset(tc_declared_vars, name, stmt) }
     return 0
@@ -774,6 +837,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       val_type = check_expr(value_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
       scope = locals[locals.len() - 1]
       mset(scope, name, val_type)
+      tc_record_binding(name, val_type, node_line(stmt), node_col(stmt), 0)
       // Track declared variable for unused-variable warnings
       if tc_declared_vars != 0 { mset(tc_declared_vars, name, stmt) }
       0
@@ -842,11 +906,13 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if type_tag(iter_ty) != TY_ARRAY && type_tag(iter_ty) != TY_ITER { tc_error_at(stmt, "for-in requires Array or Iter, got " + type_to_string(iter_ty)) }
     // Add loop var to scope
     push_scope(locals)
+    tc_push_scope_entry(node_line(stmt))
     inner_scope = locals[locals.len() - 1]
     mset(inner_scope, var_name, type_inner(iter_ty))
     body_len = if body_arr != 0 { load64(body_arr + 8) } else { 0 }
     body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    tc_pop_scope_entry(node_line(stmt))
     pop_scope(locals)
     return 0
   }
@@ -861,6 +927,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     iter_ty = check_expr(iterable, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     if type_tag(iter_ty) != TY_ARRAY { tc_error_at(stmt, "for-in destructuring requires Array, got " + type_to_string(iter_ty)) }
     push_scope(locals)
+    tc_push_scope_entry(node_line(stmt))
     inner_scope = locals[locals.len() - 1]
     vi := 0
     while vi < num_vars {
@@ -875,6 +942,7 @@ check_stmt(stmt:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     body_len = if body_arr != 0 { load64(body_arr + 8) } else { 0 }
     body_p = if body_arr != 0 { load64(body_arr) } else { 0 }
     check_stmts(body_p, body_len, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    tc_pop_scope_entry(node_line(stmt))
     pop_scope(locals)
     return 0
   }
@@ -1157,7 +1225,10 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if tc_used_vars != 0 { mset(tc_used_vars, name, 1) }
     // Search local scopes
     t = lookup_local(locals, name)
-    if t != 0 { return t }
+    if t != 0 {
+      tc_record_expr_type(node_line(expr), node_col(expr), t)
+      return t
+    }
     // Check function environment --- return Fn type
     if mhas(fn_env, name) {
       sig = mget(fn_env, name)
@@ -3824,6 +3895,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         has_binding := 0
         if arm_pat_type == 4 {
           push_scope(locals)
+          tc_push_scope_entry(node_line(arm_body))
           bind_name = load64(arm_pat + 8)
           inner = locals[locals.len() - 1]
           mset(inner, bind_name, scrutinee_ty)
@@ -3831,12 +3903,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         }
         guard_expr = load64(arm + 16)
         if guard_expr != 0 {
-          if has_binding == 0 { push_scope(locals) }
+          if has_binding == 0 { push_scope(locals); tc_push_scope_entry(node_line(arm_body)) }
           guard_ty = check_expr(guard_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-          if has_binding == 0 { pop_scope(locals) }
+          if has_binding == 0 { tc_pop_scope_entry(node_line(arm_body)); pop_scope(locals) }
         }
         arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
-        if has_binding == 1 { pop_scope(locals) }
+        if has_binding == 1 { tc_pop_scope_entry(node_line(arm_body)); pop_scope(locals) }
         if result_ty == 0 { result_ty = arm_ty }
         ai += 1
       }
@@ -3860,6 +3932,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           pat_fields_p = load64(pat_fields)
           pat_fields_len = load64(pat_fields + 8)
           push_scope(locals)
+          tc_push_scope_entry(node_line(arm_body))
           inner_scope = locals[locals.len() - 1]
           pfi := 0
           while pfi < pat_fields_len {
@@ -3870,6 +3943,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
             pfi += 1
           }
           arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          tc_pop_scope_entry(node_line(arm_body))
           pop_scope(locals)
           if result_ty == 0 { result_ty = arm_ty }
         } else if arm_pat_type == 3 {
@@ -3879,10 +3953,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
         } else if arm_pat_type == 4 {
           // Binding pattern in struct match
           push_scope(locals)
+          tc_push_scope_entry(node_line(arm_body))
           bind_name = load64(arm_pat + 8)
           inner_scope2 = locals[locals.len() - 1]
           mset(inner_scope2, bind_name, scrutinee_ty)
           arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          tc_pop_scope_entry(node_line(arm_body))
           pop_scope(locals)
           if result_ty == 0 { result_ty = arm_ty }
         }
@@ -3910,6 +3986,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           sub_pats_len = load64(sub_pats + 8)
           if sub_pats_len != tuple_elems_len { return tc_error("tuple pattern has " + str(sub_pats_len) + " element(s) but scrutinee has " + str(tuple_elems_len)) }
           push_scope(locals)
+          tc_push_scope_entry(node_line(arm_body))
           inner_scope = locals[locals.len() - 1]
           tpi := 0
           while tpi < sub_pats_len {
@@ -3924,6 +4001,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
             tpi += 1
           }
           arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          tc_pop_scope_entry(node_line(arm_body))
           pop_scope(locals)
           if result_ty == 0 { result_ty = arm_ty }
         } else if arm_pat_type == 3 {
@@ -3931,10 +4009,12 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
           if result_ty == 0 { result_ty = arm_ty }
         } else if arm_pat_type == 4 {
           push_scope(locals)
+          tc_push_scope_entry(node_line(arm_body))
           bind_name = load64(arm_pat + 8)
           inner_scope2 = locals[locals.len() - 1]
           mset(inner_scope2, bind_name, scrutinee_ty)
           arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+          tc_pop_scope_entry(node_line(arm_body))
           pop_scope(locals)
           if result_ty == 0 { result_ty = arm_ty }
         }
@@ -3972,6 +4052,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     if bindings_len != variant_fields_len { return tc_error("pattern '" + enum_name_s + "::" + pat_variant + "' expects " + str(variant_fields_len) + " binding(s) but got " + str(bindings_len)) }
     // Create new scope with bindings
     push_scope(locals)
+    tc_push_scope_entry(node_line(arm_body))
     inner_scope = locals[locals.len() - 1]
     bi := 0
     while bi < bindings_len {
@@ -3985,6 +4066,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
       check_expr(enum_guard_expr, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
     }
     arm_ty = check_expr(arm_body, locals, fn_env, ret_type, structs, enums, methods, generic_fns, traits, mod_exports)
+    tc_pop_scope_entry(node_line(arm_body))
     pop_scope(locals)
     if result_ty == 0 {
       result_ty = arm_ty
@@ -4004,6 +4086,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     body_stmts_arr = load64(expr + 32)
     // Build param types and add to new scope
     push_scope(locals)
+    tc_push_scope_entry(node_line(expr))
     inner_scope = locals[locals.len() - 1]
     param_types = array<I>()
     num_params = load64(params_arr + 8)
@@ -4023,6 +4106,7 @@ check_expr(expr:I locals:I fn_env:I ret_type:I structs:I enums:I methods:I gener
     body_stmts_p = if body_stmts_arr != 0 { load64(body_stmts_arr) } else { 0 }
     body_len = if body_stmts_arr != 0 { load64(body_stmts_arr + 8) } else { 0 }
     check_stmts(body_stmts_p, body_len, locals, fn_env, ret_ty, structs, enums, methods, generic_fns, traits, mod_exports)
+    tc_pop_scope_entry(node_line(expr))
     pop_scope(locals)
     return make_fn_type(ptr(param_types), ret_ty)
   }
@@ -4216,6 +4300,13 @@ check_dyn_trait_method(obj_ty:I method:I nargs:I mc_args:I locals:I fn_env:I ret
 // ------ check_inner: shared implementation for check/check_module ------------
 check_inner(program:I mod_exports:I require_main:I) I {
   tc_init_diags()
+  if tc_collect_mode == 1 {
+    tc_scopes = array<I>()
+    tc_bindings = array<I>()
+    tc_expr_types = array<I>()
+    tc_scope_counter = 0
+    tc_current_scope_id = -1
+  }
   structs_map = map()
   enums_map = map()
   fn_env = map()
@@ -4643,6 +4734,14 @@ check_inner(program:I mod_exports:I require_main:I) I {
       fparams_arr2 = load64(func + 8)
       fparams_p = load64(fparams_arr2)
       num_fparams = load64(fparams_arr2 + 8)
+      // Get function body line for scope entry
+      body_arr2 = load64(func + 24)
+      body_p = load64(body_arr2)
+      body_len = load64(body_arr2 + 8)
+      func_line := 0
+      if body_len > 0 { func_line = node_line(load64(body_p)) }
+      // Push function body scope so params get a valid scope_id
+      tc_push_scope_entry(func_line)
       pi := 0
       while pi < num_fparams {
       p_node = load64(fparams_p + pi * 8)
@@ -4650,11 +4749,9 @@ check_inner(program:I mod_exports:I require_main:I) I {
       p_type_name = load64(p_node + 8)
       pty = resolve_type(p_type_name, structs_map, enums_map, mod_exports)
       mset(scope, p_name, pty)
+      tc_record_binding(p_name, pty, func_line, 0, 1)
       pi += 1
       }
-      body_arr2 = load64(func + 24)
-      body_p = load64(body_arr2)
-      body_len = load64(body_arr2 + 8)
       if body_len == 0 { tc_error("function '" + fname + "': missing return expression") }
       // Init unused-variable tracking for this function
       if tc_warn_enabled == 1 {
@@ -4693,6 +4790,10 @@ check_inner(program:I mod_exports:I require_main:I) I {
         tc_declared_vars = 0
         tc_used_vars = 0
       }
+      // Pop function body scope
+      func_end_line := 0
+      if body_len > 0 { func_end_line = node_line(load64(body_p + (body_len - 1) * 8)) }
+      tc_pop_scope_entry(func_end_line)
       if tc_collect_mode == 1 {
         tc_collected_locals = locals[locals.len() - 1]
       }
@@ -4817,13 +4918,26 @@ check_inner(program:I mod_exports:I require_main:I) I {
   }
 
   if tc_collect_mode == 1 {
-    tc_collected_symbols = alloc(48)
+    // tc_collected_symbols layout (72 bytes):
+    //   offset  0: structs_map
+    //   offset  8: enums_map
+    //   offset 16: fn_env
+    //   offset 24: methods_map
+    //   offset 32: trait_registry
+    //   offset 40: tc_collected_locals
+    //   offset 48: tc_scopes (array of ScopeEntry)
+    //   offset 56: tc_bindings (array of BindingEntry)
+    //   offset 64: tc_expr_types (array of ExprTypeEntry)
+    tc_collected_symbols = alloc(72)
     store64(tc_collected_symbols, structs_map)
     store64(tc_collected_symbols + 8, enums_map)
     store64(tc_collected_symbols + 16, fn_env)
     store64(tc_collected_symbols + 24, methods_map)
     store64(tc_collected_symbols + 32, trait_registry)
     store64(tc_collected_symbols + 40, tc_collected_locals)
+    store64(tc_collected_symbols + 48, tc_scopes)
+    store64(tc_collected_symbols + 56, tc_bindings)
+    store64(tc_collected_symbols + 64, tc_expr_types)
   }
 
   // Emit any collected diagnostics (exits if errors)

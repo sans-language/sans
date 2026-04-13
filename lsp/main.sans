@@ -211,10 +211,26 @@ add_symbol_completions(items:J prefix:S) I {
 }
 
 handle_completion(id:J params:J) I {
-  // Get keyword+builtin completions, then add symbols
+  pos = params_position(params)
+  line = pos / 10000000000
+  col = pos % 10000000000
+  ctx = params.get("context")
+  trigger := ""
+  if ctx.type_of() == "object" {
+    tc = ctx.get("triggerCharacter")
+    if tc.type_of() == "string" { trigger = tc.get_string() }
+  }
+  if trigger == "." {
+    uri = params_uri(params)
+    content = doc_get(uri)
+    result = get_dot_completions(content, line, col)
+    rpc_respond(id, result)
+    return 0
+  }
   result = get_completions("")
   items = result.get("items")
   add_symbol_completions(items, "")
+  add_local_completions(items, line)
   rpc_respond(id, result)
   0
 }
@@ -229,7 +245,7 @@ handle_references(id:J params:J) I {
     rpc_respond(id, ja())
     return 0
   }
-  refs = find_references(uri, content, line, col)
+  refs = find_references_cross_file(uri, content, line, col)
   rpc_respond(id, refs)
   0
 }
