@@ -1696,6 +1696,14 @@ All editors connect to the shared `sans-lsp` language server for hover, go-to-de
 
 Prerequisite: `sans-lsp` must be on PATH. See each editor's README for detailed instructions.
 
+### LSP Features
+
+- **Hover (expression type info)** — hovering on a local variable or parameter shows its inferred type, e.g. `(local) x: Int` or `(param) name: String`
+- **Completion (locals + dot access)** — completions inside function bodies include local variables and parameters with their inferred types; typing `.` after a variable triggers field and method completions for its type
+- **Find references (cross-file)** — find all references spans imported modules via the reverse dependency graph
+- **Rename (scope-aware)** — renaming a local variable only affects occurrences within its scope, correctly handling shadowed bindings
+- **Diagnostics, go-to-definition, signature help, semantic tokens, folding**
+
 ## Concurrency
 
 ```sans
