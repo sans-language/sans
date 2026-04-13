@@ -700,6 +700,7 @@ name = read_line("Enter name: ")</code></pre>
         <tr><td><code>set_max_headers(n)</code></td><td>8192 (8KB)</td><td>Max total header size bytes. 431 if exceeded.</td></tr>
         <tr><td><code>set_max_header_count(n)</code></td><td>100</td><td>Max number of headers. 431 if exceeded.</td></tr>
         <tr><td><code>set_max_url(n)</code></td><td>8192 (8KB)</td><td>Max URL length bytes. 414 if exceeded.</td></tr>
+        <tr><td><code>set_compress_min_size(bytes)</code></td><td>1024</td><td>Min response body size in bytes to trigger gzip compression.</td></tr>
       </tbody>
     </table>
     <pre><code><span class="fn">main</span>() <span class="ty">I</span> {
@@ -1342,7 +1343,7 @@ if rv != 0 {
     <h2 id="internals">Internals</h2>
 
     <h3>Runtime Modules</h3>
-    <p>The standard library is implemented across 13+ modules in <code>runtime/</code>: <code>server.sans</code> (HTTP server, WebSocket), <code>json.sans</code> (JSON), <code>string_ext.sans</code>, <code>array_ext.sans</code>, <code>map.sans</code>, <code>ssl.sans</code>, <code>http.sans</code> (HTTP client), <code>curl.sans</code>, <code>arena.sans</code>, <code>result.sans</code>, <code>functional.sans</code>, <code>rc.sans</code> (scope GC), <code>log.sans</code>, <code>sock.sans</code>.</p>
+    <p>The standard library is implemented across 28 modules in <code>runtime/</code>: <code>arena.sans</code>, <code>array_ext.sans</code>, <code>bitwise.sans</code>, <code>curl.sans</code>, <code>encoding.sans</code>, <code>fs.sans</code>, <code>functional.sans</code>, <code>http.sans</code> (HTTP client), <code>io.sans</code>, <code>iter.sans</code>, <code>json.sans</code> (JSON), <code>log.sans</code>, <code>map.sans</code>, <code>math.sans</code>, <code>net.sans</code>, <code>option.sans</code>, <code>path.sans</code>, <code>process.sans</code>, <code>rc.sans</code> (scope GC), <code>result.sans</code>, <code>router.sans</code>, <code>server.sans</code> (HTTP server, WebSocket), <code>sock.sans</code>, <code>ssl.sans</code>, <code>static_file.sans</code>, <code>string_ext.sans</code>, <code>unicode.sans</code>, <code>websocket.sans</code>.</p>
 
     <h3>Compiler Modules</h3>
     <p>The compiler is 7 modules in <code>compiler/</code> (~11,600 LOC): lexer, parser, typeck, constants, IR, codegen, main. Compiles to LLVM IR via <code>llc</code>, links with <code>clang</code>.</p>

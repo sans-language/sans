@@ -220,6 +220,13 @@ const HOVER_DATA: Record<string, string> = {
     "randb": "```sans\nrandb(n) -> S\n```\nN crypto random bytes as hex.",
     "random_bytes": "```sans\nrandb(n) -> S\n```\nN crypto random bytes as hex.",
 
+    // Bitwise
+    "band": "band(a:I b:I) I — Bitwise AND (also: band8/band32 in runtime)",
+    "bor": "bor(a:I b:I) I — Bitwise OR (also: bor8/bor32 in runtime)",
+    "bxor": "bxor(a:I b:I) I — Bitwise XOR (also: bxor8/bxor32 in runtime)",
+    "bshl": "bshl(a:I n:I) I — Bitwise shift left",
+    "bshr": "bshr(a:I n:I) I — Bitwise shift right",
+
     // Assertions
     "assert": "```sans\nassert(cond) -> I\n```\nFail if false.",
     "assert_eq": "```sans\nassert_eq(a b) -> I\n```\nFail if a != b.",
