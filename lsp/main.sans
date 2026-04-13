@@ -245,7 +245,7 @@ handle_references(id:J params:J) I {
     rpc_respond(id, ja())
     return 0
   }
-  refs = find_references(uri, content, line, col)
+  refs = find_references_cross_file(uri, content, line, col)
   rpc_respond(id, refs)
   0
 }

@@ -47,6 +47,51 @@ find_references(uri:S content:S line:I col:I) J {
   locations
 }
 
+// Find references across all files that import this module.
+// Returns JSON array of Location objects spanning current file + importers.
+find_references_cross_file(uri:S content:S line:I col:I) J {
+  local_refs = find_references(uri, content, line, col)
+  word = word_at_position(content, line, col)
+  if slen(word) == 0 { return local_refs }
+  // Check if this is a module-level symbol
+  is_module_sym := 0
+  if lsp_last_symbols != 0 {
+    fn_env = load64(lsp_last_symbols + 16)
+    structs = load64(lsp_last_symbols)
+    enums = load64(lsp_last_symbols + 8)
+    if mhas(fn_env, word) == 1 { is_module_sym = 1 }
+    if mhas(structs, word) == 1 { is_module_sym = 1 }
+    if mhas(enums, word) == 1 { is_module_sym = 1 }
+  }
+  if is_module_sym == 0 { return local_refs }
+  // Get files that import this module
+  file_path = uri_to_path(uri)
+  if mcache_rdeps == 0 { return local_refs }
+  if mhas(mcache_rdeps, file_path) == 0 { return local_refs }
+  rdeps = mget(mcache_rdeps, file_path)
+  rkeys = rdeps.keys()
+  ri := 0
+  while ri < rkeys.len() {
+    dep_path = rkeys.get(ri)
+    dep_uri = "file://" + dep_path
+    dep_content = doc_get(dep_uri)
+    if slen(dep_content) == 0 { dep_content = fr(dep_path) }
+    if slen(dep_content) > 0 {
+      dep_index = build_ident_index(dep_uri, dep_content)
+      if mhas(dep_index, word) {
+        dep_locs = mget(dep_index, word)
+        di := 0
+        while di < dep_locs.len() {
+          local_refs.push(dep_locs.get(di))
+          di += 1
+        }
+      }
+    }
+    ri += 1
+  }
+  local_refs
+}
+
 // Validate that a name is a valid Sans identifier: [a-zA-Z_][a-zA-Z0-9_]*
 is_valid_identifier(name:S) I {
   len = slen(name)
@@ -65,26 +110,103 @@ is_valid_identifier(name:S) I {
 }
 
 // Compute workspace edit for renaming a symbol.
+// Scope-aware: local/param bindings are renamed only within their scope.
+// Module-level symbols are renamed throughout the current file.
 // Returns JSON WorkspaceEdit with changes for the document.
 compute_rename(uri:S content:S line:I col:I new_name:S) J {
-  refs = find_references(uri, content, line, col)
-  if refs.len() == 0 { return jo() }
+  word = word_at_position(content, line, col)
+  if slen(word) == 0 { return jo() }
 
-  edits = ja()
-  i := 0
-  while i < refs.len() {
-    loc = refs.get_index(i)
-    rng = loc.get("range")
-    edit = jo()
-    edit.set("range", rng)
-    edit.set("newText", js(new_name))
-    edits.push(edit)
-    i += 1
+  // Check if this is a local/param binding
+  binding = find_binding_by_name(word, line)
+  if binding != 0 {
+    bkind = load64(binding + 40)
+    bscope_id = load64(binding + 32)
+    if bkind == 0 || bkind == 1 {
+      return compute_scoped_rename(uri, content, word, new_name, bscope_id)
+    }
   }
 
+  // Module-level symbol — rename all occurrences in current file
+  edits = ja()
+  index = build_ident_index(uri, content)
+  if mhas(index, word) {
+    refs = mget(index, word)
+    ri := 0
+    while ri < refs.len() {
+      loc = refs.get(ri)
+      edit = jo()
+      edit.set("range", loc.get("range"))
+      edit.set("newText", js(new_name))
+      edits.push(edit)
+      ri += 1
+    }
+  }
+  result = jo()
   changes = jo()
   changes.set(uri, edits)
-  result = jo()
   result.set("changes", changes)
   result
+}
+
+// Rename a local/param binding within its scope, skipping shadowed occurrences.
+compute_scoped_rename(uri:S content:S word:S new_name:S scope_id:I) J {
+  scope = find_scope_by_id(scope_id)
+  if scope == 0 { return jo() }
+  scope_start = load64(scope + 16) - 1
+  scope_end = load64(scope + 24) - 1
+  if scope_end < 0 { scope_end = 999999 }
+
+  edits = ja()
+  index = build_ident_index(uri, content)
+  if mhas(index, word) {
+    refs = mget(index, word)
+    ri := 0
+    while ri < refs.len() {
+      loc = refs.get(ri)
+      range = loc.get("range")
+      start = range.get("start")
+      ref_line = start.get("line").get_int()
+      if ref_line >= scope_start && ref_line <= scope_end {
+        if is_shadowed_at(word, ref_line, scope_id) == 0 {
+          edit = jo()
+          edit.set("range", range)
+          edit.set("newText", js(new_name))
+          edits.push(edit)
+        }
+      }
+      ri += 1
+    }
+  }
+  result = jo()
+  changes = jo()
+  changes.set(uri, edits)
+  result.set("changes", changes)
+  result
+}
+
+// Returns 1 if the name at the given line is shadowed by a binding in a
+// nested scope that is not outer_scope_id.
+is_shadowed_at(name:S line:I outer_scope_id:I) I {
+  if lsp_last_bindings == 0 { return 0 }
+  cline = line + 1
+  i := 0
+  while i < lsp_last_bindings.len() {
+    entry = lsp_last_bindings.get(i)
+    bname = load64(entry)
+    bline = load64(entry + 16)
+    bscope = load64(entry + 32)
+    if bname == name && bscope != outer_scope_id && bline <= cline {
+      scope = find_scope_by_id(bscope)
+      if scope != 0 {
+        sline = load64(scope + 16)
+        eline = load64(scope + 24)
+        if cline >= sline && (eline == 0 || cline <= eline) {
+          return 1
+        }
+      }
+    }
+    i += 1
+  }
+  0
 }
