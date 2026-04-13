@@ -507,7 +507,7 @@ output = sh("uname -s")    // "Darwin\n" or "Linux\n"
 | `url_decode(s)` | — | `(String) -> String` |
 | `path_segment(path, idx)` | — | `(String, Int) -> String` |
 
-`serve_file(req, dir)` serves a static file from `dir` matching the request path. Handles content-type detection, 404 for missing files, and directory traversal protection.
+`serve_file(req, dir)` serves a static file from `dir` matching the request path. Handles content-type detection, 404 for missing files, directory traversal protection, ETag/If-None-Match (304 Not Modified), and Range/If-Range (206 Partial Content).
 
 `url_decode(s)` decodes a URL-encoded string (e.g. `%20` to space, `+` to space).
 
@@ -531,6 +531,7 @@ Configure the HTTP server before calling `serve()` or `serve_tls()`. All setting
 | `set_max_headers(n)` | 8192 (8KB) | Max total header size in bytes. Oversized headers receive HTTP 431. |
 | `set_max_header_count(n)` | 100 | Max number of request headers. Excess headers receive HTTP 431. |
 | `set_max_url(n)` | 8192 (8KB) | Max URL length in bytes. Oversized URLs receive HTTP 414. |
+| `set_compress_min_size(bytes)` | 1024 | Minimum response body size in bytes to trigger gzip compression. |
 
 ```sans
 main() I {
@@ -607,6 +608,152 @@ handle(req:I) I {
 
 main() I {
   serve(8080 fptr("handle"))
+}
+```
+
+#### WebSocket Extensions
+
+| Function | Alias | Signature |
+|----------|-------|-----------|
+| `ws_send_binary(ws, data, len)` | — | `(Int, Int, Int) -> Int` |
+| `ws_ping(ws)` | — | `(Int) -> Int` |
+| `stream_write_json(w, data)` | — | `(Int, String) -> Int` |
+
+`ws_send_binary(ws, data, len)` sends a binary WebSocket frame. `data` is a raw pointer, `len` is byte count.
+
+`ws_ping(ws)` sends a WebSocket ping frame. The client must respond with a pong.
+
+`stream_write_json(w, data)` writes a JSON-formatted SSE (Server-Sent Events) chunk to a streaming response. Use with `respond_stream`.
+
+### File Uploads
+
+`req.file(name)` returns an uploaded file's content as a string (multipart/form-data). `req.files(name)` returns all files with the given field name as an array.
+
+```sans
+handle(req:HR) I {
+  data = req.file("upload")
+  if slen(data) == 0 { return req.respond(400 "no file") }
+  fw("/tmp/upload.bin" data)
+  req.respond(200 "saved")
+}
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `req.file(name)` | `(String) -> String` | Get uploaded file contents |
+| `req.files(name)` | `(String) -> Array<String>` | Get all uploaded files for field |
+
+### Static File Serving
+
+| Function | Alias | Signature |
+|----------|-------|-----------|
+| `serve_file(req, dir)` | — | `(HttpRequest, String) -> Int` |
+| `set_index_file(name)` | — | `(String) -> Int` |
+
+`serve_file(req, dir)` serves a static file from `dir` matching the request path. Handles content-type detection for 24+ MIME types (html, css, js, json, png, jpg, svg, gif, ico, webp, avif, woff, woff2, ttf, otf, pdf, zip, mp4, webm, mp3, wasm, csv, xml), 404 for missing files, and directory traversal protection. Supports ETag/If-None-Match for conditional requests (returns 304 Not Modified when content is unchanged) and Range/If-Range for partial content requests (returns 206 Partial Content).
+
+`set_index_file(name)` sets the default file served for directory requests (default: `index.html`).
+
+```sans
+handle(req:HR) I {
+  serve_file(req "./public")
+}
+```
+
+### Router
+
+Pattern-based request routing with path parameters.
+
+| Function | Alias | Signature |
+|----------|-------|-----------|
+| `router()` | — | `() -> Int` |
+| `route(r, method, pattern, handler)` | — | `(Int, String, String, Fn) -> Int` |
+| `rget(r, pattern, handler)` | — | `(Int, String, Fn) -> Int` |
+| `rpost(r, pattern, handler)` | — | `(Int, String, Fn) -> Int` |
+| `rput(r, pattern, handler)` | — | `(Int, String, Fn) -> Int` |
+| `rdelete(r, pattern, handler)` | — | `(Int, String, Fn) -> Int` |
+| `handle(r, req)` | — | `(Int, HttpRequest) -> Int` |
+| `set_not_found(r, handler)` | — | `(Int, Fn) -> Int` |
+| `serve_static(r, prefix, base_dir)` | — | `(Int, String, String) -> Int` |
+| `param(req, name)` | — | `(HttpRequest, String) -> String` |
+
+`router()` creates a new router. `rget`/`rpost`/`rput`/`rdelete` register handlers for specific HTTP methods. Route patterns support path parameters (`:name` prefix) and wildcards (`*`). `param(req, name)` extracts a path parameter captured during routing.
+
+```sans
+g r = 0
+
+users_list(req:HR) I { req.respond(200 "[]") }
+users_get(req:HR) I {
+  id = param(req "id")
+  req.respond(200 "{\"id\":{id}}")
+}
+
+main() I {
+  r = router()
+  rget(r "/users" fptr("users_list"))
+  rget(r "/users/:id" fptr("users_get"))
+  serve_static(r "/" "./public")
+  serve(8080 fptr("dispatch"))
+}
+
+dispatch(req:HR) I {
+  handle(r req)
+}
+```
+
+### TCP/UDP Networking
+
+Low-level TCP and UDP primitives for building custom network protocols.
+
+#### TCP
+
+| Function | Alias | Signature |
+|----------|-------|-----------|
+| `tcp_connect(host, port)` | — | `(String, Int) -> Int` |
+| `tcp_listen(port)` | `tl` | `(Int) -> Int` |
+| `tcp_accept(listener)` | `ta` | `(Int) -> Int` |
+| `tcp_read(stream, size)` | `tr` | `(Int, Int) -> String` |
+| `tcp_write(stream, data)` | `tw` | `(Int, String) -> Int` |
+| `tcp_close(stream)` | `tc` | `(Int) -> Int` |
+| `tcp_set_timeout(stream, ms)` | — | `(Int, Int) -> Int` |
+
+`tcp_connect(host, port)` connects to a TCP server. `host` is a dotted-quad IP string. Returns a file descriptor or -1 on failure.
+
+`tcp_listen(port)` creates a listening TCP socket. `tcp_accept(listener)` accepts an incoming connection, returning a new fd.
+
+`tcp_read(stream, size)` reads up to `size` bytes, returning a string. `tcp_write(stream, data)` sends data.
+
+`tcp_set_timeout(stream, ms)` sets a receive timeout in milliseconds.
+
+```sans
+main() I {
+  srv = tcp_listen(9000)
+  client = tcp_accept(srv)
+  msg = tcp_read(client 1024)
+  tcp_write(client "echo: " + msg)
+  tcp_close(client)
+  tcp_close(srv)
+  0
+}
+```
+
+#### UDP
+
+| Function | Alias | Signature |
+|----------|-------|-----------|
+| `udp_bind(port)` | `ub` | `(Int) -> Int` |
+| `udp_sendto(sock, host, port, data)` | — | `(Int, String, Int, String) -> Int` |
+| `udp_recvfrom(sock, size)` | — | `(Int, Int) -> Int` |
+| `udp_close(sock)` | — | `(Int) -> Int` |
+
+`udp_bind(port)` creates a UDP socket bound to `port`. `udp_sendto` sends a datagram. `udp_recvfrom` receives a datagram, returning bytes read.
+
+```sans
+main() I {
+  s = udp_bind(5000)
+  udp_sendto(s "127.0.0.1" 5001 "hello")
+  udp_close(s)
+  0
 }
 ```
 
@@ -1851,9 +1998,9 @@ When panic recovery is enabled, `!` on `Err` or `None` calls `longjmp` back to t
 
 ### Runtime Modules
 
-The standard library is implemented across 13+ modules in `runtime/`:
+The standard library is implemented across 28 modules in `runtime/`:
 
-`server.sans` (HTTP server, WebSocket, streaming), `json.sans` (JSON parser/serializer), `string_ext.sans` (string methods), `array_ext.sans` (array methods), `map.sans` (hash map), `ssl.sans` (TLS/SSL), `http.sans` (HTTP client), `curl.sans` (curl bindings), `arena.sans` (arena allocator), `result.sans` (Result type), `functional.sans` (higher-order functions), `rc.sans` (scope GC), `log.sans` (logging), `sock.sans` (raw sockets).
+`arena.sans` (arena allocator), `array_ext.sans` (array methods), `bitwise.sans` (bitwise ops), `curl.sans` (curl bindings), `encoding.sans` (base64/hex), `fs.sans` (filesystem), `functional.sans` (higher-order functions), `http.sans` (HTTP client), `io.sans` (I/O), `iter.sans` (lazy iterators), `json.sans` (JSON parser/serializer), `log.sans` (logging), `map.sans` (hash map), `math.sans` (math functions), `net.sans` (networking), `option.sans` (Option type), `path.sans` (path manipulation), `process.sans` (process/subprocess), `rc.sans` (scope GC), `result.sans` (Result type), `router.sans` (HTTP router), `server.sans` (HTTP server, WebSocket, streaming), `sock.sans` (raw sockets), `ssl.sans` (TLS/SSL), `static_file.sans` (static file serving), `string_ext.sans` (string methods), `unicode.sans` (Unicode support), `websocket.sans` (WebSocket protocol).
 
 ### Compiler Modules
 

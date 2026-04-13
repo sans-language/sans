@@ -553,6 +553,12 @@ run_test "regex_basic"             "$REPO_ROOT/tests/fixtures/regex_basic.sans" 
 # Unicode
 run_test "unicode_basic"           "$REPO_ROOT/tests/fixtures/unicode_basic.sans"           0
 
+# Bitwise helpers (bitwise.sans)
+run_test "test_bitwise"            "$REPO_ROOT/tests/fixtures/test_bitwise.sans"            0
+
+# Static file helpers (static_file.sans)
+run_test "test_static_file"        "$REPO_ROOT/tests/fixtures/test_static_file.sans"        0
+
 # ---------------------------------------------------------------------------
 # Runtime error tests (expected to compile but fail at runtime)
 # ---------------------------------------------------------------------------

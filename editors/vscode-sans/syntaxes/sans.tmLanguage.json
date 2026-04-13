@@ -126,7 +126,7 @@
         },
         {
           "name": "support.function.http.sans",
-          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|cors|cors_all|ca|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|is_ws_upgrade|upgrade_ws|serve_file|url_decode|ud|path_segment|ps|respond_json|rj|respond_stream|query|path_only|content_length|cl|set_header|set_max_workers|set_read_timeout|set_keepalive_timeout|set_drain_timeout|set_max_body|set_max_headers|set_max_header_count|set_max_url)\\b"
+          "match": "\\b(http_get|hget|hg|http_post|hpost|hp|http_listen|listen|hl|https_listen|hl_s|serve|serve_tls|stream_write|stream_end|stream_write_json|cors|cors_all|ca|ssl_ctx|ssl_accept|ssl_read|ssl_write|ssl_close|ws_send|ws_recv|ws_close|ws_send_binary|ws_ping|is_ws_upgrade|upgrade_ws|serve_file|set_index_file|url_decode|ud|path_segment|ps|respond_json|rj|respond_stream|query|path_only|content_length|cl|set_header|set_max_workers|set_read_timeout|set_keepalive_timeout|set_drain_timeout|set_max_body|set_max_headers|set_max_header_count|set_max_url|set_compress_min_size|router|route|rget|rpost|rput|rdelete|handle|set_not_found|serve_static|param|tcp_connect|tcp_listen|tl|tcp_accept|ta|tcp_read|tr|tcp_write|tw|tcp_close|tcp_set_timeout|udp_bind|ub|udp_sendto|udp_recvfrom|udp_close)\\b"
         },
         {
           "name": "support.function.log.sans",

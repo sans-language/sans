@@ -177,9 +177,37 @@ spoll(fd timeout_ms)                    I I -> I (poll fd, 1=ready 0=timeout)
 ws_send(ws msg)                         I S -> I (send WS text frame)
 ws_recv(ws)                             I -> S (recv WS frame, "" on close)
 ws_close(ws)                            I -> I (send close frame, close socket)
+ws_send_binary(ws data len)             I I I -> I (send WS binary frame)
+ws_ping(ws)                             I -> I (send WS ping)
+stream_write_json(w data)               I S -> I (write JSON SSE chunk)
 serve_file(req dir)                     HttpRequest S -> I (serve static file from dir)
+set_index_file(name)                    S -> I (default index file, e.g. "index.html")
 url_decode(s)                           S -> S (URL-decode string)
 path_segment(path idx)                  S I -> S (extract URL path segment by index)
+// Router
+router()                                -> I (create router)
+route(r method pattern handler)         I S S Fn -> I (add route)
+rget(r pattern handler)                 I S Fn -> I (GET route)
+rpost(r pattern handler)                I S Fn -> I (POST route)
+rput(r pattern handler)                 I S Fn -> I (PUT route)
+rdelete(r pattern handler)              I S Fn -> I (DELETE route)
+handle(r req)                           I HttpRequest -> I (dispatch request)
+set_not_found(r handler)                I Fn -> I (404 handler)
+serve_static(r prefix base_dir)         I S S -> I (serve static files)
+param(req name)                         HttpRequest S -> S (get path param)
+// TCP
+tcp_connect(host port)                  S I -> I (connect, returns fd or -1)
+tl(port)      tcp_listen(port)          I -> I (listen, returns server fd)
+ta(fd)        tcp_accept(fd)            I -> I (accept, returns client fd)
+tr(fd size)   tcp_read(fd size)         I I -> S (read bytes)
+tw(fd data)   tcp_write(fd data)        I S -> I (write bytes)
+tc(fd)        tcp_close(fd)             I -> I (close)
+tcp_set_timeout(fd ms)                  I I -> I (set recv timeout)
+// UDP
+ub(port)      udp_bind(port)            I -> I (bind UDP socket)
+udp_sendto(sock host port data)         I S I S -> I (send datagram)
+udp_recvfrom(sock size)                 I I -> I (recv datagram, returns bytes read)
+udp_close(sock)                         I -> I (close)
 ld(msg)           log_debug(msg)        S -> I
 li(msg)           log_info(msg)         S -> I
 lw(msg)           log_warn(msg)         S -> I
@@ -210,6 +238,8 @@ r.or_else(|e:S| R<T> { ... })          R<T> -> R<T>  (recover from err)
 set_max_workers(256) set_read_timeout(30) set_keepalive_timeout(60)
 set_drain_timeout(5) set_max_body(1048576) set_max_headers(8192)
 set_max_header_count(100) set_max_url(8192)
+set_compress_min_size(1024)  // min body bytes to auto-gzip (default 1024)
+set_index_file("index.html") // default index file for directory requests
 // Auto: 503 at capacity, 413 body too large, 414 URL too long, 431 headers too large
 
 // Low-level threading
@@ -314,7 +344,7 @@ Int:       to_str/to_string
 JsonValue: get(k) get_index(i) get_string get_int get_bool len type_of set(k v) push(v) stringify
 HttpResponse: status body header(n) ok
 HttpServer:   accept
-HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length cookie(name) form(name) respond(status body) respond(status body ct) respond_json(status body) respond_stream(status) is_ws_upgrade upgrade_ws
+HttpRequest:  path method body header(name) set_header(name val) query(name) path_only content_length cookie(name) form(name) file(name) files(name) respond(status body) respond(status body ct) respond_json(status body) respond_stream(status) is_ws_upgrade upgrade_ws
               // respond auto-gzips when: body>=1024B + Accept-Encoding:gzip + compressible ct; opt-out: set_header("X-No-Compress" "1")
 Option<T>:    is_some is_none unwrap/! unwrap_or(d)  // v? = propagate none; v! = unwrap or exit
 Result<T>:    is_ok is_err unwrap/! unwrap_or(d) error code map(f) and_then(f) map_err(f) or_else(f)

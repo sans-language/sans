@@ -700,6 +700,7 @@ name = read_line("Enter name: ")</code></pre>
         <tr><td><code>set_max_headers(n)</code></td><td>8192 (8KB)</td><td>Max total header size bytes. 431 if exceeded.</td></tr>
         <tr><td><code>set_max_header_count(n)</code></td><td>100</td><td>Max number of headers. 431 if exceeded.</td></tr>
         <tr><td><code>set_max_url(n)</code></td><td>8192 (8KB)</td><td>Max URL length bytes. 414 if exceeded.</td></tr>
+        <tr><td><code>set_compress_min_size(bytes)</code></td><td>1024</td><td>Min response body size in bytes to trigger gzip compression.</td></tr>
       </tbody>
     </table>
     <pre><code><span class="fn">main</span>() <span class="ty">I</span> {
@@ -744,6 +745,87 @@ req.<span class="fn">respond</span>(<span class="num">200</span> large_body)</co
 <span class="fn">main</span>() <span class="ty">I</span> {
   <span class="fn">serve</span>(<span class="num">8080</span> <span class="fn">fptr</span>(<span class="str">"handle"</span>))
 }</code></pre>
+
+    <h4>WebSocket Extensions</h4>
+    <p><code>ws_send_binary(ws, data, len)</code> sends a binary WebSocket frame. <code>ws_ping(ws)</code> sends a ping frame. <code>stream_write_json(w, data)</code> writes a JSON-formatted SSE chunk to a streaming response.</p>
+
+    <h3>File Uploads</h3>
+    <p><code>req.file(name)</code> returns an uploaded file's content (multipart/form-data). <code>req.files(name)</code> returns all files with the given field name.</p>
+    <pre><code><span class="fn">handle</span>(req:<span class="ty">HR</span>) <span class="ty">I</span> {
+  data = req.<span class="fn">file</span>(<span class="str">"upload"</span>)
+  <span class="kw">if</span> <span class="fn">slen</span>(data) == <span class="num">0</span> { <span class="kw">return</span> req.<span class="fn">respond</span>(<span class="num">400</span> <span class="str">"no file"</span>) }
+  <span class="fn">fw</span>(<span class="str">"/tmp/upload.bin"</span> data)
+  req.<span class="fn">respond</span>(<span class="num">200</span> <span class="str">"saved"</span>)
+}</code></pre>
+
+    <h3>Static File Serving</h3>
+    <p><code>serve_file(req, dir)</code> serves a static file from <code>dir</code> matching the request path. Handles content-type detection for 24+ MIME types, 404 for missing files, and directory traversal protection.</p>
+    <p><code>set_index_file(name)</code> sets the default file for directory requests (default: <code>index.html</code>).</p>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>serve_file(req, dir)</code></td><td><code>(HttpRequest, String) -&gt; Int</code></td><td>Serve static file from directory</td></tr>
+        <tr><td><code>set_index_file(name)</code></td><td><code>(String) -&gt; Int</code></td><td>Set default index filename</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Router</h3>
+    <p>Pattern-based request routing with path parameters (<code>:name</code>) and wildcards (<code>*</code>).</p>
+    <table>
+      <thead><tr><th>Function</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>router()</code></td><td><code>() -&gt; Int</code></td><td>Create router</td></tr>
+        <tr><td><code>rget(r, pattern, handler)</code></td><td><code>(Int, String, Fn) -&gt; Int</code></td><td>Register GET route</td></tr>
+        <tr><td><code>rpost(r, pattern, handler)</code></td><td><code>(Int, String, Fn) -&gt; Int</code></td><td>Register POST route</td></tr>
+        <tr><td><code>rput(r, pattern, handler)</code></td><td><code>(Int, String, Fn) -&gt; Int</code></td><td>Register PUT route</td></tr>
+        <tr><td><code>rdelete(r, pattern, handler)</code></td><td><code>(Int, String, Fn) -&gt; Int</code></td><td>Register DELETE route</td></tr>
+        <tr><td><code>route(r, method, pattern, handler)</code></td><td><code>(Int, String, String, Fn) -&gt; Int</code></td><td>Register any-method route</td></tr>
+        <tr><td><code>handle(r, req)</code></td><td><code>(Int, HttpRequest) -&gt; Int</code></td><td>Dispatch request through router</td></tr>
+        <tr><td><code>set_not_found(r, handler)</code></td><td><code>(Int, Fn) -&gt; Int</code></td><td>Custom 404 handler</td></tr>
+        <tr><td><code>serve_static(r, prefix, dir)</code></td><td><code>(Int, String, String) -&gt; Int</code></td><td>Serve static files under prefix</td></tr>
+        <tr><td><code>param(req, name)</code></td><td><code>(HttpRequest, String) -&gt; String</code></td><td>Get path parameter</td></tr>
+      </tbody>
+    </table>
+    <pre><code><span class="kw">g</span> r = <span class="num">0</span>
+
+<span class="fn">users_get</span>(req:<span class="ty">HR</span>) <span class="ty">I</span> {
+  id = <span class="fn">param</span>(req <span class="str">"id"</span>)
+  req.<span class="fn">respond</span>(<span class="num">200</span> <span class="str">"{\"id\":{id}}"</span>)
+}
+
+<span class="fn">dispatch</span>(req:<span class="ty">HR</span>) <span class="ty">I</span> { <span class="fn">handle</span>(r req) }
+
+<span class="fn">main</span>() <span class="ty">I</span> {
+  r = <span class="fn">router</span>()
+  <span class="fn">rget</span>(r <span class="str">"/users/:id"</span> <span class="fn">fptr</span>(<span class="str">"users_get"</span>))
+  <span class="fn">serve_static</span>(r <span class="str">"/"</span> <span class="str">"./public"</span>)
+  <span class="fn">serve</span>(<span class="num">8080</span> <span class="fn">fptr</span>(<span class="str">"dispatch"</span>))
+}</code></pre>
+
+    <h3>TCP/UDP Networking</h3>
+    <h4>TCP</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>tcp_connect(host, port)</code></td><td>&mdash;</td><td><code>(String, Int) -&gt; Int</code></td><td>Connect to host:port, returns fd or -1</td></tr>
+        <tr><td><code>tcp_listen(port)</code></td><td><code>tl</code></td><td><code>(Int) -&gt; Int</code></td><td>Listen on port, returns server fd</td></tr>
+        <tr><td><code>tcp_accept(fd)</code></td><td><code>ta</code></td><td><code>(Int) -&gt; Int</code></td><td>Accept connection, returns client fd</td></tr>
+        <tr><td><code>tcp_read(fd, size)</code></td><td><code>tr</code></td><td><code>(Int, Int) -&gt; String</code></td><td>Read up to size bytes</td></tr>
+        <tr><td><code>tcp_write(fd, data)</code></td><td><code>tw</code></td><td><code>(Int, String) -&gt; Int</code></td><td>Write data</td></tr>
+        <tr><td><code>tcp_close(fd)</code></td><td><code>tc</code></td><td><code>(Int) -&gt; Int</code></td><td>Close fd</td></tr>
+        <tr><td><code>tcp_set_timeout(fd, ms)</code></td><td>&mdash;</td><td><code>(Int, Int) -&gt; Int</code></td><td>Set recv timeout (ms)</td></tr>
+      </tbody>
+    </table>
+    <h4>UDP</h4>
+    <table>
+      <thead><tr><th>Function</th><th>Alias</th><th>Signature</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>udp_bind(port)</code></td><td><code>ub</code></td><td><code>(Int) -&gt; Int</code></td><td>Bind UDP socket to port</td></tr>
+        <tr><td><code>udp_sendto(sock, host, port, data)</code></td><td>&mdash;</td><td><code>(Int, String, Int, String) -&gt; Int</code></td><td>Send datagram</td></tr>
+        <tr><td><code>udp_recvfrom(sock, size)</code></td><td>&mdash;</td><td><code>(Int, Int) -&gt; Int</code></td><td>Receive datagram</td></tr>
+        <tr><td><code>udp_close(sock)</code></td><td>&mdash;</td><td><code>(Int) -&gt; Int</code></td><td>Close socket</td></tr>
+      </tbody>
+    </table>
 
     <h3>CORS</h3>
     <table>
@@ -1143,6 +1225,8 @@ output = <span class="fn">sh</span>(<span class="str">"uname -s"</span>)</code><
         <tr><td>HttpRequest</td><td><code>content_length</code></td><td><code>() -&gt; Int</code></td><td>Get Content-Length as int</td></tr>
         <tr><td>HttpRequest</td><td><code>cookie(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get cookie value from Cookie header</td></tr>
         <tr><td>HttpRequest</td><td><code>form(name)</code></td><td><code>(String) -&gt; String</code></td><td>Parse form field from POST body (URL-encoded or multipart)</td></tr>
+        <tr><td>HttpRequest</td><td><code>file(name)</code></td><td><code>(String) -&gt; String</code></td><td>Get uploaded file contents (multipart/form-data)</td></tr>
+        <tr><td>HttpRequest</td><td><code>files(name)</code></td><td><code>(String) -&gt; Array&lt;String&gt;</code></td><td>Get all uploaded files for field name</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>Defaults to <code>text/html</code> content-type</td></tr>
         <tr><td>HttpRequest</td><td><code>respond(status, body, content_type)</code></td><td><code>(Int, String, String) -&gt; Int</code></td><td>Explicit content-type</td></tr>
         <tr><td>HttpRequest</td><td><code>respond_json(status, body)</code></td><td><code>(Int, String) -&gt; Int</code></td><td>JSON response (sets Content-Type: application/json)</td></tr>
@@ -1259,7 +1343,7 @@ if rv != 0 {
     <h2 id="internals">Internals</h2>
 
     <h3>Runtime Modules</h3>
-    <p>The standard library is implemented across 13+ modules in <code>runtime/</code>: <code>server.sans</code> (HTTP server, WebSocket), <code>json.sans</code> (JSON), <code>string_ext.sans</code>, <code>array_ext.sans</code>, <code>map.sans</code>, <code>ssl.sans</code>, <code>http.sans</code> (HTTP client), <code>curl.sans</code>, <code>arena.sans</code>, <code>result.sans</code>, <code>functional.sans</code>, <code>rc.sans</code> (scope GC), <code>log.sans</code>, <code>sock.sans</code>.</p>
+    <p>The standard library is implemented across 28 modules in <code>runtime/</code>: <code>arena.sans</code>, <code>array_ext.sans</code>, <code>bitwise.sans</code>, <code>curl.sans</code>, <code>encoding.sans</code>, <code>fs.sans</code>, <code>functional.sans</code>, <code>http.sans</code> (HTTP client), <code>io.sans</code>, <code>iter.sans</code>, <code>json.sans</code> (JSON), <code>log.sans</code>, <code>map.sans</code>, <code>math.sans</code>, <code>net.sans</code>, <code>option.sans</code>, <code>path.sans</code>, <code>process.sans</code>, <code>rc.sans</code> (scope GC), <code>result.sans</code>, <code>router.sans</code>, <code>server.sans</code> (HTTP server, WebSocket), <code>sock.sans</code>, <code>ssl.sans</code>, <code>static_file.sans</code>, <code>string_ext.sans</code>, <code>unicode.sans</code>, <code>websocket.sans</code>.</p>
 
     <h3>Compiler Modules</h3>
     <p>The compiler is 7 modules in <code>compiler/</code> (~11,600 LOC): lexer, parser, typeck, constants, IR, codegen, main. Compiles to LLVM IR via <code>llc</code>, links with <code>clang</code>.</p>

@@ -1,0 +1,118 @@
+// ------ TCP/UDP Networking Primitives -------------------------------------------------------
+// Low-level networking beyond the HTTP server.
+
+// Internal bind helper (duplicated to avoid cross-module deps)
+sans_net_bind(fd:I port:I) I {
+  addr = alloc(16)
+  store8(addr, 16)
+  store8(addr + 1, 2)
+  store16(addr + 2, bswap16(port))
+  store32(addr + 4, 0)
+  store64(addr + 8, 0)
+  opt = alloc(4)
+  store32(opt, 1)
+  rsetsockopt(fd, 65535, 4, opt, 4)
+  r = rbind(fd, addr, 16)
+  dealloc(opt)
+  dealloc(addr)
+  r
+}
+
+// ------ TCP Functions -----------------------------------------------------------------------
+
+// Connect to a TCP server at ip_string:port. Returns fd or -1.
+// ip must be a dotted-quad string like "127.0.0.1"
+sans_tcp_connect(ip:I port:I) I {
+  fd = sock(2, 1, 0)
+  if fd < 0 { return -1 }
+  addr = alloc(16)
+  store8(addr, 16)
+  store8(addr + 1, 2)
+  store16(addr + 2, bswap16(port))
+  ip_int = inet_addr(ip)
+  if ip_int < 0 { sclose(fd); dealloc(addr); return -1 }
+  store32(addr + 4, ip_int)
+  store64(addr + 8, 0)
+  r = sconnect(fd, addr, 16)
+  dealloc(addr)
+  if r < 0 { sclose(fd); -1 } else { fd }
+}
+
+// Listen on a TCP port. Returns server fd or -1.
+sans_tcp_listen(port:I) I {
+  fd = sock(2, 1, 0)
+  if fd < 0 { return -1 }
+  r = sans_net_bind(fd, port)
+  if r < 0 { sclose(fd); return -1 }
+  lr = slisten(fd, 128)
+  if lr < 0 { sclose(fd); -1 } else { fd }
+}
+
+// Accept a connection on a listening TCP socket. Returns client fd or -1.
+sans_tcp_accept(sfd:I) I {
+  saccept(sfd)
+}
+
+// Read up to len bytes from a TCP fd into buf. Returns bytes read or -1.
+sans_tcp_read(fd:I buf:I len:I) I {
+  srecv(fd, buf, len)
+}
+
+// Write len bytes from data to a TCP fd. Returns bytes sent or -1.
+sans_tcp_write(fd:I data:I len:I) I {
+  ssend(fd, data, len)
+}
+
+// Close a TCP fd.
+sans_tcp_close(fd:I) I {
+  sclose(fd)
+}
+
+// Set recv timeout on a TCP fd (milliseconds).
+sans_tcp_set_timeout(fd:I ms:I) I {
+  tv = alloc(16)
+  secs = ms / 1000
+  usecs = (ms % 1000) * 1000
+  store64(tv, secs)
+  store64(tv + 8, usecs)
+  // SO_RCVTIMEO = 20 on Linux, level SOL_SOCKET = 1
+  rsetsockopt(fd, 1, 20, tv, 16)
+  dealloc(tv)
+  0
+}
+
+// ------ UDP Functions -----------------------------------------------------------------------
+
+// Create and bind a UDP socket to a port. Returns fd or -1.
+sans_udp_bind(port:I) I {
+  fd = sock(2, 2, 0)
+  if fd < 0 { return -1 }
+  r = sans_net_bind(fd, port)
+  if r < 0 { sclose(fd); -1 } else { fd }
+}
+
+// Send data via UDP to ip:port. Returns bytes sent or -1.
+// ip must be a dotted-quad string.
+sans_udp_sendto(fd:I data:I len:I ip:I port:I) I {
+  addr = alloc(16)
+  store8(addr, 16)
+  store8(addr + 1, 2)
+  store16(addr + 2, bswap16(port))
+  ip_int = inet_addr(ip)
+  if ip_int < 0 { dealloc(addr); return -1 }
+  store32(addr + 4, ip_int)
+  store64(addr + 8, 0)
+  r = ssendto(fd, data, len, 0, addr, 16)
+  dealloc(addr)
+  r
+}
+
+// Receive data via UDP. Returns bytes read or -1.
+sans_udp_recvfrom(fd:I buf:I len:I) I {
+  srecvfrom(fd, buf, len, 0, 0, 0)
+}
+
+// Close a UDP socket.
+sans_udp_close(fd:I) I {
+  sclose(fd)
+}

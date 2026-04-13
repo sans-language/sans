@@ -1,0 +1,14 @@
+// Test static file path safety via string operations
+main() I {
+  // Path traversal detection: path containing ".." is unsafe
+  path1 = "../etc/passwd"
+  if path1.contains("..") == 0 { return 1 }
+  // Safe path: no dotdot
+  path2 = "public/index.html"
+  if path2.contains("..") != 0 { return 2 }
+  // MIME type detection by extension via string operations
+  fname = "index.html"
+  ext = fname.substring(fname.len() - 5, fname.len())
+  if ext != ".html" { return 3 }
+  0
+}

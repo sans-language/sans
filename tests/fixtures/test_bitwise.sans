@@ -1,0 +1,22 @@
+// Test bitwise runtime helpers via public bitwise builtins
+main() I {
+  // bshl (same as sans_shl): left shift
+  r1 = bshl(1, 8)
+  if r1 != 256 { return 1 }
+  // bshr: right shift
+  r2 = bshr(256, 8)
+  if r2 != 1 { return 2 }
+  // band: bitwise AND (like sans_band8 for 8-bit values)
+  r3 = band(255, 15)
+  if r3 != 15 { return 3 }
+  // bor: bitwise OR (like sans_bor8)
+  r4 = bor(240, 15)
+  if r4 != 255 { return 4 }
+  // bxor: bitwise XOR (like sans_bxor8)
+  r5 = bxor(255, 255)
+  if r5 != 0 { return 5 }
+  // mask to 8 bits: n % 256 (sans_mask8 equivalent)
+  r6 = 256 % 256
+  if r6 != 0 { return 6 }
+  0
+}

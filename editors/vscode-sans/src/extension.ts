@@ -220,6 +220,13 @@ const HOVER_DATA: Record<string, string> = {
     "randb": "```sans\nrandb(n) -> S\n```\nN crypto random bytes as hex.",
     "random_bytes": "```sans\nrandb(n) -> S\n```\nN crypto random bytes as hex.",
 
+    // Bitwise
+    "band": "band(a:I b:I) I — Bitwise AND (also: band8/band32 in runtime)",
+    "bor": "bor(a:I b:I) I — Bitwise OR (also: bor8/bor32 in runtime)",
+    "bxor": "bxor(a:I b:I) I — Bitwise XOR (also: bxor8/bxor32 in runtime)",
+    "bshl": "bshl(a:I n:I) I — Bitwise shift left",
+    "bshr": "bshr(a:I n:I) I — Bitwise shift right",
+
     // Assertions
     "assert": "```sans\nassert(cond) -> I\n```\nFail if false.",
     "assert_eq": "```sans\nassert_eq(a b) -> I\n```\nFail if a != b.",
@@ -279,6 +286,50 @@ const HOVER_DATA: Record<string, string> = {
     "regex_find": "```sans\nrfind(pat txt) -> S\n```\nFirst regex match.",
     "rrepl": "```sans\nrrepl(pat txt repl) -> S\n```\nReplace first regex match.",
     "regex_replace": "```sans\nrrepl(pat txt repl) -> S\n```\nReplace first regex match.",
+
+    // TCP
+    "tcp_connect": "```sans\ntcp_connect(host port) -> I\n```\nConnect to TCP host:port. Returns fd or -1.",
+    "tcp_listen": "```sans\ntcp_listen(port) -> I\n```\nListen on TCP port. Returns server fd or -1.",
+    "tl": "```sans\ntcp_listen(port) -> I\n```\nListen on TCP port. Returns server fd or -1.",
+    "tcp_accept": "```sans\ntcp_accept(fd) -> I\n```\nAccept TCP connection. Returns client fd.",
+    "ta": "```sans\ntcp_accept(fd) -> I\n```\nAccept TCP connection. Returns client fd.",
+    "tcp_read": "```sans\ntcp_read(fd size) -> S\n```\nRead up to size bytes from TCP fd.",
+    "tr": "```sans\ntcp_read(fd size) -> S\n```\nRead up to size bytes from TCP fd.",
+    "tcp_write": "```sans\ntcp_write(fd data) -> I\n```\nWrite data to TCP fd.",
+    "tw": "```sans\ntcp_write(fd data) -> I\n```\nWrite data to TCP fd.",
+    "tcp_close": "```sans\ntcp_close(fd) -> I\n```\nClose TCP connection.",
+    "tc": "```sans\ntcp_close(fd) -> I\n```\nClose TCP connection.",
+    "tcp_set_timeout": "```sans\ntcp_set_timeout(fd ms) -> I\n```\nSet recv timeout in milliseconds.",
+
+    // UDP
+    "udp_bind": "```sans\nudp_bind(port) -> I\n```\nCreate and bind UDP socket to port.",
+    "ub": "```sans\nudp_bind(port) -> I\n```\nCreate and bind UDP socket to port.",
+    "udp_sendto": "```sans\nudp_sendto(sock host port data) -> I\n```\nSend UDP datagram to host:port.",
+    "udp_recvfrom": "```sans\nudp_recvfrom(sock size) -> I\n```\nReceive UDP datagram, returns bytes read.",
+    "udp_close": "```sans\nudp_close(sock) -> I\n```\nClose UDP socket.",
+
+    // Router
+    "router": "```sans\nrouter() -> I\n```\nCreate a new HTTP router.",
+    "route": "```sans\nroute(r method pattern handler) -> I\n```\nRegister route for any HTTP method.",
+    "rget": "```sans\nrget(r pattern handler) -> I\n```\nRegister GET route. Pattern supports :param and *.",
+    "rpost": "```sans\nrpost(r pattern handler) -> I\n```\nRegister POST route.",
+    "rput": "```sans\nrput(r pattern handler) -> I\n```\nRegister PUT route.",
+    "rdelete": "```sans\nrdelete(r pattern handler) -> I\n```\nRegister DELETE route.",
+    "handle": "```sans\nhandle(r req) -> I\n```\nDispatch request through router.",
+    "set_not_found": "```sans\nset_not_found(r handler) -> I\n```\nSet custom 404 handler.",
+    "serve_static": "```sans\nserve_static(r prefix dir) -> I\n```\nServe static files from dir under URL prefix.",
+    "param": "```sans\nparam(req name) -> S\n```\nGet path parameter captured by router pattern.",
+
+    // Server config extras
+    "set_compress_min_size": "```sans\nset_compress_min_size(bytes) -> I\n```\nMin body size for auto-gzip (default 1024).",
+    "set_index_file": "```sans\nset_index_file(name) -> I\n```\nDefault index file for directory requests (default: index.html).",
+
+    // WebSocket extras
+    "ws_send_binary": "```sans\nws_send_binary(ws data len) -> I\n```\nSend binary WebSocket frame.",
+    "ws_ping": "```sans\nws_ping(ws) -> I\n```\nSend WebSocket ping frame.",
+
+    // Streaming extras
+    "stream_write_json": "```sans\nstream_write_json(w data) -> I\n```\nWrite JSON SSE chunk to streaming response.",
 };
 
 const SHELL_METACHARACTERS = /[|;&$`()"'<>!#*?\[\]{}~\n\r]/;

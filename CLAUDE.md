@@ -7,7 +7,7 @@
 
 ## Architecture
 - Self-hosted compiler in `compiler/`: lexer.sans, parser.sans, typeck.sans, constants.sans, ir.sans, codegen.sans, main.sans (~11,600 LOC)
-- 13 Sans runtime modules under `runtime/`: arena.sans, array_ext.sans, curl.sans, functional.sans, http.sans, json.sans, log.sans, map.sans, result.sans, server.sans, sock.sans, ssl.sans, string_ext.sans
+- 28 Sans runtime modules under `runtime/`: arena.sans, array_ext.sans, bitwise.sans, curl.sans, encoding.sans, fs.sans, functional.sans, http.sans, io.sans, iter.sans, json.sans, log.sans, map.sans, math.sans, net.sans, option.sans, path.sans, process.sans, rc.sans, result.sans, router.sans, server.sans, sock.sans, ssl.sans, static_file.sans, string_ext.sans, unicode.sans, websocket.sans
 - Tests: E2E tests via `tests/run_tests.sh`, fixtures in `tests/fixtures/`
 - The compiler is fully self-hosted — it compiles itself. No Rust code.
 

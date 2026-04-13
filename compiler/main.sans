@@ -603,6 +603,9 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("array_ext")
   runtime_modules.push("string_ext")
   runtime_modules.push("http")
+  runtime_modules.push("bitwise")
+  runtime_modules.push("websocket")
+  runtime_modules.push("static_file")
   runtime_modules.push("server")
   runtime_modules.push("json")
   runtime_modules.push("sock")
@@ -620,7 +623,10 @@ do_link(ll_path:S output_path:S source_path:S) I {
   runtime_modules.push("io")
   runtime_modules.push("unicode")
   runtime_modules.push("iter")
+  runtime_modules.push("net")
+  runtime_modules.push("router")
 
+  tc_runtime_mode = 1
   runtime_o_paths = array<I>()
   ri := 0
   while ri < runtime_modules.len() {
@@ -647,6 +653,7 @@ do_link(ll_path:S output_path:S source_path:S) I {
     ri = ri + 1
     0
   }
+  tc_runtime_mode = 0
 
   // 13. Link
   cc_dbg = if g_build_debug == 1 { "-g " } else { "" }

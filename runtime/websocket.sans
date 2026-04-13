@@ -1,0 +1,481 @@
+// ------ WebSocket Support ---------------------------------------------------------------------------------------------------------------------------------
+// WebSocket struct layout (32 bytes):
+//   offset  0: fd (I)
+//   offset  8: ssl (I) --- 0 for plain WS
+//   offset 16: open (I) --- 1 if open
+//   offset 24: req (I) --- back-pointer to HttpRequest
+
+// ------ Helper: send/recv bytes ------------------------------------------------------------------------------------------------------------------
+// Note: SSL WS (wss://) would need codegen-level branching like HTTP respond.
+// For now, WS uses plain socket ops (works for ws://).
+sans_ws_send_bytes(fd:I ssl:I data:I len:I) I {
+  if ssl != 0 { ssl_write(ssl, data, len) } else { sans_send_all(fd, data, len) }
+}
+
+sans_ws_recv_bytes(fd:I ssl:I buf:I len:I) I {
+  if ssl != 0 { ssl_read(ssl, buf, len) } else { srecv(fd, buf, len) }
+}
+
+// ------ Read exact n bytes ------------------------------------------------------------------------------------------------------------------------------
+sans_ws_read_exact(fd:I ssl:I buf:I n:I) I {
+  total := 0
+  while total < n {
+    r = sans_ws_recv_bytes(fd, ssl, buf + total, n - total)
+    if r <= 0 {
+      return total
+    }
+    total += r
+    0
+  }
+  total
+}
+
+// ------ SHA-1 (pure Sans, RFC 3174) ---------------------------------------------------------------------------------------------------
+sans_sha1_rotl(x:I n:I) I {
+  sans_mask32(sans_bor32(sans_shl(sans_mask32(x), n), sans_shr(sans_mask32(x), 32 - n)))
+}
+
+sans_sha1(input:I input_len:I) I {
+  // Pad message
+  bit_len = input_len * 8
+  // pad to 56 mod 64
+  pad_len := 64 - ((input_len + 9) % 64)
+  if pad_len == 64 { pad_len = 0 }
+  total = input_len + 1 + pad_len + 8
+  msg = alloc(total)
+  if input_len > 0 { mcpy(msg, input, input_len) } else { 0 }
+  store8(msg + input_len, 128)
+  // Zero padding
+  zi := input_len + 1
+  while zi < total - 8 {
+    store8(msg + zi, 0)
+    zi += 1
+  }
+  // Big-endian 64-bit bit length
+  store8(msg + total - 8, sans_mask8(sans_shr(bit_len, 56)))
+  store8(msg + total - 7, sans_mask8(sans_shr(bit_len, 48)))
+  store8(msg + total - 6, sans_mask8(sans_shr(bit_len, 40)))
+  store8(msg + total - 5, sans_mask8(sans_shr(bit_len, 32)))
+  store8(msg + total - 4, sans_mask8(sans_shr(bit_len, 24)))
+  store8(msg + total - 3, sans_mask8(sans_shr(bit_len, 16)))
+  store8(msg + total - 2, sans_mask8(sans_shr(bit_len, 8)))
+  store8(msg + total - 1, sans_mask8(bit_len))
+
+  h0 := 1732584193
+  h1 := 4023233417
+  h2 := 2562383102
+  h3 := 271733878
+  h4 := 3285377520
+
+  nblocks = total / 64
+  bi := 0
+  w = alloc(80 * 8)
+  while bi < nblocks {
+    off = bi * 64
+    // Load 16 big-endian 32-bit words
+    wi := 0
+    while wi < 16 {
+      b0 = sans_mask8(load8(msg + off + wi * 4))
+      b1 = sans_mask8(load8(msg + off + wi * 4 + 1))
+      b2 = sans_mask8(load8(msg + off + wi * 4 + 2))
+      b3 = sans_mask8(load8(msg + off + wi * 4 + 3))
+      store64(w + wi * 8, sans_shl(b0, 24) + sans_shl(b1, 16) + sans_shl(b2, 8) + b3)
+      wi += 1
+    }
+    // Extend to 80 words
+    wi = 16
+    while wi < 80 {
+      xv = sans_bxor32(sans_bxor32(load64(w + (wi - 3) * 8), load64(w + (wi - 8) * 8)), sans_bxor32(load64(w + (wi - 14) * 8), load64(w + (wi - 16) * 8)))
+      store64(w + wi * 8, sans_sha1_rotl(xv, 1))
+      wi += 1
+    }
+
+    a := h0
+    b := h1
+    c := h2
+    d := h3
+    e := h4
+
+    ri := 0
+    while ri < 80 {
+      wval = load64(w + ri * 8)
+      f := 0
+      k := 0
+      if ri < 20 {
+        f = sans_bor32(sans_band32(b, c), sans_band32(sans_bnot32(b), d))
+        k = 1518500249
+      }
+      if ri >= 20 && ri < 40 {
+        f = sans_bxor32(sans_bxor32(b, c), d)
+        k = 1859775393
+      }
+      if ri >= 40 && ri < 60 {
+        f = sans_bor32(sans_bor32(sans_band32(b, c), sans_band32(b, d)), sans_band32(c, d))
+        k = 2400959708
+      }
+      if ri >= 60 {
+        f = sans_bxor32(sans_bxor32(b, c), d)
+        k = 3395469782
+      }
+      temp = sans_mask32(sans_sha1_rotl(a, 5) + f + e + k + wval)
+      e = d
+      d = c
+      c = sans_sha1_rotl(b, 30)
+      b = a
+      a = temp
+      ri += 1
+    }
+
+    h0 = sans_mask32(h0 + a)
+    h1 = sans_mask32(h1 + b)
+    h2 = sans_mask32(h2 + c)
+    h3 = sans_mask32(h3 + d)
+    h4 = sans_mask32(h4 + e)
+    bi += 1
+  }
+
+  // Output 20 bytes big-endian
+  out = alloc(20)
+  sans_sha1_write32(out, 0, h0)
+  sans_sha1_write32(out, 4, h1)
+  sans_sha1_write32(out, 8, h2)
+  sans_sha1_write32(out, 12, h3)
+  sans_sha1_write32(out, 16, h4)
+  out
+}
+
+sans_sha1_write32(buf:I off:I val:I) I {
+  store8(buf + off, sans_mask8(sans_shr(val, 24)))
+  store8(buf + off + 1, sans_mask8(sans_shr(val, 16)))
+  store8(buf + off + 2, sans_mask8(sans_shr(val, 8)))
+  store8(buf + off + 3, sans_mask8(val))
+}
+
+// ------ Base64 Encode ---------------------------------------------------------------------------------------------------------------------------------------------
+sans_ws_base64_encode(data:I len:I) I {
+  tbl = alloc(64)
+  i := 0
+  while i < 26 { store8(tbl + i, 65 + i) i += 1 }
+  while i < 52 { store8(tbl + i, 97 + i - 26) i += 1 }
+  while i < 62 { store8(tbl + i, 48 + i - 52) i += 1 }
+  store8(tbl + 62, 43)
+  store8(tbl + 63, 47)
+
+  out_len = ((len + 2) / 3) * 4
+  out = alloc(out_len + 1)
+  si := 0
+  di := 0
+  while si < len {
+    b0 = sans_mask8(load8(data + si))
+    b1 = if si + 1 < len { sans_mask8(load8(data + si + 1)) } else { 0 }
+    b2 = if si + 2 < len { sans_mask8(load8(data + si + 2)) } else { 0 }
+    triple = sans_shl(b0, 16) + sans_shl(b1, 8) + b2
+    store8(out + di, load8(tbl + (sans_shr(triple, 18) % 64)))
+    store8(out + di + 1, load8(tbl + (sans_shr(triple, 12) % 64)))
+    store8(out + di + 2, if si + 1 < len { load8(tbl + (sans_shr(triple, 6) % 64)) } else { 61 })
+    store8(out + di + 3, if si + 2 < len { load8(tbl + (triple % 64)) } else { 61 })
+    si += 3
+    di += 4
+  }
+  store8(out + out_len, 0)
+  out
+}
+
+// ------ WebSocket: is_ws_upgrade ------------------------------------------------------------------------------------------------------------
+sans_ws_is_upgrade(req:I) I {
+  upgrade_hdr = sans_http_request_header(req, sans_ws_lit_upgrade())
+  ulen = slen(upgrade_hdr)
+  if ulen == 0 { 0 } else { sans_ws_check_upgrade_val(upgrade_hdr) }
+}
+
+sans_ws_check_upgrade_val(val:I) I {
+  lv = sans_lowercase_string(val)
+  if slen(lv) == 9 && mcmp(lv, sans_ws_lit_websocket(), 9) == 0 { 1 } else { 0 }
+}
+
+// String literals for WebSocket
+sans_ws_lit_upgrade() I {
+  s = alloc(8)
+  store8(s, 117) store8(s + 1, 112) store8(s + 2, 103)
+  store8(s + 3, 114) store8(s + 4, 97) store8(s + 5, 100)
+  store8(s + 6, 101) store8(s + 7, 0)
+  s
+}
+
+sans_ws_lit_websocket() I {
+  s = alloc(10)
+  store8(s, 119) store8(s + 1, 101) store8(s + 2, 98)
+  store8(s + 3, 115) store8(s + 4, 111) store8(s + 5, 99)
+  store8(s + 6, 107) store8(s + 7, 101) store8(s + 8, 116)
+  store8(s + 9, 0)
+  s
+}
+
+sans_ws_lit_sec_websocket_key() I {
+  s = alloc(22)
+  store8(s, 115) store8(s + 1, 101) store8(s + 2, 99)
+  store8(s + 3, 45) store8(s + 4, 119) store8(s + 5, 101)
+  store8(s + 6, 98) store8(s + 7, 115) store8(s + 8, 111)
+  store8(s + 9, 99) store8(s + 10, 107) store8(s + 11, 101)
+  store8(s + 12, 116) store8(s + 13, 45) store8(s + 14, 107)
+  store8(s + 15, 101) store8(s + 16, 121) store8(s + 17, 0)
+  s
+}
+
+sans_ws_magic_guid() I {
+  s = alloc(37)
+  store8(s, 50) store8(s + 1, 53) store8(s + 2, 56)
+  store8(s + 3, 69) store8(s + 4, 65) store8(s + 5, 70)
+  store8(s + 6, 65) store8(s + 7, 53) store8(s + 8, 45)
+  store8(s + 9, 69) store8(s + 10, 57) store8(s + 11, 49)
+  store8(s + 12, 52) store8(s + 13, 45) store8(s + 14, 52)
+  store8(s + 15, 55) store8(s + 16, 68) store8(s + 17, 65)
+  store8(s + 18, 45) store8(s + 19, 57) store8(s + 20, 53)
+  store8(s + 21, 67) store8(s + 22, 65) store8(s + 23, 45)
+  store8(s + 24, 67) store8(s + 25, 53) store8(s + 26, 65)
+  store8(s + 27, 66) store8(s + 28, 48) store8(s + 29, 68)
+  store8(s + 30, 67) store8(s + 31, 56) store8(s + 32, 53)
+  store8(s + 33, 66) store8(s + 34, 49) store8(s + 35, 49)
+  store8(s + 36, 0)
+  s
+}
+
+// ------ WebSocket: upgrade ------------------------------------------------------------------------------------------------------------------------------
+sans_ws_upgrade(req:I) I {
+  fd = load64(req)
+  ssl = load64(req + 48)
+  key = sans_http_request_header(req, sans_ws_lit_sec_websocket_key())
+  key_len = slen(key)
+  guid = sans_ws_magic_guid()
+  guid_len = slen(guid)
+
+  concat_len = key_len + guid_len
+  concat = alloc(concat_len + 1)
+  if key_len > 0 { mcpy(concat, key, key_len) } else { 0 }
+  if guid_len > 0 { mcpy(concat + key_len, guid, guid_len) } else { 0 }
+  store8(concat + concat_len, 0)
+
+  hash = sans_sha1(concat, concat_len)
+  accept = sans_ws_base64_encode(hash, 20)
+  accept_len = slen(accept)
+
+  prefix = sans_ws_101_prefix()
+  prefix_len = slen(prefix)
+  resp_len = prefix_len + accept_len + 4
+  resp = alloc(resp_len + 1)
+  mcpy(resp, prefix, prefix_len)
+  if accept_len > 0 { mcpy(resp + prefix_len, accept, accept_len) } else { 0 }
+  pos = prefix_len + accept_len
+  store8(resp + pos, 13) store8(resp + pos + 1, 10)
+  store8(resp + pos + 2, 13) store8(resp + pos + 3, 10)
+
+  sans_ws_send_bytes(fd, ssl, resp, resp_len)
+
+  ws = alloc(32)
+  store64(ws, fd)
+  store64(ws + 8, ssl)
+  store64(ws + 16, 1)
+  store64(ws + 24, req)
+  ws
+}
+
+sans_ws_101_prefix() I {
+  s = alloc(98)
+  store8(s, 72) store8(s + 1, 84) store8(s + 2, 84) store8(s + 3, 80)
+  store8(s + 4, 47) store8(s + 5, 49) store8(s + 6, 46) store8(s + 7, 49)
+  store8(s + 8, 32) store8(s + 9, 49) store8(s + 10, 48) store8(s + 11, 49)
+  store8(s + 12, 32)
+  store8(s + 13, 83) store8(s + 14, 119) store8(s + 15, 105) store8(s + 16, 116)
+  store8(s + 17, 99) store8(s + 18, 104) store8(s + 19, 105) store8(s + 20, 110)
+  store8(s + 21, 103) store8(s + 22, 32) store8(s + 23, 80) store8(s + 24, 114)
+  store8(s + 25, 111) store8(s + 26, 116) store8(s + 27, 111) store8(s + 28, 99)
+  store8(s + 29, 111) store8(s + 30, 108) store8(s + 31, 115)
+  store8(s + 32, 13) store8(s + 33, 10)
+  store8(s + 34, 85) store8(s + 35, 112) store8(s + 36, 103) store8(s + 37, 114)
+  store8(s + 38, 97) store8(s + 39, 100) store8(s + 40, 101) store8(s + 41, 58)
+  store8(s + 42, 32) store8(s + 43, 119) store8(s + 44, 101) store8(s + 45, 98)
+  store8(s + 46, 115) store8(s + 47, 111) store8(s + 48, 99) store8(s + 49, 107)
+  store8(s + 50, 101) store8(s + 51, 116)
+  store8(s + 52, 13) store8(s + 53, 10)
+  store8(s + 54, 67) store8(s + 55, 111) store8(s + 56, 110) store8(s + 57, 110)
+  store8(s + 58, 101) store8(s + 59, 99) store8(s + 60, 116) store8(s + 61, 105)
+  store8(s + 62, 111) store8(s + 63, 110) store8(s + 64, 58) store8(s + 65, 32)
+  store8(s + 66, 85) store8(s + 67, 112) store8(s + 68, 103) store8(s + 69, 114)
+  store8(s + 70, 97) store8(s + 71, 100) store8(s + 72, 101)
+  store8(s + 73, 13) store8(s + 74, 10)
+  store8(s + 75, 83) store8(s + 76, 101) store8(s + 77, 99) store8(s + 78, 45)
+  store8(s + 79, 87) store8(s + 80, 101) store8(s + 81, 98) store8(s + 82, 83)
+  store8(s + 83, 111) store8(s + 84, 99) store8(s + 85, 107) store8(s + 86, 101)
+  store8(s + 87, 116) store8(s + 88, 45) store8(s + 89, 65) store8(s + 90, 99)
+  store8(s + 91, 99) store8(s + 92, 101) store8(s + 93, 112) store8(s + 94, 116)
+  store8(s + 95, 58) store8(s + 96, 32)
+  store8(s + 97, 0)
+  s
+}
+
+// ------ WebSocket: send text frame ------------------------------------------------------------------------------------------------------
+sans_ws_send(ws:I msg:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  msg_len = slen(msg)
+  hdr_len = if msg_len <= 125 { 2 } else { if msg_len <= 65535 { 4 } else { 10 } }
+  frame_len = hdr_len + msg_len
+  frame = alloc(frame_len)
+  store8(frame, 129)
+  if msg_len <= 125 {
+    store8(frame + 1, msg_len)
+    0
+  } else { if msg_len <= 65535 {
+    store8(frame + 1, 126)
+    store8(frame + 2, sans_mask8(msg_len / 256))
+    store8(frame + 3, sans_mask8(msg_len))
+    0
+  } else {
+    store8(frame + 1, 127)
+    store8(frame + 2, sans_mask8(sans_shr(msg_len, 56)))
+    store8(frame + 3, sans_mask8(sans_shr(msg_len, 48)))
+    store8(frame + 4, sans_mask8(sans_shr(msg_len, 40)))
+    store8(frame + 5, sans_mask8(sans_shr(msg_len, 32)))
+    store8(frame + 6, sans_mask8(sans_shr(msg_len, 24)))
+    store8(frame + 7, sans_mask8(sans_shr(msg_len, 16)))
+    store8(frame + 8, sans_mask8(sans_shr(msg_len, 8)))
+    store8(frame + 9, sans_mask8(msg_len))
+    0
+  } }
+  if msg_len > 0 { mcpy(frame + hdr_len, msg, msg_len) } else { 0 }
+  sans_ws_send_bytes(fd, ssl, frame, frame_len)
+}
+
+// ------ WebSocket: send raw frame (for pong/close) ---------------------------------------------------
+sans_ws_send_frame(fd:I ssl:I opcode:I payload:I plen:I) I {
+  hdr_len = if plen <= 125 { 2 } else { if plen <= 65535 { 4 } else { 10 } }
+  frame_len = hdr_len + plen
+  frame = alloc(frame_len)
+  store8(frame, 128 + opcode)
+  if plen <= 125 {
+    store8(frame + 1, plen)
+    0
+  } else { if plen <= 65535 {
+    store8(frame + 1, 126)
+    store8(frame + 2, sans_mask8(plen / 256))
+    store8(frame + 3, sans_mask8(plen))
+    0
+  } else {
+    store8(frame + 1, 127)
+    store8(frame + 2, 0) store8(frame + 3, 0)
+    store8(frame + 4, 0) store8(frame + 5, 0)
+    store8(frame + 6, sans_mask8(sans_shr(plen, 24)))
+    store8(frame + 7, sans_mask8(sans_shr(plen, 16)))
+    store8(frame + 8, sans_mask8(sans_shr(plen, 8)))
+    store8(frame + 9, sans_mask8(plen))
+    0
+  } }
+  if plen > 0 { mcpy(frame + hdr_len, payload, plen) } else { 0 }
+  sans_ws_send_bytes(fd, ssl, frame, frame_len)
+}
+
+// ------ WebSocket: recv frame ---------------------------------------------------------------------------------------------------------------------
+sans_ws_recv(ws:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  open = load64(ws + 16)
+  if open == 0 { sans_empty_str() } else { sans_ws_recv_loop(ws, fd, ssl) }
+}
+
+sans_ws_recv_loop(ws:I fd:I ssl:I) I {
+  hdr = alloc(2)
+  n = sans_ws_read_exact(fd, ssl, hdr, 2)
+  if n < 2 { sans_ws_recv_fail(ws) } else { sans_ws_recv_parse(ws, fd, ssl, hdr) }
+}
+
+sans_ws_recv_fail(ws:I) I {
+  store64(ws + 16, 0)
+  sans_empty_str()
+}
+
+sans_ws_recv_parse(ws:I fd:I ssl:I hdr:I) I {
+  b0 = sans_mask8(load8(hdr))
+  b1 = sans_mask8(load8(hdr + 1))
+  opcode = b0 % 16
+  masked = b1 / 128
+  plen := b1 % 128
+
+  if plen == 126 {
+    ext = alloc(2)
+    sans_ws_read_exact(fd, ssl, ext, 2)
+    plen = sans_mask8(load8(ext)) * 256 + sans_mask8(load8(ext + 1))
+  }
+  if plen == 127 {
+    ext = alloc(8)
+    sans_ws_read_exact(fd, ssl, ext, 8)
+    plen = sans_shl(sans_mask8(load8(ext)), 56) + sans_shl(sans_mask8(load8(ext + 1)), 48) + sans_shl(sans_mask8(load8(ext + 2)), 40) + sans_shl(sans_mask8(load8(ext + 3)), 32) + sans_shl(sans_mask8(load8(ext + 4)), 24) + sans_shl(sans_mask8(load8(ext + 5)), 16) + sans_shl(sans_mask8(load8(ext + 6)), 8) + sans_mask8(load8(ext + 7))
+  }
+
+  mask_key = alloc(4)
+  if masked == 1 {
+    sans_ws_read_exact(fd, ssl, mask_key, 4)
+  }
+
+  payload = alloc(plen + 1)
+  if plen > 0 { sans_ws_read_exact(fd, ssl, payload, plen) } else { 0 }
+
+  if masked == 1 {
+    mi := 0
+    while mi < plen {
+      ob = sans_mask8(load8(payload + mi))
+      mk = sans_mask8(load8(mask_key + (mi % 4)))
+      store8(payload + mi, sans_bxor8(ob, mk))
+      mi += 1
+    }
+  }
+
+  if opcode == 1 { sans_ws_recv_text(payload, plen) } else { if opcode == 8 { sans_ws_recv_close(ws, fd, ssl, payload, plen) } else { if opcode == 9 { sans_ws_recv_ping(ws, fd, ssl, payload, plen) } else { if opcode == 10 { sans_ws_recv_loop(ws, fd, ssl) } else { sans_ws_recv_loop(ws, fd, ssl) } } } }
+}
+
+sans_ws_recv_text(payload:I plen:I) I {
+  store8(payload + plen, 0)
+  payload
+}
+
+sans_ws_recv_close(ws:I fd:I ssl:I payload:I plen:I) I {
+  sans_ws_send_frame(fd, ssl, 8, payload, if plen <= 2 { plen } else { 2 })
+  store64(ws + 16, 0)
+  sans_empty_str()
+}
+
+sans_ws_recv_ping(ws:I fd:I ssl:I payload:I plen:I) I {
+  sans_ws_send_frame(fd, ssl, 10, payload, plen)
+  sans_ws_recv_loop(ws, fd, ssl)
+}
+
+// ------ WebSocket: close ------------------------------------------------------------------------------------------------------------------------------------
+sans_ws_close(ws:I) I {
+  open = load64(ws + 16)
+  if open == 0 { 0 } else { sans_ws_close_inner(ws) }
+}
+
+sans_ws_close_inner(ws:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  close_frame = alloc(2)
+  store8(close_frame, 136)
+  store8(close_frame + 1, 0)
+  sans_ws_send_bytes(fd, ssl, close_frame, 2)
+  store64(ws + 16, 0)
+  sclose(fd)
+}
+
+// ------ WebSocket: send binary frame (opcode 2) -------------------------------------------------
+sans_ws_send_binary(ws:I data:I len:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  sans_ws_send_frame(fd, ssl, 2, data, len)
+}
+
+// ------ WebSocket: send ping frame ---------------------------------------------------------------
+sans_ws_ping(ws:I) I {
+  fd = load64(ws)
+  ssl = load64(ws + 8)
+  sans_ws_send_frame(fd, ssl, 9, 0, 0)
+}
+

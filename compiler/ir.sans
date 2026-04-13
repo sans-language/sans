@@ -133,6 +133,19 @@ ir_inst5(opcode:I dest:I a:I b:I c:I d:I e:I) I {
   n
 }
 
+ir_inst6(opcode:I dest:I a:I b:I c:I d:I e:I f:I) I {
+  n = alloc(64)
+  store64(n, opcode)
+  store64(n + 8, dest)
+  store64(n + 16, a)
+  store64(n + 24, b)
+  store64(n + 32, c)
+  store64(n + 40, d)
+  store64(n + 48, e)
+  store64(n + 56, f)
+  n
+}
+
 // ------ Named instruction constructors ---------------------------------------------------------------------------------------
 // Constants: [op, dest, value] 24 bytes
 ir_const(dest:I value:I) I = ir_inst1(IR_CONST, dest, value)
@@ -765,6 +778,36 @@ lower_call(ctx:I name:I args:I) I {
   else if name == "serve_tls" { lower_call_4(ctx, args, IR_SERVE_TLS, IRTY_INT) }
   else if name == "stream_write" { lower_call_2(ctx, args, IR_STREAM_WRITE, IRTY_INT) }
   else if name == "stream_end" { lower_call_1(ctx, args, IR_STREAM_END, IRTY_INT) }
+  else if name == "stream_write_json" { lower_call_2(ctx, args, IR_STREAM_WRITE_JSON, IRTY_INT) }
+  else if name == "ws_send_binary" { lower_call_3(ctx, args, IR_WS_SEND_BINARY, IRTY_INT) }
+  else if name == "ws_ping" { lower_call_1(ctx, args, IR_WS_PING, IRTY_INT) }
+  else if name == "tcp_connect" { lower_call_2(ctx, args, IR_TCP_CONNECT, IRTY_INT) }
+  else if name == "tcp_listen" || name == "tl" { lower_call_1(ctx, args, IR_TCP_LISTEN, IRTY_INT) }
+  else if name == "tcp_accept" || name == "ta" { lower_call_1(ctx, args, IR_TCP_ACCEPT, IRTY_INT) }
+  else if name == "tcp_read" || name == "tr" { lower_call_3(ctx, args, IR_TCP_READ, IRTY_INT) }
+  else if name == "tcp_write" || name == "tw" { lower_call_3(ctx, args, IR_TCP_WRITE, IRTY_INT) }
+  else if name == "tcp_close" { lower_call_1(ctx, args, IR_TCP_CLOSE, IRTY_INT) }
+  else if name == "tcp_set_timeout" { lower_call_2(ctx, args, IR_TCP_SET_TIMEOUT, IRTY_INT) }
+  else if name == "udp_bind" || name == "ub" { lower_call_1(ctx, args, IR_UDP_BIND, IRTY_INT) }
+  else if name == "udp_sendto" { lower_call_5(ctx, args, IR_UDP_SENDTO, IRTY_INT) }
+  else if name == "udp_recvfrom" { lower_call_3(ctx, args, IR_UDP_RECVFROM, IRTY_INT) }
+  else if name == "udp_close" { lower_call_1(ctx, args, IR_UDP_CLOSE, IRTY_INT) }
+  else if name == "sconnect" { lower_call_3(ctx, args, IR_SCONNECT, IRTY_INT) }
+  else if name == "ssendto" { lower_call_6(ctx, args, IR_SSENDTO, IRTY_INT) }
+  else if name == "srecvfrom" { lower_call_6(ctx, args, IR_SRECVFROM, IRTY_INT) }
+  else if name == "inet_addr" { lower_call_1(ctx, args, IR_INET_ADDR, IRTY_INT) }
+  else if name == "router" { lower_call_0(ctx, IR_ROUTER_CREATE, IRTY_INT) }
+  else if name == "route" { lower_call_4(ctx, args, IR_ROUTER_ROUTE, IRTY_INT) }
+  else if name == "rget" { lower_call_3(ctx, args, IR_ROUTER_GET, IRTY_INT) }
+  else if name == "rpost" { lower_call_3(ctx, args, IR_ROUTER_POST, IRTY_INT) }
+  else if name == "rput" { lower_call_3(ctx, args, IR_ROUTER_PUT, IRTY_INT) }
+  else if name == "rdelete" { lower_call_3(ctx, args, IR_ROUTER_DELETE, IRTY_INT) }
+  else if name == "handle" { lower_call_2(ctx, args, IR_ROUTER_HANDLE, IRTY_INT) }
+  else if name == "param" { lower_call_2(ctx, args, IR_ROUTE_PARAM, IRTY_STR) }
+  else if name == "set_not_found" { lower_call_2(ctx, args, IR_ROUTER_SET_NOT_FOUND, IRTY_INT) }
+  else if name == "serve_static" { lower_call_2(ctx, args, IR_ROUTER_SERVE_STATIC, IRTY_INT) }
+  else if name == "set_compress_min_size" { lower_call_1(ctx, args, IR_SET_COMPRESS_MIN_SIZE, IRTY_INT) }
+  else if name == "set_index_file" { lower_call_1(ctx, args, IR_SET_INDEX_FILE, IRTY_INT) }
 
   // ------ SSL low-level ------
   else if name == "ssl_method" { lower_call_0(ctx, IR_SSL_METHOD, IRTY_INT) }
@@ -1116,6 +1159,19 @@ lower_call_5(ctx:I args:I opcode:I irtype:I) I {
   a4 = lower_expr(ctx, args.get(4))
   dest = ctx_fresh_reg(ctx)
   ctx_emit(ctx, ir_inst5(opcode, dest, a0, a1, a2, a3, a4))
+  ctx_set_reg_type(ctx, dest, irtype)
+  dest
+}
+
+lower_call_6(ctx:I args:I opcode:I irtype:I) I {
+  a0 = lower_expr(ctx, args.get(0))
+  a1 = lower_expr(ctx, args.get(1))
+  a2 = lower_expr(ctx, args.get(2))
+  a3 = lower_expr(ctx, args.get(3))
+  a4 = lower_expr(ctx, args.get(4))
+  a5 = lower_expr(ctx, args.get(5))
+  dest = ctx_fresh_reg(ctx)
+  ctx_emit(ctx, ir_inst6(opcode, dest, a0, a1, a2, a3, a4, a5))
   ctx_set_reg_type(ctx, dest, irtype)
   dest
 }
@@ -3549,6 +3605,19 @@ lower_http_req_method(ctx:I obj_reg:I method:I args:I) I {
   else if method == "upgrade_ws" {
     dest = ctx_fresh_reg(ctx)
     ctx_emit(ctx, ir_inst1(IR_WS_UPGRADE, dest, obj_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "file" {
+    name_reg = lower_expr(ctx, args.get(0))
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst2(IR_HTTP_REQUEST_FILE, dest, obj_reg, name_reg))
+    ctx_set_reg_type(ctx, dest, IRTY_INT)
+    dest
+  }
+  else if method == "files" {
+    dest = ctx_fresh_reg(ctx)
+    ctx_emit(ctx, ir_inst1(IR_HTTP_REQUEST_FILES, dest, obj_reg))
     ctx_set_reg_type(ctx, dest, IRTY_INT)
     dest
   } else {
