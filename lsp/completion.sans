@@ -96,6 +96,37 @@ init_builtins() I {
   add_builtin("alloc", "", "(n:I) I")
   add_builtin("array", "", "() Array<T>")
   add_builtin("map", "", "() Map")
+  // TCP/UDP
+  add_builtin("tcp_connect", "", "(host:S port:I) I")
+  add_builtin("tcp_listen", "tl", "(port:I) I")
+  add_builtin("tcp_accept", "ta", "(listener:I) I")
+  add_builtin("tcp_read", "tr", "(stream:I size:I) S")
+  add_builtin("tcp_write", "tw", "(stream:I data:S) I")
+  add_builtin("tcp_close", "tc", "(stream:I) I")
+  add_builtin("tcp_set_timeout", "", "(stream:I ms:I) I")
+  add_builtin("udp_bind", "ub", "(port:I) I")
+  add_builtin("udp_sendto", "", "(sock:I host:S port:I data:S) I")
+  add_builtin("udp_recvfrom", "", "(sock:I size:I) I")
+  add_builtin("udp_close", "", "(sock:I) I")
+  // Router
+  add_builtin("router", "", "() I")
+  add_builtin("route", "", "(r:I method:S pattern:S handler:Fn) I")
+  add_builtin("rget", "", "(r:I pattern:S handler:Fn) I")
+  add_builtin("rpost", "", "(r:I pattern:S handler:Fn) I")
+  add_builtin("rput", "", "(r:I pattern:S handler:Fn) I")
+  add_builtin("rdelete", "", "(r:I pattern:S handler:Fn) I")
+  add_builtin("handle", "", "(r:I req:I) I")
+  add_builtin("set_not_found", "", "(r:I handler:Fn) I")
+  add_builtin("serve_static", "", "(r:I prefix:S base_dir:S) I")
+  add_builtin("param", "", "(req:I name:S) S")
+  // Config
+  add_builtin("set_compress_min_size", "", "(bytes:I) I")
+  add_builtin("set_index_file", "", "(name:S) I")
+  // WebSocket
+  add_builtin("ws_send_binary", "", "(ws:I data:I len:I) I")
+  add_builtin("ws_ping", "", "(ws:I) I")
+  // Streaming
+  add_builtin("stream_write_json", "", "(w:I data:S) I")
   0
 }
 
@@ -173,6 +204,8 @@ get_method_completions(type_name:S) J {
     add_method_items(items, "len trim split contains starts_with ends_with replace substring index_of upper lower repeat char_at to_int pad_left pad_right")
   } else if type_name.starts_with("Map") {
     add_method_items(items, "get set has len keys vals delete entries")
+  } else if type_name == "HttpRequest" || type_name == "HR" {
+    add_method_items(items, "path method body header set_header query path_only content_length cookie form file files respond respond_json respond_stream is_ws_upgrade upgrade_ws")
   } else if type_name == "J" || type_name == "Json" || type_name.starts_with("Json") {
     add_method_items(items, "get get_index get_string get_int get_bool set push len type_of keys has delete stringify")
   } else if type_name.starts_with("R<") || type_name.starts_with("Result") {
