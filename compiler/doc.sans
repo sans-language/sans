@@ -1,0 +1,194 @@
+// Sans Doc Generator — sans doc subcommand
+// Parses .sans source files and outputs structured documentation.
+
+doc_is_comment(line: S) I {
+  trimmed = line.trim()
+  if trimmed.len() >= 2 && char_at(trimmed 0) == 47 && char_at(trimmed 1) == 47 {
+    return 1
+  }
+  0
+}
+
+doc_extract_comment(line: S) S {
+  trimmed = line.trim()
+  rest = trimmed.substring(2 trimmed.len())
+  if rest.len() > 0 && char_at(rest 0) == 32 { rest = rest.substring(1 rest.len()) }
+  rest
+}
+
+doc_is_fn_def(line: S) I {
+  trimmed = line.trim()
+  if trimmed.len() == 0 { return 0 }
+  c = char_at(trimmed 0)
+  if (c >= 97 && c <= 122) || (c >= 65 && c <= 90) {
+    if trimmed.contains("(") && trimmed.contains(")") {
+      return 1
+    }
+  }
+  0
+}
+
+doc_is_struct_def(line: S) I {
+  trimmed = line.trim()
+  if trimmed.starts_with("struct ") { return 1 }
+  0
+}
+
+doc_parse_fn_sig(line: S) S {
+  trimmed = line.trim()
+  i := 0
+  while i < trimmed.len() {
+    c = char_at(trimmed i)
+    if c == 123 || c == 61 { return trimmed.substring(0 i).trim() }
+    i = i + 1
+  }
+  trimmed
+}
+
+doc_parse_fn_name(sig: S) S {
+  i := 0
+  while i < sig.len() {
+    if char_at(sig i) == 40 { return sig.substring(0 i) }
+    i = i + 1
+  }
+  sig
+}
+
+doc_parse_file(path: S) I {
+  content = fr(path)
+  if content.len() == 0 { return ptr(ja()) }
+  lines = content.split("\n")
+
+  functions = ja()
+  types = ja()
+  comment_buf = array<S>()
+
+  i := 0
+  while i < lines.len() {
+    line = lines.get(i)
+
+    if doc_is_comment(line) == 1 {
+      comment_buf.push(doc_extract_comment(line))
+      i = i + 1
+      continue
+    }
+
+    if doc_is_fn_def(line) == 1 {
+      sig = doc_parse_fn_sig(line)
+      name = doc_parse_fn_name(sig)
+      if name.len() > 0 && char_at(name 0) != 95 {
+        fn_obj = jo()
+        fn_obj.set("name" js(name))
+        fn_obj.set("signature" js("fn " + sig))
+        doc := ""
+        j := 0
+        while j < comment_buf.len() {
+          if j > 0 { doc = doc + " " }
+          doc = doc + comment_buf.get(j)
+          j = j + 1
+        }
+        fn_obj.set("doc" js(doc))
+        fn_obj.set("params" ja())
+        functions.push(fn_obj)
+      }
+    }
+
+    if doc_is_struct_def(line) == 1 {
+      trimmed = line.trim()
+      struct_name = trimmed.substring(7 trimmed.len())
+      if struct_name.contains("{") {
+        idx := 0
+        while idx < struct_name.len() {
+          if char_at(struct_name idx) == 123 { struct_name = struct_name.substring(0 idx).trim() break }
+          idx = idx + 1
+        }
+      }
+      type_obj = jo()
+      type_obj.set("name" js(struct_name))
+      doc := ""
+      j := 0
+      while j < comment_buf.len() {
+        if j > 0 { doc = doc + " " }
+        doc = doc + comment_buf.get(j)
+        j = j + 1
+      }
+      type_obj.set("doc" js(doc))
+      type_obj.set("fields" ja())
+      types.push(type_obj)
+    }
+
+    trimmed = line.trim()
+    if trimmed.len() > 0 { comment_buf = array<S>() }
+
+    i = i + 1
+  }
+
+  module = jo()
+  fname = path
+  parts = fname.split("/")
+  basename = parts.get(parts.len() - 1)
+  if basename.contains(".sans") {
+    basename = basename.substring(0 basename.len() - 5)
+  }
+  module.set("name" js(basename))
+  module.set("file" js(path))
+  module.set("functions" functions)
+  module.set("types" types)
+  ptr(module)
+}
+
+doc_main(target: S json_mode: I) I {
+  modules = ja()
+
+  if is_dir(target) {
+    files = ls(target)
+    i := 0
+    while i < files.len() {
+      f = files.get(i)
+      if f.ends_with(".sans") {
+        module = doc_parse_file(target + "/" + f)
+        modules.push(module)
+      }
+      i = i + 1
+    }
+  } else {
+    module = doc_parse_file(target)
+    modules.push(module)
+  }
+
+  result = jo()
+  result.set("modules" modules)
+
+  if json_mode == 1 {
+    p(jfy(result))
+  } else {
+    i := 0
+    while i < modules.len() {
+      mod = modules.get_index(i)
+      p("=== " + mod.get("name").get_string() + " ===")
+      p("")
+      fns = mod.get("functions")
+      j := 0
+      while j < fns.len() {
+        fn_obj = fns.get_index(j)
+        p("  " + fn_obj.get("signature").get_string())
+        doc = fn_obj.get("doc").get_string()
+        if doc.len() > 0 { p("    " + doc) }
+        p("")
+        j = j + 1
+      }
+      tps = mod.get("types")
+      k := 0
+      while k < tps.len() {
+        tp = tps.get_index(k)
+        p("  struct " + tp.get("name").get_string())
+        doc = tp.get("doc").get_string()
+        if doc.len() > 0 { p("    " + doc) }
+        p("")
+        k = k + 1
+      }
+      i = i + 1
+    }
+  }
+  0
+}

@@ -10,6 +10,7 @@ import "codegen"
 import "pkg"
 import "fmt"
 import "lint"
+import "doc"
 g g_merged = 0
 g g_fn_aliases = 0
 g g_file = 0
@@ -905,8 +906,22 @@ main() I {
     exit(0)
   }
 
+  if cmd == "doc" {
+    doc_target = ""
+    doc_json := 0
+    i := 2
+    while i < argc {
+      arg = argv.get(i)
+      if arg == "--json" { doc_json = 1 }
+      else { doc_target = arg }
+      i = i + 1
+    }
+    if doc_target.len() == 0 { doc_target = "." }
+    return doc_main(doc_target doc_json)
+  }
+
   if argc < 3 {
-    p("usage: sans <build|run|test|lint> <file.sans|dir> [--debug|-g] [-o output]")
+    p("usage: sans <build|run|test|lint|doc> <file.sans|dir> [--debug|-g] [-o output]")
     exit(1)
   }
 

@@ -1,0 +1,10 @@
+// A simple greeter module
+// Greets users by name
+greet(name: S) S = "Hello, " + name + "!"
+
+// The main entry point
+main() I {
+  result = greet("World")
+  p(result)
+  0
+}
