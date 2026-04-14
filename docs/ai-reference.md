@@ -507,6 +507,18 @@ sans.json: `{"name":"mylib","version":"0.1.0","deps":{"github.com/user/repo":"v1
 Cache: `~/.sans/packages/<url>/<version>/` — git clone per version tag
 Transitive deps resolved via BFS from each dep's sans.json
 
+## Package Registry
+`sans pkg login` — GitHub device flow auth
+`sans pkg logout` — remove credentials
+`sans pkg whoami` — show username
+`sans pkg publish [tag]` — publish to pkg.sans.dev
+`sans pkg add @user/pkg [ver]` — add scoped package
+`sans pkg search query` — search registry
+
+## Doc Generation
+`sans doc path` — human-readable docs
+`sans doc --json path` — JSON docs output
+
 ## Lint
 `sans lint <file|dir>` — static analysis, no build. Rules: unused-imports, unreachable-code, empty-catch, shadowed-vars, unnecessary-mut. `--error=<rule>` promotes to error. `--quiet` suppresses warnings. Config: sans.json `{"lint":{"rule":"error|warn|off"}}`. Exit 0 if no errors, 1 if errors.
 

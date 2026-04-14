@@ -107,6 +107,8 @@ main() {
 | **String interpolation** | `"Hello {name}!"` with expression support `"{x + 1}"` |
 | **Modules** | `import "math"`, `pub import "mod"` (re-exports) |
 | **Package Manager** | `sans pkg init`, `sans pkg add <url>`, `sans pkg install`, `sans pkg remove <url>` |
+| **Package Registry** | `sans pkg login`, `sans pkg publish`, `sans pkg add @user/pkg`, `sans pkg search` |
+| **Doc Generation** | `sans doc path/to/file.sans`, `sans doc --json path/` |
 | **Concurrency** | `spawn`, channels (`channel<I>()`, `send`, `recv`), `mutex` |
 | **File I/O** | `file_read`/`fr`, `file_write`/`fw`, `file_exists`/`fe` |
 | **Filesystem** | `mkdir`, `rmdir`, `remove`/`rm`, `listdir`/`ls`, `is_dir`, `getenv`/`genv` |

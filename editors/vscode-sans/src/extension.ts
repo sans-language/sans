@@ -330,6 +330,13 @@ const HOVER_DATA: Record<string, string> = {
 
     // Streaming extras
     "stream_write_json": "```sans\nstream_write_json(w data) -> I\n```\nWrite JSON SSE chunk to streaming response.",
+
+    // CLI commands
+    "doc": "Generate API documentation from Sans source files. Usage: sans doc [--json] <path>",
+    "pkg login": "Start device flow authentication with GitHub for pkg.sans.dev",
+    "pkg logout": "Remove stored registry credentials from ~/.sans/credentials",
+    "pkg publish": "Publish the current package to pkg.sans.dev registry. Usage: sans pkg publish [tag]",
+    "pkg whoami": "Display the currently logged-in username",
 };
 
 const SHELL_METACHARACTERS = /[|;&$`()"'<>!#*?\[\]{}~\n\r]/;

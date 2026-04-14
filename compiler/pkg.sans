@@ -2,18 +2,18 @@
 
 // ---- Validation ----
 
-// Validate input: allowlist of safe characters only (alphanumeric, . - _ /)
+// Validate input: allowlist of safe characters only (alphanumeric, . - _ / @)
 // Rejects anything that could cause shell injection or path traversal
 pkg_validate(s: S label: S) I {
   if s.len() == 0 { p("error: " + label + " is empty") exit(1) }
   // Must not start with - (flag injection) or / (absolute path)
   first = char_at(s 0)
   if first == 45 || first == 47 { p("error: " + label + " must not start with - or /") exit(1) }
-  // Check every character against allowlist: a-z A-Z 0-9 . - _ /
+  // Check every character against allowlist: a-z A-Z 0-9 . - _ / @
   i := 0
   while i < s.len() {
     c = char_at(s i)
-    ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 46 || c == 45 || c == 95 || c == 47
+    ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c == 46 || c == 45 || c == 95 || c == 47 || c == 64
     if ok != true { p("error: " + label + " contains invalid character") exit(1) }
     i = i + 1
   }
@@ -60,6 +60,59 @@ pkg_latest_tag(url: S) S {
   output.trim()
 }
 
+// ---- Registry ----
+
+pkg_registry() S { "https://pkg.sans.dev" }
+
+pkg_creds_path() S { pkg_sans_dir() + "/credentials" }
+
+pkg_load_token() S {
+  path = pkg_creds_path()
+  if fe(path) != true { return "" }
+  content = fr(path)
+  if content.len() == 0 { return "" }
+  creds = jp(content)!
+  creds.get("token").get_string()
+}
+
+pkg_save_creds(registry: S token: S username: S) I {
+  mkdir(pkg_sans_dir())
+  obj = jo()
+  obj.set("registry" js(registry))
+  obj.set("token" js(token))
+  obj.set("username" js(username))
+  fw(pkg_creds_path() jfy(obj))
+  0
+}
+
+pkg_is_scoped(name: S) I {
+  if name.len() > 0 && char_at(name 0) == 64 { return 1 }
+  0
+}
+
+pkg_resolve_scoped(name: S version: S) S {
+  resp = hg(pkg_registry() + "/index/" + name + ".json")
+  if resp.status() != 200 { p("error: package " + name + " not found in registry") exit(1) }
+  data = jp(resp.body())!
+  data.get("repository").get_string()
+}
+
+// ---- Dependency Resolution ----
+
+pkg_clone_scoped(url: S ver: S) S {
+  repo_url = pkg_resolve_scoped(url ver)
+  tag = "v" + ver
+  r = pkg_clone(repo_url tag)
+  if r != 1 { exit(1) }
+  pkg_cache_path(repo_url tag) + "/sans.json"
+}
+
+pkg_clone_direct(url: S ver: S) S {
+  r = pkg_clone(url ver)
+  if r != 1 { exit(1) }
+  pkg_cache_path(url ver) + "/sans.json"
+}
+
 // Resolve all deps (direct + transitive) from a sans.json path.
 // Returns a Map (url -> version).
 pkg_resolve_deps(manifest_path: S requester: S) I {
@@ -100,9 +153,9 @@ pkg_resolve_deps(manifest_path: S requester: S) I {
     }
 
     resolved.set(url ver)
-    r = pkg_clone(url ver)
-    if r != 1 { exit(1) }
-    dm = pkg_cache_path(url ver) + "/sans.json"
+    dm := ""
+    if pkg_is_scoped(url) == 1 { dm = pkg_clone_scoped(url ver) }
+    if pkg_is_scoped(url) != 1 { dm = pkg_clone_direct(url ver) }
     if fe(dm) {
       sc = fr(dm)
       if sc.len() > 0 {
@@ -173,9 +226,42 @@ pkg_add_with_ver(url: S ver: S) I {
   0
 }
 
+pkg_resolve_latest_scoped(name: S) S {
+  resp = hg(pkg_registry() + "/index.json")
+  if resp.status() != 200 { p("error: could not fetch index") exit(1) }
+  idx = jp(resp.body())!
+  pkgs = idx.get("packages")
+  entry = pkgs.get(name)
+  if entry.type_of() != "object" { p("error: " + name + " not in registry") exit(1) }
+  entry.get("latest").get_string()
+}
+
+pkg_add_scoped(name: S ver: S) I {
+  if fe("sans.json") != true { p("error: no sans.json. Run 'sans pkg init' first.") return 1 }
+  content = fr("sans.json")
+  mf = jp(content)!
+  deps = mf.get("deps")
+  deps.set(name js(ver))
+  fw("sans.json" jfy(mf))
+  p("Added " + name + " " + ver)
+  repo_url = pkg_resolve_scoped(name ver)
+  tag = "v" + ver
+  pkg_clone(repo_url tag)
+  pkg_resolve_deps("sans.json" "project")
+  p("Done.")
+  0
+}
+
 pkg_add(a: I) I {
-  if a.len() < 4 { p("usage: sans pkg add <url> [tag]") return 1 }
-  url = a.get(3)
+  if a.len() < 4 { p("usage: sans pkg add <@user/package|url> [tag]") return 1 }
+  name = a.get(3)
+  if pkg_is_scoped(name) == 1 {
+    ver := ""
+    if a.len() > 4 { ver = a.get(4) }
+    if ver.len() == 0 { ver = pkg_resolve_latest_scoped(name) }
+    return pkg_add_scoped(name ver)
+  }
+  url = name
   if a.len() > 4 { return pkg_add_with_ver(url a.get(4)) }
   p("Resolving latest tag for " + url + "...")
   ver = pkg_latest_tag(url)
@@ -254,11 +340,20 @@ pkg_update(a: I) I {
   pkg_update_to(url nv)
 }
 
+pkg_search_print(nm: S entry: I) I {
+  latest = entry.get("latest").get_string()
+  desc = entry.get("description").get_string()
+  p("  " + nm + "  v" + latest)
+  p("    " + desc)
+  p("")
+  0
+}
+
 pkg_search(a: I) I {
   if a.len() < 4 { p("usage: sans pkg search <query>") return 1 }
   query = a.get(3)
-  p("Fetching package index...")
-  resp = hg("https://raw.githubusercontent.com/sans-language/packages/main/index.json")
+  p("Searching packages...")
+  resp = hg(pkg_registry() + "/index.json")
   if resp.status() != 200 { p("error: could not fetch index") return 1 }
   idx = jp(resp.body())!
   pkgs = idx.get("packages")
@@ -271,13 +366,115 @@ pkg_search(a: I) I {
     entry = pkgs.get(nm)
     desc = entry.get("description").get_string()
     if nm.contains(query) || desc.contains(query) {
-      p("  " + nm + "  " + entry.get("url").get_string())
+      pkg_search_print(nm entry)
       found = found + 1
     }
     i = i + 1
   }
   if found == 0 { p("No packages matching '" + query + "'") }
   0
+}
+
+// ---- Auth Commands ----
+
+pkg_poll_token(device_code: S interval: I) I {
+  attempts := 0
+  done := 0
+  while attempts < 60 && done == 0 {
+    sleep(interval * 1000)
+    body = jo()
+    body.set("device_code" js(device_code))
+    tresp = hp(pkg_registry() + "/api/auth/token" jfy(body) "application/json")
+    if tresp.status() == 200 {
+      tdata = jp(tresp.body())!
+      terr = tdata.get("error")
+      is_pending = terr.type_of() == "string" && terr.get_string() == "authorization_pending"
+      if is_pending != true {
+        token = tdata.get("access_token").get_string()
+        username = tdata.get("username").get_string()
+        if token.len() > 0 {
+          pkg_save_creds(pkg_registry() token username)
+          p("Logged in as " + username)
+          done = 1
+        }
+      }
+    }
+    attempts = attempts + 1
+  }
+  done
+}
+
+pkg_login(a: I) I {
+  p("Logging in to " + pkg_registry() + "...")
+  resp = hp(pkg_registry() + "/api/auth/device" "" "application/json")
+  if resp.status() != 200 { p("error: failed to start login") return 1 }
+  data = jp(resp.body())!
+  user_code = data.get("user_code").get_string()
+  device_code = data.get("device_code").get_string()
+  verify_url = data.get("verification_uri").get_string()
+  interval = data.get("interval").get_int()
+  p("")
+  p("Open this URL in your browser:")
+  p("  " + verify_url)
+  p("")
+  p("Enter code: " + user_code)
+  p("")
+  p("Waiting for authorization...")
+  result = pkg_poll_token(device_code interval)
+  if result == 0 { p("error: login timed out") return 1 }
+  0
+}
+
+pkg_logout(a: I) I {
+  path = pkg_creds_path()
+  if fe(path) != true { p("Not logged in.") return 0 }
+  sys("rm -f '" + path + "'")
+  p("Logged out.")
+  0
+}
+
+pkg_whoami(a: I) I {
+  path = pkg_creds_path()
+  if fe(path) != true { p("Not logged in. Run 'sans pkg login' first.") return 1 }
+  content = fr(path)
+  creds = jp(content)!
+  username = creds.get("username").get_string()
+  p(username)
+  0
+}
+
+pkg_publish(a: I) I {
+  token = pkg_load_token()
+  if token.len() == 0 { p("error: not logged in. Run 'sans pkg login' first.") return 1 }
+  if fe("sans.json") != true { p("error: no sans.json found") return 1 }
+  content = fr("sans.json")
+  mf = jp(content)!
+  name = mf.get("name").get_string()
+  version = mf.get("version").get_string()
+  repo = mf.get("repository").get_string()
+  if name.len() == 0 { p("error: sans.json missing 'name'") return 1 }
+  if version.len() == 0 { p("error: sans.json missing 'version'") return 1 }
+  if repo.len() == 0 { p("error: sans.json missing 'repository'. Add your GitHub repo URL.") return 1 }
+  tag := ""
+  if a.len() > 3 { tag = a.get(3) }
+  if tag.len() == 0 { tag = "v" + version }
+  creds_content = fr(pkg_creds_path())
+  creds = jp(creds_content)!
+  username = creds.get("username").get_string()
+  p("Publishing @" + username + "/" + name + " " + tag + "...")
+  body = jo()
+  body.set("repo" js(repo))
+  body.set("tag" js(tag))
+  resp = hp(pkg_registry() + "/api/packages/@" + username + "/" + name + "?token=" + token jfy(body) "application/json")
+  if resp.status() == 201 {
+    rdata = jp(resp.body())!
+    p("Published " + rdata.get("package").get_string() + " " + rdata.get("version").get_string())
+    return 0
+  }
+  rdata = jp(resp.body())!
+  err_msg = rdata.get("error").get_string()
+  p("error: " + err_msg)
+  1
 }
 
 // ---- Dispatch ----
@@ -293,6 +490,10 @@ pkg_help() I {
   p("  list               List dependencies")
   p("  update <url> [tag] Update dependency")
   p("  search <query>     Search package index")
+  p("  login              Log in to registry")
+  p("  logout             Log out of registry")
+  p("  whoami             Show logged-in user")
+  p("  publish [tag]      Publish package to registry")
   0
 }
 
@@ -306,6 +507,10 @@ pkg_main(a: I) I {
   if sub == "list" || sub == "ls" { return pkg_list(a) }
   if sub == "update" { return pkg_update(a) }
   if sub == "search" { return pkg_search(a) }
+  if sub == "login" { return pkg_login(a) }
+  if sub == "logout" { return pkg_logout(a) }
+  if sub == "whoami" { return pkg_whoami(a) }
+  if sub == "publish" { return pkg_publish(a) }
   if sub == "help" || sub == "--help" { return pkg_help() }
   p("unknown: sans pkg " + sub)
   1
