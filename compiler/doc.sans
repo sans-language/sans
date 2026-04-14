@@ -10,8 +10,9 @@ doc_is_comment(line: S) I {
 
 doc_extract_comment(line: S) S {
   trimmed = line.trim()
-  rest = trimmed.substring(2 trimmed.len())
-  if rest.len() > 0 && char_at(rest 0) == 32 { rest.substring(1 rest.len()) } else { rest }
+  start := 2
+  if trimmed.len() > 2 && char_at(trimmed 2) == 32 { start = 3 }
+  trimmed.substring(start trimmed.len())
 }
 
 doc_is_fn_def(line: S) I {
@@ -40,28 +41,26 @@ doc_find_char(s: S ch: I) I {
   result
 }
 
-doc_substr_at(s: S pos: I) S {
-  s.substring(0 pos).trim()
-}
-
 doc_parse_fn_sig(line: S) S {
   trimmed = line.trim()
   brace = doc_find_char(trimmed 123)
   eq = doc_find_char(trimmed 61)
-  pos := -1
-  if brace >= 0 { pos = brace }
-  if eq >= 0 && (pos < 0 || eq < pos) { pos = eq }
-  if pos >= 0 { doc_substr_at(trimmed pos) } else { trimmed }
+  pos := trimmed.len()
+  if brace >= 0 && brace < pos { pos = brace }
+  if eq >= 0 && eq < pos { pos = eq }
+  trimmed.substring(0 pos).trim()
 }
 
 doc_parse_fn_name(sig: S) S {
   pos = doc_find_char(sig 40)
-  if pos >= 0 { sig.substring(0 pos) } else { sig }
+  if pos < 0 { pos = sig.len() }
+  sig.substring(0 pos)
 }
 
 doc_strip_brace(s: S) S {
   pos = doc_find_char(s 123)
-  if pos >= 0 { doc_substr_at(s pos) } else { s }
+  if pos < 0 { pos = s.len() }
+  s.substring(0 pos).trim()
 }
 
 doc_join_comments(buf: I) S {
@@ -103,7 +102,9 @@ doc_process_struct(line: S comment_buf: I types: I) I {
 doc_basename(path: S) S {
   parts = path.split("/")
   name = parts.get(parts.len() - 1)
-  if name.ends_with(".sans") { name.substring(0 name.len() - 5) } else { name }
+  end = name.len()
+  if name.ends_with(".sans") { end = name.len() - 5 }
+  name.substring(0 end)
 }
 
 doc_parse_file(path: S) I {
