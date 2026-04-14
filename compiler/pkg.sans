@@ -218,6 +218,32 @@ pkg_add_with_ver(url: S ver: S) I {
   0
 }
 
+pkg_resolve_latest_scoped(name: S) S {
+  resp = hg(pkg_registry() + "/index.json")
+  if resp.status() != 200 { p("error: could not fetch index") exit(1) }
+  idx = jp(resp.body())!
+  pkgs = idx.get("packages")
+  entry = pkgs.get(name)
+  if entry.type_of() != "object" { p("error: " + name + " not in registry") exit(1) }
+  entry.get("latest").get_string()
+}
+
+pkg_add_scoped(name: S ver: S) I {
+  if fe("sans.json") != true { p("error: no sans.json. Run 'sans pkg init' first.") return 1 }
+  content = fr("sans.json")
+  mf = jp(content)!
+  deps = mf.get("deps")
+  deps.set(name js(ver))
+  fw("sans.json" jfy(mf))
+  p("Added " + name + " " + ver)
+  repo_url = pkg_resolve_scoped(name ver)
+  tag = "v" + ver
+  pkg_clone(repo_url tag)
+  pkg_resolve_deps("sans.json" "project")
+  p("Done.")
+  0
+}
+
 pkg_add(a: I) I {
   if a.len() < 4 { p("usage: sans pkg add <@user/package|url> [tag]") return 1 }
   name = a.get(3)
@@ -227,27 +253,9 @@ pkg_add(a: I) I {
     if a.len() > 4 { ver = a.get(4) }
     if ver.len() == 0 {
       p("Resolving latest version for " + name + "...")
-      resp = hg(pkg_registry() + "/index.json")
-      if resp.status() != 200 { p("error: could not fetch index") return 1 }
-      idx = jp(resp.body())!
-      pkgs = idx.get("packages")
-      entry = pkgs.get(name)
-      if entry.type_of() != "object" { p("error: " + name + " not in registry") return 1 }
-      ver = entry.get("latest").get_string()
+      ver = pkg_resolve_latest_scoped(name)
     }
-    if fe("sans.json") != true { p("error: no sans.json. Run 'sans pkg init' first.") return 1 }
-    content = fr("sans.json")
-    mf = jp(content)!
-    deps = mf.get("deps")
-    deps.set(name js(ver))
-    fw("sans.json" jfy(mf))
-    p("Added " + name + " " + ver)
-    repo_url = pkg_resolve_scoped(name ver)
-    tag = "v" + ver
-    pkg_clone(repo_url tag)
-    pkg_resolve_deps("sans.json" "project")
-    p("Done.")
-    return 0
+    return pkg_add_scoped(name ver)
   }
 
   url = name

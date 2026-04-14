@@ -98,16 +98,11 @@ doc_process_struct(line: S comment_buf: I types: I) I {
   0
 }
 
-doc_strip_sans_ext(name: S) S {
-  name.substring(0 name.len() - 5)
-}
-
 doc_basename(path: S) S {
   parts = path.split("/")
   name = parts.get(parts.len() - 1)
-  has_ext = name.ends_with(".sans")
-  if has_ext == true { return doc_strip_sans_ext(name) }
-  name
+  // All doc-processed files end in .sans — strip extension
+  name.substring(0 name.len() - 5)
 }
 
 doc_parse_file(path: S) I {
