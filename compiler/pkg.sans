@@ -368,6 +368,51 @@ pkg_whoami(a: I) I {
   0
 }
 
+pkg_publish(a: I) I {
+  token = pkg_load_token()
+  if token.len() == 0 { p("error: not logged in. Run 'sans pkg login' first.") return 1 }
+
+  if fe("sans.json") != true { p("error: no sans.json found") return 1 }
+  content = fr("sans.json")
+  mf = jp(content)!
+  name = mf.get("name").get_string()
+  version = mf.get("version").get_string()
+  repo = mf.get("repository").get_string()
+
+  if name.len() == 0 { p("error: sans.json missing 'name'") return 1 }
+  if version.len() == 0 { p("error: sans.json missing 'version'") return 1 }
+  if repo.len() == 0 { p("error: sans.json missing 'repository'. Add your GitHub repo URL.") return 1 }
+
+  // Determine tag
+  tag := ""
+  if a.len() > 3 { tag = a.get(3) }
+  if tag.len() == 0 { tag = "v" + version }
+
+  // Load username from credentials
+  creds_content = fr(pkg_creds_path())
+  creds = jp(creds_content)!
+  username = creds.get("username").get_string()
+
+  p("Publishing @" + username + "/" + name + " " + tag + "...")
+
+  body = jo()
+  body.set("repo" js(repo))
+  body.set("tag" js(tag))
+
+  resp = hp(pkg_registry() + "/api/packages/@" + username + "/" + name + "?token=" + token jfy(body) "application/json")
+
+  if resp.status() == 201 {
+    rdata = jp(resp.body())!
+    p("Published " + rdata.get("package").get_string() + " " + rdata.get("version").get_string())
+    return 0
+  }
+
+  rdata = jp(resp.body())!
+  err_msg = rdata.get("error").get_string()
+  p("error: " + err_msg)
+  1
+}
+
 // ---- Dispatch ----
 
 pkg_help() I {
@@ -384,6 +429,7 @@ pkg_help() I {
   p("  login              Log in to registry")
   p("  logout             Log out of registry")
   p("  whoami             Show logged-in user")
+  p("  publish [tag]      Publish package to registry")
   0
 }
 
@@ -400,6 +446,7 @@ pkg_main(a: I) I {
   if sub == "login" { return pkg_login(a) }
   if sub == "logout" { return pkg_logout(a) }
   if sub == "whoami" { return pkg_whoami(a) }
+  if sub == "publish" { return pkg_publish(a) }
   if sub == "help" || sub == "--help" { return pkg_help() }
   p("unknown: sans pkg " + sub)
   1
