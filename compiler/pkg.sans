@@ -124,6 +124,31 @@ pkg_resolve_deps(manifest_path: S requester: S) I {
   ptr(resolved)
 }
 
+// ---- Registry ----
+
+pkg_registry() S { "https://pkg.sans.dev" }
+
+pkg_creds_path() S { pkg_sans_dir() + "/credentials" }
+
+pkg_load_token() S {
+  path = pkg_creds_path()
+  if fe(path) != true { return "" }
+  content = fr(path)
+  if content.len() == 0 { return "" }
+  creds = jp(content)!
+  creds.get("token").get_string()
+}
+
+pkg_save_creds(registry: S token: S username: S) I {
+  mkdir(pkg_sans_dir())
+  obj = jo()
+  obj.set("registry" js(registry))
+  obj.set("token" js(token))
+  obj.set("username" js(username))
+  fw(pkg_creds_path() jfy(obj))
+  0
+}
+
 // ---- Commands ----
 
 pkg_init(a: I) I {
@@ -280,6 +305,69 @@ pkg_search(a: I) I {
   0
 }
 
+pkg_login(a: I) I {
+  p("Logging in to " + pkg_registry() + "...")
+  resp = hp(pkg_registry() + "/api/auth/device" "" "application/json")
+  if resp.status() != 200 { p("error: failed to start login") return 1 }
+  data = jp(resp.body())!
+  user_code = data.get("user_code").get_string()
+  device_code = data.get("device_code").get_string()
+  verify_url = data.get("verification_uri").get_string()
+  interval = data.get("interval").get_int()
+
+  p("")
+  p("Open this URL in your browser:")
+  p("  " + verify_url)
+  p("")
+  p("Enter code: " + user_code)
+  p("")
+  p("Waiting for authorization...")
+
+  attempts := 0
+  while attempts < 60 {
+    sleep(interval * 1000)
+    body = jo()
+    body.set("device_code" js(device_code))
+    tresp = hp(pkg_registry() + "/api/auth/token" jfy(body) "application/json")
+    if tresp.status() == 200 {
+      tdata = jp(tresp.body())!
+      err = tdata.get("error")
+      if err.type_of() == "string" && err.get_string() == "authorization_pending" {
+        attempts = attempts + 1
+        continue
+      }
+      token = tdata.get("access_token").get_string()
+      username = tdata.get("username").get_string()
+      if token.len() > 0 {
+        pkg_save_creds(pkg_registry() token username)
+        p("Logged in as " + username)
+        return 0
+      }
+    }
+    attempts = attempts + 1
+  }
+  p("error: login timed out")
+  1
+}
+
+pkg_logout(a: I) I {
+  path = pkg_creds_path()
+  if fe(path) != true { p("Not logged in.") return 0 }
+  sys("rm -f '" + path + "'")
+  p("Logged out.")
+  0
+}
+
+pkg_whoami(a: I) I {
+  path = pkg_creds_path()
+  if fe(path) != true { p("Not logged in. Run 'sans pkg login' first.") return 1 }
+  content = fr(path)
+  creds = jp(content)!
+  username = creds.get("username").get_string()
+  p(username)
+  0
+}
+
 // ---- Dispatch ----
 
 pkg_help() I {
@@ -293,6 +381,9 @@ pkg_help() I {
   p("  list               List dependencies")
   p("  update <url> [tag] Update dependency")
   p("  search <query>     Search package index")
+  p("  login              Log in to registry")
+  p("  logout             Log out of registry")
+  p("  whoami             Show logged-in user")
   0
 }
 
@@ -306,6 +397,9 @@ pkg_main(a: I) I {
   if sub == "list" || sub == "ls" { return pkg_list(a) }
   if sub == "update" { return pkg_update(a) }
   if sub == "search" { return pkg_search(a) }
+  if sub == "login" { return pkg_login(a) }
+  if sub == "logout" { return pkg_logout(a) }
+  if sub == "whoami" { return pkg_whoami(a) }
   if sub == "help" || sub == "--help" { return pkg_help() }
   p("unknown: sans pkg " + sub)
   1
