@@ -101,19 +101,6 @@ doc_process_struct(line: S comment_buf: I types: I) I {
   0
 }
 
-doc_process_line(line: S comment_buf: I functions: I types: I) I {
-  is_cmt = doc_is_comment(line)
-  if is_cmt == 1 {
-    comment_buf.push(doc_extract_comment(line))
-    return 0
-  }
-  if doc_is_fn_def(line) == 1 { doc_process_fn(line comment_buf functions) }
-  if doc_is_struct_def(line) == 1 { doc_process_struct(line comment_buf types) }
-  cl = line.trim()
-  if cl.len() > 0 { comment_buf.clear() }
-  0
-}
-
 doc_basename(path: S) S {
   parts = path.split("/")
   name = parts.get(parts.len() - 1)
@@ -130,7 +117,12 @@ doc_parse_file(path: S) I {
   comment_buf = array<S>()
   i := 0
   while i < lines.len() {
-    doc_process_line(lines.get(i) comment_buf functions types)
+    line = lines.get(i)
+    is_cmt = doc_is_comment(line)
+    if is_cmt == 1 { comment_buf.push(doc_extract_comment(line)) }
+    if is_cmt != 1 && doc_is_fn_def(line) == 1 { doc_process_fn(line comment_buf functions) }
+    if is_cmt != 1 && doc_is_struct_def(line) == 1 { doc_process_struct(line comment_buf types) }
+    if is_cmt != 1 && line.trim().len() > 0 { comment_buf = array<S>() }
     i = i + 1
   }
   module = jo()
