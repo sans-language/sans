@@ -9,9 +9,7 @@ doc_is_comment(line: S) I {
 }
 
 doc_extract_comment(line: S) S {
-  trimmed = line.trim()
-  // Skip "// " (with optional space after //)
-  trimmed.substring(2 trimmed.len()).trim()
+  line.trim().substring(2 line.trim().len()).trim()
 }
 
 doc_is_fn_def(line: S) I {
@@ -25,41 +23,44 @@ doc_is_fn_def(line: S) I {
 }
 
 doc_is_struct_def(line: S) I {
-  trimmed = line.trim()
-  if trimmed.starts_with("struct ") { return 1 }
+  if line.trim().starts_with("struct ") { return 1 }
   0
 }
 
-doc_find_char(s: S ch: I) I {
-  result := -1
+// Find first occurrence of char, returns index or string length if not found
+doc_index_of(s: S ch: I) I {
+  result := s.len()
+  found := 0
   i := 0
   while i < s.len() {
-    if char_at(s i) == ch && result == -1 { result = i }
+    if found == 0 && char_at(s i) == ch { result = i  found = 1 }
     i = i + 1
   }
   result
 }
 
-doc_parse_fn_sig(line: S) S {
+doc_sig_from_line(line: S) S {
   trimmed = line.trim()
-  brace = doc_find_char(trimmed 123)
-  eq = doc_find_char(trimmed 61)
-  pos := trimmed.len()
-  if brace >= 0 && brace < pos { pos = brace }
-  if eq >= 0 && eq < pos { pos = eq }
-  trimmed.substring(0 pos).trim()
+  // Signature ends at first { or =
+  brace_pos = doc_index_of(trimmed 123)
+  eq_pos = doc_index_of(trimmed 61)
+  end = brace_pos
+  if eq_pos < end { end = eq_pos }
+  trimmed.substring(0 end).trim()
 }
 
-doc_parse_fn_name(sig: S) S {
-  pos = doc_find_char(sig 40)
-  if pos < 0 { pos = sig.len() }
-  sig.substring(0 pos)
+doc_fn_name_from_sig(sig: S) S {
+  // Name ends at first (
+  end = doc_index_of(sig 40)
+  sig.substring(0 end)
 }
 
-doc_strip_brace(s: S) S {
-  pos = doc_find_char(s 123)
-  if pos < 0 { pos = s.len() }
-  s.substring(0 pos).trim()
+doc_struct_name_from_line(line: S) S {
+  trimmed = line.trim()
+  // "struct Foo {" -> extract between "struct " and "{"
+  after_kw = trimmed.substring(7 trimmed.len())
+  end = doc_index_of(after_kw 123)
+  after_kw.substring(0 end).trim()
 }
 
 doc_join_comments(buf: I) S {
@@ -74,8 +75,8 @@ doc_join_comments(buf: I) S {
 }
 
 doc_process_fn(line: S comment_buf: I functions: I) I {
-  sig = doc_parse_fn_sig(line)
-  name = doc_parse_fn_name(sig)
+  sig = doc_sig_from_line(line)
+  name = doc_fn_name_from_sig(sig)
   if name.len() == 0 { return 0 }
   if char_at(name 0) == 95 { return 0 }
   fn_obj = jo()
@@ -88,8 +89,7 @@ doc_process_fn(line: S comment_buf: I functions: I) I {
 }
 
 doc_process_struct(line: S comment_buf: I types: I) I {
-  st_line = line.trim()
-  struct_name = doc_strip_brace(st_line.substring(7 st_line.len()))
+  struct_name = doc_struct_name_from_line(line)
   type_obj = jo()
   type_obj.set("name" js(struct_name))
   type_obj.set("doc" js(doc_join_comments(comment_buf)))
@@ -101,8 +101,7 @@ doc_process_struct(line: S comment_buf: I types: I) I {
 doc_basename(path: S) S {
   parts = path.split("/")
   name = parts.get(parts.len() - 1)
-  // All doc-processed files end in .sans — strip extension
-  name.substring(0 name.len() - 5)
+  name.replace(".sans" "")
 }
 
 doc_parse_file(path: S) I {
