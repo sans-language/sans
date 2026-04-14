@@ -1637,6 +1637,63 @@ Packages are cached at `~/.sans/packages/<url>/<version>/`. Each version is a sh
 
 Dependencies are resolved transitively via BFS. Each package's `sans.json` is checked for its own dependencies. Version conflicts (same package, different versions) are rejected with an error.
 
+### Package Registry
+
+Sans packages are published to and installed from `pkg.sans.dev`, the official package registry.
+
+#### Authentication
+
+```bash
+sans pkg login      # Start device flow auth via GitHub
+sans pkg logout     # Remove stored credentials
+sans pkg whoami     # Show logged-in username
+```
+
+Credentials are stored in `~/.sans/credentials`.
+
+#### Publishing
+
+Your `sans.json` must include `name`, `version`, and `repository` fields:
+
+```json
+{
+  "name": "http-router",
+  "version": "1.0.0",
+  "repository": "github.com/yourname/http-router",
+  "deps": {}
+}
+```
+
+```bash
+sans pkg publish          # Publishes at tag v{version}
+sans pkg publish v2.0.0   # Publishes at specific tag
+```
+
+Packages are published as `@username/name` where username is your GitHub login.
+
+#### Scoped Packages
+
+```bash
+sans pkg add @scott/http-router          # Latest version
+sans pkg add @scott/http-router 2.1.0    # Specific version
+sans pkg search http                     # Search registry
+```
+
+Legacy GitHub URL dependencies still work:
+
+```bash
+sans pkg add github.com/user/repo v1.0.0
+```
+
+### Doc Generation
+
+Generate API documentation from Sans source files:
+
+```bash
+sans doc path/to/file.sans         # Human-readable output
+sans doc --json path/to/dir/       # JSON output (used by registry)
+```
+
 ## Linter
 
 `sans lint` runs static analysis (parse + type check) without building. It reports diagnostics for common issues.
