@@ -358,6 +358,33 @@ pkg_search(a: I) I {
   0
 }
 
+pkg_poll_token(device_code: S interval: I) I {
+  attempts := 0
+  done := 0
+  while attempts < 60 && done == 0 {
+    sleep(interval * 1000)
+    body = jo()
+    body.set("device_code" js(device_code))
+    tresp = hp(pkg_registry() + "/api/auth/token" jfy(body) "application/json")
+    if tresp.status() == 200 {
+      tdata = jp(tresp.body())!
+      terr = tdata.get("error")
+      is_pending = terr.type_of() == "string" && terr.get_string() == "authorization_pending"
+      if is_pending != true {
+        token = tdata.get("access_token").get_string()
+        username = tdata.get("username").get_string()
+        if token.len() > 0 {
+          pkg_save_creds(pkg_registry() token username)
+          p("Logged in as " + username)
+          done = 1
+        }
+      }
+    }
+    attempts = attempts + 1
+  }
+  done
+}
+
 pkg_login(a: I) I {
   p("Logging in to " + pkg_registry() + "...")
   resp = hp(pkg_registry() + "/api/auth/device" "" "application/json")
@@ -376,31 +403,9 @@ pkg_login(a: I) I {
   p("")
   p("Waiting for authorization...")
 
-  attempts := 0
-  while attempts < 60 {
-    sleep(interval * 1000)
-    body = jo()
-    body.set("device_code" js(device_code))
-    tresp = hp(pkg_registry() + "/api/auth/token" jfy(body) "application/json")
-    if tresp.status() == 200 {
-      tdata = jp(tresp.body())!
-      err = tdata.get("error")
-      if err.type_of() == "string" && err.get_string() == "authorization_pending" {
-        attempts = attempts + 1
-        continue
-      }
-      token = tdata.get("access_token").get_string()
-      username = tdata.get("username").get_string()
-      if token.len() > 0 {
-        pkg_save_creds(pkg_registry() token username)
-        p("Logged in as " + username)
-        return 0
-      }
-    }
-    attempts = attempts + 1
-  }
-  p("error: login timed out")
-  1
+  result = pkg_poll_token(device_code interval)
+  if result == 0 { p("error: login timed out") return 1 }
+  0
 }
 
 pkg_logout(a: I) I {

@@ -10,9 +10,8 @@ doc_is_comment(line: S) I {
 
 doc_extract_comment(line: S) S {
   trimmed = line.trim()
-  start := 2
-  if trimmed.len() > 2 && char_at(trimmed 2) == 32 { start = 3 }
-  trimmed.substring(start trimmed.len())
+  // Skip "// " (with optional space after //)
+  trimmed.substring(2 trimmed.len()).trim()
 }
 
 doc_is_fn_def(line: S) I {
@@ -99,12 +98,16 @@ doc_process_struct(line: S comment_buf: I types: I) I {
   0
 }
 
+doc_strip_sans_ext(name: S) S {
+  name.substring(0 name.len() - 5)
+}
+
 doc_basename(path: S) S {
   parts = path.split("/")
   name = parts.get(parts.len() - 1)
-  end = name.len()
-  if name.ends_with(".sans") { end = name.len() - 5 }
-  name.substring(0 end)
+  has_ext = name.ends_with(".sans")
+  if has_ext == true { return doc_strip_sans_ext(name) }
+  name
 }
 
 doc_parse_file(path: S) I {
