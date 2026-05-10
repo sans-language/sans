@@ -1,5 +1,9 @@
 # Sans
 
+> [!WARNING]
+> **Experimental — Alpha**
+> Sans is an experiment in using AI to build a language for AI. It is currently in an alpha state.
+
 [![Release](https://img.shields.io/github/v/release/sans-language/sans?style=flat-square)](https://github.com/sans-language/sans/releases)
 [![License](https://img.shields.io/github/license/sans-language/sans?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=flat-square)]()
