@@ -165,3 +165,7 @@ function resetCode() {
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+document.getElementById('run-btn').addEventListener('click', runCode);
+document.getElementById('share-btn').addEventListener('click', shareCode);
+document.getElementById('reset-btn').addEventListener('click', resetCode);

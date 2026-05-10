@@ -9,6 +9,14 @@ function tryInPlayground(code) {
   .catch(() => { window.open('/play/', '_blank'); });
 }
 
+// TOC toggle (mobile)
+document.querySelectorAll('.toc-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelector('.toc-content').classList.toggle('open');
+    btn.textContent = btn.textContent === 'Contents ▾' ? 'Contents ▸' : 'Contents ▾';
+  });
+});
+
 // Add "Try it" buttons to all code blocks with class "tryable"
 document.querySelectorAll('pre.tryable').forEach(pre => {
   const code = pre.querySelector('code').textContent;

@@ -68,3 +68,5 @@ miniEl.addEventListener('keydown', function(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); miniRun(); }
   if (e.key === 'Tab') { e.preventDefault(); const s = this.selectionStart; this.value = this.value.substring(0, s) + '    ' + this.value.substring(this.selectionEnd); this.selectionStart = this.selectionEnd = s + 4; miniUpdate(); }
 });
+
+document.getElementById('mini-run').addEventListener('click', miniRun);
