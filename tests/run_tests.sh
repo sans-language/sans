@@ -419,6 +419,7 @@ run_test "int_division"              "$REPO_ROOT/tests/fixtures/int_division.san
 
 run_test "closure_nested"            "$REPO_ROOT/tests/fixtures/closure_nested.sans"            42
 run_test "closure_mutable_capture"   "$REPO_ROOT/tests/fixtures/closure_mutable_capture.sans"   45
+run_test "mut_local_in_loop"         "$REPO_ROOT/tests/fixtures/mut_local_in_loop.sans"         45
 run_test "closure_as_param"          "$REPO_ROOT/tests/fixtures/closure_as_param.sans"          12
 run_test "map_filter_chain"          "$REPO_ROOT/tests/fixtures/map_filter_chain.sans"          5
 run_test "reduce_sum"                "$REPO_ROOT/tests/fixtures/reduce_sum.sans"                15

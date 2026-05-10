@@ -298,7 +298,7 @@ irm_trait_registry(m:I) I = load64(m + 56)
 // offset 168: fn_param_defaults (I) --- Map: func name -> array of default expr ASTs (0 = no default)
 
 make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
-  ctx = alloc(192)
+  ctx = alloc(200)
   store64(ctx, ptr(array<I>()))       // instructions array
   store64(ctx + 8, 0)            // reg_counter
   store64(ctx + 16, 0)           // label_counter
@@ -319,6 +319,7 @@ make_lower_ctx(struct_defs:I enum_defs:I fn_ret_types:I global_names:I) I {
   store64(ctx + 136, ptr(M()))   // fn_ret_struct_names: func name -> struct name
   store64(ctx + 176, ptr(array<I>()))  // defer_stack: array of [fname, arg_regs_array] pairs
   store64(ctx + 184, 0)          // loop_depth: nesting depth of while/for loops
+  store64(ctx + 192, ptr(M()))   // mut_ptrs: var name -> alloca ptr_reg (avoids substring round-trip that scope GC may free)
   ctx
 }
 
@@ -452,7 +453,22 @@ ctx_reset(ctx:I) I {
   store64(ctx + 64, 0)           // break_label
   store64(ctx + 80, 0)           // continue_label
   store64(ctx + 88, ptr(M()))    // reg_struct_names map
+  store64(ctx + 192, ptr(M()))   // fresh mut_ptrs
   0
+}
+
+// Mutable variable pointer tracking
+// Keyed by var name; stores the raw ptr_reg from ir_alloca.
+// Bypasses local.substring(1, slen(local)) which allocates a new string that
+// scope GC may free before codegen reads it (which makes cg_get_val miss).
+ctx_set_mut_ptr(ctx:I name:I ptr_reg:I) I {
+  m = load64(ctx + 192)
+  mset(m, name, ptr_reg)
+  0
+}
+ctx_get_mut_ptr(ctx:I name:I) I {
+  m = load64(ctx + 192)
+  mget(m, name)
 }
 
 // ------ TY -> IRTY mapping ---------------------------------------------------------------------------------------------------------------------------
@@ -1421,8 +1437,8 @@ lower_expr(ctx:I expr:I) I {
     if local != 0 {
       // Check for mutable variable marker "!" prefix
       if char_at(local, 0) == 33 {
-        // Mutable --- stored reg is "!rN", strip prefix to get alloca ptr
-        ptr_reg = local.substring(1, slen(local))
+        // Mutable --- look up raw alloca ptr_reg (substring round-trip would risk scope-GC freeing the buffer)
+        ptr_reg = ctx_get_mut_ptr(ctx, name)
         dest = ctx_fresh_reg(ctx)
         ctx_emit(ctx, ir_load(dest, ptr_reg))
         // Copy type from the alloca pointer's tracked type
@@ -1775,6 +1791,7 @@ lower_stmt(ctx:I stmt:I) I {
       vsn = ctx_get_struct_name(ctx, val_reg)
       if vsn != 0 { ctx_set_struct_name(ctx, ptr_reg, vsn) }
       ctx_set_local(ctx, name, "!" + ptr_reg)
+      ctx_set_mut_ptr(ctx, name, ptr_reg)
     } else {
       ctx_set_local(ctx, name, val_reg)
     }
@@ -1789,8 +1806,8 @@ lower_stmt(ctx:I stmt:I) I {
     local = ctx_get_local(ctx, name)
     if local != 0 {
       if char_at(local, 0) == 33 {
-        // Mutable: strip "!" prefix, store
-        ptr_reg = local.substring(1, slen(local))
+        // Mutable: look up raw alloca ptr_reg (substring round-trip would risk scope-GC freeing the buffer)
+        ptr_reg = ctx_get_mut_ptr(ctx, name)
         // Inside a loop: promote value to parent scope so it survives scope_exit
         if ctx_loop_depth(ctx) > 0 {
           prom_d = ctx_fresh_reg(ctx)

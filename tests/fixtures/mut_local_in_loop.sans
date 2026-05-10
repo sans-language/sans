@@ -1,0 +1,14 @@
+// Regression test: mutable local read/write inside a loop.
+// Pre-fix bug: substring round-trip in ir.sans (EX_IDENT/ST_ASSIGN) created
+// a string whose memory could be freed by scope GC before codegen ran. The
+// stale-pointer hash mismatch made cg_get_val return "0", emitting
+// `inttoptr i64 0 to ptr` for every loop-body access -> segfault.
+main() I {
+  i := 0
+  s := 0
+  while i < 10 {
+    s = s + i
+    i = i + 1
+  }
+  s
+}
