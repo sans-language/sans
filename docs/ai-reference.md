@@ -1,4 +1,4 @@
-# Sans AI Reference — v0.9.2
+# Sans AI Reference — v0.9.3
 
 Compact reference for LLM context injection. Use short aliases.
 
